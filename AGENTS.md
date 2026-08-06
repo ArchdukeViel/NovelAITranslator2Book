@@ -74,7 +74,7 @@ rg -n "^from novelai\.(db\.models|storage\.service|sources\.)" backend/src/novel
 
 ### Commit workflow
 
-1. Run formatters before staging.
+1. Run formatters before staging: `tools\ruff.ps1 format <every file in the diff>`. The pre-commit hook reformats all staged files (including previously committed ones), so an unformatted file anywhere in the staged set will be modified by the hook; `ruff check` enforces B905, so `zip()` calls need explicit `strict=`.
 2. Run affected lint, type checks, and focused tests.
 3. Stage exact intended paths; run `git diff --cached --check`.
 4. Commit with hooks enabled. Never use `--no-verify`.
@@ -84,7 +84,7 @@ After every edit, including documentation edits, run:
 
 ```powershell
 tools/pyright.ps1   # only when Python source changed
-& uv run python -m graphify update . --no-cluster   # always
+graphify update . --no-cluster   # always (standalone binary; python -m graphify is unavailable in .venv)
 ```
 
 Record raw validation command, timeout when relevant, exit code, result count, and exact paths. Never claim a check passed unless run successfully.
@@ -256,14 +256,14 @@ After results, read only decisive source locations. CodeGraph does not replace s
 Graphify covers architecture, docs, config, SQL, storage, specifications, and cross-artifact context. Prefer scoped commands:
 
 ```powershell
-python -m graphify query "<question>"
-python -m graphify path "<A>" "<B>"
-python -m graphify explain "<concept>"
+graphify query "<question>"
+graphify path "<A>" "<B>"
+graphify explain "<concept>"
 ```
 
 Use `graphify-out/wiki/index.md` for broad navigation when present. Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review or when scoped queries are insufficient. Do not use CodeGraph and Graphify for the same question unless first leaves a documented gap.
 
-`python -m graphify check-update .` checks only pending non-code semantic extraction; silence does not prove source freshness. Run `python -m graphify update . --no-cluster` after every edit, including docs. Never run semantic extraction, clustering, or labeling without explicit approval and budget controls. Do not edit generated `.codegraph/` contents.
+`graphify check-update .` checks only pending non-code semantic extraction; silence does not prove source freshness. Run `graphify update . --no-cluster` after every edit, including docs. Never run semantic extraction, clustering, or labeling without explicit approval and budget controls. Do not edit generated `.codegraph/` contents.
 
 ## Windows and GitHub
 

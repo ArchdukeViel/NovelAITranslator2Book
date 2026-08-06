@@ -35,6 +35,7 @@ library namespace without writing application objects at bucket root.
       metadata_backups/<timestamp>.json      # bounded retention
       chapters/<encoded-chapter-stem>.json  # raw chapter bundle (byte-immutable once a generation is active)
       assets/images/<encoded-chapter-stem>/<file>  # raw images, generation-scoped when an active generation exists
+      media/<encoded-chapter-stem>.json     # media overlay (media_overlay_v1): mutable OCR/reembed state
       generations/<generation_id>/          # staged raw generation snapshot
         metadata.json
         chapter_index.json
@@ -71,12 +72,18 @@ generation with the active translation overlay on read.
 `chapters/<encoded-chapter-stem>.json` holds only the raw ingestion output:
 
 - raw id, text, paragraphs, images, source provenance, scrape time;
-- OCR fields (`ocr_required`, `ocr_text`, `ocr_status`, `reembed_status`);
 - media/region reference data;
 - schema version.
 
-Once an active raw generation is established, raw bundles inside that
-generation are not rewritten by translation writes.
+Mutable OCR/re-embedding state is not part of the raw bundle; it lives in the
+novel-root media overlay (see below). Legacy bundles that still carry OCR
+fields remain readable; the overlay wins when both exist.
+
+While a generation is active, raw bundle writes are **refused**, not silently
+rewritten: `persist_chapter_bundle` raises, document imports are rejected,
+checkpoint raw restores skip the raw section, and the rollback bundle-pop
+path is gated to the no-generation flow. Translation and media writes never
+touch the bundle either.
 
 ### Translation overlay
 
@@ -105,6 +112,20 @@ exist. After the first `save_translated_chapter` against a legacy novel, the
 overlay becomes authoritative and the bundle is no longer touched by
 translation writes.
 
+### Media overlay
+
+`media/<encoded-chapter-stem>.json` holds the novel-root mutable OCR state
+(schema `media_overlay_v1`):
+
+- `ocr_required`, `ocr_text`, `ocr_pages`, `ocr_status`, `reembed_status`.
+
+It is novel-root, not generation-scoped, so OCR/re-embedding progress
+survives re-activation. Readers (`load_chapter`, `load_chapter_media_state`,
+`load_translated_chapter`) compose raw bundle + media overlay + translation
+overlay at read time; the media overlay wins over legacy bundle OCR fields.
+Asset resolution under an active generation stays inside the staged
+generation — `resolve_asset_path` has no legacy-root fallback there.
+
 ### Generation activation contract
 
 Each `generations/<gen-id>/` directory holds a complete raw snapshot staged
@@ -126,10 +147,16 @@ before activation:
 - metadata identity matches `manifest.source_work_id`;
 - every indexed chapter has a bundle, **or** an explicit
   `unavailable_chapter_ids` entry;
+- index entry ids are normalized exactly like `resolve_chapter_selection`
+  (integer ids become strings) before reconciliation; a normalized id with
+  no physical bundle still fails;
+- `source_state.json` exists in the stage;
 - every referenced image resolves inside the staged generation (never in
   legacy root, never in another generation);
-- manifest hashes match the staged file contents;
-- `manifest.chapter_ids` reconcile with physical files;
+- manifest hashes are non-empty and match the staged file contents
+  byte-for-byte;
+- `manifest.chapter_ids` reconcile with the physical bundles the index
+  declares (not with index entries alone);
 - counts reconcile (`saved_chapters`, `reused_chapters`,
   `unavailable_chapter_ids`, `failed_chapters`, `expected_chapters`).
 
@@ -217,7 +244,8 @@ absent (legacy rows).
 - Lifecycle rules and bucket locks do not substitute for backups.
 - A snapshot of an active generation is a complete raw snapshot plus the
   novel-level active pointer; translation overlays are recoverable from
-  activation history but not from raw generation bytes.
+  activation history, media overlays are separate novel-root state, and
+  neither is derivable from raw generation bytes.
 
 ## Restore Order
 
