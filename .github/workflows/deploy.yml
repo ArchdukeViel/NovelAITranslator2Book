@@ -24,6 +24,12 @@ jobs:
         github.event_name == 'push' && 'production' ||
         inputs.environment || 'production'
       }}
+    # Deploy credentials are environment-scoped, never repo-level, so a
+    # workflow running on a fork or a lower-trust context cannot read them.
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
 
     steps:
       - name: Determine version
@@ -35,9 +41,9 @@ jobs:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ env.DEPLOY_SSH_KEY }}
           script: |
             set -euo pipefail
             cd /opt/novelai

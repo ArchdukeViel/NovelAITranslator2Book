@@ -1,0 +1,9 @@
+# Default code owners — sole maintainer.
+# Every PR requires review from this owner when require_code_owner_review is
+# enabled on the main-protection ruleset.
+
+* @ArchdukeViel
+
+# Backend contracts and storage are the highest-risk surface.
+backend/src/novelai/storage/ @ArchdukeViel
+backend/alembic/ @ArchdukeViel
