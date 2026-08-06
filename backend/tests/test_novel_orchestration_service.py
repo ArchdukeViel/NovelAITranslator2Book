@@ -40,6 +40,7 @@ from novelai.translation.pipeline.stages.post_process import PostProcessStage
 from novelai.translation.pipeline.stages.segment import SmartSegmentStage
 from novelai.translation.pipeline.stages.translate import TranslateStage
 from novelai.translation.service import TranslationService
+from novelai.utils.chapter_selection import ResolvedChapterSelection
 from tests.conftest import TESTS_TMP_ROOT, MockTranslationProvider
 
 
@@ -832,7 +833,18 @@ async def test_translate_guard_glossary_gate_properties(
         novel_id=slug,
         source_key="stub",
         meta={"chapters": [{"id": "1", "title": "Chapter One", "url": f"https://example.com/{slug}/1"}]},
-        selected_numbers=[1],
+        selected=[
+            ResolvedChapterSelection(
+                chapter_id="1",
+                source_episode_id="1",
+                sequence_number=1,
+                metadata={
+                    "id": "1",
+                    "title": "Chapter One",
+                    "url": f"https://example.com/{slug}/1",
+                },
+            )
+        ],
         force=False,
         source_language="Japanese",
         target_language="English",
