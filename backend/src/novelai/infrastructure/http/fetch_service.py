@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from time import perf_counter
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -20,6 +20,40 @@ from novelai.infrastructure.http.throttle import DomainThrottle
 MAX_RESPONSE_SIZE = 50 * 1024 * 1024  # legacy fallback cap (per-kind limits come from settings)
 
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+
+# Headers that must not leak across origins on a redirect hop.  The first
+# group is outright security-sensitive (credentials / validators); the
+# second is conditional-request state tied to the original resource.
+_CROSS_ORIGIN_STRIPPED_HEADERS = frozenset(
+    {
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "host",
+        "if-none-match",
+        "if-modified-since",
+        "if-match",
+        "if-unmodified-since",
+        "if-range",
+    }
+)
+
+
+def _origin(url: str) -> tuple[str, str]:
+    """Return the (scheme, hostname) origin tuple for an HTTP URL."""
+    parsed = urlparse(url)
+    return parsed.scheme.lower(), (parsed.hostname or "").lower()
+
+
+def _strip_origin_sensitive_headers(headers: dict[str, str]) -> dict[str, str]:
+    """Return a copy of ``headers`` with cross-origin-sensitive entries removed.
+
+    Headers are stripped case-insensitively; the returned dict is a fresh
+    copy so the caller's headers are not mutated.  ``User-Agent`` and
+    ``Accept`` are intentionally preserved — they are safe to forward and
+    help the destination return appropriate content.
+    """
+    return {key: value for key, value in headers.items() if key.lower() not in _CROSS_ORIGIN_STRIPPED_HEADERS}
 
 
 def _kind_limit_bytes(kind: str) -> int:
@@ -181,7 +215,6 @@ class FetchService:
             request_headers["Referer"] = referer.strip()
         request_headers.update(self._cache.conditional_headers(source_key, requested_url, profile=profile))
 
-        await self._throttle.before_request(requested_url)
         started = perf_counter()
         try:
             fetched = await self._with_retry(
@@ -269,14 +302,25 @@ class FetchService:
         SSRF validation (scheme, credentials, hostname, resolved addresses).
         Bodies are read incrementally and rejected as soon as the applicable
         per-kind size limit is exceeded.
+
+        Section 11: cross-origin redirects must not leak credentials,
+        validators, or origin-specific ``Referer`` headers to the new host.
+        The per-hop headers are re-derived from the caller's input on each
+        hop, sensitive entries are stripped when the origin changes, and
+        the throttle accounts for every requested destination (not only the
+        initial URL).
         """
         client = self._pooled_client(profile)
         current = url
         visited: set[str] = {url}
         max_redirects = settings.HTTP_MAX_REDIRECTS
+        current_origin = _origin(current)
+        current_headers = dict(headers)
 
         for _ in range(max_redirects + 1):
-            async with client.stream("GET", current, headers=headers, cookies=cookies) as response:
+            # Per-hop throttle accounting.
+            await self._throttle.before_request(current)
+            async with client.stream("GET", current, headers=current_headers, cookies=cookies) as response:
                 if response.status_code in _REDIRECT_STATUSES:
                     location = response.headers.get("location")
                     if not location or not location.strip():
@@ -286,12 +330,28 @@ class FetchService:
                     validate_safe_url(next_url)
                     if next_url in visited:
                         raise SourceError(f"Redirect loop detected at {next_url}.")
+                    next_origin = _origin(next_url)
+                    # Rebuild per-hop headers so we can strip credentials /
+                    # validators when the origin changes.
+                    if next_origin != current_origin:
+                        current_headers = _strip_origin_sensitive_headers(headers)
+                        # Referer is origin-specific too: pointing the new
+                        # host at the original URL would leak the previous
+                        # origin to the redirect target.  Drop it.
+                        current_headers.pop("Referer", None)
+                    else:
+                        # Same-origin redirect: keep the caller's headers
+                        # and set Referer to the URL we're coming FROM.
+                        current_headers = dict(headers)
+                        current_headers["Referer"] = current
                     visited.add(next_url)
                     current = next_url
+                    current_origin = next_origin
                     continue
                 body = await self._read_body_limited(response, current, kind)
                 if response.status_code != 304:
                     response.raise_for_status()
+                await self._throttle.after_response(current, response.status_code)
                 return _FetchedBody(
                     final_url=current,
                     status_code=response.status_code,

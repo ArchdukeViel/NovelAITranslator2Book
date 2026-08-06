@@ -320,3 +320,146 @@ async def test_aclose_closes_every_pooled_client_exactly_once():
     # A second close is a no-op: the pool was cleared.
     await service.aclose()
     assert len(closed) == 2
+
+
+@pytest.fixture
+def redirect_service():
+    """FetchService with a RecordingThrottle and an InMemoryFetchCache,
+    plus a transport that records request headers on each hop."""
+    recorded_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        recorded_requests.append(request)
+        if request.url.path == "/start":
+            return httpx.Response(302, headers={"Location": "https://cdn.test/next"}, request=request)
+        return httpx.Response(200, text="destination", request=request)
+
+    service = FetchService(
+        client_factory=lambda **kwargs: create_async_client(transport=httpx.MockTransport(handler), **kwargs),
+        throttle=RecordingThrottle(),
+        cache=InMemoryFetchCache(),
+    )
+    # Attach the recorded_requests list so tests can inspect headers.
+    service._recorded_requests = recorded_requests  # type: ignore[attr-defined]
+    return service
+
+
+def _headers_lower(request: httpx.Request) -> dict[str, str]:
+    return {k.lower(): v for k, v in request.headers.items()}
+
+
+@pytest.mark.asyncio
+async def test_cross_origin_redirect_strips_authorization_header(redirect_service):
+    """Section 11: Authorization must be stripped on cross-origin redirect."""
+    service = redirect_service
+    await service.get_text(
+        "https://example.test/start",
+        source_key="test_source",
+        headers={"Authorization": "Bearer secret-token"},
+    )
+
+    recorded = service._recorded_requests
+    assert len(recorded) == 2  # start + redirect
+    # First request has Authorization
+    assert "authorization" in _headers_lower(recorded[0])
+    # Second (cross-origin) request must NOT have Authorization
+    assert "authorization" not in _headers_lower(recorded[1])
+
+
+@pytest.mark.asyncio
+async def test_cross_origin_redirect_strips_cookie_and_validators(redirect_service):
+    """Section 11: Cookie, If-None-Match, If-Modified-Since stripped on cross-origin."""
+    service = redirect_service
+    await service.get_text(
+        "https://example.test/start",
+        source_key="test_source",
+        headers={
+            "Cookie": "session=abc",
+            "If-None-Match": '"abc123"',
+            "If-Modified-Since": "Wed, 21 Oct 2026 07:28:00 GMT",
+        },
+    )
+
+    recorded = service._recorded_requests
+    assert len(recorded) == 2
+    # First request has sensitive headers
+    h0 = _headers_lower(recorded[0])
+    assert "cookie" in h0
+    assert "if-none-match" in h0
+    assert "if-modified-since" in h0
+    # Second (cross-origin) request must NOT have them
+    h1 = _headers_lower(recorded[1])
+    assert "cookie" not in h1
+    assert "if-none-match" not in h1
+    assert "if-modified-since" not in h1
+
+
+@pytest.mark.asyncio
+async def test_cross_origin_redirect_strips_referer(redirect_service):
+    """Section 11: Referer is origin-specific; dropped on cross-origin redirect."""
+    service = redirect_service
+    await service.get_text(
+        "https://example.test/start",
+        source_key="test_source",
+        headers={"Referer": "https://example.test/referer"},
+    )
+
+    recorded = service._recorded_requests
+    assert len(recorded) == 2
+    # First request has Referer
+    assert "referer" in _headers_lower(recorded[0])
+    # Second (cross-origin) must NOT have Referer
+    assert "referer" not in _headers_lower(recorded[1])
+
+
+@pytest.mark.asyncio
+async def test_same_origin_redirect_preserves_headers_and_updates_referer(redirect_service):
+    """Same-origin redirect keeps safe headers and updates Referer to previous URL."""
+    # Modify handler for same-origin redirect
+    recorded_requests: list[httpx.Request] = []
+
+    def same_origin_handler(request: httpx.Request) -> httpx.Response:
+        recorded_requests.append(request)
+        if request.url.path == "/start":
+            return httpx.Response(302, headers={"Location": "/next"}, request=request)
+        return httpx.Response(200, text="destination", request=request)
+
+    service = FetchService(
+        client_factory=lambda **kwargs: create_async_client(
+            transport=httpx.MockTransport(same_origin_handler), **kwargs
+        ),
+        throttle=RecordingThrottle(),
+        cache=InMemoryFetchCache(),
+    )
+
+    await service.get_text(
+        "https://example.test/start",
+        source_key="test_source",
+        headers={
+            "Authorization": "Bearer token",
+            "Referer": "https://example.test/original",
+        },
+    )
+
+    assert len(recorded_requests) == 2
+    # Same-origin: Authorization should be preserved
+    assert "authorization" in _headers_lower(recorded_requests[1])
+    # Referer should be updated to the previous URL
+    h1 = _headers_lower(recorded_requests[1])
+    assert h1["referer"] == "https://example.test/start"
+
+
+@pytest.mark.asyncio
+async def test_throttle_receives_per_hop_url(redirect_service):
+    """Section 11: throttle.before_request called for every redirect hop."""
+    service = redirect_service
+    throttle = service._throttle
+    assert isinstance(throttle, RecordingThrottle)
+
+    await service.get_text("https://example.test/start", source_key="test_source")
+
+    # Two hops: start -> cdn.test
+    urls = throttle.urls
+    assert len(urls) == 2
+    assert urls[0] == "https://example.test/start"
+    assert urls[1] == "https://cdn.test/next"
