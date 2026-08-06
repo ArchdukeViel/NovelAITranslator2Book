@@ -20,6 +20,9 @@ from novelai.storage.chapters import (
     _chapter_path,
     _load_chapter_bundle,
     _persist_chapter_bundle,
+    _translation_active_pointer_path,
+    _translation_overlay_dir,
+    _translation_overlay_path,
     build_chapter_payload,
     count_stored_chapters,
     existing_chapter_hash,
@@ -33,6 +36,7 @@ from novelai.storage.chapters import (
     save_chapter,
 )
 from novelai.storage.generations import (
+    _copy_asset_to_generation,
     _generation_dir,
     _generations_dir,
     activate_generation,
@@ -142,11 +146,9 @@ from novelai.storage.traceability import (
     upsert_chunk_state,
 )
 from novelai.storage.translations import (
-    _active_translation_version,
-    _append_edit_history,
-    _set_active_translation_version,
-    _translated_payload_to_version,
-    _translation_versions_from_payload,
+    _load_translation_overlay,
+    _persist_translation_overlay,
+    _translation_versions_from_payload_compat,
     activate_translated_chapter_version,
     count_translated_chapters,
     list_translated_chapter_versions,
@@ -614,6 +616,7 @@ class StorageService:
     stage_generation_chapter_index = stage_generation_chapter_index
     stage_generation_source_state = stage_generation_source_state
     seed_generation_from_active = seed_generation_from_active
+    _copy_asset_to_generation = _copy_asset_to_generation
     commit_generation = commit_generation
     validate_generation_activation = validate_generation_activation
     resolve_active_generation_id = resolve_active_generation_id
@@ -650,11 +653,12 @@ class StorageService:
     query_chapters = query_chapters
     get_chapters_with_errors = get_chapters_with_errors
     get_scraping_progress = get_scraping_progress
-    _translated_payload_to_version = _translated_payload_to_version
-    _translation_versions_from_payload = _translation_versions_from_payload
-    _active_translation_version = _active_translation_version
-    _set_active_translation_version = _set_active_translation_version
-    _append_edit_history = _append_edit_history
+    _load_translation_overlay = _load_translation_overlay
+    _persist_translation_overlay = _persist_translation_overlay
+    _translation_versions_from_payload_compat = _translation_versions_from_payload_compat
+    _translation_overlay_path = _translation_overlay_path
+    _translation_overlay_dir = _translation_overlay_dir
+    _translation_active_pointer_path = _translation_active_pointer_path
     save_translated_chapter = save_translated_chapter
     save_translation_run_manifest = save_translation_run_manifest
     load_translation_run_manifest = load_translation_run_manifest

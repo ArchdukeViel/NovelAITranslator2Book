@@ -13,8 +13,19 @@ from novelai.storage.common import _utc_now_iso, validate_storage_schema_version
 logger = logging.getLogger(__name__)
 
 
+# Section 6: section-scoped aliases for the raw / translation chapters trees.
+# The active raw generation's ``chapters`` directory is byte-immutable
+# once committed; translations live in a parallel ``translations``
+# directory at the novel root so QA-accepted edits never overwrite
+# raw bytes. The intermediate / pre-existing consumer tree is the
+# ``chapters`` directory itself; we keep that name for backward
+# compatibility and just split the *translation* path to a different
+# root.
+RAW_CHAPTERS_SUBDIR = "chapters"
+
+
 def _chapter_dir(self: Any, novel_id: str) -> Path:
-    chapter_dir = self._content_root(novel_id) / self.CHAPTERS_DIRNAME
+    chapter_dir = self._content_root(novel_id) / RAW_CHAPTERS_SUBDIR
     self._mkdirs(chapter_dir)
     return chapter_dir
 
@@ -37,7 +48,46 @@ def _chapter_filename(chapter_id: str) -> str:
         return f"{encode_physical_stem(safe)}.json"
 
 
+def _translation_overlay_dir(self: Any, novel_id: str) -> Path:
+    """Directory holding mutable translation overlays for a novel.
+
+    Section 6: translation overlays live outside the active raw
+    generation's ``chapters/`` directory so that QA-accepted edits and
+    retranslations never mutate the immutable raw bytes. The overlay
+    is always at the novel root regardless of whether an active
+    generation exists, ensuring readers compose the active raw
+    generation with the active translation overlay consistently.
+    """
+    overlay = self._novel_dir(novel_id) / "translations"
+    self._mkdirs(overlay)
+    self._mkdirs(overlay / "active")
+    return overlay
+
+
+def _translation_overlay_path(self: Any, novel_id: str, chapter_id: str) -> Path:
+    """File path for a chapter's translation overlay payload."""
+    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
+    encoded_stem = encode_physical_stem(safe_chapter_id)
+    return _translation_overlay_dir(self, novel_id) / f"{encoded_stem}.json"
+
+
+def _translation_active_pointer_path(self: Any, novel_id: str, chapter_id: str) -> Path:
+    """Path to the per-chapter active-translation pointer inside the overlay."""
+    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
+    encoded_stem = encode_physical_stem(safe_chapter_id)
+    return _translation_overlay_dir(self, novel_id) / "active" / f"{encoded_stem}.json"
+
+
 def _chapter_path(self: Any, novel_id: str, chapter_id: str) -> Path:
+    """Return the raw chapter bundle path.
+
+    For a novel with an active generation the path is inside the
+    generation snapshot's ``chapters/`` directory; otherwise it
+    falls back to the novel-level legacy root. Raw bundles are
+    byte-immutable once committed so translation writes never go
+    through this path: see
+    :func:`storage.translations._persist_translation_overlay`.
+    """
     return self._chapter_dir(novel_id) / _chapter_filename(chapter_id)
 
 
@@ -62,6 +112,12 @@ def _load_chapter_bundle(self: Any, novel_id: str, chapter_id: str) -> dict[str,
 
 
 def _persist_chapter_bundle(self: Any, novel_id: str, chapter_id: str, payload: dict[str, Any]) -> Path:
+    """Persist a chapter bundle to its canonical raw location.
+
+    Callers that only mutate raw content should land here.
+    Translation writes must use ``_persist_translation_overlay`` so the
+    raw generation stays byte-immutable (Section 6).
+    """
     self._normalize_media_fields(payload)
     payload["schema_version"] = self.SCHEMA_VERSION
     path = self._chapter_path(novel_id, chapter_id)
@@ -266,7 +322,7 @@ def list_stored_chapters(self: Any, novel_id: str) -> list[str]:
                 current_version=self.SCHEMA_VERSION,
                 artifact_type="chapter bundle",
             )
-            has_translation_versions = bool(self._translation_versions_from_payload(payload))
+            has_translation_versions = bool(self._translation_versions_from_payload_compat(payload))
             if isinstance(payload.get("raw"), dict) or has_translation_versions:
                 ids.add(self.logical_id_from_stem(chapter_path.stem))
 
