@@ -25,6 +25,14 @@ from novelai.sources.quality import (
     evaluate_chapter_quality,
     evaluate_metadata_quality,
 )
+from novelai.storage.generations import (
+    DISPOSITION_CARRIED_UNSELECTED,
+    DISPOSITION_FETCHED_REPLACED,
+    DISPOSITION_REFRESH_FAILED_RETAINED,
+    DISPOSITION_REUSED_PLANNER,
+    DISPOSITION_UNAVAILABLE,
+    DISPOSITION_UNCHANGED_SELECTED,
+)
 from novelai.utils.chapter_selection import (
     ResolvedChapterSelection,
     _chapter_logical_id,
@@ -419,8 +427,15 @@ async def scrape_chapters(
 ) -> dict[str, Any]:
     """Fetch chapter content from the source site and persist it.
 
-    In ``full`` mode, existing data is deleted before re-scraping.
-    In ``update`` mode (default), only new or changed chapters are fetched.
+    In ``full`` mode, a new generation is staged for the complete current
+    index. If validation fails the stage is rolled back and the previous
+    active generation (or legacy layout) remains in effect — no active
+    data is deleted. In ``update`` mode (default), a generation is staged
+    for the complete index but only selected chapters are fetched; unselected
+    chapters are carried forward from the active generation. A scoped crawl
+    (e.g. ``chapters="1"`` against a 100-chapter work) still activates a
+    generation representing all 100 index entries.
+
     Chapters are identified by the *chapters* selection string (e.g.
     ``"all"`` or ``"1-5"``).
 
@@ -635,6 +650,19 @@ async def _scrape_chapters_impl(
     if seed_targets:
         self.storage.seed_generation_from_active(novel_id, generation_id, seed_targets)
 
+    # Canonical per-chapter dispositions. Start with carried_unselected for
+    # all current-index chapters (they were all seeded from the active
+    # generation). The body loop will upgrade the disposition when a
+    # chapter is fetched, reused via planner, skipped as unchanged, or
+    # marked refresh_failed_retained / unavailable.
+    chapter_dispositions: dict[str, str] = {}
+    for entry in complete_index_entries:
+        if not isinstance(entry, dict):
+            continue
+        cid = _chapter_logical_id(entry)
+        if cid:
+            chapter_dispositions[cid] = DISPOSITION_CARRIED_UNSELECTED
+
     _emit(
         STAGE_INDEX_CRAWL,
         "started",
@@ -660,6 +688,7 @@ async def _scrape_chapters_impl(
                 and ep_id not in crawl_plan.chapters_to_fetch_set
             ):
                 skipped += 1
+                chapter_dispositions[chapter_id] = DISPOSITION_REUSED_PLANNER
                 existing = existing_chapters_map.get(chapter_id) or {}
                 scraped_chapters_for_state.append(
                     {
@@ -741,6 +770,7 @@ async def _scrape_chapters_impl(
                     # forward into the staged snapshot.
                     self.storage.seed_generation_from_active(novel_id, generation_id, [chapter_id])
                     skipped += 1
+                    chapter_dispositions[chapter_id] = DISPOSITION_UNCHANGED_SELECTED
                     _emit(
                         STAGE_BODY_CRAWL,
                         "skipped",
@@ -827,6 +857,7 @@ async def _scrape_chapters_impl(
                 if any(img.get("download_error") for img in downloaded_images):
                     image_download_failures += 1
                 succeeded += 1
+                chapter_dispositions[chapter_id] = DISPOSITION_FETCHED_REPLACED
                 cached_stored_hashes.add(new_signature)
                 scraped_chapters_for_state.append(
                     {
@@ -895,6 +926,7 @@ async def _scrape_chapters_impl(
                         reason=error_message,
                         error_category=failure["error_category"],
                     )
+                    chapter_dispositions[chapter_id] = DISPOSITION_REFRESH_FAILED_RETAINED
                 else:
                     self.storage.record_unavailable_chapter(
                         novel_id,
@@ -903,6 +935,7 @@ async def _scrape_chapters_impl(
                         reason=error_message,
                         error_category=failure["error_category"],
                     )
+                    chapter_dispositions[chapter_id] = DISPOSITION_UNAVAILABLE
                 _emit(
                     STAGE_BODY_CRAWL,
                     "failed",
@@ -1006,9 +1039,7 @@ async def _scrape_chapters_impl(
             novel_id,
             generation_id,
             removed_episode_ids=list(crawl_plan.removed_episode_ids),
-            reused_chapters=skipped,
-            saved_chapters=succeeded,
-            failed_chapters=failed,
+            chapter_dispositions=chapter_dispositions,
             starting_active_generation_id=starting_active_generation_id,
         )
 

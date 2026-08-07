@@ -91,7 +91,7 @@ active raw generation with the active translation overlay on read.
 Each translation run produces a `TranslationRunManifest` linking:
 
 - `translation_run_id` (stable across stages of one run);
-- `raw_generation_id` (the activated generation the run fed on);
+- `raw_generation_id` (the activated generation the run fed on; **provenance only** — a new generation with identical raw content/structure/image hashes can reuse the prior translation without invalidation);
 - canonical glossary hash (a SHA-256 of normalized glossary entries);
 - `prompt_template_version` resolved from `novelai.prompts.PROMPT_TEMPLATE_VERSION`;
 - `qa_policy_fingerprint` (mode, deterministic-QA version, LLM grader model,
@@ -104,6 +104,30 @@ Manifest persistence is logged but never silently swallowed so CI and
 operators see when the committed manifest goes missing. Manifest commit
 runs **before** active translation pointer publication so readers can never
 observe a partially recorded lineage.
+
+### Production Reuse Gate
+
+Before returning `already_complete` or `already_translated`, the production
+resume path builds the **current effective translation contract** and calls
+`is_translation_valid()` with it. The contract includes:
+
+- `source_text_hash` (current raw text hash)
+- `active_glossary_hash` (current glossary hash)
+- `prompt_version` (current prompt template version)
+- `provider_key`, `provider_model` (current provider/model)
+- `active_raw_generation_id` (current active generation)
+- `source_structure_hash` (current raw structure hash)
+- `source_image_manifest_hash` (current image manifest hash)
+- `qa_policy_fingerprint` (current QA policy)
+- `source_language`, `target_language` (current languages)
+
+`is_translation_valid` **fails closed** when a required input has no stored
+value on the existing translation version. A DB `COMPLETE` state is evidence
+of previous completion, **not** of current validity — a stale source text,
+glossary, prompt, QA policy, provider/model, target language, structure, or
+image manifest forces retranslation. The previous version is retained in the
+per-chapter overlay history. Generation activation ID mismatch alone does not
+invalidate an otherwise identical translation (hashes are the validity gate).
 
 ## Chapter Selection
 

@@ -948,8 +948,21 @@ async def translate_chapters(
         requested_chapters=[record.chapter_id for record in resolved],
         expected_count=len(resolved),
     )
-    with contextlib.suppress(Exception):
+    # Initial manifest persistence is best-effort: a missing record must not
+    # abort translation. The failure is logged so CI / operators can see
+    # that the committed manifest went missing on the initial write.
+    manifest_persistence_warnings: list[str] = []
+    try:
         self.storage.save_translation_run_manifest(novel_id, manifest)
+    except Exception as exc:
+        warning = f"initial_manifest_persistence_failed: {type(exc).__name__}: {exc}"
+        manifest_persistence_warnings.append(warning)
+        logger.warning(
+            "Initial translation run manifest persistence failed for %s/%s: %s",
+            novel_id,
+            translation_run_id,
+            exc,
+        )
 
     # Bounded chapter-level concurrency.  Default 1 preserves the previous
     # sequential behavior.  Each chapter is independent (per-chapter lock,
@@ -965,7 +978,42 @@ async def translate_chapters(
             chapter_id = record.chapter_id
             _chapter_num = record.sequence_number
 
-            # Resume logic (REQ-3.1): skip COMPLETE, reset FAILED - bypassed when force=True (REQ-3.4)
+            # Load raw bundle up-front so the resume gate can validate the
+            # existing translation against the *current* effective contract
+            # (source text / structure / image hash). Loading twice (once for
+            # the gate, once for translation) would be wasteful and would let
+            # the bundle change between calls.
+            raw_chapter = self.storage.load_chapter(novel_id, chapter_id)
+            current_raw_text = ""
+            current_source_structure_hash = ""
+            current_source_image_manifest_hash = ""
+            if isinstance(raw_chapter, dict):
+                raw_text_obj = raw_chapter.get("text")
+                if isinstance(raw_text_obj, str):
+                    current_raw_text = raw_text_obj
+                current_source_structure_hash = self.storage._hash_text(
+                    json.dumps(
+                        raw_chapter.get("source_blocks") or [],
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        default=str,
+                    )
+                )
+                current_source_image_manifest_hash = self.storage._hash_text(
+                    json.dumps(
+                        raw_chapter.get("images") or [],
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        default=str,
+                    )
+                )
+            current_source_text_hash = self.storage._hash_text(current_raw_text) if current_raw_text else ""
+
+            # Resume logic (REQ-3.1): skip when previous translation is still
+            # valid against the current effective contract, reset FAILED. The
+            # DB ``COMPLETE`` state alone is insufficient evidence — a stale
+            # source text / glossary / prompt / QA change must retranslate.
+            # Bypassed entirely when force=True (REQ-3.4).
             from novelai.services.orchestration.translation_resume import _check_chapter_resume_state
 
             skip_result = _check_chapter_resume_state(
@@ -973,6 +1021,17 @@ async def translate_chapters(
                 novel_id=novel_id,
                 chapter_id=chapter_id,
                 force=force,
+                source_text_hash=current_source_text_hash,
+                effective_glossary_hash=glossary_hash,
+                prompt_template_version=prompt_template_version,
+                provider_key=effective_provider_key,
+                provider_model=effective_provider_model,
+                active_raw_generation_id=raw_generation_id or None,
+                source_structure_hash=current_source_structure_hash,
+                source_image_manifest_hash=current_source_image_manifest_hash,
+                qa_policy_fingerprint=qa_policy_fingerprint,
+                source_language=effective_source_language,
+                target_language=effective_target_language,
             )
             if skip_result is not None:
                 return skip_result
@@ -994,7 +1053,6 @@ async def translate_chapters(
             )
 
             try:
-                raw_chapter = self.storage.load_chapter(novel_id, chapter_id)
                 media_state = self.storage.load_chapter_media_state(novel_id, chapter_id) or {}
                 raw_text = None
                 raw_images: list[dict[str, Any]] | None = None
@@ -1362,8 +1420,12 @@ async def translate_chapters(
     try:
         self.storage.save_translation_run_manifest(novel_id, manifest)
     except Exception as exc:
+        warning = f"final_manifest_persistence_failed: {type(exc).__name__}: {exc}"
+        manifest_persistence_warnings.append(warning)
         logger.warning("Translation run manifest persistence failed for %s/%s: %s", novel_id, translation_run_id, exc)
     summary["translation_run_id"] = translation_run_id
+    if manifest_persistence_warnings:
+        summary["manifest_persistence_warnings"] = manifest_persistence_warnings
     if first_error is not None:
         # Attach progress so the activity worker can surface a partial-failure
         # summary (REQ-3.3) while still propagating the underlying error so

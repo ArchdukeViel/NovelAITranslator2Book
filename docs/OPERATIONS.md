@@ -20,6 +20,15 @@ output never includes paths, hosts, credentials, or traces.
   last result, cooldown/exhaustion, and next eligible run.
 - Scheduled jobs use cron/timezone evaluation and renewable PostgreSQL leases.
 - Local filesystem writes/retention also use `InterProcessFileLock` where needed.
+- Generation pointer activation uses `compare_and_swap_active_pointer`: the
+  filesystem backend wraps the read-compare-write in an `InterProcessFileLock`;
+  the S3 backend uses a conditional `PUT` with `If-Match`/`If-None-Match`.
+  Concurrent activations cannot silently overwrite each other; the loser
+  receives `GenerationConflictError` and must roll its stage back.
+- Explicit operator recovery from a failed generation activation uses
+  `commit_generation_recovery(reason=..., evidence=...)` — both arguments are
+  required non-empty strings that are logged for audit. This bypasses the
+  strict validation gate and must only be invoked after isolated verification.
 - Maintenance cleans allowlisted cache/events/activity/runtime-state roots and
   applies backup retention. Use dry-run before changed cleanup policy.
 - Never reintroduce APScheduler.

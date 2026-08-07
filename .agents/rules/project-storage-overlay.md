@@ -24,8 +24,9 @@ Rules:
   every-index-entry-resolved (bundle or explicit
   `unavailable_chapter_ids`), image-asset resolution inside the staged
   generation, hash reconciliation, count reconciliation. On failure the
-  stage is rolled back; `skip_validation=True` is an explicit
-  operator-recovery opt-out, not a default.
+  stage is rolled back. Explicit recovery uses
+  `commit_generation_recovery(reason=..., evidence=...)` which requires
+  non-empty operator consent and bypasses the strict validation gate.
 - Chapter selection resolves through `resolve_chapter_selection` against
   the complete current index. Kakuyomu ids (`kakuyomu:<episode>`) are
   stable strings; never convert `chapter_id` to `int`, never use

@@ -290,10 +290,16 @@ class StorageService:
     def _content_root(self, novel_id: str) -> Path:
         """Return the directory holding a novel's active content snapshot.
 
-        When an active generation exists, chapter bundles and images are read
-        from and written to the generation snapshot so a crawl becomes
-        visible atomically (manifest-last, then pointer swap). Otherwise the
-        legacy novel-directory layout is used unchanged.
+        When an active generation exists:
+        - Raw reads (chapters, images) resolve through the active generation
+        - Committed generations are byte-immutable; they are never written to
+        - New raw writes must use staging (``generations/<gen-id>/``)
+        - Mutable translations/media use per-novel overlays
+          (``translations/``, ``media/``) which are composed over the active
+          generation at read time
+
+        When no active generation exists, the legacy novel-directory layout is
+        used for reads and writes.
 
         Control artifacts (folder index, metadata backups, chapter state,
         checkpoints, ``generations/`` itself) always stay in the novel

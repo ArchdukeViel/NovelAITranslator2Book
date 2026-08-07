@@ -77,6 +77,71 @@ def _canonical_bundle_hashes(payload: dict[str, Any]) -> tuple[str, str, str]:
     )
 
 
+# Canonical chapter-disposition names. Every current-index chapter must end
+# the crawl with exactly one of these dispositions so the activation
+# validator can derive aggregate counts and reconcile them against the
+# physical staged state.
+DISPOSITION_FETCHED_NEW = "fetched_new"
+DISPOSITION_FETCHED_REPLACED = "fetched_replaced"
+DISPOSITION_REUSED_PLANNER = "reused_planner"
+DISPOSITION_CARRIED_UNSELECTED = "carried_unselected"
+DISPOSITION_UNCHANGED_SELECTED = "unchanged_selected"
+DISPOSITION_REFRESH_FAILED_RETAINED = "refresh_failed_retained"
+DISPOSITION_UNAVAILABLE = "unavailable"
+
+# Dispositions considered available (a usable bundle exists in the stage or
+# the chapter is explicitly marked unavailable).
+_AVAILABLE_DISPOSITIONS: frozenset[str] = frozenset(
+    {
+        DISPOSITION_FETCHED_NEW,
+        DISPOSITION_FETCHED_REPLACED,
+        DISPOSITION_REUSED_PLANNER,
+        DISPOSITION_CARRIED_UNSELECTED,
+        DISPOSITION_UNCHANGED_SELECTED,
+        DISPOSITION_REFRESH_FAILED_RETAINED,
+    }
+)
+
+
+def derive_counts_from_dispositions(
+    chapter_dispositions: dict[str, str],
+) -> dict[str, int]:
+    """Derive canonical aggregate counts from per-chapter dispositions.
+
+    ``expected_count`` is the total number of current-index chapters; removed
+    chapters are *not* counted because they are no longer current-index
+    membership. Available membership is the union of every disposition that
+    has a physical bundle in the stage; unavailable membership is the
+    explicit ``unavailable`` disposition.
+    """
+    counts = {
+        "expected_count": len(chapter_dispositions),
+        "fetched_count": 0,
+        "reused_count": 0,
+        "carried_unselected_count": 0,
+        "unchanged_selected_count": 0,
+        "refresh_failed_retained_count": 0,
+        "unavailable_count": 0,
+    }
+    for disposition in chapter_dispositions.values():
+        if disposition in (DISPOSITION_FETCHED_NEW, DISPOSITION_FETCHED_REPLACED):
+            counts["fetched_count"] += 1
+        elif disposition == DISPOSITION_REUSED_PLANNER:
+            counts["reused_count"] += 1
+        elif disposition == DISPOSITION_CARRIED_UNSELECTED:
+            counts["carried_unselected_count"] += 1
+        elif disposition == DISPOSITION_UNCHANGED_SELECTED:
+            counts["unchanged_selected_count"] += 1
+        elif disposition == DISPOSITION_REFRESH_FAILED_RETAINED:
+            counts["refresh_failed_retained_count"] += 1
+        elif disposition == DISPOSITION_UNAVAILABLE:
+            counts["unavailable_count"] += 1
+    # ``reused_count`` is the sum of planner-reuse + unchanged-selected
+    # because both reuse an existing bundle rather than fetching a new one.
+    counts["reused_count"] = counts["reused_count"] + counts["unchanged_selected_count"]
+    return counts
+
+
 @dataclass
 class GenerationManifest:
     """Manifest tracking a staged generation run matching Section 8 requirements."""
@@ -105,6 +170,14 @@ class GenerationManifest:
     unavailable_chapter_records: dict[str, dict[str, Any]] = field(default_factory=dict)
     refresh_failed_chapter_ids: list[str] = field(default_factory=list)
     refresh_failed_chapter_records: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Canonical per-chapter dispositions: ``chapter_id -> disposition_name``.
+    # Every current-index chapter must end the crawl with exactly one entry.
+    # Aggregate counts are derived from this map at commit time so the
+    # caller cannot pass summary counters that disagree with the stage.
+    chapter_dispositions: dict[str, str] = field(default_factory=dict)
+    # Carried unselected chapter count surfaced explicitly so scoped crawls
+    # can describe the membership without recomputing from dispositions.
+    carried_unselected_count: int = 0
     chapter_ids: list[str] = field(default_factory=list)
     source_hashes: dict[str, str] = field(default_factory=dict)
     structure_hashes: dict[str, str] = field(default_factory=dict)
@@ -142,6 +215,8 @@ class GenerationManifest:
             unavailable_chapter_records=dict(data.get("unavailable_chapter_records", {})),
             refresh_failed_chapter_ids=list(data.get("refresh_failed_chapter_ids", [])),
             refresh_failed_chapter_records=dict(data.get("refresh_failed_chapter_records", {})),
+            chapter_dispositions=dict(data.get("chapter_dispositions", {})),
+            carried_unselected_count=int(data.get("carried_unselected_count", 0)),
             chapter_ids=list(data.get("chapter_ids", [])),
             source_hashes=dict(data.get("source_hashes", {})),
             structure_hashes=dict(data.get("structure_hashes", {})),
@@ -156,6 +231,47 @@ def _generations_dir(self: Any, novel_id: str) -> Path:
     g_dir = novel_dir / "generations"
     self._mkdirs(g_dir)
     return g_dir
+
+
+def _active_generation_lock_path(self: Any, novel_id: str) -> Path:
+    """Return the per-novel cross-process lock path guarding the active pointer.
+
+    The lock lives in the same ``generations/`` directory the pointer lives
+    in, so a single lock covers both filesystem- and S3-backed deployments
+    (the S3 backend falls back to a conditional PUT; the lock is a no-op for
+    it but the bookkeeping stays identical).
+    """
+    return self._generations_dir(novel_id) / ".active_generation.lock"
+
+
+def _compare_and_swap_active_pointer(
+    self: Any,
+    novel_id: str,
+    *,
+    expected_raw: bytes | None,
+    new_value: bytes,
+) -> bool:
+    """Cross-process atomic compare-and-swap on the active generation pointer.
+
+    Filesystem backend: the read+compare+write is wrapped in an
+    :class:`InterProcessFileLock` so two independent processes cannot both
+    observe the same expected pointer and both succeed; exactly one wins,
+    the loser receives ``False`` (the caller raises :class:`GenerationConflictError`).
+
+    S3 / object-store backend: the backend's own conditional
+    ``If-Match`` / ``If-None-Match`` PUT provides the same guarantee; the
+    local file lock is taken defensively but is not the source of truth on
+    remote backends.
+    """
+    lock_path = _active_generation_lock_path(self, novel_id)
+    from novelai.storage.file_lock import InterProcessFileLock
+
+    with InterProcessFileLock(lock_path):
+        return self._backend.compare_and_swap(
+            self._rel(self._generations_dir(novel_id) / "active_generation.json"),
+            expected_raw,
+            new_value,
+        )
 
 
 def _generation_dir(self: Any, novel_id: str, generation_id: str) -> Path:
@@ -822,6 +938,76 @@ def validate_generation_activation(
         )
     )
 
+    # ── disposition reconciliation ───────────────────────────────────────
+    if manifest.chapter_dispositions:
+        # Every current-index chapter must have exactly one disposition.
+        disposition_chapter_ids = set(manifest.chapter_dispositions.keys())
+        missing_disp = complete_index_ids - disposition_chapter_ids
+        checks.append(
+            _check(
+                "disposition_for_every_index_entry",
+                not missing_disp,
+                f"Missing dispositions for {len(missing_disp)} index entries: {sorted(missing_disp)}",
+            )
+        )
+        extra_disp = disposition_chapter_ids - complete_index_ids
+        checks.append(
+            _check(
+                "no_extra_dispositions",
+                not extra_disp,
+                f"Dispositions for non-index chapters: {sorted(extra_disp)}",
+            )
+        )
+        # Disposition map must agree with the explicit unavailable/refresh_failed lists.
+        disp_unavailable = {cid for cid, d in manifest.chapter_dispositions.items() if d == DISPOSITION_UNAVAILABLE}
+        disp_refresh_failed = {
+            cid for cid, d in manifest.chapter_dispositions.items() if d == DISPOSITION_REFRESH_FAILED_RETAINED
+        }
+        checks.append(
+            _check(
+                "disposition_unavailable_matches_explicit",
+                disp_unavailable == unavailable_ids,
+                f"disposition unavailable={sorted(disp_unavailable)} != explicit unavailable_chapter_ids={sorted(unavailable_ids)}",
+            )
+        )
+        checks.append(
+            _check(
+                "disposition_refresh_failed_matches_explicit",
+                disp_refresh_failed == refresh_failed_ids,
+                f"disposition refresh_failed_retained={sorted(disp_refresh_failed)} != explicit refresh_failed_chapter_ids={sorted(refresh_failed_ids)}",
+            )
+        )
+        # Derived counts must match the manifest's aggregate counters.
+        derived = derive_counts_from_dispositions(manifest.chapter_dispositions)
+        checks.append(
+            _check(
+                "derived_fetched_count_matches_manifest",
+                manifest.saved_chapters == derived["fetched_count"],
+                f"saved_chapters={manifest.saved_chapters} != derived fetched_count={derived['fetched_count']}",
+            )
+        )
+        checks.append(
+            _check(
+                "derived_reused_count_matches_manifest",
+                manifest.reused_chapters == derived["reused_count"],
+                f"reused_chapters={manifest.reused_chapters} != derived reused_count={derived['reused_count']}",
+            )
+        )
+        checks.append(
+            _check(
+                "derived_unavailable_count_matches_manifest",
+                manifest.failed_chapters == derived["unavailable_count"],
+                f"failed_chapters={manifest.failed_chapters} != derived unavailable_count={derived['unavailable_count']}",
+            )
+        )
+        checks.append(
+            _check(
+                "derived_carried_unselected_count_matches_manifest",
+                manifest.carried_unselected_count == derived["carried_unselected_count"],
+                f"carried_unselected_count={manifest.carried_unselected_count} != derived carried_unselected_count={derived['carried_unselected_count']}",
+            )
+        )
+
     # ── snapshot hash integrity (empty required hash fails) ────────────
     metadata_text = self._read_text(metadata_path) if self._path_exists(metadata_path) else ""
     chapter_index_text = self._read_text(index_path) if self._path_exists(index_path) else ""
@@ -966,6 +1152,12 @@ def commit_generation(
     generation_id: str,
     *,
     removed_episode_ids: list[str] | None = None,
+    chapter_dispositions: dict[str, str] | None = None,
+    # Legacy / diagnostic counters. When ``chapter_dispositions`` is supplied
+    # the aggregate counts are derived from the dispositions and the explicit
+    # ``saved_chapters`` / ``reused_chapters`` / ``failed_chapters`` arguments
+    # are treated as advisory hints — they must match the derived counts or
+    # validation rejects the commit.
     reused_chapters: int = 0,
     saved_chapters: int | None = None,
     failed_chapters: int = 0,
@@ -981,13 +1173,19 @@ def commit_generation(
 
     Section 4: :func:`validate_generation_activation` always runs before the
     pointer swap; partial / corrupt / membership-incomplete generations never
-    become visible through the normal path.
+    become visible through the normal path. Aggregate counts are derived
+    from ``chapter_dispositions`` (the canonical source of truth) and
+    reconciled against the physical staged state — caller-supplied summary
+    counters cannot disagree with the dispositions.
 
-    Section 5: activation is a compare-and-swap on the active pointer. The
-    caller captures ``starting_active_generation_id`` at crawl start; if the
-    pointer no longer matches (another crawl activated meanwhile) the commit
-    fails with :class:`GenerationConflictError` and the losing stage must be
-    rolled back — the newer generation is never overwritten.
+    Section 5: activation is a compare-and-swap on the active pointer,
+    wrapped in an inter-process file lock so two independent processes
+    cannot both observe the same expected pointer and both succeed; the
+    loser receives :class:`GenerationConflictError` and the winner cannot
+    be overwritten by the loser. The caller captures
+    ``starting_active_generation_id`` at crawl start; if the pointer no
+    longer matches (another crawl activated meanwhile) the commit fails
+    and the losing stage must be rolled back.
     """
     manifest = _load_manifest(self, novel_id, generation_id)
     if manifest is None:
@@ -995,10 +1193,37 @@ def commit_generation(
 
     if removed_episode_ids:
         manifest.removed_episode_ids = sorted(set(removed_episode_ids))
-    manifest.reused_chapters = reused_chapters
-    manifest.failed_chapters = failed_chapters
-    if saved_chapters is not None:
-        manifest.saved_chapters = saved_chapters
+
+    if chapter_dispositions is not None:
+        # Canonical disposition map provided: derive all aggregate counts
+        # from it and replace the manifest's existing map (the caller is
+        # authoritative about what each current-index chapter became).
+        manifest.chapter_dispositions = dict(chapter_dispositions)
+        derived = derive_counts_from_dispositions(manifest.chapter_dispositions)
+        manifest.saved_chapters = derived["fetched_count"]
+        manifest.reused_chapters = derived["reused_count"]
+        manifest.failed_chapters = derived["unavailable_count"]
+        manifest.carried_unselected_count = derived["carried_unselected_count"]
+        # Reconcile derived lists with the staged explicit records. The
+        # disposition map is authoritative: any chapter marked
+        # ``unavailable`` must appear in ``unavailable_chapter_ids`` and
+        # every chapter in ``unavailable_chapter_ids`` /
+        # ``refresh_failed_chapter_ids`` must appear with the matching
+        # disposition.
+        manifest.unavailable_chapter_ids = sorted(
+            cid for cid, disp in manifest.chapter_dispositions.items() if disp == DISPOSITION_UNAVAILABLE
+        )
+        manifest.refresh_failed_chapter_ids = sorted(
+            cid for cid, disp in manifest.chapter_dispositions.items() if disp == DISPOSITION_REFRESH_FAILED_RETAINED
+        )
+    else:
+        # Legacy callers without a disposition map: keep the explicit
+        # counters, but treat them as advisory and require the manifest
+        # to already carry the explicit disposition lists.
+        manifest.reused_chapters = reused_chapters
+        manifest.failed_chapters = failed_chapters
+        if saved_chapters is not None:
+            manifest.saved_chapters = saved_chapters
     manifest.status = "staging"
     manifest.committed_at = manifest.committed_at or _utc_now_iso()
 
@@ -1043,10 +1268,11 @@ def commit_generation(
     expected_raw = (
         self._backend.load(self._rel(active_pointer_path)) if self._path_exists(active_pointer_path) else None
     )
-    swapped = self._backend.compare_and_swap(
-        self._rel(active_pointer_path),
-        expected_raw,
-        pointer_payload.encode("utf-8"),
+    swapped = _compare_and_swap_active_pointer(
+        self,
+        novel_id,
+        expected_raw=expected_raw,
+        new_value=pointer_payload.encode("utf-8"),
     )
     if not swapped:
         raise GenerationConflictError(

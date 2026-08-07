@@ -17,6 +17,7 @@ from novelai.services.orchestration.translation import (
     _update_db_translation_state,
 )
 from novelai.services.pipeline.checkpoint import CheckpointManager
+from novelai.translation.run_manifest import is_translation_valid
 
 logger = logging.getLogger(__name__)
 
@@ -27,26 +28,92 @@ def _check_chapter_resume_state(
     novel_id: str,
     chapter_id: str,
     force: bool,
+    # Effective translation contract. When any field is None the matching
+    # stored value must exist on the existing translation version — the
+    # validator fails closed when a required input is missing.
+    source_text_hash: str | None = None,
+    effective_glossary_hash: str | None = None,
+    prompt_template_version: str | None = None,
+    provider_key: str | None = None,
+    provider_model: str | None = None,
+    active_raw_generation_id: str | None = None,
+    source_structure_hash: str | None = None,
+    source_image_manifest_hash: str | None = None,
+    qa_policy_fingerprint: str | None = None,
+    source_language: str | None = None,
+    target_language: str | None = None,
 ) -> dict[str, str] | None:
     """Check whether a chapter should be skipped or reset before translation.
 
     Returns a ``{"chapter_id": ..., "status": "skipped", "reason": ...}`` dict
     if the chapter should be skipped, or ``None`` if translation should proceed.
 
-    REQ-3.1: skip COMPLETE, reset FAILED. Bypassed when force=True (REQ-3.4).
+    A DB ``COMPLETE`` state or an existing translation is **not** sufficient
+    evidence that the previous translation is still valid against the current
+    effective contract. When the stored lineage diverges from the contract —
+    changed source text, glossary, prompt template, QA policy, provider /
+    model, target language, structure, or image manifest — the resume path
+    must retranslate instead of silently serving stale output. The previous
+    version is retained in the per-chapter overlay history regardless.
+
+    REQ-3.1: skip when previous translation is still valid, reset FAILED.
+    REQ-3.4: force=True bypasses validity and clears prior state.
     """
+    db_state = _load_db_translation_state(novel_id, chapter_id)
     if not force:
-        db_state = _load_db_translation_state(novel_id, chapter_id)
-        if db_state == TranslationState.COMPLETE.value:
-            logger.info("Skipping already-complete chapter %s/%s", novel_id, chapter_id)
-            return {"chapter_id": chapter_id, "status": "skipped", "reason": "already_complete"}
         if db_state == TranslationState.FAILED.value:
             logger.info("Resetting FAILED chapter %s/%s to PENDING for retry", novel_id, chapter_id)
             _update_db_translation_state(novel_id, chapter_id, TranslationState.PENDING)
 
     existing = self.storage.load_translated_chapter(novel_id, chapter_id)
-    if existing and not force and not settings.TRANSLATION_DELTA_RETRANSLATION_ENABLED:
-        return {"chapter_id": chapter_id, "status": "skipped", "reason": "already_translated"}
+    if force:
+        return None
+
+    if existing and not settings.TRANSLATION_DELTA_RETRANSLATION_ENABLED:
+        # Validate against the *complete* effective contract. ``is_translation_valid``
+        # fails closed when a required input has no stored value, so a stale or
+        # partially missing lineage cannot silently pass.
+        valid = is_translation_valid(
+            source_text_hash=source_text_hash or "",
+            active_glossary_hash=effective_glossary_hash,
+            prompt_version=prompt_template_version,
+            provider_key=provider_key,
+            provider_model=provider_model,
+            record=existing,
+            active_raw_generation_id=active_raw_generation_id,
+            source_structure_hash=source_structure_hash,
+            source_image_manifest_hash=source_image_manifest_hash,
+            qa_policy_fingerprint=qa_policy_fingerprint,
+            source_language=source_language,
+            target_language=target_language,
+        )
+        if valid:
+            logger.info(
+                "Skipping already-translated chapter %s/%s (lineage valid)",
+                novel_id,
+                chapter_id,
+            )
+            reason = "already_complete" if db_state == TranslationState.COMPLETE.value else "already_translated"
+            return {"chapter_id": chapter_id, "status": "skipped", "reason": reason}
+
+        # Existing translation has stale lineage: surface the decision so the
+        # caller proceeds with full or delta retranslation. The previous
+        # version remains in the overlay history; the DB state is reset so
+        # downstream progress accounting treats the chapter as pending.
+        logger.info(
+            "Existing translation for %s/%s has stale lineage; retranslating (db_state=%s)",
+            novel_id,
+            chapter_id,
+            db_state,
+        )
+        if db_state == TranslationState.COMPLETE.value:
+            _update_db_translation_state(novel_id, chapter_id, TranslationState.PENDING)
+
+    # If there is no existing translation, an old COMPLETE DB state with no
+    # lineage evidence must also be treated as stale: the recorded completion
+    # is evidence of a past run, not of current validity.
+    if existing is None and db_state == TranslationState.COMPLETE.value:
+        _update_db_translation_state(novel_id, chapter_id, TranslationState.PENDING)
 
     return None
 

@@ -138,7 +138,12 @@ before activation:
 4. `generations/<this-id>.json` manifest with serialized hashes
    (`metadata_hash`, `chapter_index_hash`, `source_state_hash`) and final counts
    (`expected_chapters`, `saved_chapters`, `reused_chapters`, `failed_chapters`,
-   `unavailable_chapter_ids`, `removed_episode_ids`).
+   `carried_unselected_count`, `unavailable_chapter_ids`, `removed_episode_ids`).
+   Every current-index chapter ends with exactly one canonical disposition:
+   `fetched_new`, `fetched_replaced`, `reused_planner`, `carried_unselected`,
+   `unchanged_selected`, `refresh_failed_retained`, or `unavailable`.
+   Aggregate counts are derived from the disposition map and must reconcile
+   with the physical staged state.
 
 `commit_generation` runs `validate_generation_activation` before swapping
 `active_generation.json`. The validator checks:
@@ -146,7 +151,7 @@ before activation:
 - manifest status is `staging`;
 - metadata identity matches `manifest.source_work_id`;
 - every indexed chapter has a bundle, **or** an explicit
-  `unavailable_chapter_ids` entry;
+  `unavailable_chapter_ids` / `refresh_failed_chapter_ids` entry;
 - index entry ids are normalized exactly like `resolve_chapter_selection`
   (integer ids become strings) before reconciliation; a normalized id with
   no physical bundle still fails;
@@ -158,12 +163,19 @@ before activation:
 - `manifest.chapter_ids` reconcile with the physical bundles the index
   declares (not with index entries alone);
 - counts reconcile (`saved_chapters`, `reused_chapters`,
-  `unavailable_chapter_ids`, `failed_chapters`, `expected_chapters`).
+  `unavailable_chapter_ids`, `refresh_failed_chapter_ids`, `failed_chapters`,
+  `expected_chapters`, `carried_unselected_count`);
+- every current-index chapter has exactly one disposition in `manifest.chapter_dispositions`;
+- disposition map agrees with explicit `unavailable_chapter_ids` and
+  `refresh_failed_chapter_ids` lists;
+- derived counts from dispositions match manifest aggregate counters.
 
 A failed validation rolls the stage back; the previously active pointer (or
 legacy root when no generation was active) remains in effect. Operators can
-pass `skip_validation=True` to `commit_generation` only for explicit recovery
-paths. After activation, `generations/<gen-id>/` is byte-immutable.
+invoke `commit_generation_recovery(reason=..., evidence=...)` only for explicit
+recovery paths. After activation, `generations/<gen-id>/` is byte-immutable.
+
+Generation activation uses a cross-process compare-and-swap on `active_generation.json`: the filesystem backend wraps the read-compare-write in an `InterProcessFileLock`; the S3 backend uses a conditional `PUT` with `If-Match`/`If-None-Match` so concurrent activations cannot silently overwrite each other (loser receives `GenerationConflictError`).
 
 ## Episode Order & Removal State
 

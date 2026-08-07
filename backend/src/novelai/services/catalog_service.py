@@ -376,7 +376,7 @@ class CatalogService:
         chapter = self._get_or_create_chapter(
             novel_db_id=novel_db_id,
             chapter_id=chapter_id,
-            chapter_number=0,
+            chapter_number=None,
         )
         chapter.translated_storage_key = f"{storage_key}:{checksum[:8]}"
         chapter.translation_status = "translated"
@@ -643,7 +643,7 @@ class CatalogService:
         self,
         novel_db_id: int | None,
         chapter_id: str,
-        chapter_number: int,
+        chapter_number: int | None = None,
         title: str | None = None,
         source_episode_id: str | None = None,
         sequence_number: int | None = None,
@@ -654,6 +654,12 @@ class CatalogService:
         ``novel_id + logical_chapter_id`` — never by title — so same-title
         chapters remain distinct rows and a reorder updates
         ``sequence_number`` in place without creating a new row.
+
+        Ordering fields (``chapter_number``, ``sequence_number``) are only
+        updated when the caller supplies authoritative values (not ``None``).
+        For a new row, if the caller does not provide a ``chapter_number``,
+        the function attempts to derive it from the novel's metadata chapter
+        list so the DB projection stays consistent with the canonical index.
         """
         chapter = None
         if novel_db_id is not None:
@@ -663,12 +669,34 @@ class CatalogService:
                 .one_or_none()
             )
         if chapter is None:
+            # New row: derive chapter_number from metadata if not provided.
+            derived_chapter_number = chapter_number
+            if derived_chapter_number is None and novel_db_id is not None:
+                try:
+                    novel = self._session.query(Novel).filter_by(id=novel_db_id).one_or_none()
+                    if novel is not None:
+                        meta = self._storage.load_metadata(novel.slug)
+                        if meta:
+                            chapters = meta.get("chapters", [])
+                            if isinstance(chapters, list):
+                                for idx, ch in enumerate(chapters):
+                                    if not isinstance(ch, dict):
+                                        continue
+                                    cid = str(ch.get("id") or ch.get("chapter_id") or ch.get("source_episode_id") or "")
+                                    if cid == str(chapter_id):
+                                        derived_chapter_number = ch.get("num") or (idx + 1)
+                                        break
+                except Exception:
+                    pass
+            if derived_chapter_number is None:
+                derived_chapter_number = 0
+
             chapter = Chapter(
                 novel_id=novel_db_id,
                 logical_chapter_id=str(chapter_id),
                 source_episode_id=source_episode_id or str(chapter_id),
                 sequence_number=sequence_number,
-                chapter_number=chapter_number,
+                chapter_number=derived_chapter_number,
                 title=title or chapter_id,
             )
         else:
@@ -676,7 +704,8 @@ class CatalogService:
             # identity (logical_chapter_id) never changes.
             if sequence_number is not None:
                 chapter.sequence_number = sequence_number
-            chapter.chapter_number = chapter_number
+            if chapter_number is not None:
+                chapter.chapter_number = chapter_number
             if source_episode_id:
                 chapter.source_episode_id = source_episode_id
         return chapter
