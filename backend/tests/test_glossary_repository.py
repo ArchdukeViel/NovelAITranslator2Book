@@ -63,7 +63,7 @@ def _make_novel(session, slug: str) -> Novel:
 
 
 def _make_chapter(session, novel: Novel, number: int = 1) -> Chapter:
-    chapter = Chapter(novel_id=novel.id, chapter_number=number, title=f"Chapter {number}")
+    chapter = Chapter(logical_chapter_id="lid-20", novel_id=novel.id, chapter_number=number, title=f"Chapter {number}")
     session.add(chapter)
     session.flush()
     return chapter
@@ -245,8 +245,7 @@ def test_lock_unlock_and_deprecate_entry_create_owner_events(session, repo, user
     session.commit()
 
     event_types = [
-        event.event_type
-        for event in session.query(NovelGlossaryDecisionEvent).order_by(NovelGlossaryDecisionEvent.id)
+        event.event_type for event in session.query(NovelGlossaryDecisionEvent).order_by(NovelGlossaryDecisionEvent.id)
     ]
     assert event_types == ["create", "lock", "unlock", "deprecate"]
     assert entry.owner_locked is False

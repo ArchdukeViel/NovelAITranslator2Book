@@ -63,10 +63,7 @@ def get_session(db_url: str | None = None) -> Session:
     """Create a database session."""
     url = db_url or settings.DATABASE_URL
     if not url:
-        raise RuntimeError(
-            "DATABASE_URL is not configured. "
-            "Set DATABASE_URL in .env or pass --db-url explicitly."
-        )
+        raise RuntimeError("DATABASE_URL is not configured. Set DATABASE_URL in .env or pass --db-url explicitly.")
     engine = create_engine(url, pool_pre_ping=True)
     Session_ = sessionmaker(bind=engine, autocommit=False, autoflush=False)
     return Session_()
@@ -91,12 +88,7 @@ def extract_novel_metadata(meta: dict[str, Any]) -> dict[str, Any]:
 
     # Author: prefer translated, fall back to original
     authors = meta.get("authors", {})
-    author = (
-        authors.get("translated")
-        or meta.get("translated_author")
-        or authors.get("original")
-        or meta.get("author")
-    )
+    author = authors.get("translated") or meta.get("translated_author") or authors.get("original") or meta.get("author")
 
     source_site_raw = meta.get("source_key")
     source_site = source_site_raw[:128] if source_site_raw else None
@@ -135,6 +127,9 @@ def extract_chapter_metadata(
     return {
         "novel_id": novel_id,
         "chapter_number": chapter_num,
+        "logical_chapter_id": str(chapter_id),
+        "source_episode_id": str(chapter_id),
+        "sequence_number": chapter_num,
         "title": (bundle.get("title") or chapter_id)[:512] if bundle.get("title") else None,
         "source_url": bundle.get("source_url") or raw_data.get("source_url"),
         "raw_storage_key": f"novels/{chapter_id}/raw",  # Placeholder; actual path from storage
@@ -171,9 +166,7 @@ def migrate_novel(
         return result
 
     # Check if novel already exists in DB
-    existing = session.execute(
-        select(Novel).where(Novel.slug == novel_id)
-    ).scalar_one_or_none()
+    existing = session.execute(select(Novel).where(Novel.slug == novel_id)).scalar_one_or_none()
 
     novel: Novel | None = None
 
@@ -207,7 +200,7 @@ def migrate_novel(
         chapters_meta = [{"id": cid} for cid in chapter_ids]
 
     for idx, ch_meta in enumerate(chapters_meta):
-        chapter_id = str(ch_meta.get("id") or ch_meta.get("chapter_id", f"c{idx+1}"))
+        chapter_id = str(ch_meta.get("id") or ch_meta.get("chapter_id", f"c{idx + 1}"))
         chapter_num_raw = ch_meta.get("num") or ch_meta.get("chapter_number") or (idx + 1)
         chapter_num = int(chapter_num_raw) if isinstance(chapter_num_raw, int) else idx + 1
 
@@ -345,7 +338,8 @@ def main() -> int:
         help="Specific novel ID to migrate (can be used multiple times)",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable debug logging",
     )

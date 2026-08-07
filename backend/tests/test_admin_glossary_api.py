@@ -179,7 +179,7 @@ def _seed_novel(db_session, slug: str = "glossary-api") -> Novel:
 
 
 def _seed_chapter(db_session, novel: Novel, number: int) -> Chapter:
-    chapter = Chapter(novel_id=novel.id, chapter_number=number, title=f"Chapter {number}")
+    chapter = Chapter(logical_chapter_id="lid-1", novel_id=novel.id, chapter_number=number, title=f"Chapter {number}")
     db_session.add(chapter)
     db_session.flush()
     return chapter

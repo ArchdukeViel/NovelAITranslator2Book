@@ -72,7 +72,7 @@ def _make_novel(session, slug: str) -> Novel:
 
 
 def _make_chapter(session, novel: Novel, number: int) -> Chapter:
-    chapter = Chapter(novel_id=novel.id, chapter_number=number, title=f"Chapter {number}")
+    chapter = Chapter(logical_chapter_id="lid-17", novel_id=novel.id, chapter_number=number, title=f"Chapter {number}")
     session.add(chapter)
     session.flush()
     return chapter

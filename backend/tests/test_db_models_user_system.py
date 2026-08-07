@@ -60,7 +60,7 @@ def novel(session):
 
 @pytest.fixture()
 def chapter(session, novel):
-    c = Chapter(novel_id=novel.id, chapter_number=1)
+    c = Chapter(logical_chapter_id="lid-15", novel_id=novel.id, chapter_number=1)
     session.add(c)
     session.commit()
     return c

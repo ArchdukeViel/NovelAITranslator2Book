@@ -46,8 +46,8 @@ def seeded_catalog(db_session):
     other = Novel(slug="other-novel", title="Other Novel", language="ja", publication_status="ongoing")
     db_session.add_all([novel, other])
     db_session.flush()
-    chapter = Chapter(novel_id=novel.id, chapter_number=1, title="Chapter One")
-    other_chapter = Chapter(novel_id=other.id, chapter_number=1, title="Other Chapter")
+    chapter = Chapter(logical_chapter_id="lid-21", novel_id=novel.id, chapter_number=1, title="Chapter One")
+    other_chapter = Chapter(logical_chapter_id="lid-22", novel_id=other.id, chapter_number=1, title="Other Chapter")
     db_session.add_all([chapter, other_chapter])
     db_session.commit()
     return {"novel": novel, "other": other, "chapter": chapter, "other_chapter": other_chapter}

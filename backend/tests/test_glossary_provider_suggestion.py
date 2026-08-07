@@ -101,7 +101,7 @@ def _make_novel(session, slug: str) -> Novel:
 
 
 def _make_chapter(session, novel: Novel, number: int) -> Chapter:
-    chapter = Chapter(novel_id=novel.id, chapter_number=number, title=f"Chapter {number}")
+    chapter = Chapter(logical_chapter_id="lid-19", novel_id=novel.id, chapter_number=number, title=f"Chapter {number}")
     session.add(chapter)
     session.flush()
     return chapter
@@ -280,7 +280,12 @@ def test_invalid_candidate_fields_are_skipped_and_confidence_is_clamped(session,
                     "evidence": [{"source_chapter_id": "1"}],
                     "rationale": "Valid after normalization.",
                 },
-                {"raw_term": "ギルド", "suggested_translation": "Guild", "term_type": "organization", "confidence": "high"},
+                {
+                    "raw_term": "ギルド",
+                    "suggested_translation": "Guild",
+                    "term_type": "organization",
+                    "confidence": "high",
+                },
             ],
         }
     )

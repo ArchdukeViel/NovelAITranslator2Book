@@ -8,8 +8,15 @@ Section 2 contract: chapters gain stable ``logical_chapter_id``,
 ``source_episode_id``, and ``sequence_number`` columns so Kakuyomu
 (``kakuyomu:<episode>``) and Syosetu numeric ids share one
 chapter_id-keyed pipeline. ``chapter_number`` is retained as a
-presentation/sequence compatibility field; new code prefers the
-stable keys and the runtime lookup already tolerates their absence.
+presentation/sequence compatibility field.
+
+The canonical identity invariant is:
+
+    UNIQUE(novel_id, logical_chapter_id)
+
+``logical_chapter_id`` is NOT NULL: every existing row is backfilled from
+``chapter_number`` (duplicates are de-duplicated deterministically), so the
+unique index is meaningful and the ORM/migration contracts agree.
 """
 
 from collections.abc import Sequence
@@ -25,7 +32,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    """Add stable chapter identity columns and per-novel uniqueness indexes."""
+    """Add stable chapter identity columns and per-novel uniqueness index."""
     with op.batch_alter_table("chapters") as batch_op:
         batch_op.add_column(
             sa.Column(
@@ -52,19 +59,30 @@ def upgrade() -> None:
             )
         )
 
+    # Safe backfill: the first row per (novel_id, chapter_number) inherits the
+    # numeric id; any remaining NULLs (duplicate chapter_number or NULL
+    # chapter_number) get a deterministic id derived from the row's primary
+    # key so the NOT NULL + UNIQUE(novel_id, logical_chapter_id) invariant
+    # holds on existing data without data loss.
     op.execute(
-        "UPDATE chapters SET logical_chapter_id = CAST(chapter_number AS VARCHAR(32)) WHERE logical_chapter_id IS NULL"
+        "UPDATE chapters SET logical_chapter_id = CAST(chapter_number AS VARCHAR(32)) "
+        "WHERE logical_chapter_id IS NULL AND id IN ("
+        "  SELECT MIN(id) FROM chapters "
+        "  WHERE logical_chapter_id IS NULL AND chapter_number IS NOT NULL "
+        "  GROUP BY novel_id, chapter_number)"
+    )
+    op.execute(
+        "UPDATE chapters SET logical_chapter_id = 'legacy-' || CAST(id AS VARCHAR(32)) WHERE logical_chapter_id IS NULL"
     )
 
-    # Leave logical_chapter_id nullable in the DB so a partial migration
-    # or new rows in flight do not violate the constraint. The ORM marks
-    # it nullable=False so production writes go through the resolver
-    # rather than relying on a DB-level guarantee.
+    with op.batch_alter_table("chapters") as batch_op:
+        batch_op.alter_column("logical_chapter_id", existing_type=sa.String(length=512), nullable=False)
+
     op.create_index(
         op.f("ix_chapters_novel_id_logical_chapter_id"),
         "chapters",
         ["novel_id", "logical_chapter_id"],
-        unique=False,
+        unique=True,
     )
     op.create_index(
         op.f("ix_chapters_novel_id_source_episode_id"),

@@ -37,8 +37,10 @@ class Chapter(Base):
     # Section 2 stable identity. ``logical_chapter_id`` is the canonical
     # key used by orchestrator, translation lineage, and the raw
     # generation index; ``chapter_number`` is retained as a
-    # presentation/sequence compatibility field.
-    logical_chapter_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # presentation/sequence compatibility field. The DB contract is
+    # UNIQUE(novel_id, logical_chapter_id) with a NOT NULL column — the
+    # migration and this ORM model agree exactly.
+    logical_chapter_id: Mapped[str] = mapped_column(String(512), nullable=False)
     source_episode_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     sequence_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     title: Mapped[str | None] = mapped_column(String(512), nullable=True)

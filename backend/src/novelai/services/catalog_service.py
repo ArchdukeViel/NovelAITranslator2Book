@@ -645,20 +645,38 @@ class CatalogService:
         chapter_id: str,
         chapter_number: int,
         title: str | None = None,
+        source_episode_id: str | None = None,
+        sequence_number: int | None = None,
     ) -> Chapter:
-        """Return existing Chapter DB row or create a new one."""
+        """Return existing Chapter DB row or create a new one.
+
+        Section 2 stable identity: rows are resolved by
+        ``novel_id + logical_chapter_id`` — never by title — so same-title
+        chapters remain distinct rows and a reorder updates
+        ``sequence_number`` in place without creating a new row.
+        """
         chapter = None
         if novel_db_id is not None:
             chapter = (
                 self._session.query(Chapter)
-                .filter_by(novel_id=novel_db_id)
-                .filter(Chapter.title == (title or chapter_id))
+                .filter_by(novel_id=novel_db_id, logical_chapter_id=str(chapter_id))
                 .one_or_none()
             )
         if chapter is None:
             chapter = Chapter(
                 novel_id=novel_db_id,
+                logical_chapter_id=str(chapter_id),
+                source_episode_id=source_episode_id or str(chapter_id),
+                sequence_number=sequence_number,
                 chapter_number=chapter_number,
                 title=title or chapter_id,
             )
+        else:
+            # Reorder: mutate the display position in place; the stable row
+            # identity (logical_chapter_id) never changes.
+            if sequence_number is not None:
+                chapter.sequence_number = sequence_number
+            chapter.chapter_number = chapter_number
+            if source_episode_id:
+                chapter.source_episode_id = source_episode_id
         return chapter
