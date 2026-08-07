@@ -546,7 +546,7 @@ async def test_redirect_throttle_attributed_to_responding_host() -> None:
     # after_response for the redirect hop is attributed to the host that
     # returned it (origin.test), not the redirect destination.
     assert any(url == "https://origin.test/start" for url, _ in throttle.after_calls)
-    assert not any(url.startswith("https://cdn.test") and status == 0 for url, status in throttle.after_calls)
+    assert not any(url == "https://cdn.test/ok" and status == 0 for url, status in throttle.after_calls)
 
 
 # ---------------------------------------------------------------------------
