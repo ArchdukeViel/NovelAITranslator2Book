@@ -10,9 +10,9 @@ Canonical project architecture. This file wins when project documents conflict.
 - **Staged Raw Generations**: Crawl runs write to staged generation directories (`generations/<gen_id>/`) with manifest-last atomic pointer activation (`active_generation.json`). Full crawls never call destructive deletion on active data.
 - **Pre-Activation Validation**: `commit_generation` runs `validate_generation_activation` before swapping the pointer. Checks cover manifest status, metadata identity, chapter-index presence, every-index-entry-resolved (bundle or explicit unavailable record), image-asset resolution inside the stage, manifest hash reconciliation, and physical stem / chapter-id consistency. Index entry ids are normalized to logical ids (integer ids become strings) before reconciliation, and reconciliation is against physical bundles, not index entries alone; `source_state.json` must exist and manifest hashes must be non-empty and match staged bytes exactly. Failures roll the stage back and keep the prior active pointer. Operators can opt out with `skip_validation=True` for explicit recovery paths.
 - **Immutable Raw Generations + Translation Overlays**: A committed raw generation's `chapters/*.json` and `assets/images/**` are byte-immutable. All translation writes (machine translation, manual edit, rollback activation, edit history) land in `novels/<novel_id>/translations/<encoded_chapter_stem>.json` plus an `active/` pointer. Mutable OCR/re-embedding state lands in a novel-root media overlay (`media/<encoded-chapter-stem>.json`, schema `media_overlay_v1`) composed over the bundle at read time. Readers compose the raw bundle with the per-chapter overlay at read time so machine translation never rewrites raw bytes; while a generation is active, raw bundle writes are refused outright (persist, imports, checkpoint raw restores, rollback bundle-pop) instead of being silently rewritten. Carrying a chapter forward from generation A to generation B uses `seed_generation_from_active` which copies both the bundle and image assets.
-- **Episode Order & Convergence**: `update_source_state` persists `ordered_episode_ids` matching the complete current index plus per-episode `source_availability` / `first_seen_at` / `last_seen_at` / `missing_since`. Episodes absent from the index become `missing_from_current_index` (raw + translated history retained). A subsequent crawl with the same order produces an empty `reordered_episode_ids` / `removed_episode_ids` delta.
-- **Cache Acceptance on Attempt Identity**: `CacheEntry` carries `attempt_number`, `translation_run_id`, `output_hash`, and `cache_key`. `CacheFlushStage` drops rejected chunks (`needs_retry` / `needs_review` / `qa_failed`) and dedupes pending entries by key — only the final accepted attempt survives. `make_cache_key` includes provider / model / prompt / glossary hash so different models never collide.
-- **HTTP Origin & Redirect Hardening**: `_origin` is `(scheme, hostname, effective_port)`; same scheme + same hostname but different effective port is cross-origin. The redirect loop strips Authorization / Proxy-Authorization / Cookie / Host / If-None-Match / If-Modified-Since / If-Match / If-Unmodified-Since / If-Range on cross-origin hops, drops `Referer`, and forwards only real-cookie-jar cookies (dict cookies do not survive a cross-origin hop because they lack domain context). `throttle.before_request` and `throttle.after_response` run for every hop so per-host adaptive penalties track the host that returned each status code.
+- **Episode Order & Convergence**: `update_source_state` persists `ordered_episode_ids` matching the complete current index plus per-episode `source_availability` / `first_seen_at` / `last_seen_at` / `missing_since`. Episodes absent from the index become `missing_from_current_index` (raw + translated history retained). A subsequent crawl with the same order produces an empty `reordered_episode_ids` / `removed_episode_ids` delta. `create_crawl_plan` uses the persisted `ordered_episode_ids` as the previous order (never `episode_map` insertion order); `removed_episode_ids` emits only newly missing episodes; episodes already marked `missing_from_current_index` are not re-emitted as new removals; a second identical crawl yields an empty delta.
+- **Cache Acceptance on Attempt Identity**: `CacheEntry` carries `attempt_number`, `translation_run_id`, `output_hash`, and `cache_key`. `CacheFlushStage` drops rejected chunks (`needs_retry` / `needs_review` / `qa_failed`) and writes **only the pending entry matching the exact QA-accepted attempt tuple** (`accepted_attempt_number`, `accepted_provider_key`, `accepted_provider_model`, `accepted_cache_key`, `accepted_output_hash`). Chunk status + cache-key dedup is no longer the acceptance rule; a cross-model retry (model A rejected, model B accepted) can never cache the rejected attempt's output under its own key.
+- **HTTP Origin & Redirect Hardening**: `_origin` is `(scheme, hostname, effective_port)`; same scheme + same hostname but different effective port is cross-origin. The redirect loop strips Authorization / Proxy-Authorization / Cookie / Host / If-None-Match / If-Modified-Since / If-Match / If-Unmodified-Since / If-Range on cross-origin hops, drops `Referer`, and **only genuine domain/path-aware cookie containers (`httpx.Cookies`) survive a cross-origin hop** — plain `dict` cookies (which expose `.get()`) are hostless request cookies and never cross an origin boundary. `throttle.before_request` and `throttle.after_response` run for **every hop** (redirect, 304, 429, 4xx, 5xx, success) **before** `raise_for_status` can raise, so per-host adaptive penalties track the host that actually returned each status code; a redirected error is never charged to the original requested URL, and retried statuses account per attempt.
 - **Translation Lineage & LLM QA**: Translated versions are hash-linked to raw source content hashes, prompt versions, QA policies, and glossary hashes/revisions. LLM QA policy (`advisory`, `blocking_retry`, `review`) enforces bounded retry attempts for below-threshold chunks without leaking unapproved outputs into cache. `TranslationRunManifest` records `raw_generation_id`, `prompt_template_version`, `qa_policy_fingerprint`, and finalized counts (`expected_count`, `completed_count`, `skipped_count`, `review_count`, `failed_count`) so the lineage evidence is observable end-to-end.
 
 ## Product Boundary
@@ -124,6 +124,16 @@ the target.
   maintenance work.
 - **Image immutability**: containers built by SHA-pinned Docker images,
   not mutable tags.
+- **Windows file-lock resilience**: `os.replace` (atomic rename) on Windows
+  can transiently fail with `WinError 5` (`Access is denied`) when the
+  destination is briefly held open (antivirus scan, reader handle, directory
+  watcher). The filesystem backend and `StorageService._write_text_atomic`
+  wrap the replace in a bounded retry loop (8 attempts, exponential backoff
+  20–160 ms, ~1 s total budget). A genuine permission error still fails
+  immediately. A focused test (`test_atomic_write_survives_transient_windows_file_lock`)
+  proves recovery from transient `PermissionError` without broad sleeps or
+  unbounded loops. A permanently held handle remains non-blocking debt
+  (documented in commit `d60d7bd`).
 
 ## Backend Boundaries
 
@@ -178,6 +188,17 @@ chapter storage -> paragraph IDs -> chunks/bundles -> prompt + glossary
 - The `chapters` table carries stable-identity columns
   (`logical_chapter_id`, `source_episode_id`, `sequence_number`) for
   Kakuyomu-style percent-encoded ids and Syosetu numeric ids.
+- **Canonical DB identity invariant**: `UNIQUE(novel_id, logical_chapter_id)` with
+  `logical_chapter_id` `NOT NULL` (String(512)). The ORM and migration agree
+  exactly: migration `c7a8b9d0e1f2` adds the three columns, backfills existing
+  rows (first row per `(novel_id, chapter_number)` inherits the numeric id;
+  duplicates and `NULL`s get deterministic `legacy-<id>` values), then
+  enforces `NOT NULL` and a unique index; downgrade drops columns and indexes.
+  The ORM model (`Chapter.logical_chapter_id`) is `Mapped[str]` (non-nullable),
+  and the migration enforces `UNIQUE(novel_id, logical_chapter_id)`. The
+  `CatalogService` resolves chapter rows by `novel_id + logical_chapter_id`,
+  never by title; reorder updates `sequence_number` in place without creating
+  new rows; same-title chapters remain distinct rows.
 - SQL chapter counts are projections; canonical counts come from storage.
 - S3/R2 directories are virtual prefixes; no host-filesystem assumptions.
 - Preserve raw scraped chapters and historical generated files.

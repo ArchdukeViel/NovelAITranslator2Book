@@ -71,8 +71,10 @@ def _make_novel(session, slug: str) -> Novel:
     return novel
 
 
-def _make_chapter(session, novel: Novel, number: int) -> Chapter:
-    chapter = Chapter(logical_chapter_id="lid-17", novel_id=novel.id, chapter_number=number, title=f"Chapter {number}")
+def _make_chapter(session, novel: Novel, number: int, prefix: str = "test") -> Chapter:
+    chapter = Chapter(
+        logical_chapter_id=f"{prefix}-lid-{number}", novel_id=novel.id, chapter_number=number, title=f"Chapter {number}"
+    )
     session.add(chapter)
     session.flush()
     return chapter
@@ -182,7 +184,7 @@ def test_substring_inside_another_word_needs_review(session, storage, repo) -> N
 
 def test_chapter_with_old_and_new_variant_needs_review(session, storage, repo) -> None:
     novel = _make_novel(session, "old-and-new")
-    _make_chapter(session, novel, 1)
+    _make_chapter(session, novel, 1, prefix="old-and-new")
     entry = _approved_entry(repo, novel, "Pocott", "Pocott")
     _add_old_variant(repo, novel, entry, "Pokot")
     storage.add_translated(novel.slug, "1", "Pocott waited while Pokot arrived.")
@@ -199,7 +201,7 @@ def test_chapter_with_old_and_new_variant_needs_review(session, storage, repo) -
 
 def test_same_old_variant_mapping_to_multiple_approved_entries_is_blocked(session, storage, repo) -> None:
     novel = _make_novel(session, "conflict")
-    _make_chapter(session, novel, 1)
+    _make_chapter(session, novel, 1, prefix="conflict")
     pocott = _approved_entry(repo, novel, "Pocott", "Pocott")
     place = _approved_entry(repo, novel, "Pocott Village", "Pocott Village")
     _add_old_variant(repo, novel, pocott, "Pokot")
@@ -221,7 +223,7 @@ def test_caps_return_warnings(session, storage, repo) -> None:
     entry = _approved_entry(repo, novel, "Pocott", "Pocott")
     _add_old_variant(repo, novel, entry, "Pokot")
     for number in range(1, 4):
-        _make_chapter(session, novel, number)
+        _make_chapter(session, novel, number, prefix="caps")
         storage.add_translated(novel.slug, str(number), "Pokot. Pokot.")
 
     result = GlossaryApplyPreviewService(session, storage).preview(
@@ -238,8 +240,8 @@ def test_caps_return_warnings(session, storage, repo) -> None:
 def test_source_agnostic_novel_isolation_and_no_storage_or_db_mutation(session, storage, repo) -> None:
     novel_a = _make_novel(session, "novel-a")
     novel_b = _make_novel(session, "novel-b")
-    _make_chapter(session, novel_a, 1)
-    _make_chapter(session, novel_b, 1)
+    _make_chapter(session, novel_a, 1, prefix="novel-a")
+    _make_chapter(session, novel_b, 1, prefix="novel-b")
     entry_a = _approved_entry(repo, novel_a, "Pocott", "Pocott")
     entry_b = _approved_entry(repo, novel_b, "Pocott", "Pocott Other")
     _add_old_variant(repo, novel_a, entry_a, "Pokot")
@@ -265,7 +267,7 @@ def test_source_agnostic_novel_isolation_and_no_storage_or_db_mutation(session, 
 
 def test_provider_is_not_called(session, storage, repo) -> None:
     novel = _make_novel(session, "no-provider")
-    _make_chapter(session, novel, 1)
+    _make_chapter(session, novel, 1, prefix="no-provider")
     entry = _approved_entry(repo, novel, "Pocott", "Pocott")
     _add_old_variant(repo, novel, entry, "Pokot")
     storage.add_translated(novel.slug, "1", "Pokot arrived.")

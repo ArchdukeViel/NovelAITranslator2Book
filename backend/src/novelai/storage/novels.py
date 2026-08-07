@@ -475,10 +475,34 @@ def load_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
             artifact_type="novel metadata",
         )
         try:
-            return self._normalize_loaded_metadata(payload, novel_id)
+            normalized = self._normalize_loaded_metadata(payload, novel_id)
         except OSError as exc:
             logger.warning("Failed to normalize generation metadata for novel %s: %s", novel_id, exc)
             return None
+        # The staged snapshot is authoritative for source content; the
+        # presentation-derived fields (storage_slug / folder_name / titles /
+        # authors) are computed the same way save_metadata computes them, so
+        # generation reads expose an identical record without touching the
+        # legacy root copy.
+        folder = self._get_folder_name(novel_id)
+        if folder:
+            normalized["folder_name"] = folder
+            normalized["storage_slug"] = folder
+        titles: dict[str, str] = {}
+        if isinstance(normalized.get("title"), str) and normalized.get("title"):
+            titles["original"] = normalized["title"]
+        if isinstance(normalized.get("translated_title"), str) and normalized.get("translated_title"):
+            titles["translated"] = normalized["translated_title"]
+        if titles:
+            normalized["titles"] = titles
+        authors: dict[str, str] = {}
+        if isinstance(normalized.get("author"), str) and normalized.get("author"):
+            authors["original"] = normalized["author"]
+        if isinstance(normalized.get("translated_author"), str) and normalized.get("translated_author"):
+            authors["translated"] = normalized["translated_author"]
+        if authors:
+            normalized["authors"] = authors
+        return normalized
     return _load_legacy_metadata(self, novel_id)
 
 

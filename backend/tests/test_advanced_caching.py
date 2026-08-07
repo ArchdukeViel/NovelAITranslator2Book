@@ -556,6 +556,9 @@ async def test_cache_flush_stage_writes_pending_entries(cache_dir: Path) -> None
         provider_key="p",
         provider_model="m",
         created_at=datetime.now(UTC).isoformat(),
+        chunk_id="c1",
+        attempt_number=1,
+        output_hash="oh1",
     )
     entry2 = CacheEntry(
         key="key2",
@@ -567,6 +570,9 @@ async def test_cache_flush_stage_writes_pending_entries(cache_dir: Path) -> None
         provider_key="p",
         provider_model="m",
         created_at=datetime.now(UTC).isoformat(),
+        chunk_id="c2",
+        attempt_number=1,
+        output_hash="oh2",
     )
     ctx = PipelineState(
         chapter_url="https://example.com/c1",
@@ -575,6 +581,26 @@ async def test_cache_flush_stage_writes_pending_entries(cache_dir: Path) -> None
         provider_key="p",
         provider_model="m",
     )
+    ctx.chunk_states = {
+        "c1": {
+            "status": "translated",
+            "qa_status": "passed",
+            "accepted_attempt_number": 1,
+            "accepted_provider_key": "p",
+            "accepted_provider_model": "m",
+            "accepted_cache_key": "key1",
+            "accepted_output_hash": "oh1",
+        },
+        "c2": {
+            "status": "translated",
+            "qa_status": "passed",
+            "accepted_attempt_number": 1,
+            "accepted_provider_key": "p",
+            "accepted_provider_model": "m",
+            "accepted_cache_key": "key2",
+            "accepted_output_hash": "oh2",
+        },
+    }
     ctx.metadata["_pending_cache_entries"] = [
         ("key1", entry1),
         ("key2", entry2),
@@ -608,7 +634,15 @@ async def test_cache_flush_stage_suppresses_non_translated_chunks(cache_dir: Pat
         provider_model="m",
     )
     ctx.chunk_states = {
-        "c0001": {"status": "translated", "qa_status": "passed"},
+        "c0001": {
+            "status": "translated",
+            "qa_status": "passed",
+            "accepted_attempt_number": 1,
+            "accepted_provider_key": "p",
+            "accepted_provider_model": "m",
+            "accepted_cache_key": "key1",
+            "accepted_output_hash": "oh1",
+        },
         "c0002": {"status": "needs_retry", "qa_status": "needs_llm_retry"},
         "c0003": {"status": "needs_review", "qa_status": "needs_review"},
         "c0004": {"status": "qa_failed", "qa_status": "qa_failed"},
@@ -625,6 +659,8 @@ async def test_cache_flush_stage_suppresses_non_translated_chunks(cache_dir: Pat
                 provider_model="m",
                 created_at="2026-01-01T00:00:00Z",
                 chunk_id="c0001",
+                attempt_number=1,
+                output_hash="oh1",
             ),
         ),
         (
@@ -638,6 +674,8 @@ async def test_cache_flush_stage_suppresses_non_translated_chunks(cache_dir: Pat
                 provider_model="m",
                 created_at="2026-01-01T00:00:00Z",
                 chunk_id="c0002",
+                attempt_number=1,
+                output_hash="oh2",
             ),
         ),
         (
@@ -651,6 +689,8 @@ async def test_cache_flush_stage_suppresses_non_translated_chunks(cache_dir: Pat
                 provider_model="m",
                 created_at="2026-01-01T00:00:00Z",
                 chunk_id="c0003",
+                attempt_number=1,
+                output_hash="oh3",
             ),
         ),
         (
@@ -664,6 +704,8 @@ async def test_cache_flush_stage_suppresses_non_translated_chunks(cache_dir: Pat
                 provider_model="m",
                 created_at="2026-01-01T00:00:00Z",
                 chunk_id="c0004",
+                attempt_number=1,
+                output_hash="oh4",
             ),
         ),
     ]
