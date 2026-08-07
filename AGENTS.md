@@ -29,6 +29,11 @@ Do not preload every document. Load canonical detail only when relevant:
 | Unfinished work | `docs/WORK.md` |
 | Completed evidence | `docs/HISTORY.md` |
 
+## Working Principles
+
+- **Stay within scope.** Act only on the user's stated request. If you discover an unrelated defect or improvement, surface it as a finding and stop; do not fix it without explicit authorization.
+- **Clarify before acting on ambiguity.** If the user's request is ambiguous in a way that affects scope, behavior, or contracts, ask before acting. Never resolve ambiguity by picking the cheaper interpretation.
+
 ## Project Venv
 
 The project virtualenv at `.venv/` is the canonical interpreter. Python
@@ -70,6 +75,12 @@ Router-layer guard must return no matches:
 
 ```powershell
 rg -n "^from novelai\.(db\.models|storage\.service|sources\.)" backend/src/novelai/api/routers/ --glob "!dependencies.py"
+```
+
+Canonical-doc heading uniqueness guard must return no matches (fails if any `## ` heading appears more than once in `AGENTS.md`):
+
+```powershell
+Get-Content AGENTS.md | Where-Object { $_ -match '^## ' } | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name }
 ```
 
 ### Commit workflow
