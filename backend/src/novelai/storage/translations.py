@@ -244,6 +244,22 @@ def save_translated_chapter(
     batch_id: str | None = None,
     base_version_id: str | None = None,
     auto_activate: bool = True,
+    # Section 8: complete raw-to-version lineage. Every stored machine
+    # translation version records the run and raw snapshot it was produced
+    # from, so validity can be verified against the actual stored fields.
+    translation_run_id: str | None = None,
+    raw_generation_id: str | None = None,
+    source_episode_id: str | None = None,
+    source_structure_hash: str | None = None,
+    source_image_manifest_hash: str | None = None,
+    qa_policy_fingerprint: str | None = None,
+    source_language: str | None = None,
+    target_language: str | None = None,
+    style_preset: str | None = None,
+    consistency_mode: bool | None = None,
+    json_output: bool | None = None,
+    output_hash: str | None = None,
+    activation_disposition: str | None = None,
 ) -> Any:
     """Persist a translation version into the per-chapter overlay.
 
@@ -252,6 +268,11 @@ def save_translated_chapter(
     promotes it to active, and writes the overlay back. Reading paths
     (load_translated_chapter / list_translated_chapter_versions / …)
     compose this overlay with the raw bundle's non-translation fields.
+
+    Section 8: lineage fields (translation_run_id, raw_generation_id,
+    source hashes, QA fingerprint, policy inputs, output_hash) are persisted
+    on the version when supplied so downstream validity checks consume the
+    actual stored fields rather than the run manifest alone.
 
     Returns the path the overlay was written to.
     """
@@ -287,6 +308,8 @@ def save_translated_chapter(
     }
     if isinstance(source_hash, str) and source_hash.strip():
         translated_payload["source_hash"] = source_hash.strip()
+        # Canonical spelling consumed by is_translation_valid.
+        translated_payload["source_content_hash"] = source_hash.strip()
     if isinstance(confidence_score, float):
         translated_payload["confidence_score"] = max(0.0, min(1.0, confidence_score))
     if isinstance(polish_needed, bool):
@@ -303,6 +326,26 @@ def save_translated_chapter(
         translated_payload["batch_id"] = batch_id.strip()
     if isinstance(base_version_id, str) and base_version_id.strip():
         translated_payload["base_version_id"] = base_version_id.strip()
+    # Section 8 lineage fields (persisted when supplied).
+    for key, value in (
+        ("translation_run_id", translation_run_id),
+        ("raw_generation_id", raw_generation_id),
+        ("source_episode_id", source_episode_id),
+        ("source_structure_hash", source_structure_hash),
+        ("source_image_manifest_hash", source_image_manifest_hash),
+        ("qa_policy_fingerprint", qa_policy_fingerprint),
+        ("source_language", source_language),
+        ("target_language", target_language),
+        ("style_preset", style_preset),
+        ("output_hash", output_hash),
+        ("activation_disposition", activation_disposition),
+    ):
+        if isinstance(value, str) and value.strip():
+            translated_payload[key] = value.strip()
+    if isinstance(consistency_mode, bool):
+        translated_payload["consistency_mode"] = consistency_mode
+    if isinstance(json_output, bool):
+        translated_payload["json_output"] = json_output
     versions.append(translated_payload)
     overlay["translation_versions"] = versions
     overlay["chapter_id"] = chapter_id
@@ -408,6 +451,21 @@ def load_translated_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[s
         "prompt_template_version": translated.get("prompt_template_version", None),
         "glossary_hash": translated.get("glossary_hash", None),
         "batch_id": translated.get("batch_id", None),
+        # Section 8 lineage pass-through.
+        "translation_run_id": translated.get("translation_run_id", None),
+        "raw_generation_id": translated.get("raw_generation_id", None),
+        "source_episode_id": translated.get("source_episode_id", None),
+        "source_content_hash": translated.get("source_content_hash", None),
+        "source_structure_hash": translated.get("source_structure_hash", None),
+        "source_image_manifest_hash": translated.get("source_image_manifest_hash", None),
+        "qa_policy_fingerprint": translated.get("qa_policy_fingerprint", None),
+        "source_language": translated.get("source_language", None),
+        "target_language": translated.get("target_language", None),
+        "style_preset": translated.get("style_preset", None),
+        "consistency_mode": translated.get("consistency_mode", None),
+        "json_output": translated.get("json_output", None),
+        "output_hash": translated.get("output_hash", None),
+        "activation_disposition": translated.get("activation_disposition", None),
         "input_adapter_key": metadata_source.get("input_adapter_key"),
         "origin_type": metadata_source.get("origin_type"),
         "origin_uri_or_path": metadata_source.get("origin_uri_or_path"),

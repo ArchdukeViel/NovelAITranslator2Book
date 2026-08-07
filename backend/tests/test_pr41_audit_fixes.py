@@ -437,8 +437,167 @@ def test_is_translation_valid_reads_overlay_keys() -> None:
 
 
 # ---------------------------------------------------------------------------
-# S7 — cache flush stamps acceptance provenance
+# S8 — complete raw-to-version translation lineage
 # ---------------------------------------------------------------------------
+
+
+def _lineage_record(**overrides: Any) -> dict[str, Any]:
+    record = {
+        "source_hash": "src-hash",
+        "source_content_hash": "src-hash",
+        "source_structure_hash": "struct-hash",
+        "source_image_manifest_hash": "img-hash",
+        "glossary_hash": "gloss-1",
+        "prompt_template_version": "prompt-v9",
+        "qa_policy_fingerprint": "qa-fp-v1",
+        "provider_key": "p",
+        "provider_model": "m",
+        "translation_run_id": "run-1",
+        "raw_generation_id": "gen-1",
+        "source_episode_id": "ep-1",
+        "source_language": "ja",
+        "target_language": "en",
+        "output_hash": "out-hash",
+        "text": "translated",
+    }
+    record.update(overrides)
+    return record
+
+
+def test_lineage_contract_valid_when_all_fields_match() -> None:
+    record = _lineage_record()
+    assert is_translation_valid(
+        source_text_hash="src-hash",
+        active_glossary_hash="gloss-1",
+        prompt_version="prompt-v9",
+        provider_key="p",
+        provider_model="m",
+        active_raw_generation_id="gen-1",
+        source_structure_hash="struct-hash",
+        source_image_manifest_hash="img-hash",
+        qa_policy_fingerprint="qa-fp-v1",
+        output_hash="out-hash",
+        source_language="ja",
+        target_language="en",
+        record=record,
+    )
+
+
+def test_lineage_stale_when_raw_generation_missing_under_active_generation() -> None:
+    """Legacy incomplete lineage under an active generation is stale/
+    needs-backfill, never silently valid."""
+    legacy = _lineage_record()
+    legacy.pop("raw_generation_id", None)
+    assert not is_translation_valid(
+        source_text_hash="src-hash",
+        active_glossary_hash="gloss-1",
+        prompt_version="prompt-v9",
+        provider_key="p",
+        provider_model="m",
+        active_raw_generation_id="gen-1",
+        record=legacy,
+    )
+
+
+def test_lineage_stale_when_raw_generation_changed() -> None:
+    assert not is_translation_valid(
+        source_text_hash="src-hash",
+        active_glossary_hash="gloss-1",
+        prompt_version="prompt-v9",
+        provider_key="p",
+        provider_model="m",
+        active_raw_generation_id="gen-2",
+        record=_lineage_record(),
+    )
+
+
+def test_structure_or_image_change_invalidates_version() -> None:
+    assert not is_translation_valid(
+        source_text_hash="src-hash",
+        active_glossary_hash="gloss-1",
+        prompt_version="prompt-v9",
+        provider_key="p",
+        provider_model="m",
+        source_structure_hash="changed-structure",
+        record=_lineage_record(),
+    )
+    assert not is_translation_valid(
+        source_text_hash="src-hash",
+        active_glossary_hash="gloss-1",
+        prompt_version="prompt-v9",
+        provider_key="p",
+        provider_model="m",
+        source_image_manifest_hash="changed-images",
+        record=_lineage_record(),
+    )
+
+
+def test_qa_policy_change_invalidates_version() -> None:
+    assert not is_translation_valid(
+        source_text_hash="src-hash",
+        active_glossary_hash="gloss-1",
+        prompt_version="prompt-v9",
+        provider_key="p",
+        provider_model="m",
+        qa_policy_fingerprint="qa-fp-v2",
+        record=_lineage_record(),
+    )
+
+
+def test_reorder_alone_keeps_version_valid() -> None:
+    """Reorder changes no hash — the version stays valid."""
+    assert is_translation_valid(
+        source_text_hash="src-hash",
+        active_glossary_hash="gloss-1",
+        prompt_version="prompt-v9",
+        provider_key="p",
+        provider_model="m",
+        active_raw_generation_id="gen-1",
+        source_structure_hash="struct-hash",
+        source_image_manifest_hash="img-hash",
+        record=_lineage_record(sequence_number=9),
+    )
+
+
+def test_save_translated_chapter_persists_lineage() -> None:
+    storage = _fresh_storage()
+    _commit_minimal_generation(storage, "n8-lineage", "gen-1", chapter_ids=["1"])
+    storage.save_translated_chapter(
+        "n8-lineage",
+        "1",
+        "translated text",
+        provider_key="p",
+        provider_model="m",
+        source_hash="src-hash",
+        glossary_hash="gloss-1",
+        prompt_template_version="prompt-v9",
+        translation_run_id="run-1",
+        raw_generation_id="gen-1",
+        source_episode_id="ep-1",
+        source_structure_hash="struct-hash",
+        source_image_manifest_hash="img-hash",
+        qa_policy_fingerprint="qa-fp-v1",
+        source_language="ja",
+        target_language="en",
+        style_preset="literary",
+        consistency_mode=True,
+        json_output=False,
+        output_hash="out-hash",
+    )
+    version = storage.load_translated_chapter("n8-lineage", "1")
+    assert version is not None
+    assert version["translation_run_id"] == "run-1"
+    assert version["raw_generation_id"] == "gen-1"
+    assert version["source_episode_id"] == "ep-1"
+    assert version["source_content_hash"] == "src-hash"
+    assert version["source_structure_hash"] == "struct-hash"
+    assert version["source_image_manifest_hash"] == "img-hash"
+    assert version["qa_policy_fingerprint"] == "qa-fp-v1"
+    assert version["source_language"] == "ja"
+    assert version["target_language"] == "en"
+    assert version["style_preset"] == "literary"
+    assert version["consistency_mode"] is True
+    assert version["output_hash"] == "out-hash"
 
 
 def test_cache_flush_stamps_acceptance_provenance() -> None:

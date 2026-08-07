@@ -89,18 +89,32 @@ def is_translation_valid(
     provider_key: str | None,
     provider_model: str | None,
     record: dict[str, Any],
+    # Section 8: complete effective translation contract. When supplied, the
+    # record's stored lineage must match exactly.
+    active_raw_generation_id: str | None = None,
+    source_structure_hash: str | None = None,
+    source_image_manifest_hash: str | None = None,
+    qa_policy_fingerprint: str | None = None,
+    output_hash: str | None = None,
+    source_language: str | None = None,
+    target_language: str | None = None,
 ) -> bool:
     """Verify if a translation record is valid against current input hashes matching Section 10 requirements.
 
     Reads the keys actually written by the production overlay writer
-    (``source_hash`` / ``prompt_template_version``), falling back to the
-    legacy spellings (``source_text_hash`` / ``source_content_hash`` /
+    (``source_hash`` / ``source_content_hash`` / ``prompt_template_version``),
+    falling back to the legacy spellings (``source_text_hash`` /
     ``prompt_version``) for entries persisted before the overlay layout.
+
+    Section 8: when an active raw generation exists, the record must carry a
+    matching ``raw_generation_id`` — a record with missing/incomplete lineage
+    is ``stale``/``needs-backfill`` and never silently valid. Reorder alone
+    never invalidates (reorder does not change any hash).
     """
     if not isinstance(record, dict):
         return False
 
-    rec_source_hash = record.get("source_hash") or record.get("source_text_hash") or record.get("source_content_hash")
+    rec_source_hash = record.get("source_hash") or record.get("source_content_hash") or record.get("source_text_hash")
     if not rec_source_hash or rec_source_hash != source_text_hash:
         return False
 
@@ -122,6 +136,46 @@ def is_translation_valid(
     if provider_model:
         rec_provider_model = record.get("provider_model")
         if not rec_provider_model or rec_provider_model != provider_model:
+            return False
+
+    # Section 8 lineage contract.
+    if active_raw_generation_id:
+        rec_generation_id = record.get("raw_generation_id")
+        if not rec_generation_id:
+            # Missing lineage under an active generation: stale /
+            # needs-backfill, never silently valid.
+            return False
+        if rec_generation_id != active_raw_generation_id:
+            return False
+
+    if source_structure_hash:
+        rec_structure = record.get("source_structure_hash")
+        if not rec_structure or rec_structure != source_structure_hash:
+            return False
+
+    if source_image_manifest_hash:
+        rec_image = record.get("source_image_manifest_hash")
+        if not rec_image or rec_image != source_image_manifest_hash:
+            return False
+
+    if qa_policy_fingerprint:
+        rec_qa = record.get("qa_policy_fingerprint")
+        if not rec_qa or rec_qa != qa_policy_fingerprint:
+            return False
+
+    if output_hash:
+        rec_output = record.get("output_hash")
+        if not rec_output or rec_output != output_hash:
+            return False
+
+    if source_language:
+        rec_source_lang = record.get("source_language")
+        if rec_source_lang and rec_source_lang != source_language:
+            return False
+
+    if target_language:
+        rec_target_lang = record.get("target_language")
+        if rec_target_lang and rec_target_lang != target_language:
             return False
 
     return True

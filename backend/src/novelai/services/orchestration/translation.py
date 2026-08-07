@@ -105,6 +105,49 @@ def _qa_policy_fingerprint(
     return hash_text(serialized)
 
 
+def _translation_lineage_kwargs(
+    storage: Any,
+    novel_id: str,
+    chapter_id: str,
+    *,
+    raw_text: str,
+    translated: str,
+    translation_run_id: str,
+    raw_generation_id: str,
+    source_language: str | None,
+    target_language: str | None,
+    style_preset: str | None,
+    consistency_mode: bool,
+    json_output: bool,
+    qa_policy_fingerprint: str | None,
+    auto_activate: bool,
+) -> dict[str, Any]:
+    """Section 8: assemble the complete raw-to-version lineage fields for a
+    stored machine translation version so validity checks can consume the
+    actual stored fields instead of the run manifest alone."""
+    raw_bundle = storage.load_chapter(novel_id, chapter_id) or {}
+
+    def _json_hash(value: Any) -> str:
+        return storage._hash_text(json.dumps(value, ensure_ascii=False, sort_keys=True, default=str))
+
+    return {
+        "source_hash": storage._hash_text(raw_text or ""),
+        "translation_run_id": translation_run_id,
+        "raw_generation_id": raw_generation_id,
+        "source_episode_id": str(raw_bundle.get("source_episode_id") or chapter_id),
+        "source_structure_hash": _json_hash(raw_bundle.get("source_blocks") or []),
+        "source_image_manifest_hash": _json_hash(raw_bundle.get("images") or []),
+        "qa_policy_fingerprint": qa_policy_fingerprint,
+        "source_language": source_language,
+        "target_language": target_language,
+        "style_preset": style_preset,
+        "consistency_mode": consistency_mode,
+        "json_output": json_output,
+        "output_hash": storage._hash_text(translated),
+        "activation_disposition": "auto_activate" if auto_activate else "low_confidence",
+    }
+
+
 def _update_db_translation_state(
     novel_id: str,
     chapter_id: str,
@@ -1026,6 +1069,22 @@ async def translate_chapters(
                             glossary_revision=glossary_revision,
                             glossary_injected_term_count=0,
                             auto_activate=auto_activate,
+                            **_translation_lineage_kwargs(
+                                self.storage,
+                                novel_id,
+                                chapter_id,
+                                raw_text=raw_text or "",
+                                translated=translated,
+                                translation_run_id=translation_run_id,
+                                raw_generation_id=raw_generation_id,
+                                source_language=effective_source_language,
+                                target_language=effective_target_language,
+                                style_preset=effective_style_preset,
+                                consistency_mode=bool(effective_consistency_mode),
+                                json_output=bool(json_output),
+                                qa_policy_fingerprint=qa_policy_fingerprint,
+                                auto_activate=auto_activate,
+                            ),
                         )
                         safely_refresh_catalog_projection_after_storage_write(
                             novel_id,
@@ -1127,6 +1186,22 @@ async def translate_chapters(
                     glossary_revision=glossary_revision,
                     glossary_injected_term_count=glossary_injected_term_count,
                     auto_activate=auto_activate,
+                    **_translation_lineage_kwargs(
+                        self.storage,
+                        novel_id,
+                        chapter_id,
+                        raw_text=raw_text or "",
+                        translated=translated,
+                        translation_run_id=translation_run_id,
+                        raw_generation_id=raw_generation_id,
+                        source_language=effective_source_language,
+                        target_language=effective_target_language,
+                        style_preset=effective_style_preset,
+                        consistency_mode=bool(effective_consistency_mode),
+                        json_output=bool(json_output),
+                        qa_policy_fingerprint=qa_policy_fingerprint,
+                        auto_activate=auto_activate,
+                    ),
                 )
                 safely_refresh_catalog_projection_after_storage_write(
                     novel_id,
