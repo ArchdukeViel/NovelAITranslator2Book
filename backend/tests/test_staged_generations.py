@@ -184,3 +184,28 @@ def test_normal_commit_never_accepts_committed_manifest(storage: StorageService)
     )
     with pytest.raises(RuntimeError, match="manifest_status_staging"):
         storage.commit_generation("novel-1", "gen-recommit")
+
+
+def test_atomic_write_survives_transient_windows_file_lock(monkeypatch, storage: StorageService):
+    """Windows WinError-5 flake: a briefly held destination handle must not
+    fail the atomic rename. The bounded retry recovers deterministically."""
+    import os
+
+    real_replace = os.replace
+    calls = {"count": 0}
+
+    def flaky_replace(src, dst):
+        calls["count"] += 1
+        if calls["count"] <= 2:
+            raise PermissionError(5, "Access is denied")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr("os.replace", flaky_replace)
+    storage.save_metadata("novel-win", {"title": "Windows", "source_novel_id": "novel-win"})
+
+    meta = storage.load_metadata("novel-win")
+    assert meta is not None
+    assert meta["title"] == "Windows"
+    # The transient lock was retried (at least two PermissionErrors absorbed
+    # plus the successful replaces).
+    assert calls["count"] >= 3
