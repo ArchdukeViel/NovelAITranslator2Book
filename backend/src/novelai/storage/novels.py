@@ -380,7 +380,10 @@ def save_metadata(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
     """Save novel metadata (chapter list, title, etc.) as JSON."""
     _validate_canonical_metadata_fields(data)
     novel_id = self._normalize_library_novel_id(novel_id) or novel_id
-    existing = self.load_metadata(novel_id) or {}
+    # The compatibility root projection merges against the existing root
+    # copy, never the active generation snapshot (which is authoritative on
+    # read and must not be mutated by projection writes).
+    existing = _load_legacy_metadata(self, novel_id) or {}
     merged = dict(existing)
     merged.update(data)
 
@@ -436,7 +439,51 @@ def save_metadata(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
 
 
 def load_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
+    """Load novel metadata from the authoritative read source.
+
+    Section 6: when an active generation exists, its staged ``metadata.json``
+    is authoritative. The legacy novel-root copy is never silently used when
+    an active generation is present but its snapshot is missing or corrupt:
+    that state is surfaced as an explicit error instead. Without an active
+    generation the legacy layout is used unchanged.
+    """
     novel_id = self._normalize_library_novel_id(novel_id) or novel_id
+    active = self.get_active_generation(novel_id)
+    if active is not None:
+        gen_metadata_path = self._generations_dir(novel_id) / str(active.generation_id) / "metadata.json"
+        if not self._path_exists(gen_metadata_path):
+            raise RuntimeError(
+                f"Active generation {active.generation_id} for {novel_id} has no staged metadata.json; "
+                "refusing silent legacy fallback."
+            )
+        content = self._read_text(gen_metadata_path)
+        try:
+            payload = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                f"Active generation {active.generation_id} for {novel_id} has corrupt staged metadata.json; "
+                "refusing silent legacy fallback."
+            ) from exc
+        if not isinstance(payload, dict):
+            raise RuntimeError(
+                f"Active generation {active.generation_id} for {novel_id} staged metadata is not a JSON object; "
+                "refusing silent legacy fallback."
+            )
+        validate_storage_schema_version(
+            payload,
+            current_version=self.SCHEMA_VERSION,
+            artifact_type="novel metadata",
+        )
+        try:
+            return self._normalize_loaded_metadata(payload, novel_id)
+        except OSError as exc:
+            logger.warning("Failed to normalize generation metadata for novel %s: %s", novel_id, exc)
+            return None
+    return _load_legacy_metadata(self, novel_id)
+
+
+def _load_legacy_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
+    """Legacy novel-root metadata read (used only when no active generation exists)."""
     path = self._novel_dir(novel_id) / "metadata.json"
     if not self._path_exists(path):
         return None
@@ -470,7 +517,31 @@ def save_source_state(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
 
 
 def load_source_state(self: Any, novel_id: str) -> dict[str, Any] | None:
+    """Load source state from the authoritative read source.
+
+    Section 6: with an active generation its staged ``source_state.json`` is
+    authoritative; a missing/corrupt snapshot inside an active generation is
+    an explicit error, never a silent fallback to the novel root. Without an
+    active generation the legacy layout is used.
+    """
     novel_id = self._normalize_library_novel_id(novel_id) or novel_id
+    active = self.get_active_generation(novel_id)
+    if active is not None:
+        gen_state_path = self._generations_dir(novel_id) / str(active.generation_id) / "source_state.json"
+        if not self._path_exists(gen_state_path):
+            raise RuntimeError(
+                f"Active generation {active.generation_id} for {novel_id} has no staged source_state.json; "
+                "refusing silent legacy fallback."
+            )
+        content = self._read_text(gen_state_path)
+        try:
+            payload = json.loads(content)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Active generation {active.generation_id} for {novel_id} has corrupt staged source_state.json; "
+                "refusing silent legacy fallback."
+            ) from exc
+        return payload if isinstance(payload, dict) else None
     path = self._novel_dir(novel_id) / "source_state.json"
     if not self._path_exists(path):
         return None

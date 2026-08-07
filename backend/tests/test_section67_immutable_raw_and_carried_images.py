@@ -46,6 +46,7 @@ def _write_minimal_generation(storage: StorageService, novel_id: str, generation
         source_key="kakuyomu",
         source_work_id=novel_id,
         mode="full",
+        expected_chapters=1,
     )
     storage.stage_generation_metadata(
         novel_id,
@@ -173,6 +174,7 @@ def test_carried_image_survives_prior_generation_deletion(tmp_path: Path) -> Non
         source_key="kakuyomu",
         source_work_id=novel_id,
         mode="full",
+        expected_chapters=1,
     )
     storage.stage_generation_metadata(novel_id, "gen-B", {"title": "Stable Identity", "source_novel_id": novel_id})
     storage.stage_generation_chapter_index(
@@ -180,7 +182,9 @@ def test_carried_image_survives_prior_generation_deletion(tmp_path: Path) -> Non
     )
     storage.stage_generation_source_state(novel_id, "gen-B", {"chapters": []})
     storage.seed_generation_from_active(novel_id, "gen-B", ["1"])
-    storage.commit_generation(novel_id, "gen-B")
+    storage.commit_generation(
+        novel_id, "gen-B", starting_active_generation_id=storage.resolve_active_generation_id(novel_id)
+    )
 
     gen_b_dir = storage.base_dir / "novels" / novel_id / "generations" / "gen-B"
 
@@ -214,6 +218,7 @@ def test_missing_active_generation_image_fails_validation(tmp_path: Path) -> Non
         source_key="kakuyomu",
         source_work_id=novel_id,
         mode="full",
+        expected_chapters=1,
     )
     storage.stage_generation_metadata(novel_id, "gen-miss", {"title": "T", "source_novel_id": novel_id})
     storage.stage_generation_source_state(novel_id, "gen-miss", {"chapters": []})

@@ -473,7 +473,7 @@ class TestSingleChapterFailure:
         source = TwoChapterSource()
 
         # Make chapter 1 fail
-        source.fetch_errors["novel-1/ch1"] = SourceError("Network timeout")
+        source.fetch_errors["https://example.com/novel-1/ch1"] = SourceError("Network timeout")
 
         service = NovelOrchestrationService(
             storage=storage,
@@ -485,7 +485,7 @@ class TestSingleChapterFailure:
         )
 
         # Scrape should NOT raise — it returns a summary
-        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
 
         # Chapter 1 failed, chapter 2 succeeded
         assert result["failed"] == 1
@@ -501,7 +501,7 @@ class TestSingleChapterFailure:
         source = TwoChapterSource()
 
         # Make chapter 1 fail
-        source.fetch_errors["novel-1/ch1"] = SourceError("Server error")
+        source.fetch_errors["https://example.com/novel-1/ch1"] = SourceError("Server error")
 
         service = NovelOrchestrationService(
             storage=storage,
@@ -512,7 +512,7 @@ class TestSingleChapterFailure:
             usage_service=crawl_env["usage"],
         )
 
-        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
 
         # Chapter 2 was saved
         ch2 = storage.load_chapter("novel-1", "2")
@@ -526,7 +526,7 @@ class TestSingleChapterFailure:
         storage = crawl_env["storage"]
         source = TwoChapterSource()
 
-        source.fetch_errors["novel-1/ch1"] = SourceError("Connection refused")
+        source.fetch_errors["https://example.com/novel-1/ch1"] = SourceError("Connection refused")
 
         service = NovelOrchestrationService(
             storage=storage,
@@ -537,14 +537,14 @@ class TestSingleChapterFailure:
             usage_service=crawl_env["usage"],
         )
 
-        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
 
         assert len(result["failures"]) == 1
         failure = result["failures"][0]
         assert failure["chapter_id"] == "1"
         assert failure["chapter_number"] == 1
         assert failure["title"] == "Chapter 1"
-        assert failure["source_url"] == "novel-1/ch1"
+        assert failure["source_url"] == "https://example.com/novel-1/ch1"
         assert failure["error_type"] == "SourceError"
         assert "Connection refused" in failure["error_message"]
 
@@ -555,7 +555,7 @@ class TestSingleChapterFailure:
         source = TwoChapterSource()
 
         # Chapter 1 returns non-string text
-        source.chapter_payloads["novel-1/ch1"] = {"text": 12345, "images": []}
+        source.chapter_payloads["https://example.com/novel-1/ch1"] = {"text": 12345, "images": []}
 
         service = NovelOrchestrationService(
             storage=storage,
@@ -566,7 +566,7 @@ class TestSingleChapterFailure:
             usage_service=crawl_env["usage"],
         )
 
-        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
 
         # Chapter 1 failed (invalid text), chapter 2 succeeded
         assert result["failed"] == 1
@@ -579,7 +579,7 @@ class TestSingleChapterFailure:
         storage = crawl_env["storage"]
         source = TwoChapterSource()
 
-        source.fetch_errors["novel-1/ch1"] = SourceError("Timeout")
+        source.fetch_errors["https://example.com/novel-1/ch1"] = SourceError("Timeout")
 
         service = NovelOrchestrationService(
             storage=storage,
@@ -590,9 +590,9 @@ class TestSingleChapterFailure:
             usage_service=crawl_env["usage"],
         )
 
-        await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
 
-        # Chapter 1 was NOT saved
+        # Chapter 1 was NOT saved (explicit unavailable, no bundle)
         ch1 = storage.load_chapter("novel-1", "1")
         assert ch1 is None
 
@@ -606,7 +606,7 @@ class TestSingleChapterFailure:
         storage = crawl_env["storage"]
         source = TwoChapterSource()
 
-        source.fetch_errors["novel-1/ch1"] = SourceError("Timeout")
+        source.fetch_errors["https://example.com/novel-1/ch1"] = SourceError("Timeout")
 
         events: list[str] = []
 
@@ -623,7 +623,7 @@ class TestSingleChapterFailure:
             "test_source",
             "novel-1",
             "all",
-            mode="full",
+            mode="update",
             progress_callback=events.append,
         )
 
@@ -737,7 +737,7 @@ class TestConcurrentCrawlLocking:
         """Lock is released after per-chapter partial failure."""
         storage = crawl_env["storage"]
         source = TwoChapterSource()
-        source.fetch_errors["novel-1/ch1"] = SourceError("Timeout")
+        source.fetch_errors["https://example.com/novel-1/ch1"] = SourceError("Timeout")
 
         service = NovelOrchestrationService(
             storage=storage,
@@ -748,15 +748,18 @@ class TestConcurrentCrawlLocking:
             usage_service=crawl_env["usage"],
         )
 
-        # First scrape has partial failure
-        result1 = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        # First scrape has partial failure (update mode: explicit
+        # unavailable marker; partial-update policy activates).
+        result1 = await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
         assert result1["failed"] == 1
         assert result1["succeeded"] == 1
 
-        # Second scrape should work (lock released)
+        # Second scrape should work (lock released): chapter 1 is now
+        # fetched and saved, chapter 2 is reused unchanged.
         source.fetch_errors.clear()  # Clear errors for second attempt
-        result2 = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
-        assert result2["succeeded"] == 2
+        result2 = await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
+        assert result2["failed"] == 0
+        assert result2["succeeded"] + result2["skipped"] == 2
 
     @pytest.mark.asyncio
     async def test_lock_released_after_metadata_failure(self, crawl_env) -> None:

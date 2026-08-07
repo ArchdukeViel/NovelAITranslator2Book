@@ -45,7 +45,7 @@ def _stage_active_snapshot(storage: StorageService, generation_id: str) -> None:
 
 
 def test_create_and_record_staged_generation(storage: StorageService):
-    manifest = storage.create_generation_stage("novel-1", "gen-100")
+    manifest = storage.create_generation_stage("novel-1", "gen-100", expected_chapters=1)
     assert manifest.status == "staging"
 
     updated = storage.record_staged_chapter(
@@ -62,7 +62,7 @@ def test_create_and_record_staged_generation(storage: StorageService):
 
 
 def test_activate_generation_atomic_write(storage: StorageService):
-    storage.create_generation_stage("novel-1", "gen-200")
+    storage.create_generation_stage("novel-1", "gen-200", expected_chapters=1)
     storage.record_staged_chapter("novel-1", "gen-200", "1", "v1", "hash1")
     _stage_active_snapshot(storage, "gen-200")
 
@@ -83,7 +83,7 @@ def test_stage_snapshot_files_are_files_not_directories(storage: StorageService)
     file path, which made the subsequent atomic rename fail on Windows
     (WinError 5 Access denied).
     """
-    storage.create_generation_stage("novel-1", "gen-300")
+    storage.create_generation_stage("novel-1", "gen-300", expected_chapters=1)
     g_dir = storage.base_dir / "novels" / "novel-1" / "generations" / "gen-300"
 
     # Each snapshot stage can be written repeatedly and must produce a file.
@@ -133,7 +133,7 @@ def test_pre_activation_validation_aborts_when_stage_incomplete(storage: Storage
     hash invariants fail. The previous active pointer remains untouched so
     readers continue to see the legacy layout / previous generation.
     """
-    storage.create_generation_stage("novel-1", "gen-empty")
+    storage.create_generation_stage("novel-1", "gen-empty", expected_chapters=1)
     storage.stage_generation_chapter_index("novel-1", "gen-empty", [{"id": "1"}])
     storage.stage_generation_chapter(
         "novel-1",
@@ -148,21 +148,39 @@ def test_pre_activation_validation_aborts_when_stage_incomplete(storage: Storage
     assert storage.get_active_generation("novel-1") is None
 
 
-def test_skip_validation_bypasses_validation_for_recovery_paths(storage: StorageService):
-    """Operators can opt out of validation via ``skip_validation=True``.
+def test_recovery_activation_requires_consent_and_bypasses_validation(storage: StorageService):
+    """Recovery-only activation is a separately named API with explicit
+    reason/evidence; the normal commit path never skips validation."""
+    storage.create_generation_stage("novel-1", "gen-recovery", expected_chapters=1)
 
-    Mirrors the rollback recovery path: the operator already inspected the
-    stage manually and accepts the partial / legacy shape, so the strict
-    default must yield to explicit consent.
-    """
-    storage.create_generation_stage("novel-1", "gen-recovery")
-    manifest = storage.commit_generation(
+    # The recovery API requires explicit operator consent.
+    with pytest.raises(ValueError, match="reason"):
+        storage.commit_generation_recovery("novel-1", "gen-recovery", reason="", evidence="")
+    with pytest.raises(ValueError, match="evidence"):
+        storage.commit_generation_recovery("novel-1", "gen-recovery", reason="manual", evidence="")
+
+    manifest = storage.commit_generation_recovery(
         "novel-1",
         "gen-recovery",
-        skip_validation=True,
+        reason="operator inspected stage manually",
+        evidence="stage incomplete by design; validated by operator",
     )
     assert manifest.status == "committed"
     assert manifest.activated_at is not None
     active = storage.get_active_generation("novel-1")
     assert active is not None
     assert active.generation_id == "gen-recovery"
+
+
+def test_normal_commit_never_accepts_committed_manifest(storage: StorageService):
+    """Section 4: only ``status == staging`` may pass the normal commit path;
+    an already-committed manifest is rejected, never re-activated."""
+    storage.create_generation_stage("novel-1", "gen-recommit", expected_chapters=1)
+    storage.commit_generation_recovery(
+        "novel-1",
+        "gen-recommit",
+        reason="setup",
+        evidence="test fixture",
+    )
+    with pytest.raises(RuntimeError, match="manifest_status_staging"):
+        storage.commit_generation("novel-1", "gen-recommit")

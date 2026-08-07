@@ -41,10 +41,12 @@ from novelai.storage.generations import (
     _generations_dir,
     activate_generation,
     commit_generation,
+    commit_generation_recovery,
     create_generation_stage,
     get_active_generation,
     list_generations,
     load_generation_manifest,
+    record_refresh_failed_chapter,
     record_staged_chapter,
     record_unavailable_chapter,
     resolve_active_generation_id,
@@ -620,9 +622,11 @@ class StorageService:
     seed_generation_from_active = seed_generation_from_active
     _copy_asset_to_generation = _copy_asset_to_generation
     commit_generation = commit_generation
+    commit_generation_recovery = commit_generation_recovery
     validate_generation_activation = validate_generation_activation
     resolve_active_generation_id = resolve_active_generation_id
     record_unavailable_chapter = record_unavailable_chapter
+    record_refresh_failed_chapter = record_refresh_failed_chapter
     activate_generation = activate_generation
     rollback_generation = rollback_generation
     list_generations = list_generations

@@ -22,6 +22,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from novelai.core.security import safe_child_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,6 +33,48 @@ def _utc_now_iso() -> str:
 
 def _sha256_utf8(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _canonical_json_hash(value: Any) -> str:
+    """SHA256 of a JSON-stable serialization (canonical for structure/manifest hashes)."""
+    return _sha256_utf8(json.dumps(value, ensure_ascii=False, sort_keys=True, default=str))
+
+
+def _bundle_raw_text(payload: dict[str, Any]) -> str:
+    raw_section = payload.get("raw")
+    raw = raw_section if isinstance(raw_section, dict) else {}
+    text = raw.get("text")
+    return text if isinstance(text, str) else ""
+
+
+def _bundle_source_blocks(payload: dict[str, Any]) -> list[Any]:
+    raw_section = payload.get("raw")
+    raw = raw_section if isinstance(raw_section, dict) else {}
+    blocks = raw.get("source_blocks")
+    return blocks if isinstance(blocks, list) else []
+
+
+def _bundle_images(payload: dict[str, Any]) -> list[Any]:
+    raw_section = payload.get("raw")
+    raw = raw_section if isinstance(raw_section, dict) else {}
+    images = raw.get("images")
+    return images if isinstance(images, list) else []
+
+
+def _canonical_bundle_hashes(payload: dict[str, Any]) -> tuple[str, str, str]:
+    """Canonical per-chapter hashes computed from a staged bundle.
+
+    ``source_hash`` hashes the raw text, ``structure_hash`` the normalized
+    ``source_blocks`` list, and ``image_manifest_hash`` the ``images`` list.
+    All three are derived exclusively from the bundle itself so the
+    pre-activation validator can recompute them deterministically for every
+    physical bundle (seeded or freshly fetched) and reject an empty hash.
+    """
+    return (
+        _sha256_utf8(_bundle_raw_text(payload)),
+        _canonical_json_hash(_bundle_source_blocks(payload)),
+        _canonical_json_hash(_bundle_images(payload)),
+    )
 
 
 @dataclass
@@ -59,6 +103,8 @@ class GenerationManifest:
     removed_episode_ids: list[str] = field(default_factory=list)
     unavailable_chapter_ids: list[str] = field(default_factory=list)
     unavailable_chapter_records: dict[str, dict[str, Any]] = field(default_factory=dict)
+    refresh_failed_chapter_ids: list[str] = field(default_factory=list)
+    refresh_failed_chapter_records: dict[str, dict[str, Any]] = field(default_factory=dict)
     chapter_ids: list[str] = field(default_factory=list)
     source_hashes: dict[str, str] = field(default_factory=dict)
     structure_hashes: dict[str, str] = field(default_factory=dict)
@@ -94,6 +140,8 @@ class GenerationManifest:
             removed_episode_ids=list(data.get("removed_episode_ids", [])),
             unavailable_chapter_ids=list(data.get("unavailable_chapter_ids", [])),
             unavailable_chapter_records=dict(data.get("unavailable_chapter_records", {})),
+            refresh_failed_chapter_ids=list(data.get("refresh_failed_chapter_ids", [])),
+            refresh_failed_chapter_records=dict(data.get("refresh_failed_chapter_records", {})),
             chapter_ids=list(data.get("chapter_ids", [])),
             source_hashes=dict(data.get("source_hashes", {})),
             structure_hashes=dict(data.get("structure_hashes", {})),
@@ -177,8 +225,13 @@ def get_active_generation(
     self: Any,
     novel_id: str,
 ) -> GenerationManifest | None:
-    """Return the active generation manifest for a novel."""
-    active_pointer_path = self._generations_dir(novel_id) / "active_generation.json"
+    """Return the active generation manifest for a novel.
+
+    Read-only: never creates the ``generations/`` tree (a metadata read must
+    not mutate the novel layout, e.g. by pre-creating the novel folder before
+    folder naming runs).
+    """
+    active_pointer_path = self._novel_dir(novel_id) / "generations" / "active_generation.json"
     if not self._path_exists(active_pointer_path):
         return None
     try:
@@ -191,8 +244,11 @@ def get_active_generation(
 
 
 def resolve_active_generation_id(self: Any, novel_id: str) -> str | None:
-    """Return the raw active generation_id (no manifest lookup)."""
-    active_pointer_path = self._generations_dir(novel_id) / "active_generation.json"
+    """Return the raw active generation_id (no manifest lookup).
+
+    Read-only: never creates the ``generations/`` tree.
+    """
+    active_pointer_path = self._novel_dir(novel_id) / "generations" / "active_generation.json"
     if not self._path_exists(active_pointer_path):
         return None
     try:
@@ -245,7 +301,12 @@ def _stage_file(self: Any, novel_id: str, generation_id: str, *parts: str) -> Pa
 def stage_generation_metadata(self: Any, novel_id: str, generation_id: str, meta: dict[str, Any]) -> str:
     """Stage the metadata snapshot used by the crawl run."""
     path = _stage_file(self, novel_id, generation_id, "metadata.json")
-    content = json.dumps(meta, ensure_ascii=False, indent=2)
+    # The staged snapshot is novel metadata and must satisfy the same schema
+    # contract as the legacy root copy so generation-aware reads validate it
+    # identically. The caller's dict is never mutated.
+    staged = dict(meta)
+    staged["schema_version"] = self.SCHEMA_VERSION
+    content = json.dumps(staged, ensure_ascii=False, indent=2)
     self._write_text_atomic(path, content)
     manifest = _load_manifest(self, novel_id, generation_id)
     if manifest is not None:
@@ -319,12 +380,14 @@ def stage_generation_chapter(
         manifest = create_generation_stage(self, novel_id, generation_id)
     if chapter_id not in manifest.chapter_ids:
         manifest.chapter_ids.append(chapter_id)
-    if source_hash:
-        manifest.source_hashes[chapter_id] = source_hash
-    if structure_hash:
-        manifest.structure_hashes[chapter_id] = structure_hash
-    if image_manifest_hash:
-        manifest.image_manifest_hashes[chapter_id] = image_manifest_hash
+    # Section 4: the manifest records the canonical hashes computed from the
+    # staged bundle itself — never caller-provided values — so the validator
+    # can recompute and compare deterministically for seeded and fresh
+    # bundles alike.
+    canonical_source, canonical_structure, canonical_image = _canonical_bundle_hashes(payload)
+    manifest.source_hashes[chapter_id] = canonical_source
+    manifest.structure_hashes[chapter_id] = canonical_structure
+    manifest.image_manifest_hashes[chapter_id] = canonical_image
     if parser_version:
         manifest.parser_versions[chapter_id] = parser_version
     if translation_version:
@@ -471,6 +534,38 @@ def record_unavailable_chapter(
     return manifest
 
 
+def record_refresh_failed_chapter(
+    self: Any,
+    novel_id: str,
+    generation_id: str,
+    chapter_id: str,
+    *,
+    reason: str = "",
+    error_category: str = "",
+) -> GenerationManifest:
+    """Record an explicit refresh-failed-retained marker for a chapter.
+
+    Section 3 disposition A: the chapter's *previous* valid bundle was
+    carried forward into the stage (``seed_generation_from_active``) and the
+    fresh acquisition failed, so the prior bundle is retained. This is a
+    distinct disposition from :func:`record_unavailable_chapter` (disposition
+    B: no usable raw bundle exists for the current source episode).
+    """
+    manifest = _load_manifest(self, novel_id, generation_id)
+    if manifest is None:
+        manifest = create_generation_stage(self, novel_id, generation_id)
+    if chapter_id not in manifest.refresh_failed_chapter_ids:
+        manifest.refresh_failed_chapter_ids.append(chapter_id)
+    manifest.refresh_failed_chapter_records[chapter_id] = {
+        "chapter_id": chapter_id,
+        "reason": reason,
+        "error_category": error_category,
+        "recorded_at": _utc_now_iso(),
+    }
+    _save_manifest(self, novel_id, generation_id, manifest)
+    return manifest
+
+
 def record_staged_chapter(
     self: Any,
     novel_id: str,
@@ -564,6 +659,20 @@ def validate_generation_activation(
     performed. The default contract rolls the stage back when the result
     is invalid; callers may inspect the result to surface why in logs and
     tests.
+
+    The validation is exact:
+
+    - only ``status == "staging"`` may activate through the normal path;
+    - the normalized complete index id set must equal the physical bundle
+      ids UNION the explicit unavailable ids, subject to the
+      refresh-failed-retained disposition rules;
+    - duplicate logical or decoded physical ids, unexpected physical
+      bundles, unexpected manifest ids, missing ids, and conflicting
+      unavailable/available states all fail;
+    - every required manifest hash (metadata, chapter index, source state,
+      per-chapter source/structure/image) must be present and match;
+    - every referenced asset must resolve safely inside the stage and match
+      its recorded size and sha256.
     """
     manifest = _load_manifest(self, novel_id, generation_id)
     if manifest is None:
@@ -575,8 +684,8 @@ def validate_generation_activation(
     checks.append(
         _check(
             "manifest_status_staging",
-            manifest.status in {"staging", "committed"},
-            f"manifest.status={manifest.status!r}",
+            manifest.status == "staging",
+            f"manifest.status={manifest.status!r} (only 'staging' may activate)",
         )
     )
 
@@ -590,10 +699,6 @@ def validate_generation_activation(
     if metadata is not None:
         expected_work_id = str(manifest.source_work_id or "")
         actual_work_id = str(metadata.get("source_novel_id") or "")
-        # Section 4: when the manifest does not declare a source_work_id
-        # (legacy callers that pre-date work-id propagation) the check
-        # degrades to "metadata must declare a source_novel_id at all" so
-        # we never silently accept an empty identity.
         if expected_work_id:
             checks.append(
                 _check(
@@ -613,7 +718,6 @@ def validate_generation_activation(
 
     chapter_index = _read_json_or_none(self, index_path) or []
     checks.append(_check("chapter_index_present", bool(chapter_index), f"{index_path} missing"))
-    index_count = len(chapter_index) if isinstance(chapter_index, list) else 0
 
     source_state = _read_json_or_none(self, source_state_path)
     checks.append(
@@ -624,35 +728,82 @@ def validate_generation_activation(
         )
     )
 
+    # ── exact membership reconciliation ────────────────────────────────
     chapter_dir = g_dir / "chapters"
-    physical_chapter_ids: set[str] = set()
+    physical_logical_ids: list[str] = []
     if self._path_exists(chapter_dir):
         for physical_path in self._glob(chapter_dir, "*.json"):
-            stem = physical_path.stem
             try:
-                physical_chapter_ids.add(self.logical_id_from_stem(stem))
+                physical_logical_ids.append(self.logical_id_from_stem(physical_path.stem))
             except Exception:
                 continue
     checks.append(
         _check(
-            "expected_membership_matches_complete_index",
-            manifest.expected_chapters <= index_count,
-            f"expected_chapters={manifest.expected_chapters} must be <= complete chapter_index size={index_count}",
+            "no_duplicate_decoded_physical_ids",
+            len(physical_logical_ids) == len(set(physical_logical_ids)),
+            f"duplicate decoded physical ids: {sorted({i for i in physical_logical_ids if physical_logical_ids.count(i) > 1})}",
         )
     )
+    available_bundle_ids: set[str] = set(physical_logical_ids)
 
-    missing_bundles: list[str] = []
+    index_logical_ids: list[str] = []
     if isinstance(chapter_index, list):
-        unavailable_ids = set(manifest.unavailable_chapter_ids or [])
         for entry in chapter_index:
             if not isinstance(entry, dict):
                 continue
             cid = _index_entry_logical_id(entry)
-            if not cid:
-                continue
-            if cid in physical_chapter_ids:
-                continue
-            if cid in unavailable_ids:
+            if cid:
+                index_logical_ids.append(cid)
+    complete_index_ids: set[str] = set(index_logical_ids)
+    checks.append(
+        _check(
+            "no_duplicate_index_ids",
+            len(index_logical_ids) == len(complete_index_ids),
+            f"duplicate index ids: {sorted({i for i in index_logical_ids if index_logical_ids.count(i) > 1})}",
+        )
+    )
+
+    unexpected_physical = available_bundle_ids - complete_index_ids
+    checks.append(
+        _check(
+            "no_unexpected_physical_bundles",
+            not unexpected_physical,
+            f"physical bundles not in the complete index: {sorted(unexpected_physical)}",
+        )
+    )
+    checks.append(
+        _check(
+            "manifest_chapter_ids_match_available",
+            set(manifest.chapter_ids or []) == available_bundle_ids,
+            f"manifest.chapter_ids={sorted(set(manifest.chapter_ids or []))} != available bundles={sorted(available_bundle_ids)}",
+        )
+    )
+
+    unavailable_ids = set(manifest.unavailable_chapter_ids or [])
+    refresh_failed_ids = set(manifest.refresh_failed_chapter_ids or [])
+    # refresh_failed_retained legitimately overlaps available (the carried
+    # bundle is present); only unavailable combined with either disposition
+    # is contradictory.
+    conflicting = (unavailable_ids & refresh_failed_ids) | (available_bundle_ids & unavailable_ids)
+    checks.append(
+        _check(
+            "no_conflicting_dispositions",
+            not conflicting,
+            f"chapters with conflicting available/unavailable states: {sorted(conflicting)}",
+        )
+    )
+    missing_retained = refresh_failed_ids - available_bundle_ids
+    checks.append(
+        _check(
+            "refresh_failed_retains_bundle",
+            not missing_retained,
+            f"refresh-failed-retained chapters with no carried bundle: {sorted(missing_retained)}",
+        )
+    )
+    missing_bundles: list[str] = []
+    if isinstance(chapter_index, list):
+        for cid in index_logical_ids:
+            if cid in available_bundle_ids or cid in unavailable_ids or cid in refresh_failed_ids:
                 continue
             missing_bundles.append(cid)
     checks.append(
@@ -663,45 +814,15 @@ def validate_generation_activation(
         )
     )
 
-    missing_assets: list[str] = []
-    if isinstance(chapter_index, list):
-        for entry in chapter_index:
-            if not isinstance(entry, dict):
-                continue
-            cid = _index_entry_logical_id(entry)
-            if not cid:
-                continue
-            chapter_path = chapter_dir / _chapter_filename_for(cid)
-            if not self._path_exists(chapter_path):
-                continue
-            bundle = _read_json_or_none(self, chapter_path)
-            if not isinstance(bundle, dict):
-                continue
-            raw_section = bundle.get("raw")
-            raw: dict[str, Any] = raw_section if isinstance(raw_section, dict) else {}
-            images_value = raw.get("images")
-            images = images_value if isinstance(images_value, list) else []
-            for image in images:
-                if not isinstance(image, dict):
-                    continue
-                local_path = image.get("local_path")
-                if not isinstance(local_path, str) or not local_path.strip():
-                    continue
-                # The ``local_path`` is already a generation-relative
-                # logical key (``assets/images/<encoded_stem>/<file>``).
-                # Resolve it relative to the stage root (``g_dir``), not
-                # the nested ``assets/`` directory, so the validation
-                # path matches the layout used during staging.
-                if not (g_dir / local_path).exists():
-                    missing_assets.append(local_path)
     checks.append(
         _check(
-            "every_referenced_image_resolves_inside_stage",
-            not missing_assets,
-            f"{len(missing_assets)} referenced images do not resolve inside the stage",
+            "expected_chapters_match_index",
+            manifest.expected_chapters == len(complete_index_ids),
+            f"expected_chapters={manifest.expected_chapters} != complete chapter_index size={len(complete_index_ids)}",
         )
     )
 
+    # ── snapshot hash integrity (empty required hash fails) ────────────
     metadata_text = self._read_text(metadata_path) if self._path_exists(metadata_path) else ""
     chapter_index_text = self._read_text(index_path) if self._path_exists(index_path) else ""
     source_state_text = self._read_text(source_state_path) if self._path_exists(source_state_path) else ""
@@ -733,27 +854,110 @@ def validate_generation_activation(
         )
     )
 
-    # Reconcile manifest.chapter_ids against the *physical* bundles only;
-    # seeding the seen-set with the manifest ids made the old check a
-    # tautology that could never fail.
-    physical_ids_in_index: set[str] = set()
-    if isinstance(chapter_index, list):
-        for entry in chapter_index:
-            if not isinstance(entry, dict):
+    # ── per-bundle integrity + required hashes ─────────────────────────
+    missing_source_hashes: list[str] = []
+    missing_structure_hashes: list[str] = []
+    missing_image_hashes: list[str] = []
+    hash_mismatch: list[str] = []
+    bundle_identity_failures: list[str] = []
+    missing_assets: list[str] = []
+    asset_integrity_failures: list[str] = []
+    for cid in sorted(available_bundle_ids):
+        chapter_path = chapter_dir / _chapter_filename_for(cid)
+        bundle = _read_json_or_none(self, chapter_path)
+        if not isinstance(bundle, dict):
+            bundle_identity_failures.append(f"{cid}: bundle unreadable")
+            continue
+        if str(bundle.get("id")) != cid:
+            bundle_identity_failures.append(f"{cid}: bundle.id={bundle.get('id')!r} != logical id {cid!r}")
+        canonical_source, canonical_structure, canonical_image = _canonical_bundle_hashes(bundle)
+        rec_source = manifest.source_hashes.get(cid)
+        rec_structure = manifest.structure_hashes.get(cid)
+        rec_image = manifest.image_manifest_hashes.get(cid)
+        if not rec_source:
+            missing_source_hashes.append(cid)
+        elif rec_source != canonical_source:
+            hash_mismatch.append(f"{cid}: source")
+        if not rec_structure:
+            missing_structure_hashes.append(cid)
+        elif rec_structure != canonical_structure:
+            hash_mismatch.append(f"{cid}: structure")
+        if not rec_image:
+            missing_image_hashes.append(cid)
+        elif rec_image != canonical_image:
+            hash_mismatch.append(f"{cid}: image-manifest")
+        raw_section = bundle.get("raw")
+        raw = raw_section if isinstance(raw_section, dict) else {}
+        images_value = raw.get("images")
+        images = images_value if isinstance(images_value, list) else []
+        for image in images:
+            if not isinstance(image, dict):
                 continue
-            cid = _index_entry_logical_id(entry)
-            if cid and cid in physical_chapter_ids:
-                physical_ids_in_index.add(cid)
+            local_path = image.get("local_path")
+            if not isinstance(local_path, str) or not local_path.strip():
+                # An image whose download failed has no staged asset; it is
+                # recorded with ``download_error`` and there is nothing to
+                # validate.
+                continue
+            safe = safe_child_path(g_dir, local_path, unquote=False)
+            if safe is None:
+                missing_assets.append(f"{cid}: unsafe local_path {local_path!r}")
+                continue
+            try:
+                safe.relative_to(g_dir)
+            except ValueError:
+                missing_assets.append(f"{cid}: local_path escapes stage {local_path!r}")
+                continue
+            if not self._path_exists(safe):
+                missing_assets.append(f"{cid}: {local_path}")
+                continue
+            try:
+                actual = self._backend.load(self._rel(safe))
+            except Exception:
+                actual = b""
+            recorded_size = image.get("size_bytes")
+            if isinstance(recorded_size, int) and len(actual) != recorded_size:
+                asset_integrity_failures.append(f"{cid}: {local_path} size {len(actual)} != recorded {recorded_size}")
+            recorded_sha = image.get("sha256")
+            if isinstance(recorded_sha, str) and recorded_sha and hashlib.sha256(actual).hexdigest() != recorded_sha:
+                asset_integrity_failures.append(f"{cid}: {local_path} sha256 mismatch")
+
+    checks.append(_check("bundle_identity_valid", not bundle_identity_failures, "; ".join(bundle_identity_failures)))
+    checks.append(
+        _check("chapter_source_hashes_present", not missing_source_hashes, f"missing: {sorted(missing_source_hashes)}")
+    )
     checks.append(
         _check(
-            "manifest_chapter_ids_reconcile_with_files",
-            set(manifest.chapter_ids or []).issubset(physical_ids_in_index),
-            "manifest.chapter_ids include chapters that have no physical bundle",
+            "chapter_structure_hashes_present",
+            not missing_structure_hashes,
+            f"missing: {sorted(missing_structure_hashes)}",
+        )
+    )
+    checks.append(
+        _check("chapter_image_hashes_present", not missing_image_hashes, f"missing: {sorted(missing_image_hashes)}")
+    )
+    checks.append(_check("chapter_hashes_match_bundles", not hash_mismatch, "; ".join(hash_mismatch)))
+    checks.append(
+        _check(
+            "every_referenced_image_resolves_inside_stage",
+            not missing_assets,
+            f"{len(missing_assets)} referenced images do not resolve safely inside the stage",
+        )
+    )
+    checks.append(
+        _check(
+            "referenced_image_integrity",
+            not asset_integrity_failures,
+            "; ".join(asset_integrity_failures),
         )
     )
 
     is_valid = all(check.passed for check in checks)
     return GenerationValidationResult(is_valid=is_valid, checks=checks)
+
+
+class GenerationConflictError(RuntimeError):
+    """A concurrent crawl activated a different generation before this commit."""
 
 
 def commit_generation(
@@ -763,8 +967,9 @@ def commit_generation(
     *,
     removed_episode_ids: list[str] | None = None,
     reused_chapters: int = 0,
+    saved_chapters: int | None = None,
     failed_chapters: int = 0,
-    skip_validation: bool = False,
+    starting_active_generation_id: str | None = None,
 ) -> GenerationManifest:
     """Finalize a staged generation and atomically activate it.
 
@@ -774,10 +979,15 @@ def commit_generation(
     keeps the ``committed`` status after activation; the pointer itself is
     the active marker.
 
-    Section 4: run :func:`validate_generation_activation` before swapping
-    the active pointer so partial / corrupt / membership-incomplete
-    generations never become visible. Tests can pass ``skip_validation=True``
-    to inspect the failure surface without engaging the rollback path.
+    Section 4: :func:`validate_generation_activation` always runs before the
+    pointer swap; partial / corrupt / membership-incomplete generations never
+    become visible through the normal path.
+
+    Section 5: activation is a compare-and-swap on the active pointer. The
+    caller captures ``starting_active_generation_id`` at crawl start; if the
+    pointer no longer matches (another crawl activated meanwhile) the commit
+    fails with :class:`GenerationConflictError` and the losing stage must be
+    rolled back — the newer generation is never overwritten.
     """
     manifest = _load_manifest(self, novel_id, generation_id)
     if manifest is None:
@@ -787,26 +997,23 @@ def commit_generation(
         manifest.removed_episode_ids = sorted(set(removed_episode_ids))
     manifest.reused_chapters = reused_chapters
     manifest.failed_chapters = failed_chapters
-    manifest.saved_chapters = max(
-        int(getattr(manifest, "saved_chapters", 0) or 0),
-        len(manifest.chapter_ids or []),
-    )
+    if saved_chapters is not None:
+        manifest.saved_chapters = saved_chapters
     manifest.status = "staging"
     manifest.committed_at = manifest.committed_at or _utc_now_iso()
 
-    if not skip_validation:
-        result = validate_generation_activation(self, novel_id, generation_id)
-        if not result.is_valid:
-            failed_names = ", ".join(check.name for check in result.failed_checks())
-            logger.error(
-                "Generation %s for %s failed validation: %s",
-                generation_id,
-                novel_id,
-                failed_names,
-            )
-            raise RuntimeError(
-                f"Generation {generation_id} for {novel_id} failed pre-activation validation: {failed_names}"
-            )
+    result = validate_generation_activation(self, novel_id, generation_id)
+    if not result.is_valid:
+        failed_names = ", ".join(check.name for check in result.failed_checks())
+        logger.error(
+            "Generation %s for %s failed validation: %s",
+            generation_id,
+            novel_id,
+            failed_names,
+        )
+        raise RuntimeError(
+            f"Generation {generation_id} for {novel_id} failed pre-activation validation: {failed_names}"
+        )
 
     manifest.status = "committed"
     manifest.activated_at = manifest.activated_at or manifest.committed_at
@@ -814,6 +1021,66 @@ def commit_generation(
     # Manifest-last write: content + manifest are durable before activation.
     _save_manifest(self, novel_id, generation_id, manifest)
 
+    # Section 5: compare-and-swap the active pointer.
+    current_active_id = self.resolve_active_generation_id(novel_id)
+    if current_active_id != starting_active_generation_id:
+        raise GenerationConflictError(
+            f"Active generation for {novel_id} changed during crawl: expected "
+            f"{starting_active_generation_id!r}, found {current_active_id!r}. "
+            "Losing stage is not activated; roll it back explicitly."
+        )
+
+    active_pointer_path = self._generations_dir(novel_id) / "active_generation.json"
+    pointer_payload = json.dumps(
+        {
+            "novel_id": novel_id,
+            "active_generation_id": generation_id,
+            "activated_at": manifest.activated_at,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+    expected_raw = (
+        self._backend.load(self._rel(active_pointer_path)) if self._path_exists(active_pointer_path) else None
+    )
+    swapped = self._backend.compare_and_swap(
+        self._rel(active_pointer_path),
+        expected_raw,
+        pointer_payload.encode("utf-8"),
+    )
+    if not swapped:
+        raise GenerationConflictError(
+            f"Active pointer for {novel_id} changed during activation; {generation_id} was not activated."
+        )
+    return manifest
+
+
+def commit_generation_recovery(
+    self: Any,
+    novel_id: str,
+    generation_id: str,
+    *,
+    reason: str,
+    evidence: str,
+) -> GenerationManifest:
+    """Recovery-only activation that bypasses strict pre-activation validation.
+
+    Never on the normal commit path: requires explicit operator consent in
+    the form of a non-empty ``reason`` and ``evidence`` describing what was
+    inspected and why the strict gate is waived. The active pointer is
+    swapped without compare-and-swap because recovery runs deliberately
+    override the normal concurrent-activation contract.
+    """
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError("commit_generation_recovery requires a non-empty reason.")
+    if not isinstance(evidence, str) or not evidence.strip():
+        raise ValueError("commit_generation_recovery requires non-empty evidence.")
+    manifest = _load_manifest(self, novel_id, generation_id)
+    if manifest is None:
+        raise FileNotFoundError(f"Generation manifest for {novel_id}/{generation_id} not found.")
+    manifest.status = "committed"
+    manifest.activated_at = manifest.activated_at or _utc_now_iso()
+    _save_manifest(self, novel_id, generation_id, manifest)
     active_pointer_path = self._generations_dir(novel_id) / "active_generation.json"
     self._write_text_atomic(
         active_pointer_path,
@@ -822,10 +1089,18 @@ def commit_generation(
                 "novel_id": novel_id,
                 "active_generation_id": generation_id,
                 "activated_at": manifest.activated_at,
+                "recovery_reason": reason,
+                "recovery_evidence": evidence,
             },
             ensure_ascii=False,
             indent=2,
         ),
+    )
+    logger.warning(
+        "Recovery activation of %s for %s (reason=%s)",
+        generation_id,
+        novel_id,
+        reason,
     )
     return manifest
 

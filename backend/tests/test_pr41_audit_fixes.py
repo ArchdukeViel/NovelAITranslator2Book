@@ -71,6 +71,7 @@ def _commit_minimal_generation(
         source_key="test_source",
         source_work_id=novel_id,
         mode="full",
+        expected_chapters=len(chapter_ids),
     )
     storage.stage_generation_metadata(
         novel_id,
@@ -250,7 +251,9 @@ async def test_full_crawl_writes_live_projections_only_after_commit() -> None:
 
 def test_commit_requires_staged_source_state() -> None:
     storage = _fresh_storage()
-    storage.create_generation_stage("n4", "gen-1", source_key="test_source", source_work_id="n4", mode="full")
+    storage.create_generation_stage(
+        "n4", "gen-1", source_key="test_source", source_work_id="n4", mode="full", expected_chapters=1
+    )
     storage.stage_generation_metadata("n4", "gen-1", {"title": "T", "source_novel_id": "n4"})
     storage.stage_generation_chapter_index("n4", "gen-1", [{"id": "1", "chapter_id": "1", "title": "C", "url": "u"}])
     storage.stage_generation_chapter("n4", "gen-1", "1", {"id": "1", "raw": {"text": "Hello"}})
@@ -281,9 +284,7 @@ def test_manifest_membership_without_physical_bundle_fails_validation() -> None:
 
     result = storage.validate_generation_activation("n4-member", "gen-1")
     assert not result.is_valid
-    assert any(
-        check.name == "manifest_chapter_ids_reconcile_with_files" and not check.passed for check in result.checks
-    )
+    assert any(check.name == "manifest_chapter_ids_match_available" and not check.passed for check in result.checks)
 
 
 def test_integer_index_ids_reconcile_with_string_logical_ids() -> None:
@@ -295,7 +296,9 @@ def test_integer_index_ids_reconcile_with_string_logical_ids() -> None:
     before the subset/reconciliation checks.
     """
     storage = _fresh_storage()
-    storage.create_generation_stage("n4-int", "gen-1", source_key="test_source", source_work_id="n4-int", mode="full")
+    storage.create_generation_stage(
+        "n4-int", "gen-1", source_key="test_source", source_work_id="n4-int", mode="full", expected_chapters=2
+    )
     storage.stage_generation_metadata("n4-int", "gen-1", {"title": "Int", "source_novel_id": "n4-int"})
     storage.stage_generation_source_state("n4-int", "gen-1", {"chapters": []})
     # Raw adapter spelling: integer ids survive JSON round-trip.
@@ -324,7 +327,12 @@ def test_integer_index_id_without_bundle_still_fails_validation() -> None:
     with no physical bundle (and not recorded unavailable) still fails."""
     storage = _fresh_storage()
     storage.create_generation_stage(
-        "n4-int-ghost", "gen-1", source_key="test_source", source_work_id="n4-int-ghost", mode="full"
+        "n4-int-ghost",
+        "gen-1",
+        source_key="test_source",
+        source_work_id="n4-int-ghost",
+        mode="full",
+        expected_chapters=2,
     )
     storage.stage_generation_metadata("n4-int-ghost", "gen-1", {"title": "Ghost", "source_novel_id": "n4-int-ghost"})
     storage.stage_generation_source_state("n4-int-ghost", "gen-1", {"chapters": []})

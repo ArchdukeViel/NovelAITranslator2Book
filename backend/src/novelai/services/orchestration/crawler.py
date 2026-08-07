@@ -25,7 +25,11 @@ from novelai.sources.quality import (
     evaluate_chapter_quality,
     evaluate_metadata_quality,
 )
-from novelai.utils.chapter_selection import ResolvedChapterSelection, resolve_chapter_selection
+from novelai.utils.chapter_selection import (
+    ResolvedChapterSelection,
+    _chapter_logical_id,
+    resolve_chapter_selection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -546,10 +550,19 @@ async def _scrape_chapters_impl(
 
     # Section 2: resolve the selection to stable resolved records; non-numeric
     # Kakuyomu ids, sequence-position selections, and full-crawl selections
-    # all flow through the same resolver.
+    # all flow through the same resolver. The *selection* decides which
+    # bodies are fetched; the *complete current chapter index* decides the
+    # membership of the new raw generation.
+    complete_index_entries = meta.get("chapters", [])
+    if not isinstance(complete_index_entries, list) or not complete_index_entries:
+        raise RuntimeError(f"Chapter index is empty for {source_key}/{novel_id}; cannot crawl chapters.")
     resolved: list[ResolvedChapterSelection] = resolve_chapter_selection(meta, chapters)
-    selected_chapters_list = [record.metadata for record in resolved if isinstance(record.metadata, dict)]
-    _total_chapters = len(resolved)
+    if not resolved:
+        raise ValueError(
+            f"No chapters matched selection {chapters!r} for {source_key}/{novel_id}; refusing to create a generation."
+        )
+    selected_fetch_entries = [record.metadata for record in resolved if isinstance(record.metadata, dict)]
+    _total_chapters = len(complete_index_entries)
     if progress_callback:
         progress_callback(f"Preparing to scrape {_total_chapters} chapter(s)…")
 
@@ -566,12 +579,17 @@ async def _scrape_chapters_impl(
     }
     crawl_plan = create_crawl_plan(
         novel_id,
-        selected_chapters_list,
+        selected_fetch_entries,
         existing_source_state,
         existing_chapters_map,
         mode=mode,
-        all_chapters=meta.get("chapters", []),
+        all_chapters=complete_index_entries,
     )
+
+    # Section 5: capture the active pointer at crawl start so activation can
+    # compare-and-swap; a concurrent crawl that activates meanwhile must not
+    # be overwritten.
+    starting_active_generation_id = self.storage.resolve_active_generation_id(novel_id)
 
     # Staged generation (DEBT-GEN-01): all crawl writes go into a generation
     # snapshot and become visible only after commit_generation swaps the
@@ -599,14 +617,21 @@ async def _scrape_chapters_impl(
     # Build stored chapter hash cache once before chapter loop to avoid O(n^2) disk re-scans
     cached_stored_hashes = _stored_chapter_hashes(self.storage, novel_id, exclude_chapter_id="")
 
-    # Seed the stage with bundles for *every* selected chapter so the
-    # activated snapshot is always complete (raw + translations + images).
-    # Chapter bundles are copied from the previous active generation when one
-    # exists; a fresh fetch in the body loop replaces any updated bundle.
-    # Together with the body loop, this guarantees every chapter the index
-    # declares has either a bundle or an explicit unavailable record before
-    # activation, satisfying the Section 4 validation contract.
-    seed_targets = [record.chapter_id for record in resolved]
+    # Section 2: the stage is seeded from the *complete* current chapter
+    # index — every still-current chapter available in the previous active
+    # generation — so a scoped crawl (e.g. ``chapters="1"`` against a
+    # 100-chapter work) still activates a generation representing all 100
+    # index entries. The body loop below then replaces only the selected
+    # entries. A replaced bundle must validate before it replaces the seeded
+    # one (validation runs on the whole stage at commit time); unselected
+    # chapters are preserved untouched.
+    seed_targets = []
+    for entry in complete_index_entries:
+        if not isinstance(entry, dict):
+            continue
+        cid = _chapter_logical_id(entry)
+        if cid:
+            seed_targets.append(cid)
     if seed_targets:
         self.storage.seed_generation_from_active(novel_id, generation_id, seed_targets)
 
@@ -794,13 +819,9 @@ async def _scrape_chapters_impl(
                     image_manifest_hash=_json_hash(downloaded_images),
                     parser_version=str(meta.get("chapter_index_extraction_mode") or ""),
                 )
-                safely_refresh_catalog_projection_after_storage_write(
-                    novel_id,
-                    self.storage,
-                    context="scrape_chapter",
-                )
-                # Invalidate library summary cache after successful storage write
-                best_effort_invalidate()
+                # Section 6: crawl writes are *staged only*. Catalog/library
+                # projection refreshes happen exactly once after successful
+                # activation, never per staged chapter write.
                 if progress_callback:
                     progress_callback(f"  Saved chapter {chapter_id}.")
                 if any(img.get("download_error") for img in downloaded_images):
@@ -858,19 +879,30 @@ async def _scrape_chapters_impl(
                 }
                 failures.append(failure)
                 failed += 1
-                # Section 3 contract: represent an acquisition failure
-                # explicitly as an unavailable record, not by omission.
-                # Carrying the previous chapter forward via
-                # ``seed_generation_from_active`` is the fallback path; an
-                # explicit ``unavailable`` marker wins when no prior bundle
-                # exists so Section 4 validation can succeed.
-                self.storage.record_unavailable_chapter(
-                    novel_id,
-                    generation_id,
-                    chapter_id,
-                    reason=error_message,
-                    error_category=failure["error_category"],
-                )
+                # Section 3: two distinct dispositions — never conflated.
+                # A: a *previous* valid bundle exists for this current
+                #    episode; it is carried forward into the stage and the
+                #    chapter is marked refresh_failed_retained.
+                # B: no usable raw bundle exists for the current source
+                #    episode; the chapter is marked explicitly unavailable.
+                previous_bundle = self.storage._load_chapter_bundle(novel_id, chapter_id)
+                if previous_bundle is not None:
+                    self.storage.seed_generation_from_active(novel_id, generation_id, [chapter_id])
+                    self.storage.record_refresh_failed_chapter(
+                        novel_id,
+                        generation_id,
+                        chapter_id,
+                        reason=error_message,
+                        error_category=failure["error_category"],
+                    )
+                else:
+                    self.storage.record_unavailable_chapter(
+                        novel_id,
+                        generation_id,
+                        chapter_id,
+                        reason=error_message,
+                        error_category=failure["error_category"],
+                    )
                 _emit(
                     STAGE_BODY_CRAWL,
                     "failed",
@@ -914,46 +946,107 @@ async def _scrape_chapters_impl(
         if mode == "full":
             self.storage.stage_generation_metadata(novel_id, generation_id, meta)
 
+        # Section 2/3: every current-index chapter must end the crawl with a
+        # bundle or an explicit disposition. In update mode a scoped crawl may
+        # leave genuinely unfetched current content (no prior bundle anywhere)
+        # marked unavailable under the explicit partial-update policy. In full
+        # mode any unresolved required content prevents activation entirely.
+        stage_manifest = self.storage.load_generation_manifest(novel_id, generation_id)
+        staged_ids = set(stage_manifest.chapter_ids or []) if stage_manifest else set()
+        recorded_unavailable = set(stage_manifest.unavailable_chapter_ids or []) if stage_manifest else set()
+        recorded_refresh = set(stage_manifest.refresh_failed_chapter_ids or []) if stage_manifest else set()
+        missing_current_ids: list[str] = []
+        for entry in complete_index_entries:
+            if not isinstance(entry, dict):
+                continue
+            cid = _chapter_logical_id(entry)
+            if not cid:
+                continue
+            if cid in staged_ids or cid in recorded_unavailable or cid in recorded_refresh:
+                continue
+            missing_current_ids.append(cid)
+
+        if mode == "full":
+            if failed > 0 or missing_current_ids:
+                logger.error(
+                    "Full crawl for %s/%s has unresolved current content (%d fetch failures, %d missing bundles); "
+                    "refusing to activate and rolling the stage back.",
+                    source_key,
+                    novel_id,
+                    failed,
+                    len(missing_current_ids),
+                )
+                self.storage.rollback_generation(
+                    novel_id,
+                    generation_id,
+                    reason=f"full crawl unresolved: {failed} failures, {len(missing_current_ids)} missing bundles",
+                )
+                raise RuntimeError(
+                    f"Full crawl for {source_key}/{novel_id} could not resolve all current chapters "
+                    f"({failed} fetch failures, {len(missing_current_ids)} missing bundles). "
+                    "Previous generation remains active; fix the failures and retry."
+                )
+        else:
+            # Update mode: partial-update policy — mark genuinely unavailable
+            # new/current content explicitly so the activated generation stays
+            # complete, and removed episodes are excluded from membership.
+            for cid in missing_current_ids:
+                self.storage.record_unavailable_chapter(
+                    novel_id,
+                    generation_id,
+                    cid,
+                    reason="current index entry has no usable raw bundle after a scoped crawl",
+                    error_category="not_fetched",
+                )
+
         # Section 4: validation must succeed before we swap the active pointer.
-        # We carry every chapter forward explicitly (seeding above + the
-        # bundle writes in the body loop) so the deterministic checks pass on
-        # the *complete* index even when some new chapter fetches failed.
+        # Section 5: activation compare-and-swaps the pointer captured at
+        # crawl start so a concurrent crawl can never be overwritten.
         self.storage.commit_generation(
             novel_id,
             generation_id,
             removed_episode_ids=list(crawl_plan.removed_episode_ids),
             reused_chapters=skipped,
+            saved_chapters=succeeded,
             failed_chapters=failed,
+            starting_active_generation_id=starting_active_generation_id,
         )
 
-        # Section 3: live legacy projections (novel-root metadata.json and
-        # source_state.json) are written ONLY after the active pointer has
-        # swapped. A partial or failed run can never expose half-committed
-        # state through the legacy layout. These writes are best-effort and
-        # never roll back the already-committed generation: the committed
-        # snapshot remains the authoritative record.
+        # Section 3/6: live legacy projections (novel-root metadata.json and
+        # source_state.json) and the catalog/library projections are refreshed
+        # exactly ONCE, only after the active pointer has swapped. A partial
+        # or failed run can never expose half-committed state through the
+        # legacy layout. These writes are best-effort and never roll back the
+        # already-committed generation: the committed snapshot remains the
+        # authoritative record and readers must still see the new generation.
+        projection_health: dict[str, Any] = {}
         try:
             if mode == "full":
                 self.storage.save_metadata(novel_id, meta)
-                safely_refresh_catalog_projection_after_storage_write(
-                    novel_id,
-                    self.storage,
-                    context="scrape_chapters_metadata",
-                )
-                # Replacement metadata may have changed discovered total.
-                best_effort_invalidate(context="scrape_chapters_metadata")
+                projection_health["metadata"] = "written"
             self.storage.save_source_state(novel_id, new_source_state)
-            safely_refresh_catalog_projection_after_storage_write(
+            projection_health["source_state"] = "written"
+            projection_health["catalog_refresh"] = safely_refresh_catalog_projection_after_storage_write(
                 novel_id,
                 self.storage,
-                context="scrape_chapters_source_state",
+                context="scrape_chapters_post_commit",
             )
+            best_effort_invalidate(context="scrape_chapters_post_commit")
         except Exception as exc:  # pragma: no cover - defensive
+            projection_health["error"] = str(exc)
             logger.warning(
                 "Post-commit legacy projection refresh failed for %s/%s: %s",
                 source_key,
                 novel_id,
                 exc,
+            )
+        if projection_health.get("error") or projection_health.get("catalog_refresh") is False:
+            logger.warning(
+                "Projection-health evidence for %s/%s: %s (active generation %s remains authoritative)",
+                source_key,
+                novel_id,
+                projection_health,
+                generation_id,
             )
 
         _emit(

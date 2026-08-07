@@ -22,6 +22,27 @@ class StorageBackend(ABC):
         transactions are outside this contract.
         """
 
+    def compare_and_swap(self, path: str | Path, expected: bytes | None, new_value: bytes) -> bool:
+        """Atomically replace the object at *path* only when it currently
+        equals *expected* (``None`` means the object is absent).
+
+        Returns ``True`` when the swap happened, ``False`` when the current
+        content differed (the caller must treat that as a lost race and not
+        retry blindly). Backends that cannot provide a true atomic
+        conditional write implement compare-then-write and document the
+        residual race window; the per-novel crawl lock covers same-novel
+        writers in practice.
+        """
+        current = None
+        try:
+            current = self.load(path)
+        except FileNotFoundError:
+            current = None
+        if current != expected:
+            return False
+        self.save(path, new_value)
+        return True
+
     @abstractmethod
     def load(self, path: str | Path) -> bytes:
         """Return the bytes stored at *path*.

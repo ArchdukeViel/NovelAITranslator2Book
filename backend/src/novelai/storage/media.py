@@ -99,6 +99,18 @@ def _guess_asset_suffix(self: Any, source_url: str | None, content_type: str | N
 
 
 def clear_chapter_image_assets(self: Any, novel_id: str, chapter_id: str) -> None:
+    """Delete all stored image assets for a chapter.
+
+    Refuses when an active generation exists: the committed snapshot's
+    ``assets/`` tree is byte-immutable (Section 12) and raw asset mutation
+    must go through a new staged generation instead.
+    """
+    if self.get_active_generation(novel_id) is not None:
+        raise RuntimeError(
+            f"Refusing to clear image assets for {novel_id}/{chapter_id}: "
+            "an active generation snapshot is the authoritative asset layout; "
+            "raw asset mutation requires a new staged generation."
+        )
     safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
     image_dir = self._content_root(novel_id) / "assets" / "images" / encode_physical_stem(safe_chapter_id)
     if self._path_exists(image_dir):
@@ -115,6 +127,19 @@ def save_chapter_image_asset(
     source_url: str | None = None,
     content_type: str | None = None,
 ) -> dict[str, Any]:
+    """Persist one chapter image asset into the raw layout.
+
+    Refuses when an active generation exists: the committed snapshot's
+    ``assets/`` tree is byte-immutable (Section 12). Crawls stage assets
+    through :func:`stage_generation_image` instead; any other raw asset
+    mutation requires a new staged generation.
+    """
+    if self.get_active_generation(novel_id) is not None:
+        raise RuntimeError(
+            f"Refusing to save image asset for {novel_id}/{chapter_id}: "
+            "an active generation snapshot is the authoritative asset layout; "
+            "raw asset mutation requires a new staged generation."
+        )
     suffix = self._guess_asset_suffix(source_url, content_type)
     filename = f"{image_index:04d}{suffix}"
     path = self._chapter_image_dir(novel_id, chapter_id) / filename
