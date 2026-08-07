@@ -159,7 +159,8 @@ def test_cache_flush_dedupes_pending_keys_and_skips_rejected_chunks() -> None:
 
 
 def test_cache_flush_writes_only_accepted_attempt(tmp_path) -> None:
-    """Section 8: identical cache key only keeps the last accepted attempt."""
+    """Section 8/9: only the pending entry matching the QA-accepted attempt
+    tuple is flushed; a rejected attempt never enters the cache."""
     svc = TranslationCacheService(cache_dir=Path(tmp_path / "cache"))
     import pathlib
 
@@ -180,7 +181,16 @@ def test_cache_flush_writes_only_accepted_attempt(tmp_path) -> None:
         provider_key="mock",
         provider_model="m",
     )
-    ctx.chunk_states["c1"] = {"status": "translated"}
+    # QA accepted exactly attempt 2 under this key/output hash.
+    ctx.chunk_states["c1"] = {
+        "status": "translated",
+        "qa_status": "passed",
+        "accepted_attempt_number": 2,
+        "accepted_provider_key": "mock",
+        "accepted_provider_model": "m",
+        "accepted_cache_key": key,
+        "accepted_output_hash": "hash-2",
+    }
     ctx.metadata["progress"] = {}
 
     def _entry(translated_text: str, attempt: int) -> CacheEntry:
@@ -211,3 +221,5 @@ def test_cache_flush_writes_only_accepted_attempt(tmp_path) -> None:
     assert cached is not None
     assert cached.translated_text == "attempt-two"
     assert cached.attempt_number == 2
+    # The rejected attempt's entry was dropped, not deduped.
+    assert ctx.metadata["progress"]["cache_flush_dropped"] == 1

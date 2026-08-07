@@ -451,10 +451,22 @@ def test_cache_flush_stamps_acceptance_provenance() -> None:
         provider_model="m",
         created_at="2026-01-01T00:00:00Z",
         chunk_id="c1",
+        attempt_number=1,
+        output_hash="h1",
     )
     context = PipelineState(
         "https://example.test/ch",
-        chunk_states={"c1": {"status": "translated", "qa_status": "passed"}},
+        chunk_states={
+            "c1": {
+                "status": "translated",
+                "qa_status": "passed",
+                "accepted_attempt_number": 1,
+                "accepted_provider_key": "p",
+                "accepted_provider_model": "m",
+                "accepted_cache_key": "k1",
+                "accepted_output_hash": "h1",
+            }
+        },
         metadata={"_pending_cache_entries": [("k1", entry)]},
     )
     stage = CacheFlushStage(cache_service=_FakeCacheService())  # type: ignore[arg-type]

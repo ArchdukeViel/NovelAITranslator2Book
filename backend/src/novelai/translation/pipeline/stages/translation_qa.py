@@ -9,7 +9,7 @@ from novelai.shared.pipeline import ChunkTranslationStatus
 from novelai.storage.service import StorageService
 from novelai.translation.pipeline.context import PipelineState, TranslationChunk
 from novelai.translation.pipeline.stages.base import PipelineStage
-from novelai.translation.pipeline.stages.translate_cache_lookup import persist_chunk_state
+from novelai.translation.pipeline.stages.translate_cache_lookup import RETRY_MARKED_STATUSES, persist_chunk_state
 from novelai.translation.qa import (
     TranslationQAError,
     TranslationQAResult,
@@ -109,6 +109,48 @@ class TranslationQAStage(PipelineStage):
             errors=unique_errors,
         )
 
+    @staticmethod
+    def _stamp_accepted_attempt(context: PipelineState, chunk_state: dict[str, Any], chunk_id: str) -> None:
+        """Section 9: persist the exact QA-accepted attempt identity.
+
+        The accepted tuple (attempt_number, provider_key, provider_model,
+        cache_key, output_hash) is derived from the chunk's last translated
+        attempt and its pending cache entry, so a flush can write only the
+        accepted output and a rejected attempt can never enter the cache.
+        """
+        attempt = chunk_state.get("attempt_number")
+        provider_key = chunk_state.get("provider_key")
+        provider_model = chunk_state.get("provider_model")
+        if attempt is None or not provider_key:
+            return
+        chunk_state["accepted_attempt_number"] = attempt
+        chunk_state["accepted_provider_key"] = provider_key
+        chunk_state["accepted_provider_model"] = provider_model
+        pending = context.metadata.get("_pending_cache_entries")
+        if isinstance(pending, list):
+            for key, entry in pending:
+                if getattr(entry, "chunk_id", None) != chunk_id:
+                    continue
+                if getattr(entry, "attempt_number", None) != attempt:
+                    continue
+                chunk_state["accepted_cache_key"] = key
+                chunk_state["accepted_output_hash"] = getattr(entry, "output_hash", None)
+                break
+
+    @staticmethod
+    def _reject_pending_attempts(context: PipelineState, chunk_state: dict[str, Any], chunk_id: str) -> None:
+        """Section 9: mark the exact rejected attempt and invalidate its
+        pending cache entries so they can never be flushed."""
+        pending = context.metadata.get("_pending_cache_entries")
+        if not isinstance(pending, list):
+            return
+        chunk_state["rejected_attempt_number"] = chunk_state.get("attempt_number")
+        rejected_keys = [key for key, entry in pending if getattr(entry, "chunk_id", None) == chunk_id]
+        chunk_state["rejected_cache_keys"] = rejected_keys
+        context.metadata["_pending_cache_entries"] = [
+            (key, entry) for key, entry in pending if getattr(entry, "chunk_id", None) != chunk_id
+        ]
+
     async def run(self, context: PipelineState) -> PipelineState:
         raw_translations = list(context.translations)
         if len(raw_translations) != len(context.translation_chunks):
@@ -172,6 +214,8 @@ class TranslationQAStage(PipelineStage):
             if result.passed:
                 chunk_state["status"] = ChunkTranslationStatus.TRANSLATED.value
                 chunk_state["qa_status"] = "passed"
+                # Section 9: persist the exact accepted attempt identity.
+                self._stamp_accepted_attempt(context, chunk_state, chunk_id)
                 # DEBT-053: optional LLM grader for passed chunks only.
                 if llm_grader is not None:
                     llm_score = await evaluate_translation_quality_with_llm(
@@ -222,6 +266,10 @@ class TranslationQAStage(PipelineStage):
                 chunk_state["qa_status"] = "qa_failed"
                 chunk_state["error_code"] = result.errors[0] if result.errors else "translation_qa_failed"
                 failed_chunk_ids.append(chunk_id)
+            if chunk_state.get("status") in RETRY_MARKED_STATUSES:
+                # Section 9: a rejected attempt's pending cache entries are
+                # invalidated immediately — never flushed.
+                self._reject_pending_attempts(context, chunk_state, chunk_id)
             context.chunk_states[chunk_id] = chunk_state
             # Persist the disposition so needs_retry/needs_review/qa_failed
             # markers survive re-runs and restarts (Blocker C).

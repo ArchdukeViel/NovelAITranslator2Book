@@ -16,12 +16,17 @@ class CacheFlushStage(PipelineStage):
     """Write pending translation cache entries after QA passes.
 
     Runs after TranslationQAStage. If QA already raised, this stage never runs
-    (pipeline stops). Only successful chunks get their output cached; pending
-    entries whose chunk is marked needs_retry, needs_review, or qa_failed are
-    dropped (invalidated) and never written. When a chunk is retried, retry
-    iterations append entries with the same key; only the most recent (final
-    accepted attempt) entry is flushed, so a rejected attempt's output can
-    never overwrite the accepted one.
+    (pipeline stops).
+
+    Section 9: the acceptance rule is the exact QA-accepted attempt tuple, not
+    chunk status + cache-key dedup. TranslationQAStage stamps
+    ``accepted_attempt_number`` / ``accepted_provider_key`` /
+    ``accepted_provider_model`` / ``accepted_cache_key`` /
+    ``accepted_output_hash`` on the chunk state and removes rejected
+    attempts' pending entries. This stage writes ONLY the pending entry
+    matching that accepted tuple — a rejected attempt's output can never
+    enter the cache, even when a retry later accepts a different provider's
+    output under a different cache key.
     """
 
     def __init__(self, cache_service: TranslationCacheService | None = None) -> None:
@@ -38,36 +43,42 @@ class CacheFlushStage(PipelineStage):
         written = 0
         failed = 0
         dropped = 0
-        # Dedupe by key keeping the last entry: a retried chunk appends one
-        # pending entry per provider attempt (same key), and only the final
-        # attempt — the one that passed QA — may be cached.
-        by_key: dict[str, tuple[str, CacheEntry]] = {}
-        for raw_entry in pending:
-            if not isinstance(raw_entry, (tuple, list)) or len(raw_entry) != 2:
-                continue
-            key, entry = raw_entry
+        for key, entry in pending:
             if not isinstance(entry, CacheEntry):
                 continue
-            # Drop pending entries for chunks that were rejected: their output
-            # must never reach either cache (Blocker C).
             chunk_id = entry.chunk_id
             chunk_state = context.chunk_states.get(chunk_id, {}) if chunk_id else {}
             status = chunk_state.get("status")
+            # Backstop: a rejected chunk's entries are never cached even if
+            # the accepted tuple is missing (e.g. legacy state).
             if status in RETRY_MARKED_STATUSES:
                 logger.info("Dropping pending cache entry for chunk %s with status %s", chunk_id, status)
                 dropped += 1
                 continue
-            by_key[key] = (key, entry)
-
-        for key, entry in by_key.values():
+            # Exact acceptance rule: write only the entry matching the
+            # QA-accepted attempt tuple.
+            accepted = (
+                chunk_state.get("accepted_attempt_number") == entry.attempt_number
+                and chunk_state.get("accepted_provider_key") == entry.provider_key
+                and chunk_state.get("accepted_provider_model") == entry.provider_model
+                and chunk_state.get("accepted_cache_key") == key
+                and chunk_state.get("accepted_output_hash") == entry.output_hash
+            )
+            if not accepted:
+                logger.info(
+                    "Dropping pending cache entry for chunk %s (attempt %s) not matching accepted tuple",
+                    chunk_id,
+                    entry.attempt_number,
+                )
+                dropped += 1
+                continue
             try:
                 # Stamp acceptance provenance: the entry only reaches this
-                # point after QA passed, so record exactly that fact.
+                # point after QA accepted exactly this attempt.
                 if entry.accepted_at is None:
                     entry.accepted_at = datetime.now(UTC).isoformat()
                 if entry.qa_status is None:
-                    chunk_state = context.chunk_states.get(entry.chunk_id or "", {}) if entry.chunk_id else {}
-                    entry.qa_status = str(chunk_state.get("qa_status") or chunk_state.get("status") or "passed")
+                    entry.qa_status = str(chunk_state.get("qa_status") or "passed")
                 self._cache_service.set(key, entry)
                 written += 1
             except Exception as exc:

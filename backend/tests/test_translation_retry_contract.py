@@ -153,8 +153,108 @@ def _build_stage(fixture, cache_service: TranslationCacheService, provider: Atte
     )
 
 
+class KeyedProvider:
+    """Provider with a distinct key per instance (model identity)."""
+
+    def __init__(self, key: str, outputs: list[str]) -> None:
+        self.key = key
+        self.outputs = list(outputs)
+        self.calls = 0
+
+    def available_models(self) -> list[str]:
+        return [self.key]
+
+    async def translate(self, prompt: str, model: str | None = None, request=None):
+        index = min(self.calls, len(self.outputs) - 1)
+        self.calls += 1
+        return {"text": self.outputs[index], "metadata": {}}
+
+
+@pytest.mark.asyncio
+async def test_cross_model_rejected_attempt_never_enters_cache() -> None:
+    """Section 9: model A attempt 1 is QA-rejected; model B attempt 2 is
+    accepted. Exactly one provider call per model, two distinct cache keys,
+    the rejected key absent, the accepted key present, exactly one final
+    cache entry — driven through the real Translate/QA/Flush stages."""
+    fixture = create_test_fixture()
+    try:
+        chunk = _chunk()
+        svc = TranslationCacheService(cache_dir=fixture.data_dir / "cache")
+        # Attempt 1 output is byte-identical to the source: deterministic QA
+        # rejects it (translation_same_as_source). Attempt 2 is a clean
+        # translation.
+        provider_a = KeyedProvider("model_a", [chunk.source_text])
+        provider_b = KeyedProvider("model_b", ["Chapter one.\n\nThe scene continues."])
+        providers = {"model_a": provider_a, "model_b": provider_b}
+
+        stage = TranslateStage(
+            provider_factory=lambda key: providers[key],  # type: ignore[arg-type]
+            cache=fixture.cache,
+            cache_service=svc,
+            settings_service=fixture.settings_service,
+            usage_service=fixture.usage_service,
+            storage=fixture.storage,
+        )
+        qa = TranslationQAStage(storage=fixture.storage)
+        flush = CacheFlushStage(cache_service=svc)
+
+        ctx = _context()
+        ctx.translation_chunks = [chunk]
+        ctx.provider_key = "model_a"
+        ctx.provider_model = "model_a"
+
+        # Attempt 1 (model A): translated, then QA rejects.
+        res1 = await stage.run(ctx)
+        assert provider_a.calls == 1
+        with pytest.raises(TranslationQAError):
+            res1 = await qa.run(res1)
+        assert ctx.chunk_states[chunk.chunk_id]["status"] == "qa_failed"
+        # The rejected attempt's pending entry was invalidated immediately.
+        assert ctx.metadata["_pending_cache_entries"] == []
+        rejected_key = ctx.chunk_states[chunk.chunk_id]["rejected_cache_keys"][0]
+        assert rejected_key == make_cache_key(
+            chunk.source_text,
+            "ja",
+            "en",
+            _hash_text(""),
+            provider_key="model_a",
+            provider_model="model_a",
+            prompt_version="translation_request_v1",
+        )
+
+        # Attempt 2 (model B): fresh request, QA accepts.
+        ctx.provider_key = "model_b"
+        ctx.provider_model = "model_b"
+        res2 = await stage.run(ctx)
+        assert provider_b.calls == 1
+        res2 = await qa.run(res2)
+        state = res2.chunk_states[chunk.chunk_id]
+        assert state["status"] == "translated"
+        assert state["accepted_attempt_number"] == 2
+        assert state["accepted_provider_key"] == "model_b"
+        assert state["accepted_cache_key"] != ctx.chunk_states[chunk.chunk_id]["rejected_cache_keys"][0]
+
+        # Flush: only the accepted attempt's entry is written.
+        await flush.run(res2)
+        rejected_key = ctx.chunk_states[chunk.chunk_id]["rejected_cache_keys"][0]
+        accepted_key = state["accepted_cache_key"]
+        assert rejected_key != accepted_key
+        assert svc.get(rejected_key) is None
+        accepted = svc.get(accepted_key)
+        assert accepted is not None
+        assert accepted.translated_text == "Chapter one.\n\nThe scene continues."
+        assert accepted.attempt_number == 2
+        assert accepted.provider_key == "model_b"
+        assert svc.stats()["total_entries"] == 1
+        assert res2.metadata["progress"]["cache_flush_written"] == 1
+        assert res2.metadata["progress"]["cache_flush_dropped"] == 0
+    finally:
+        fixture.cleanup()
+
+
 @pytest.mark.asyncio
 async def test_retry_marked_chunk_bypasses_both_caches_and_fetches_fresh() -> None:
+    """needs_retry chunks never reuse output or read either cache: fresh request."""
     """needs_retry chunks never reuse output or read either cache: fresh request."""
     fixture = create_test_fixture()
     try:
@@ -341,8 +441,11 @@ async def test_no_pre_qa_cache_write_and_flush_writes_only_after_acceptance() ->
         assert entry.translation_run_id == "run_blc"
         assert entry.output_hash == hash_text(entry.translated_text)
 
-        # After QA accepts (status translated), flush writes the entry.
+        # After QA accepts (status translated + accepted tuple), flush writes
+        # exactly the accepted entry.
         assert res.chunk_states[chunk.chunk_id]["status"] == "translated"
+        res = await TranslationQAStage(storage=fixture.storage).run(res)
+        assert res.chunk_states[chunk.chunk_id]["accepted_attempt_number"] == 1
         await CacheFlushStage(cache_service=svc).run(res)
         got = svc.get(entry.key)
         assert got is not None
@@ -393,9 +496,18 @@ async def test_cache_flush_drops_rejected_entries_and_keeps_last_attempt() -> No
         assert svc.get(key) is None
         assert ctx.metadata["progress"]["cache_flush_dropped"] == 2
 
-        # Accepted chunk: same key across attempts; only the final attempt is kept.
+        # Accepted chunk: same key across attempts; only the exact
+        # QA-accepted attempt (2) is flushed, attempt 1 is dropped.
         ctx2 = PipelineState(chapter_url="x", novel_id="novel1", chapter_id="chapter_001")
-        ctx2.chunk_states["c0001"] = {"status": "translated"}
+        ctx2.chunk_states["c0001"] = {
+            "status": "translated",
+            "qa_status": "passed",
+            "accepted_attempt_number": 2,
+            "accepted_provider_key": "mock",
+            "accepted_provider_model": "mock-model",
+            "accepted_cache_key": key,
+            "accepted_output_hash": hash_text("attempt-two"),
+        }
         ctx2.metadata["_pending_cache_entries"] = [
             (key, entry_for("attempt-one", 1)),
             (key, entry_for("attempt-two", 2)),
@@ -406,6 +518,7 @@ async def test_cache_flush_drops_rejected_entries_and_keeps_last_attempt() -> No
         assert got is not None
         assert got.translated_text == "attempt-two"
         assert got.attempt_number == 2
+        assert ctx2.metadata["progress"]["cache_flush_dropped"] == 1
     finally:
         fixture.cleanup()
 
