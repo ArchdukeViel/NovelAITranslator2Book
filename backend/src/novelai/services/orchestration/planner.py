@@ -151,12 +151,27 @@ def create_crawl_plan(
                 # enter periodic revalidation so changes are not missed.
                 rolling_reval_eps.append(ep_id)
 
-    # Check for removed episode IDs (present in recorded episode_map but absent from complete index)
+    # Check for removed episode IDs (present in recorded episode_map but absent from complete index).
+    # Section 10: only *newly* removed episodes are emitted as removal events.
+    # An episode already marked missing_from_current_index was removed in a
+    # previous reconciliation and must not appear as a new removal again.
     complete_ep_ids = {str(ch.get("source_episode_id") or ch.get("id") or ch.get("num")) for ch in full_index}
-    removed_eps = [ep_id for ep_id in episode_map if ep_id not in complete_ep_ids]
+    removed_eps = [
+        ep_id
+        for ep_id in episode_map
+        if ep_id not in complete_ep_ids
+        and (episode_map[ep_id].get("source_availability") != "missing_from_current_index")
+    ]
 
-    # Calculate reordered episode IDs (compare relative order of common episode IDs)
-    prev_ordered_ep_ids = [ep_id for ep_id in episode_map if ep_id in complete_ep_ids]
+    # Calculate reordered episode IDs (compare relative order of common episode IDs).
+    # Section 10: the previous order comes from the persisted
+    # ``ordered_episode_ids`` snapshot, never from ``episode_map`` dictionary
+    # insertion order, so repeated update crawls converge to an empty delta.
+    recorded_order = source_state.get("ordered_episode_ids") if isinstance(source_state, dict) else None
+    if isinstance(recorded_order, list):
+        prev_ordered_ep_ids = [str(ep_id) for ep_id in recorded_order if str(ep_id) in complete_ep_ids]
+    else:
+        prev_ordered_ep_ids = [ep_id for ep_id in episode_map if ep_id in complete_ep_ids]
     curr_ordered_ep_ids = [
         str(ch.get("source_episode_id") or ch.get("id") or ch.get("num"))
         for ch in full_index

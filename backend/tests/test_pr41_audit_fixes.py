@@ -557,6 +557,112 @@ async def test_redirect_throttle_attributed_to_responding_host() -> None:
     assert not any(url == "https://cdn.test/ok" and status == 0 for url, status in throttle.after_calls)
 
 
+@pytest.mark.asyncio
+async def test_dict_cookies_never_cross_origin_boundary() -> None:
+    """Section 11: a plain dict cookie (hostless request cookie) applies only
+    to the first hop and must never be forwarded to a redirected host."""
+    recorded: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        recorded.append(request)
+        if request.url.host == "origin.test":
+            return httpx.Response(302, headers={"Location": "https://cdn.test/ok"}, request=request)
+        return httpx.Response(200, text="ok", request=request)
+
+    service = _service(handler)
+    await service.get_text(
+        "https://origin.test/start",
+        source_key="test_source",
+        cookies={"session": "hostless-secret"},
+    )
+
+    assert len(recorded) == 2
+    assert "session=hostless-secret" in recorded[0].headers.get("cookie", "")
+    # Cross-origin hop: the hostless cookie must not follow.
+    assert "cookie" not in {k.lower() for k in recorded[1].headers}
+
+
+@pytest.mark.asyncio
+async def test_scoped_cookie_jar_applies_to_later_origins() -> None:
+    """A genuine httpx.Cookies jar keeps domain/path semantics: a cookie
+    scoped to the redirect destination IS applied on the later hop."""
+    recorded: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        recorded.append(request)
+        if request.url.host == "origin.test":
+            return httpx.Response(302, headers={"Location": "https://cdn.test/ok"}, request=request)
+        return httpx.Response(200, text="ok", request=request)
+
+    jar = httpx.Cookies()
+    jar.set("scoped", "secret", domain="cdn.test", path="/")
+    service = _service(handler)
+    await service.get_text("https://origin.test/start", source_key="test_source", cookies=jar)
+
+    assert len(recorded) == 2
+    # The jar's domain matching applies the cookie on the cdn.test hop.
+    assert "scoped=secret" in recorded[1].headers.get("cookie", "")
+
+
+@pytest.mark.asyncio
+async def test_redirect_to_error_status_attributes_actual_hop() -> None:
+    """redirect -> 429: the throttle records the 429 against the host that
+    emitted it (cdn.test), never the original URL; statuses are actual."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "origin.test":
+            return httpx.Response(302, headers={"Location": "https://cdn.test/limit"}, request=request)
+        return httpx.Response(429, request=request)
+
+    service = _service(handler)
+    with pytest.raises(Exception, match="429"):
+        await service.get_text("https://origin.test/start", source_key="test_source")
+
+    throttle = service._throttle
+    assert isinstance(throttle, _RecordingThrottle)
+    assert any(url == "https://origin.test/start" and status == 302 for url, status in throttle.after_calls)
+    assert any(url == "https://cdn.test/limit" and status == 429 for url, status in throttle.after_calls)
+    assert not any(url == "https://origin.test/start" and status == 429 for url, status in throttle.after_calls)
+    assert not any(status == 0 for _, status in throttle.after_calls)
+
+
+@pytest.mark.asyncio
+async def test_redirect_to_503_records_503_on_emitting_host() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "origin.test":
+            return httpx.Response(302, headers={"Location": "https://cdn.test/down"}, request=request)
+        return httpx.Response(503, request=request)
+
+    service = _service(handler)
+    with pytest.raises(Exception, match="503"):
+        await service.get_text("https://origin.test/start", source_key="test_source")
+
+    throttle = service._throttle
+    assert isinstance(throttle, _RecordingThrottle)
+    assert any(url == "https://cdn.test/down" and status == 503 for url, status in throttle.after_calls)
+    assert not any(status == 0 for _, status in throttle.after_calls)
+
+
+@pytest.mark.asyncio
+async def test_per_hop_before_after_symmetry() -> None:
+    """Every requested URL gets exactly one before_request and one
+    after_response with the actual status it returned."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "origin.test":
+            return httpx.Response(302, headers={"Location": "https://cdn.test/ok"}, request=request)
+        return httpx.Response(200, text="ok", request=request)
+
+    service = _service(handler)
+    await service.get_text("https://origin.test/start", source_key="test_source")
+
+    throttle = service._throttle
+    assert isinstance(throttle, _RecordingThrottle)
+    for url in throttle.before_urls:
+        assert sum(1 for u, _ in throttle.after_calls if u == url) == 1
+    assert len(throttle.before_urls) == len(throttle.after_calls) == 2
+
+
 # ---------------------------------------------------------------------------
 # S10 — resolve_asset_path has no legacy fallback under an active generation
 # ---------------------------------------------------------------------------
