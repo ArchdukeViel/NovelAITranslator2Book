@@ -26,6 +26,7 @@ from novelai.providers.model_fallbacks import model_candidates
 from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.orchestration import crawler as crawler_module
+from novelai.services.orchestration.translation import _translation_lineage_kwargs
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
@@ -2199,6 +2200,7 @@ def _save_delta_execution_fixture(
     old_translations: list[str] | None = None,
     structured: bool = True,
     translated_chapter_text: str | None = None,
+    translated_chapter_lineage_overrides: dict[str, Any] | None = None,
 ) -> None:
     storage.save_metadata(
         "novel-delta",
@@ -2256,8 +2258,34 @@ def _save_delta_execution_fixture(
             }
         )
     if translated_chapter_text is not None:
+        raw_text = "\n\n".join(new_paragraphs)
+        lineage_kwargs = _translation_lineage_kwargs(
+            storage,
+            "novel-delta",
+            "1",
+            raw_text=raw_text,
+            translated=translated_chapter_text,
+            translation_run_id="prior-run",
+            raw_generation_id="",
+            source_language="Japanese",
+            target_language="English",
+            style_preset=None,
+            consistency_mode=False,
+            json_output=False,
+            qa_policy_fingerprint="qa-fp",
+            auto_activate=True,
+            honorific_policy=None,
+            source_episode_id="1",
+        )
+        if translated_chapter_lineage_overrides:
+            lineage_kwargs.update(translated_chapter_lineage_overrides)
         storage.save_translated_chapter(
-            "novel-delta", "1", translated_chapter_text, provider_key="mock", provider_model="mock-1.0"
+            "novel-delta",
+            "1",
+            translated_chapter_text,
+            provider_key="mock",
+            provider_model="mock-1.0",
+            **lineage_kwargs,
         )
 
 
@@ -3389,3 +3417,561 @@ async def test_pipeline_phase_two_blocks_when_pending_glossary(orchestration_env
 
     assert summary["status"] == "blocked"
     assert summary["blocked"] is True
+
+
+# ---------------------------------------------------------------------------
+# S6 — resume-path validity (REQ-3.1) and delta-path output-contract parity
+# ---------------------------------------------------------------------------
+#
+# With ``TRANSLATION_DELTA_RETRANSLATION_ENABLED`` at its default ``True`` the
+# resume gate (``_check_chapter_resume_state``) skips its ``is_translation_valid``
+# branch and the delta retranslation path decides reuse vs. retranslation. The
+# delta path now mirrors the gate's output-shaping contract (style preset,
+# consistency mode, JSON output, honorific policy) and the Section 8 generation
+# provenance requirement, so a change to any of those dimensions invalidates a
+# previously-stored whole-chapter translation instead of silently reusing it.
+#
+# Tests run the real ``translate_chapters`` path twice with a counting stub and
+# assert the provider was/was not called (no ``is_translation_valid`` patching).
+# Gate-level tests additionally exercise ``_check_chapter_resume_state`` with
+# delta retranslation disabled, where the validity branch is the production
+# reuse decision.
+
+
+def _s6_orchestrator(orchestration_env, translation: StubTranslationService) -> NovelOrchestrationService:
+    return NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=translation,
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+
+def _s6_stage_commit_generation(storage: StorageService, generation_id: str) -> None:
+    """Stage a single-chapter generation with the minimal calls commit_generation
+    requires (mirrors the pr41 dispositions helper) and activate it."""
+    # Use the existing raw chapter text so paragraph hashes are unchanged.
+    raw_chapter = storage.load_chapter("novel-delta", "1") or {}
+    raw_text = raw_chapter.get("text", "raw 1")
+    storage.create_generation_stage(
+        "novel-delta",
+        generation_id,
+        source_key="stub",
+        source_work_id="novel-delta",
+        mode="update",
+        expected_chapters=1,
+    )
+    storage.stage_generation_metadata(
+        "novel-delta",
+        generation_id,
+        {
+            "title": "T",
+            "source_novel_id": "novel-delta",
+            "source_language": "Japanese",
+            "chapters": [{"id": "1", "num": 1, "title": "Chapter One", "url": "https://example.com/novel-delta/1"}],
+        },
+    )
+    storage.stage_generation_source_state(
+        "novel-delta",
+        generation_id,
+        {"chapters": [{"id": "1", "num": 1, "title": "Chapter One", "url": "https://example.com/novel-delta/1"}]},
+    )
+    storage.stage_generation_chapter_index(
+        "novel-delta",
+        generation_id,
+        [{"id": "1", "chapter_id": "1", "title": "C1", "url": "https://example.com/novel-delta/1"}],
+    )
+    storage.stage_generation_chapter("novel-delta", generation_id, "1", {"id": "1", "raw": {"text": raw_text}})
+    storage.commit_generation("novel-delta", generation_id, chapter_dispositions={"1": "fetched_new"})
+
+
+def _s6_legacy_seed(storage: StorageService, *, paragraphs: list[str], translated_text: str) -> None:
+    """Seed a pre-S4 legacy translation version with NO output-shaping lineage,
+    so validity must fail closed. Structured paragraph chunks are present so the
+    delta path does not bail on ``missing_lineage`` before the contract check."""
+    storage.save_metadata(
+        "novel-delta",
+        {
+            "source_key": "stub",
+            "source_language": "Japanese",
+            "chapters": [{"id": "1", "num": 1, "title": "Chapter One", "url": "https://example.com/novel-delta/1"}],
+        },
+    )
+    storage.save_chapter("novel-delta", "1", "\n\n".join(paragraphs))
+    lineage = [
+        {
+            "chapter_id": "1",
+            "paragraph_id": f"p{index:04d}",
+            "paragraph_index": index,
+            "source_hash": paragraph_source_hash(text),
+            "char_count": len(text),
+        }
+        for index, text in enumerate(paragraphs, start=1)
+    ]
+    storage.save_translation_chunks(
+        "novel-delta",
+        [
+            {
+                "chunk_id": "c0001",
+                "chapter_ids": ["1"],
+                "paragraph_ids": [item["paragraph_id"] for item in lineage],
+                "paragraph_hashes": [item["source_hash"] for item in lineage],
+                "paragraph_lineage": lineage,
+                "source_text": "\n\n".join(paragraphs),
+                "status": "translated",
+            }
+        ],
+    )
+    # Deliberately NO lineage kwargs: legacy record (no style/consistency/json/
+    # honorific/raw_generation_id stored).
+    storage.save_translated_chapter("novel-delta", "1", translated_text, provider_key="mock", provider_model="mock-1.0")
+
+
+def _s6_gate_contract_kwargs(
+    storage: StorageService,
+    *,
+    style_preset: str | None = None,
+    consistency_mode: bool | None = False,
+    json_output: bool | None = False,
+    honorific_policy: str | None = None,
+    active_raw_generation_id: str | None = None,
+    qa_policy_fingerprint: str = "qa-fp",
+) -> dict[str, Any]:
+    """Build the exact effective-contract kwargs translate_chapters passes to
+    _check_chapter_resume_state, computed from storage so hashes match the
+    stored lineage written by _translation_lineage_kwargs."""
+    raw_chapter = storage.load_chapter("novel-delta", "1") or {}
+    current_raw_text = raw_chapter.get("text") if isinstance(raw_chapter.get("text"), str) else ""
+    current_source_text_hash = storage._hash_text(current_raw_text) if current_raw_text else ""
+    current_source_structure_hash = storage._hash_text(
+        json.dumps(raw_chapter.get("source_blocks") or [], ensure_ascii=False, sort_keys=True, default=str)
+    )
+    current_source_image_manifest_hash = storage._hash_text(
+        json.dumps(raw_chapter.get("images") or [], ensure_ascii=False, sort_keys=True, default=str)
+    )
+    return {
+        "source_text_hash": current_source_text_hash,
+        "effective_glossary_hash": None,
+        "prompt_template_version": None,
+        "provider_key": "mock",
+        "provider_model": "mock-1.0",
+        "active_raw_generation_id": active_raw_generation_id,
+        "source_structure_hash": current_source_structure_hash,
+        "source_image_manifest_hash": current_source_image_manifest_hash,
+        "qa_policy_fingerprint": qa_policy_fingerprint,
+        "source_language": "Japanese",
+        "target_language": "English",
+        "style_preset": style_preset,
+        "consistency_mode": consistency_mode,
+        "json_output": json_output,
+        "honorific_policy": honorific_policy,
+    }
+
+
+@pytest.mark.asyncio
+async def test_s6_unchanged_contract_reuses_without_provider_call(orchestration_env) -> None:
+    _save_delta_execution_fixture(
+        orchestration_env["storage"],
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old whole chapter",
+        structured=False,
+    )
+    translation = StubTranslationService(final_text="should not be called")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = orchestration_env["storage"].load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "old whole chapter"
+    assert translation.calls == []
+    assert saved["confidence_details"]["delta"]["mode"] == "whole_chapter_unchanged"
+
+
+@pytest.mark.asyncio
+async def test_s6_style_preset_change_retranslates(orchestration_env) -> None:
+    _save_delta_execution_fixture(
+        orchestration_env["storage"],
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old literary text",
+        translated_chapter_lineage_overrides={"style_preset": "literary"},
+        structured=False,
+    )
+    translation = StubTranslationService(final_text="new casual text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+        style_preset="casual",
+    )
+
+    saved = orchestration_env["storage"].load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "new casual text"
+    assert len(translation.calls) == 1
+    assert translation.calls[0]["style_preset"] == "casual"
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
+
+
+@pytest.mark.asyncio
+async def test_s6_consistency_mode_change_retranslates(orchestration_env) -> None:
+    _save_delta_execution_fixture(
+        orchestration_env["storage"],
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old consistent text",
+        translated_chapter_lineage_overrides={"consistency_mode": True},
+        structured=False,
+    )
+    translation = StubTranslationService(final_text="new standalone text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+        consistency_mode=False,
+    )
+
+    saved = orchestration_env["storage"].load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "new standalone text"
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
+
+
+@pytest.mark.asyncio
+async def test_s6_honorific_policy_change_retranslates(orchestration_env) -> None:
+    _save_delta_execution_fixture(
+        orchestration_env["storage"],
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old honorific text",
+        translated_chapter_lineage_overrides={"honorific_policy": "default_honorifics"},
+        structured=False,
+    )
+    translation = StubTranslationService(final_text="new no-honorific text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+        honorific_policy="none",
+    )
+
+    saved = orchestration_env["storage"].load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "new no-honorific text"
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
+
+
+@pytest.mark.asyncio
+async def test_s6_missing_lineage_field_retranslates(orchestration_env) -> None:
+    _s6_legacy_seed(
+        orchestration_env["storage"],
+        paragraphs=["A.", "B."],
+        translated_text="legacy whole chapter",
+    )
+    translation = StubTranslationService(final_text="fresh full text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = orchestration_env["storage"].load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "fresh full text"
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
+
+
+@pytest.mark.asyncio
+async def test_s6_generation_change_identical_source_reuses(orchestration_env) -> None:
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="gen-a translation",
+        translated_chapter_lineage_overrides={"raw_generation_id": "gen-a"},
+        structured=False,
+    )
+    _s6_stage_commit_generation(storage, "gen-b")
+    assert storage.resolve_active_generation_id("novel-delta") == "gen-b"
+
+    translation = StubTranslationService(final_text="should not be called")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "gen-a translation"  # provenance-only: gen changed, source identical
+    assert translation.calls == []
+    assert saved["confidence_details"]["delta"]["mode"] == "whole_chapter_unchanged"
+
+
+@pytest.mark.asyncio
+async def test_s6_changed_source_text_retranslates_delta_window(orchestration_env) -> None:
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "B.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole",
+        translated_chapter_lineage_overrides=None,
+        structured=True,
+    )
+    # Change the novel-root raw text so paragraph B differs.
+    storage.save_chapter("novel-delta", "1", "A.\n\nBee.\n\nC.")
+    translation = StubTranslationService(paragraph_prefix="new:")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["mode"] == "delta"
+
+
+@pytest.mark.asyncio
+async def test_s6_history_retained_after_retranslation(orchestration_env) -> None:
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="literary chapter",
+        translated_chapter_lineage_overrides={"style_preset": "literary"},
+        structured=False,
+    )
+    versions_before = storage.list_translated_chapter_versions("novel-delta", "1")
+    assert len(versions_before) == 1
+    assert versions_before[0]["text"] == "literary chapter"
+
+    translation = StubTranslationService(final_text="casual chapter")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+        style_preset="casual",
+    )
+
+    versions_after = storage.list_translated_chapter_versions("novel-delta", "1")
+    assert len(versions_after) == 2
+    # The prior version survives with its old (literary) text.
+    prior = [v for v in versions_after if not v["active"]]
+    assert len(prior) == 1
+    assert prior[0]["text"] == "literary chapter"
+    active = [v for v in versions_after if v["active"]]
+    assert len(active) == 1
+    assert active[0]["text"] == "casual chapter"
+
+
+# Gate-level tests: delta retranslation disabled so the resume gate's
+# ``is_translation_valid`` branch is the production reuse decision.
+
+
+@pytest.mark.asyncio
+async def test_s6_gate_valid_contract_skips(orchestration_env, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="valid text",
+        translated_chapter_lineage_overrides=None,
+        structured=False,
+    )
+    orchestrator = _s6_orchestrator(orchestration_env, StubTranslationService())
+
+    from novelai.services.orchestration.translation_resume import _check_chapter_resume_state
+
+    result = _check_chapter_resume_state(
+        orchestrator,
+        novel_id="novel-delta",
+        chapter_id="1",
+        force=False,
+        **_s6_gate_contract_kwargs(storage),
+    )
+    assert result is not None
+    assert result["status"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_s6_gate_style_change_retranslates(orchestration_env, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="literary text",
+        translated_chapter_lineage_overrides={"style_preset": "literary"},
+        structured=False,
+    )
+    orchestrator = _s6_orchestrator(orchestration_env, StubTranslationService())
+
+    from novelai.services.orchestration.translation_resume import _check_chapter_resume_state
+
+    kwargs = _s6_gate_contract_kwargs(storage, style_preset="casual")
+    result = _check_chapter_resume_state(orchestrator, novel_id="novel-delta", chapter_id="1", force=False, **kwargs)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_s6_gate_consistency_change_retranslates(orchestration_env, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="consistent text",
+        translated_chapter_lineage_overrides={"consistency_mode": True},
+        structured=False,
+    )
+    orchestrator = _s6_orchestrator(orchestration_env, StubTranslationService())
+
+    from novelai.services.orchestration.translation_resume import _check_chapter_resume_state
+
+    kwargs = _s6_gate_contract_kwargs(storage, consistency_mode=False)
+    result = _check_chapter_resume_state(orchestrator, novel_id="novel-delta", chapter_id="1", force=False, **kwargs)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_s6_gate_honorific_change_retranslates(orchestration_env, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="honorific text",
+        translated_chapter_lineage_overrides={"honorific_policy": "default_honorifics"},
+        structured=False,
+    )
+    orchestrator = _s6_orchestrator(orchestration_env, StubTranslationService())
+
+    from novelai.services.orchestration.translation_resume import _check_chapter_resume_state
+
+    kwargs = _s6_gate_contract_kwargs(storage, honorific_policy="none")
+    result = _check_chapter_resume_state(orchestrator, novel_id="novel-delta", chapter_id="1", force=False, **kwargs)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_s6_gate_missing_lineage_field_fails_closed(orchestration_env, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
+    storage = orchestration_env["storage"]
+    _s6_legacy_seed(storage, paragraphs=["A.", "B."], translated_text="legacy text")
+    orchestrator = _s6_orchestrator(orchestration_env, StubTranslationService())
+
+    from novelai.services.orchestration.translation_resume import _check_chapter_resume_state
+
+    kwargs = _s6_gate_contract_kwargs(storage, qa_policy_fingerprint="")
+    result = _check_chapter_resume_state(orchestrator, novel_id="novel-delta", chapter_id="1", force=False, **kwargs)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_s6_gate_generation_identical_source_skips_provenance_only(orchestration_env, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="gen-a text",
+        translated_chapter_lineage_overrides={"raw_generation_id": "gen-a"},
+        structured=False,
+    )
+    _s6_stage_commit_generation(storage, "gen-b")
+    assert storage.resolve_active_generation_id("novel-delta") == "gen-b"
+    orchestrator = _s6_orchestrator(orchestration_env, StubTranslationService())
+
+    from novelai.services.orchestration.translation_resume import _check_chapter_resume_state
+
+    kwargs = _s6_gate_contract_kwargs(storage, active_raw_generation_id="gen-b")
+    result = _check_chapter_resume_state(orchestrator, novel_id="novel-delta", chapter_id="1", force=False, **kwargs)
+    # Provenance-only: raw_generation_id differs (gen-a stored vs gen-b active)
+    # but source hash is identical — valid, so skip.
+    assert result is not None
+    assert result["status"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_s6_gate_changed_source_hash_retranslates(orchestration_env, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="gen-a text",
+        translated_chapter_lineage_overrides={"raw_generation_id": "gen-a"},
+        structured=False,
+    )
+    # Mutate the novel-root raw text AFTER seeding so the stored source_hash
+    # no longer matches the current chapter content.
+    storage.save_chapter("novel-delta", "1", "A.\n\nBee.\n\nC.")
+    orchestrator = _s6_orchestrator(orchestration_env, StubTranslationService())
+
+    from novelai.services.orchestration.translation_resume import _check_chapter_resume_state
+
+    kwargs = _s6_gate_contract_kwargs(storage, active_raw_generation_id="gen-a")
+    result = _check_chapter_resume_state(orchestrator, novel_id="novel-delta", chapter_id="1", force=False, **kwargs)
+    assert result is None

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from novelai.storage.generations import GenerationManifest
+from novelai.storage.generations import GenerationManifest, _parse_active_generation_id
 from novelai.storage.service import StorageService
 
 
@@ -209,3 +209,42 @@ def test_atomic_write_survives_transient_windows_file_lock(monkeypatch, storage:
     # The transient lock was retried (at least two PermissionErrors absorbed
     # plus the successful replaces).
     assert calls["count"] >= 3
+
+
+# ---------------------------------------------------------------------------
+# S9 — Active generation ID parsing and pointer-corruption resilience
+# ---------------------------------------------------------------------------
+
+
+def test_parse_active_generation_id_handles_all_corrupt_and_valid_cases():
+    """_parse_active_generation_id maps missing, empty, malformed bytes, non-dict
+    JSON, non-string IDs, and whitespace-only IDs to None, and returns the valid
+    trimmed ID string for valid pointer payloads."""
+    assert _parse_active_generation_id(None) is None
+    assert _parse_active_generation_id(b"") is None
+    assert _parse_active_generation_id(b"invalid json {") is None
+    assert _parse_active_generation_id(b"[1, 2, 3]") is None
+    assert _parse_active_generation_id(b'"string_json"') is None
+    assert _parse_active_generation_id(b'{"active_generation_id": ""}') is None
+    assert _parse_active_generation_id(b'{"active_generation_id": "   "}') is None
+    assert _parse_active_generation_id(b'{"active_generation_id": 12345}') is None
+    assert _parse_active_generation_id(b'{"active_generation_id": null}') is None
+    assert _parse_active_generation_id(b'{"active_generation_id": "gen-valid-123"}') == "gen-valid-123"
+
+
+def test_resolve_active_generation_id_recovers_from_corrupt_pointer_file(storage: StorageService):
+    """When active_generation.json on disk is corrupted or empty,
+    resolve_active_generation_id returns None without crashing."""
+    novel_id = "novel-corrupt-pointer"
+    pointer_path = storage._generations_dir(novel_id) / "active_generation.json"
+    pointer_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Corrupt pointer file with invalid JSON
+    pointer_path.write_bytes(b"CORRUPTED_BYTES_{{")
+    assert storage.resolve_active_generation_id(novel_id) is None
+    assert storage.get_active_generation(novel_id) is None
+
+    # Empty pointer file
+    pointer_path.write_bytes(b"")
+    assert storage.resolve_active_generation_id(novel_id) is None
+    assert storage.get_active_generation(novel_id) is None

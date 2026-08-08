@@ -101,11 +101,11 @@ Each translation run produces a `TranslationRunManifest` linking:
   `review_count`, `failed_count`) and source-order `chapter_ids`.
 
 Manifest persistence is logged but never silently swallowed so CI and
-operators see when the committed manifest goes missing. Manifest commit
-runs **before** active translation pointer publication so readers can never
-observe a partially recorded lineage.
+operators see when the committed manifest goes missing. Initial manifest
+persistence (`status="running"`) occurs before chapter translation work;
+final manifest update runs after chapter execution and records finalized counts.
 
-### Production Reuse Gate
+### Production Reuse Gate & Delta Retranslation Contract
 
 Before returning `already_complete` or `already_translated`, the production
 resume path builds the **current effective translation contract** and calls
@@ -125,6 +125,14 @@ resume path builds the **current effective translation contract** and calls
   (current output-shaping settings — any change alters generated text and
   forces retranslation; honorific policy compares normalized identity, so
   case/whitespace spelling variation never causes spurious retranslation)
+
+When delta retranslation is enabled (`TRANSLATION_DELTA_RETRANSLATION_ENABLED=True`,
+the default), the delta execution path (`_try_delta_translate_chapter`) enforces the
+identical output-shaping and generation-provenance contract before declaring a chapter
+`whole_chapter_unchanged`. If the stored translation version differs in style preset,
+consistency mode, JSON output, honorific policy, or lacks raw generation provenance,
+the delta path bails with `fallback_reason="output_contract_changed"` and forces full
+retranslation.
 
 `is_translation_valid` **fails closed** when a required input has no stored
 value on the existing translation version. A DB `COMPLETE` state is evidence

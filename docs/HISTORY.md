@@ -1,3 +1,35 @@
+## 2026-08-09 PR-41 Final Correctness Pass — Full Audit Completion (S3–S9)
+
+Complete verification of all PR #41 audit items (S3 through S9) on
+`feat/pipeline-upgrade-phases-1-8`. Fixed GenerationManifest disposition map checks,
+output-shaping workflow defaults symmetry (`style_preset`, `consistency_mode`, `json_output`, `honorific_policy`),
+native episode ID propagation in translation lineage, delta retranslation contract parity,
+catalog projection native episode ID & ordering preservation, and pointer parsing corruption resilience.
+Full backend suite (3027 passed, 26 skipped), E2E suite (5 passed), Pyright (0 errors), Ruff (clean),
+frontend Vitest (76 files / 847 tests passed), frontend typecheck (clean), frontend lint (clean), frontend build (succeeded).
+
+### Implementation Summary
+
+- **S3 (GenerationManifest Disposition Accounting)**: Enforced `dict[str, str]` canonical map requirement on `commit_generation` (empty map `{}` rejected; `require_dispositions=True` enforced for non-recovery commits); validator checks `dispositions_present` and `dispositions_use_canonical_names`.
+- **S4 (Output-Shaping Settings Symmetry)**: Added pure helper `_resolve_effective_output_policy` ensuring caller-supplied parameters (`style_preset`, `consistency_mode`, `json_output`, `honorific_policy`) take authority, while `None` falls back symmetrically to workflow defaults.
+- **S5 (Native Episode ID Lineage Propagation)**: `_translation_lineage_kwargs` now accepts `source_episode_id: str | None = None` and records native episode IDs (e.g. raw Kakuyomu episode IDs) instead of logical prefixed keys (`str(source_episode_id or chapter_id)`). Call sites in `translate_chapters` updated.
+- **S6 (Resume Validity & Delta Retranslation Parity)**: Extended `_try_delta_translate_chapter` with early contract validation (`_stored_output_contract_matches`) covering `style_preset`, `consistency_mode`, `json_output`, `honorific_policy`, and active generation provenance (`raw_generation_id`). A mismatch in any output-shaping setting or missing generation provenance now bails from whole-chapter reuse (`fallback_reason="output_contract_changed"`). Added 17 end-to-end and resume-gate unit tests.
+- **S7 (Catalog Projection Native Episode ID & Ordering Preservation)**: Verified and added unit tests proving `save_raw_chapter` and `save_translated_chapter` preserve native `source_episode_id`, `sequence_number`, and `chapter_number` across catalog projection refreshes without resetting to logical defaults.
+- **S8 (Docs Synchronization)**: Synchronized `docs/TRANSLATION.md`, `docs/STORAGE.md`, `docs/ARCHITECTURE.md`, and `docs/OPERATIONS.md` with active pipeline mechanics, write-sequences, and contract invalidation rules.
+- **S9 (Pointer Corruption Resilience)**: Added unit tests verifying `_parse_active_generation_id` handles missing, empty, malformed JSON, non-dict payloads, non-string IDs, and whitespace IDs by returning `None` safely.
+
+### Test Evidence (all passing)
+
+- Full backend test suite: 3027 passed, 26 skipped (was 2999 passed).
+- Backend E2E suite: 5 passed in 16.57s.
+- Pyright: 0 errors, 0 warnings.
+- Ruff: clean.
+- Frontend Typecheck: clean (`npm run typecheck`).
+- Frontend Vitest: 76 test files passed, 847 tests passed in 94.21s (`npm run test`).
+- Frontend ESLint: clean (`npm run lint`).
+- Frontend Build: succeeded (`npm run build`).
+- Graphify: updated (`graphify update . --no-cluster`).
+
 ## 2026-08-08 PR-41 Final Correctness Pass — Activation Counters, CAS Pointer Semantics, Translation Validity
 
 Follow-up to the PR-41 production-path hardening on
