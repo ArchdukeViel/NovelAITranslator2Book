@@ -100,6 +100,20 @@ enforce-admins. Re-enable review requirements when a second write-access
 reviewer exists. Remaining: sanitized incident/false-positive triage exercise
 (operator).
 
+Revised 2026-08-08: `main-protection` ruleset (id `20510996`,
+`repos/.../rulesets/20510996`) updated to set `require_code_owner_review`
+and `require_last_push_approval` to `false` after the same solo-operator
+deadlock surfaced via the ruleset (no CODEOWNERS file exists, and the only
+write-access user cannot approve their own PR — verified on PR #41:
+`mergeable_state=blocked` with every required check passing). All other
+ruleset rules preserved: `deletion`, `pull_request`
+(`required_approving_review_count=0`, `required_review_thread_resolution`,
+`dismiss_stale_reviews_on_push`), `required_linear_history`,
+`non_fast_forward`, enforcement `active` on `refs/heads/main`. PR #41
+(`58da35c`, 63 commits) verified `mergeStateStatus=CLEAN` after the change;
+merge intentionally deferred. Re-enable both flags when a second
+write-access reviewer exists.
+
 ## Active Work
 
 ## Feature & Design Gaps / Deferred Work (Stitch Screen 1794eb02d11a407b9b6343d727670125)
