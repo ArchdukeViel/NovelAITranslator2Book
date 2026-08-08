@@ -167,6 +167,161 @@ def test_contract_without_output_shaping_dims_skips_them() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Effective output-policy resolution — symmetric UNSET vs DEFAULT semantics
+# ---------------------------------------------------------------------------
+
+
+def _resolve_policy(**overrides: Any) -> tuple[Any, ...]:
+    from novelai.services.orchestration.translation import _resolve_effective_output_policy
+
+    args: dict[str, Any] = {
+        "style_preset": None,
+        "consistency_mode": None,
+        "json_output": None,
+        "honorific_policy": None,
+        "workflow_defaults": {},
+    }
+    args.update(overrides)
+    return _resolve_effective_output_policy(**args)
+
+
+def test_explicit_consistency_false_not_overridden_by_workflow_default() -> None:
+    """An explicit ``consistency_mode=False`` from the caller is the effective
+    identity even when the workflow default is ``True``: only an omitted value
+    (None) falls back to the default."""
+    style, consistency, _, _ = _resolve_policy(
+        consistency_mode=False,
+        workflow_defaults={"consistency_mode": True, "style_preset": "literary"},
+    )
+    assert consistency is False
+    assert style == "literary"
+
+
+def test_explicit_consistency_true_overrides_workflow_default_false() -> None:
+    _, consistency, _, _ = _resolve_policy(
+        consistency_mode=True,
+        workflow_defaults={"consistency_mode": False},
+    )
+    assert consistency is True
+
+
+def test_omitted_consistency_falls_back_to_workflow_default() -> None:
+    _, consistency, _, _ = _resolve_policy(workflow_defaults={"consistency_mode": True})
+    assert consistency is True
+
+
+def test_explicit_json_output_preserved_and_omitted_is_false() -> None:
+    """json_output has no workflow default: an explicit value passes through
+    and an omitted value resolves to False (no default can override)."""
+    _, _, json_out, _ = _resolve_policy(json_output=True)
+    assert json_out is True
+    _, _, json_out, _ = _resolve_policy(json_output=False)
+    assert json_out is False
+    _, _, json_out, _ = _resolve_policy()
+    assert json_out is False
+
+
+def test_explicit_style_preset_and_honorific_override_workflow_defaults() -> None:
+    style, _, _, honorific = _resolve_policy(
+        style_preset="casual",
+        honorific_policy="none",
+        workflow_defaults={"style_preset": "literary", "honorific_policy": "default_honorifics"},
+    )
+    assert style == "casual"
+    assert honorific == "none"
+
+
+def test_omitted_style_and_honorific_fall_back_to_workflow_defaults() -> None:
+    style, _, _, honorific = _resolve_policy(
+        workflow_defaults={"style_preset": "literary", "honorific_policy": "default_honorifics"}
+    )
+    assert style == "literary"
+    assert honorific == "default_honorifics"
+
+
+# ---------------------------------------------------------------------------
+# Source-episode lineage — native episode id survives the storage round trip
+# ---------------------------------------------------------------------------
+
+
+def _lineage_kwargs(
+    storage: StorageService,
+    *,
+    chapter_id: str,
+    source_episode_id: str | None = None,
+) -> dict[str, Any]:
+    from novelai.services.orchestration.translation import _translation_lineage_kwargs
+
+    return _translation_lineage_kwargs(
+        storage,
+        "novel-1",
+        chapter_id,
+        raw_text="raw text",
+        translated="translated",
+        translation_run_id="run-1",
+        raw_generation_id="gen-1",
+        source_language="ja",
+        target_language="en",
+        style_preset="literary",
+        consistency_mode=True,
+        json_output=False,
+        qa_policy_fingerprint="qa-fp-v1",
+        auto_activate=True,
+        honorific_policy="default_honorifics",
+        source_episode_id=source_episode_id,
+    )
+
+
+def test_lineage_uses_native_episode_id_not_logical_prefix() -> None:
+    """A Kakuyomu chapter keeps its native episode id (``16818093075570329555``)
+    in the stored translation lineage instead of the logical
+    ``kakuyomu:16818093075570329555`` prefix: ``load_chapter`` never exposes
+    the field, so the caller-threaded native id must win."""
+    storage = _fresh_storage()
+    kwargs = _lineage_kwargs(
+        storage,
+        chapter_id="kakuyomu:16818093075570329555",
+        source_episode_id="16818093075570329555",
+    )
+    assert kwargs["source_episode_id"] == "16818093075570329555"
+    assert kwargs["source_episode_id"] != "kakuyomu:16818093075570329555"
+
+
+def test_lineage_numeric_episode_id_regression() -> None:
+    """A Syosetu-style numeric episode id round-trips as a plain string even
+    when the resolved logical id is identical; no prefix is invented."""
+    storage = _fresh_storage()
+    kwargs = _lineage_kwargs(storage, chapter_id="42", source_episode_id="42")
+    assert kwargs["source_episode_id"] == "42"
+
+
+def test_lineage_without_native_id_falls_back_to_logical_id() -> None:
+    """Imported documents have no source-native episode identity: the logical
+    chapter id is the honest lineage value."""
+    storage = _fresh_storage()
+    kwargs = _lineage_kwargs(storage, chapter_id="kakuyomu:16818093075570329555")
+    assert kwargs["source_episode_id"] == "kakuyomu:16818093075570329555"
+
+
+def test_resolve_chapter_selection_exposes_native_episode_id() -> None:
+    """``ResolvedChapterSelection.source_episode_id`` is the source-native
+    identifier, independent of the logical chapter id the storage uses."""
+    from novelai.utils.chapter_selection import resolve_chapter_selection
+
+    resolved = resolve_chapter_selection(
+        {
+            "chapters": [
+                {"id": "kakuyomu:16818093075570329555", "source_episode_id": "16818093075570329555", "title": "C1"},
+                {"id": "42", "num": 42, "title": "C2"},
+            ]
+        },
+        "all",
+    )
+    assert [record.source_episode_id for record in resolved] == ["16818093075570329555", "42"]
+    assert [record.chapter_id for record in resolved] == ["kakuyomu:16818093075570329555", "42"]
+
+
+# ---------------------------------------------------------------------------
 # CAS activation — filesystem lock barrier across independent instances
 # ---------------------------------------------------------------------------
 
@@ -424,6 +579,7 @@ def test_scoped_unavailable_keeps_disposition_and_counts() -> None:
         chapter_dispositions={"1": "fetched_new", "2": "unavailable"},
     )
     assert manifest.unavailable_chapter_ids == ["2"]
+    assert manifest.chapter_dispositions is not None
     assert manifest.chapter_dispositions["2"] == "unavailable"
     assert manifest.chapter_dispositions["1"] == "fetched_new"
     # Legacy failed_chapters == unavailable entries; the explicit
@@ -468,14 +624,77 @@ def test_commit_without_disposition_map_raises() -> None:
         storage.commit_generation(novel_id, "gen-1")
 
 
-def test_empty_disposition_map_cannot_mask_missing_content() -> None:
-    """An empty map must not silently bypass membership reconciliation:
-    indexed chapters with no bundle and no unavailable record still fail."""
+def test_empty_disposition_map_fails_on_the_map_itself() -> None:
+    """An explicitly empty disposition map is rejected on the map itself,
+    even when every indexed chapter has a complete staged bundle: it must
+    never silently disable disposition reconciliation."""
     storage = _fresh_storage()
     novel_id = "novel-empty-map"
-    _stage_generation(storage, novel_id, "gen-1", index_ids=["1", "2"], bundles=[])
-    with pytest.raises(RuntimeError, match="every_index_entry_resolved"):
+    _stage_generation(storage, novel_id, "gen-1", index_ids=["1", "2"], bundles=["1", "2"])
+    with pytest.raises(RuntimeError, match="empty chapter_dispositions map"):
         storage.commit_generation(novel_id, "gen-1", chapter_dispositions={})
+    # The bypass never becomes active.
+    assert storage.resolve_active_generation_id(novel_id) is None
+
+
+def test_non_canonical_disposition_value_fails() -> None:
+    """A disposition value outside the canonical set cannot pass validation:
+    ``derive_counts_from_dispositions`` would silently ignore it, so the
+    validator rejects it explicitly."""
+    storage = _fresh_storage()
+    novel_id = "novel-bad-disposition"
+    _stage_generation(storage, novel_id, "gen-1", index_ids=["1", "2"], bundles=["1", "2"])
+    with pytest.raises(RuntimeError, match="dispositions_use_canonical_names"):
+        storage.commit_generation(
+            novel_id,
+            "gen-1",
+            chapter_dispositions={"1": "banana", "2": "banana"},
+        )
+    assert storage.resolve_active_generation_id(novel_id) is None
+
+
+def test_missing_disposition_key_fails() -> None:
+    """Every current-index chapter must appear exactly once in the map."""
+    storage = _fresh_storage()
+    novel_id = "novel-missing-disp"
+    _stage_generation(storage, novel_id, "gen-1", index_ids=["1", "2"], bundles=["1", "2"])
+    with pytest.raises(RuntimeError, match="disposition_for_every_index_entry"):
+        storage.commit_generation(novel_id, "gen-1", chapter_dispositions={"1": "fetched_new"})
+    assert storage.resolve_active_generation_id(novel_id) is None
+
+
+def test_extra_disposition_key_fails() -> None:
+    """A disposition for a chapter outside the current index is rejected."""
+    storage = _fresh_storage()
+    novel_id = "novel-extra-disp"
+    _stage_generation(storage, novel_id, "gen-1", index_ids=["1", "2"], bundles=["1", "2"])
+    with pytest.raises(RuntimeError, match="no_extra_dispositions"):
+        storage.commit_generation(
+            novel_id,
+            "gen-1",
+            chapter_dispositions={"1": "fetched_new", "2": "fetched_new", "9": "fetched_new"},
+        )
+    assert storage.resolve_active_generation_id(novel_id) is None
+
+
+def test_tampered_aggregate_count_fails_validation() -> None:
+    """Aggregate counters must reconcile with the disposition map: a manifest
+    whose ``saved_chapters`` disagrees with the derived fetched count fails
+    pre-activation validation."""
+    from novelai.storage.generations import _load_manifest, _save_manifest
+
+    storage = _fresh_storage()
+    novel_id = "novel-tampered-count"
+    _stage_generation(storage, novel_id, "gen-1", index_ids=["1", "2"], bundles=["1", "2"])
+    manifest = _load_manifest(storage, novel_id, "gen-1")
+    assert manifest is not None
+    manifest.chapter_dispositions = {"1": "fetched_new", "2": "fetched_new"}
+    manifest.saved_chapters = 5  # disagrees with derived fetched_count == 2
+    _save_manifest(storage, novel_id, "gen-1", manifest)
+
+    result = storage.validate_generation_activation(novel_id, "gen-1")
+    assert not result.is_valid
+    assert "derived_fetched_count_matches_manifest" in [check.name for check in result.failed_checks()]
 
 
 def test_mismatched_disposition_against_explicit_unavailable_fails() -> None:

@@ -105,6 +105,36 @@ def _qa_policy_fingerprint(
     return hash_text(serialized)
 
 
+def _resolve_effective_output_policy(
+    *,
+    style_preset: str | None,
+    consistency_mode: bool | None,
+    json_output: bool | None,
+    honorific_policy: str | None,
+    workflow_defaults: dict[str, Any] | None,
+) -> tuple[str | None, bool, bool, str | None]:
+    """Resolve caller-supplied output-shaping settings against workflow defaults.
+
+    The resolution is symmetric with the stored-version validity contract
+    (``is_translation_valid``): a caller-supplied value is always the
+    effective identity; workflow defaults apply ONLY when the caller did not
+    supply a value (``None`` means "not supplied" for every dimension).
+    ``consistency_mode`` and ``json_output`` are ``bool | None`` so an
+    explicit ``False`` is preserved instead of being indistinguishable from
+    an omitted value (which must fall back to the workflow default for
+    ``consistency_mode``). ``json_output`` has no workflow default, so an
+    omitted value resolves to ``False`` and an explicit value passes through.
+    """
+    defaults = workflow_defaults if isinstance(workflow_defaults, dict) else {}
+    effective_style_preset = style_preset if style_preset is not None else defaults.get("style_preset")
+    effective_consistency_mode = (
+        consistency_mode if consistency_mode is not None else bool(defaults.get("consistency_mode", False))
+    )
+    effective_json_output = json_output if json_output is not None else False
+    effective_honorific_policy = honorific_policy if honorific_policy is not None else defaults.get("honorific_policy")
+    return effective_style_preset, effective_consistency_mode, effective_json_output, effective_honorific_policy
+
+
 def _translation_lineage_kwargs(
     storage: Any,
     novel_id: str,
@@ -122,6 +152,11 @@ def _translation_lineage_kwargs(
     qa_policy_fingerprint: str | None,
     auto_activate: bool,
     honorific_policy: str | None = None,
+    # Source-native episode id (Kakuyomu ``episode_id``, Syosetu ``num``).
+    # ``load_chapter`` does not expose it, so the caller must pass the value
+    # resolved from the source index; the logical ``chapter_id`` is only the
+    # fallback (e.g. imported documents with no native episode identity).
+    source_episode_id: str | None = None,
 ) -> dict[str, Any]:
     """Section 8: assemble the complete raw-to-version lineage fields for a
     stored machine translation version so validity checks can consume the
@@ -135,7 +170,7 @@ def _translation_lineage_kwargs(
         "source_hash": storage._hash_text(raw_text or ""),
         "translation_run_id": translation_run_id,
         "raw_generation_id": raw_generation_id,
-        "source_episode_id": str(raw_bundle.get("source_episode_id") or chapter_id),
+        "source_episode_id": str(source_episode_id or chapter_id),
         "source_structure_hash": _json_hash(raw_bundle.get("source_blocks") or []),
         "source_image_manifest_hash": _json_hash(raw_bundle.get("images") or []),
         "qa_policy_fingerprint": qa_policy_fingerprint,
@@ -825,8 +860,9 @@ async def translate_chapters(
     style_preset: str | None = None,
     confidence_threshold: float = 0.55,
     mark_polish_needed: bool = True,
-    consistency_mode: bool = False,
-    json_output: bool = False,
+    consistency_mode: bool | None = None,
+    json_output: bool | None = None,
+    honorific_policy: str | None = None,
     allow_cross_provider_fallback: bool = True,
     skip_glossary_gate: bool = False,
 ) -> dict[str, Any]:
@@ -861,15 +897,26 @@ async def translate_chapters(
     effective_provider_key = provider_key or profile_provider
     effective_provider_model = provider_model or profile_model
 
-    # Read workflow defaults from metadata and apply as fallbacks.
+    # Read workflow defaults from metadata and apply as fallbacks. The
+    # effective identity for each output-shaping dimension is symmetric with
+    # the validity contract: an explicit caller value is authoritative and an
+    # explicit ``False`` (``consistency_mode`` / ``json_output``) is preserved
+    # — only an omitted value falls back to the workflow default.
     workflow_defaults = meta.get("translation_defaults") if isinstance(meta, dict) else {}
     if not isinstance(workflow_defaults, dict):
         workflow_defaults = {}
-    effective_style_preset = style_preset if style_preset is not None else workflow_defaults.get("style_preset")
-    effective_consistency_mode = (
-        consistency_mode if consistency_mode else bool(workflow_defaults.get("consistency_mode", False))
+    (
+        effective_style_preset,
+        effective_consistency_mode,
+        effective_json_output,
+        effective_honorific_policy,
+    ) = _resolve_effective_output_policy(
+        style_preset=style_preset,
+        consistency_mode=consistency_mode,
+        json_output=json_output,
+        honorific_policy=honorific_policy,
+        workflow_defaults=workflow_defaults,
     )
-    effective_honorific_policy = workflow_defaults.get("honorific_policy")
 
     # Auto-load stored glossary when none was explicitly provided.
     if glossary is None:
@@ -945,7 +992,7 @@ async def translate_chapters(
         source_language=effective_source_language,
         target_language=effective_target_language,
         style_preset=effective_style_preset,
-        json_output=json_output,
+        json_output=effective_json_output,
         consistency_mode=effective_consistency_mode,
         requested_chapters=[record.chapter_id for record in resolved],
         expected_count=len(resolved),
@@ -1035,8 +1082,8 @@ async def translate_chapters(
                 source_language=effective_source_language,
                 target_language=effective_target_language,
                 style_preset=effective_style_preset,
-                consistency_mode=bool(effective_consistency_mode),
-                json_output=bool(json_output),
+                consistency_mode=effective_consistency_mode,
+                json_output=effective_json_output,
                 honorific_policy=effective_honorific_policy,
             )
             if skip_result is not None:
@@ -1102,6 +1149,9 @@ async def translate_chapters(
                         job_id=job_id,
                         activity_id=activity_id,
                         allow_cross_provider_fallback=allow_cross_provider_fallback,
+                        json_output=effective_json_output,
+                        honorific_policy=effective_honorific_policy,
+                        active_raw_generation_id=raw_generation_id or None,
                     )
                     if delta_result.get("applied"):
                         translated = str(delta_result.get("text") or "")
@@ -1144,10 +1194,12 @@ async def translate_chapters(
                                 source_language=effective_source_language,
                                 target_language=effective_target_language,
                                 style_preset=effective_style_preset,
-                                consistency_mode=bool(effective_consistency_mode),
-                                json_output=bool(json_output),
+                                consistency_mode=effective_consistency_mode,
+                                json_output=effective_json_output,
                                 qa_policy_fingerprint=qa_policy_fingerprint,
                                 auto_activate=auto_activate,
+                                honorific_policy=effective_honorific_policy,
+                                source_episode_id=record.source_episode_id or chapter_id,
                             ),
                         )
                         safely_refresh_catalog_projection_after_storage_write(
@@ -1207,7 +1259,7 @@ async def translate_chapters(
                     style_preset=effective_style_preset,
                     consistency_mode=effective_consistency_mode,
                     honorific_policy=effective_honorific_policy,
-                    json_output=json_output,
+                    json_output=effective_json_output,
                     allow_cross_provider_fallback=allow_cross_provider_fallback,
                     force_retranslate=force,
                     glossary_revision=glossary_revision,
@@ -1261,11 +1313,12 @@ async def translate_chapters(
                         source_language=effective_source_language,
                         target_language=effective_target_language,
                         style_preset=effective_style_preset,
-                        consistency_mode=bool(effective_consistency_mode),
-                        json_output=bool(json_output),
+                        consistency_mode=effective_consistency_mode,
+                        json_output=effective_json_output,
                         qa_policy_fingerprint=qa_policy_fingerprint,
                         auto_activate=auto_activate,
                         honorific_policy=effective_honorific_policy,
+                        source_episode_id=record.source_episode_id or chapter_id,
                     ),
                 )
                 safely_refresh_catalog_projection_after_storage_write(

@@ -89,9 +89,10 @@ DISPOSITION_UNCHANGED_SELECTED = "unchanged_selected"
 DISPOSITION_REFRESH_FAILED_RETAINED = "refresh_failed_retained"
 DISPOSITION_UNAVAILABLE = "unavailable"
 
-# Dispositions considered available (a usable bundle exists in the stage or
-# the chapter is explicitly marked unavailable).
-_AVAILABLE_DISPOSITIONS: frozenset[str] = frozenset(
+# The canonical set of every disposition a current-index chapter may end the
+# crawl with. Validation rejects any other value; an empty map is rejected
+# too, so reconciliation can never be silently disabled.
+ALL_CHAPTER_DISPOSITIONS: frozenset[str] = frozenset(
     {
         DISPOSITION_FETCHED_NEW,
         DISPOSITION_FETCHED_REPLACED,
@@ -99,6 +100,7 @@ _AVAILABLE_DISPOSITIONS: frozenset[str] = frozenset(
         DISPOSITION_CARRIED_UNSELECTED,
         DISPOSITION_UNCHANGED_SELECTED,
         DISPOSITION_REFRESH_FAILED_RETAINED,
+        DISPOSITION_UNAVAILABLE,
     }
 )
 
@@ -195,7 +197,10 @@ class GenerationManifest:
     # Every current-index chapter must end the crawl with exactly one entry.
     # Aggregate counts are derived from this map at commit time so the
     # caller cannot pass summary counters that disagree with the stage.
-    chapter_dispositions: dict[str, str] = field(default_factory=dict)
+    # ``None`` means the manifest predates the disposition contract (legacy
+    # recovery manifests): validation then skips disposition reconciliation.
+    # An explicit ``{}`` is NOT ``None``: it is a rejected empty map.
+    chapter_dispositions: dict[str, str] | None = None
     # Carried unselected chapter count surfaced explicitly so scoped crawls
     # can describe the membership without recomputing from dispositions.
     carried_unselected_count: int = 0
@@ -249,7 +254,12 @@ class GenerationManifest:
             unavailable_chapter_records=dict(data.get("unavailable_chapter_records", {})),
             refresh_failed_chapter_ids=list(data.get("refresh_failed_chapter_ids", [])),
             refresh_failed_chapter_records=dict(data.get("refresh_failed_chapter_records", {})),
-            chapter_dispositions=dict(data.get("chapter_dispositions", {})),
+            # Preserve ``None`` when the manifest predates the disposition
+            # contract; an explicitly stored empty map stays ``{}`` so
+            # validation can reject it as a bypass attempt.
+            chapter_dispositions=(
+                dict(data["chapter_dispositions"]) if isinstance(data.get("chapter_dispositions"), dict) else None
+            ),
             carried_unselected_count=int(data.get("carried_unselected_count", 0)),
             unchanged_selected_count=int(data.get("unchanged_selected_count", 0)),
             refresh_failed_retained_count=int(data.get("refresh_failed_retained_count", 0)),
@@ -1030,7 +1040,27 @@ def validate_generation_activation(
     )
 
     # ── disposition reconciliation ───────────────────────────────────────
-    if manifest.chapter_dispositions:
+    # A ``None`` map is the legacy pre-disposition contract (recovery
+    # manifests) and skips reconciliation. An empty dict is NOT a bypass: it
+    # fails explicitly so no caller can silently disable the checks below.
+    if manifest.chapter_dispositions is not None:
+        checks.append(
+            _check(
+                "dispositions_present",
+                bool(manifest.chapter_dispositions),
+                "chapter_dispositions is an empty map; every current-index chapter must carry exactly one canonical disposition",
+            )
+        )
+        invalid_dispositions = sorted(
+            {d for d in manifest.chapter_dispositions.values() if d not in ALL_CHAPTER_DISPOSITIONS}
+        )
+        checks.append(
+            _check(
+                "dispositions_use_canonical_names",
+                not invalid_dispositions,
+                f"non-canonical disposition values: {invalid_dispositions}",
+            )
+        )
         # Every current-index chapter must have exactly one disposition.
         disposition_chapter_ids = set(manifest.chapter_dispositions.keys())
         missing_disp = complete_index_ids - disposition_chapter_ids
@@ -1343,6 +1373,15 @@ def commit_generation(
         manifest.removed_episode_ids = sorted(set(removed_episode_ids))
 
     if chapter_dispositions is not None:
+        # An explicitly empty map is a bypass attempt: it would persist
+        # ``{}`` and disable every disposition-reconciliation check. Reject
+        # it here so the manifest can never be saved in that state.
+        if not chapter_dispositions:
+            raise RuntimeError(
+                f"Generation {generation_id} for {novel_id} supplied an empty chapter_dispositions map; "
+                "every current-index chapter must carry exactly one canonical disposition. "
+                "Use commit_generation_recovery for explicit operator recovery."
+            )
         # Canonical disposition map provided: derive all aggregate counts
         # from it and replace the manifest's existing map (the caller is
         # authoritative about what each current-index chapter became).
@@ -1393,7 +1432,12 @@ def commit_generation(
             )
         # Legacy callers without a disposition map: keep the explicit
         # counters, but treat them as advisory and require the manifest
-        # to already carry the explicit disposition lists.
+        # to already carry the explicit disposition lists. The manifest's
+        # map is explicitly cleared to ``None`` so the pre-activation
+        # validator skips disposition reconciliation for this legacy path
+        # (an old-code stage may have persisted ``{}``, which must not be
+        # misread as an empty-map bypass).
+        manifest.chapter_dispositions = None
         manifest.reused_chapters = reused_chapters
         manifest.failed_chapters = failed_chapters
         if saved_chapters is not None:
