@@ -1,6 +1,6 @@
 # Deployment
 
-Canonical deployment topology, release, rollback, and GitHub-control contract.
+Canonical deployment topology, release, rollback, and GitHub-control contract. For runtime health probes, backup recovery, and incident runbooks, see [`OPERATIONS.md`](OPERATIONS.md).
 
 ## Topology
 

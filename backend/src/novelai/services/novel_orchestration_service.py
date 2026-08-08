@@ -42,7 +42,12 @@ from novelai.services.usage_service import UsageService
 from novelai.sources.base import SourceAdapter
 from novelai.storage.service import StorageService
 from novelai.translation.service import TranslationService
-from novelai.utils.chapter_selection import is_full_chapter_selection, parse_chapter_selection
+from novelai.utils.chapter_selection import (
+    ResolvedChapterSelection,
+    resolve_chapter_ids,
+    resolve_chapter_selection,
+    select_sequence_numbers,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -236,20 +241,28 @@ class NovelOrchestrationService:
         return cls._score_translation_confidence(source_text, translated_text) < normalized_threshold
 
     def _selected_chapter_numbers(self, metadata: dict[str, Any], selection: str) -> list[int]:
-        """Resolve a chapter selection string into concrete chapter numbers.
+        """Resolve a chapter selection string into concrete sequence numbers.
 
-        Returns all chapter IDs when *selection* is ``"all"``; otherwise
-        parses the DSL (e.g. ``"1-3;5"``) via :func:`parse_chapter_selection`.
+        Section 2: the orchestrator and downstream storage/translation paths
+        operate on stable ``chapter_id`` values, but legacy entry points and
+        downstream comparisons still consume the integer sequence position.
+        Numeric and stable-id selections both resolve here, so calling
+        ``is_translation_valid`` and chapter-state plumbing never treats a
+        non-numeric id as a missing chapter.
         """
-        chapter_map = {
-            int(chapter["id"]): chapter
-            for chapter in metadata.get("chapters", [])
-            if isinstance(chapter, dict) and str(chapter.get("id", "")).isdigit()
-        }
-        if is_full_chapter_selection(selection):
-            return sorted(chapter_map.keys())
+        return select_sequence_numbers(metadata, selection)
 
-        return [spec.chapter for spec in parse_chapter_selection(selection)]
+    def _selected_chapter_ids(self, metadata: dict[str, Any], selection: str) -> list[str]:
+        """Stable chapter_ids backing the current selection."""
+        return resolve_chapter_ids(metadata, selection)
+
+    def _resolve_selection(
+        self,
+        metadata: dict[str, Any],
+        selection: str,
+    ) -> list[ResolvedChapterSelection]:
+        """Full resolved-selection records (chapter_id, source_episode_id, sequence)."""
+        return resolve_chapter_selection(metadata, selection)
 
     @staticmethod
     def _chapter_content_signature(text: str, images: list[dict[str, Any]] | None = None) -> str:

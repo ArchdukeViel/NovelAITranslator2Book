@@ -44,6 +44,32 @@ def EnrichSourceHealthFromCrawlResult(
     }
 
 
+def normalize_crawl_result(result_metadata: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Normalize a crawl ``result_metadata`` envelope.
+
+    Supports both the nested form::
+
+        {"crawl_result": {"succeeded": ..., "failed": ..., "terminal_status": ...}}
+
+    and the direct form::
+
+        {"succeeded": ..., "failed": ..., "terminal_status": ...}
+
+    Returns the effective inner dict (the ``crawl_result`` envelope when
+    present, otherwise ``result_metadata`` itself) when it contains
+    recognizable crawl fields; returns ``None`` when no recognized fields
+    are present.
+    """
+    if not isinstance(result_metadata, dict):
+        return None
+    inner = result_metadata.get("crawl_result")
+    if isinstance(inner, dict) and any(key in inner for key in ("succeeded", "skipped", "failed", "terminal_status")):
+        return inner
+    if any(key in result_metadata for key in ("succeeded", "skipped", "failed", "terminal_status")):
+        return result_metadata
+    return None
+
+
 def _utc_now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
@@ -519,7 +545,10 @@ class ActivityQueueService:
 
     @staticmethod
     def _aggregate_crawl_into(envelope: dict[str, Any], activity: dict[str, Any]) -> None:
-        crawl_result = activity.get("metadata", {}).get("crawl_result")
+        metadata = activity.get("metadata") if isinstance(activity.get("metadata"), dict) else {}
+        # Section 10: accept either nested ``crawl_result`` or direct fields
+        # on the metadata envelope.
+        crawl_result = normalize_crawl_result(metadata)
         if not isinstance(crawl_result, dict):
             return
 

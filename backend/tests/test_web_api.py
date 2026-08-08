@@ -2321,21 +2321,23 @@ class TestChapters:
         )
         assert edit_resp.status_code == 200
 
+        # The seeded novel produced ``0000`` as the initial machine translation
+        # version id; the manual edit is ``0001``.
         rollback_resp = seeded_client.post(
             "/api/admin/novels/test-n1/chapters/1/translated/rollback",
-            json={"version_id": "v1", "editor": "admin", "note": "restore original"},
+            json={"version_id": "0000", "editor": "admin", "note": "restore original"},
             headers=_csrf_headers(seeded_client),
         )
         assert rollback_resp.status_code == 200
         rollback_payload = rollback_resp.json()
         assert rollback_payload["text"] == "Translated ch1"
-        assert rollback_payload["version_id"] == "v1"
+        assert rollback_payload["version_id"] == "0000"
         _assert_canonical_provider_fields(rollback_payload)
 
         history_resp = seeded_client.get("/api/admin/novels/test-n1/chapters/1/translated/edit-history")
         history = history_resp.json()["history"]
         assert history[-1]["action"] == "rollback"
-        assert history[-1]["previous_version_id"] == "v2"
+        assert history[-1]["previous_version_id"] == "0001"
 
         novel = isolated_db_session.query(Novel).filter_by(slug="test-n1").one()
         assert novel.chapter_count == 2

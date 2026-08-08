@@ -68,10 +68,15 @@ def create_async_client(
     *,
     headers: dict[str, str] | None = None,
     cookies: Any = None,
-    follow_redirects: bool = True,
+    follow_redirects: bool = False,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> httpx.AsyncClient:
-    """Create the shared async HTTP client used by source fetching."""
+    """Create the shared async HTTP client used by source fetching.
+
+    Redirects are handled manually by :class:`FetchService` so every hop is
+    validated against SSRF rules before it is requested; automatic following
+    is disabled on purpose.
+    """
 
     default_headers = {"User-Agent": DEFAULT_USER_AGENT}
     if headers:

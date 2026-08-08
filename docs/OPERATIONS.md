@@ -1,7 +1,6 @@
 # Operations
 
-Solo-owner runbook for health, maintenance, backup, recovery, incidents, and
-reader budgets. Never record secret values in evidence.
+Solo-owner runbook for health, maintenance, backup, recovery, incidents, and reader budgets. For topology, environment setup, and release procedures, see [`DEPLOYMENT.md`](DEPLOYMENT.md). Never record secret values in evidence.
 
 ## Health
 
@@ -21,6 +20,15 @@ output never includes paths, hosts, credentials, or traces.
   last result, cooldown/exhaustion, and next eligible run.
 - Scheduled jobs use cron/timezone evaluation and renewable PostgreSQL leases.
 - Local filesystem writes/retention also use `InterProcessFileLock` where needed.
+- Generation pointer activation uses `compare_and_swap_active_pointer`: the
+  filesystem backend wraps the read-compare-write in an `InterProcessFileLock`;
+  the S3 backend uses a conditional `PUT` with `If-Match`/`If-None-Match`.
+  Concurrent activations cannot silently overwrite each other; the loser
+  receives `GenerationConflictError` and must roll its stage back.
+- Explicit operator recovery from a failed generation activation uses
+  `commit_generation_recovery(reason=..., evidence=...)` — both arguments are
+  required non-empty strings that are logged for audit. This bypasses the
+  strict validation gate and must only be invoked after isolated verification.
 - Maintenance cleans allowlisted cache/events/activity/runtime-state roots and
   applies backup retention. Use dry-run before changed cleanup policy.
 - Never reintroduce APScheduler.
@@ -154,5 +162,28 @@ Use real-network/browser acceptance before launch; local budgets are not hosted 
 - After takedown: reader 451, sitemap exclusion, cache/CDN propagation.
 - After backup: committed manifest, checksum, retention, alert status.
 - Periodically: isolated object and DB restore; secret/credential scope review.
+
+## Recovering the Project Venv
+
+The project venv at `.venv/` is the canonical interpreter for all backend
+tooling (Python ≥ 3.13). To rebuild after schema changes, dependency
+upgrades, or accidental deletions:
+
+```powershell
+py -3.13 -m venv .venv
+& .venv\Scripts\python.exe -m pip install --upgrade pip
+& uv sync --extra documents --extra dev --extra db --extra auth --extra s3 --extra worker --extra gemini --extra test
+```
+
+Then verify tooling resolves the venv (not a PATH shadow):
+
+```powershell
+& tools/pytest.ps1 -q backend/tests/test_chapter_identity_codec.py
+& tools/ruff.ps1 check backend/src backend/tests
+& tools/pyright.ps1
+```
+
+Each `tools/*.ps1` wrapper refuses to run when `.venv\Scripts\python.exe`
+is missing. The readme at `tools/README.md` lists the canonical extras.
 
 Current unresolved operator gates live in [`WORK.md`](WORK.md).

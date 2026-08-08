@@ -224,11 +224,15 @@ def test_activate_translated_chapter_version_rolls_back_active_output(storage):
     )
     storage.save_edited_translation("novel1", "ch1", "edited translation", editor="admin", glossary_revision=0)
 
+    versions = storage.list_translated_chapter_versions("novel1", "ch1")
+    machine_version_id = versions[0]["version_id"]
+    edited_version_id = versions[1]["version_id"]
+
     assert (
         storage.activate_translated_chapter_version(
             "novel1",
             "ch1",
-            "v1",
+            machine_version_id,
             editor="admin",
             note="restore machine output",
         )
@@ -241,15 +245,16 @@ def test_activate_translated_chapter_version_rolls_back_active_output(storage):
 
     assert loaded is not None
     assert loaded["text"] == "machine translation"
-    assert loaded["version_id"] == "v1"
+    assert loaded["version_id"] == machine_version_id
     assert versions[0]["active"] is True
     assert versions[1]["active"] is False
     assert history[-1]["action"] == "rollback"
-    assert history[-1]["version_id"] == "v1"
-    assert history[-1]["previous_version_id"] == "v2"
+    assert history[-1]["version_id"] == machine_version_id
+    assert history[-1]["previous_version_id"] == edited_version_id
 
 
-def test_list_stored_chapters_includes_raw_and_translated_entries(storage):
+def test_list_stored_chapters_includes_raw_and_overlay_entries(storage):
+    """``list_stored_chapters`` walks both raw bundles and translation overlays."""
     storage.save_chapter("novel1", "1", "raw only", title="Chapter 1")
     storage.save_translated_chapter(
         "novel1", "2", "translated only", provider_key="gemini", provider_model="gemini-3.1-flash-lite"
@@ -259,7 +264,13 @@ def test_list_stored_chapters_includes_raw_and_translated_entries(storage):
     assert storage.count_stored_chapters("novel1") == 2
 
 
-def test_chapter_storage_uses_single_merged_file(storage):
+def test_chapter_storage_separates_raw_and_overlay(storage):
+    """The raw chapter bundle is byte-immutable after the overlay split (Section 6).
+
+    Translation writes land in ``translations/<encoded-stem>.json``; the
+    raw ``chapters/<stem>.json`` file keeps ``raw`` untouched and never
+    gains a ``translation_versions`` / ``active_translation_version_id`` key.
+    """
     storage.save_chapter("novel1", "ch1", "raw text", title="Chapter 1")
     storage.save_translated_chapter("novel1", "ch1", "translated text", provider_key="dummy", provider_model="dummy")
 
@@ -268,9 +279,15 @@ def test_chapter_storage_uses_single_merged_file(storage):
 
     payload = json.loads(chapter_path.read_text(encoding="utf-8"))
     assert payload["raw"]["text"] == "raw text"
-    assert payload["active_translation_version_id"] == "v1"
-    assert payload["translation_versions"][0]["text"] == "translated text"
-    assert "translated" not in payload
+    assert "translation_versions" not in payload
+    assert "active_translation_version_id" not in payload
+
+    overlay_path = storage.base_dir / "novels" / "novel1" / "translations" / "ch1.json"
+    assert overlay_path.exists()
+    overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+    assert overlay["active_translation_version_id"] == "0000"
+    assert overlay["translation_versions"][0]["text"] == "translated text"
+    assert overlay["chapter_id"] == "ch1"
 
 
 def test_chapter_storage_media_fields_default_for_existing_chapters(storage):
@@ -314,24 +331,23 @@ def test_unversioned_chapter_bundle_is_rejected(storage):
         storage.load_translated_chapter("novel1", "legacy")
 
 
-def test_save_translated_chapter_preserves_media_fields(storage):
+def test_save_translated_chapter_preserves_media_fields_on_raw_bundle(storage):
+    """Media fields live on the raw bundle; save_translated_chapter must not
+    mutate the raw chapter bundle (overlay contract)."""
     chapter_dir = storage.base_dir / "novels" / "novel1" / "chapters"
     chapter_dir.mkdir(parents=True, exist_ok=True)
     chapter_path = chapter_dir / "ch-media-roundtrip.json"
-    chapter_path.write_text(
-        json.dumps(
-            {
-                "schema_version": storage.SCHEMA_VERSION,
-                "id": "ch-media-roundtrip",
-                "raw": {"text": "raw", "scraped_at": "2024-01-01T00:00:00Z"},
-                "ocr_required": True,
-                "ocr_text": "OCR corrected text",
-                "ocr_status": "reviewed",
-                "reembed_status": "pending",
-            }
-        ),
-        encoding="utf-8",
-    )
+    raw_payload = {
+        "schema_version": storage.SCHEMA_VERSION,
+        "id": "ch-media-roundtrip",
+        "raw": {"text": "raw", "scraped_at": "2024-01-01T00:00:00Z"},
+        "ocr_required": True,
+        "ocr_text": "OCR corrected text",
+        "ocr_status": "reviewed",
+        "reembed_status": "pending",
+    }
+    chapter_path.write_text(json.dumps(raw_payload, indent=2), encoding="utf-8")
+    before = chapter_path.read_text(encoding="utf-8")
 
     storage.save_translated_chapter(
         "novel1",
@@ -341,11 +357,14 @@ def test_save_translated_chapter_preserves_media_fields(storage):
         provider_model="gemini-3.1-flash-lite",
     )
 
-    payload = json.loads(chapter_path.read_text(encoding="utf-8"))
-    assert payload["ocr_required"] is True
-    assert payload["ocr_text"] == "OCR corrected text"
-    assert payload["ocr_status"] == "reviewed"
-    assert payload["reembed_status"] == "pending"
+    after = chapter_path.read_text(encoding="utf-8")
+    assert before == after, "save_translated_chapter must not rewrite the raw chapter bundle"
+
+    # Overlay should now contain the translation.
+    overlay_path = storage.base_dir / "novels" / "novel1" / "translations" / "ch-media-roundtrip.json"
+    overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+    assert overlay["translation_versions"][0]["text"] == "translated"
+    assert overlay["active_translation_version_id"] == "0000"
 
 
 def test_save_and_load_chapter_media_state_helpers(storage):

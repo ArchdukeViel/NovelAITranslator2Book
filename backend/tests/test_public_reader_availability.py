@@ -14,6 +14,7 @@ No real HTTP. All storage is in a temp directory.
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -144,6 +145,30 @@ def _seed_translated(
     )
 
 
+def _overlay_first_version_id(path: Path) -> str:
+    """Return the first version_id from a ``translations/<stem>.json`` overlay file.
+
+    The overlay file is the path ``save_translated_chapter`` returned; the
+    ``translation_versions`` array stores versions in insertion order, so
+    ``translation_versions[0]['version_id']`` is the auto-generated id of
+    the first save (not "v1").
+    """
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    versions = payload.get("translation_versions", [])
+    if not versions:
+        raise AssertionError(f"No translation versions recorded in {path}")
+    return str(versions[0]["version_id"])
+
+
+def _overlay_second_version_id(path: Path) -> str:
+    """Return the second version_id from an overlay file."""
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    versions = payload.get("translation_versions", [])
+    if len(versions) < 2:
+        raise AssertionError(f"Expected two translation versions in {path}")
+    return str(versions[1]["version_id"])
+
+
 # ---------------------------------------------------------------------------
 # Task 15: Policy tests
 # ---------------------------------------------------------------------------
@@ -218,20 +243,25 @@ class TestLatestVersionPolicy:
         latest_version returns the newest saved version with text."""
         monkeypatch.setattr(settings, "PUBLIC_READER_UNAVAILABLE_POLICY", "latest_version")
         _seed_novel(storage, "novel-001")
-        # Save two versions; v2 becomes active by default
-        storage.save_translated_chapter("novel-001", "ch001", "First version.", auto_activate=False)
-        storage.save_translated_chapter("novel-001", "ch001", "Second version.", auto_activate=False)
-        # Activate v1 so the active translation is the older version
-        storage.activate_translated_chapter_version("novel-001", "ch001", "v1")
+        # Save two versions; the second becomes active by default.
+        first_path = storage.save_translated_chapter("novel-001", "ch001", "First version.", auto_activate=False)
+        second_path = storage.save_translated_chapter("novel-001", "ch001", "Second version.", auto_activate=False)
+        # Re-activate the FIRST version so the active translation is the
+        # older one -- public reader still serves the active version under
+        # ``latest_version``.
+        first_version_id = _overlay_first_version_id(first_path)
+        storage.activate_translated_chapter_version("novel-001", "ch001", first_version_id)
 
         resp = client.get("/api/public/novels/novel-001/chapters/ch001")
         assert resp.status_code == 200
         data = resp.json()
-        # Active version (v1) is served regardless of policy
+        # Active version is served regardless of policy.
         assert data["availability_status"] == "available"
         assert data["is_active_version"] is True
-        assert data["version_id"] == "v1"
+        assert data["version_id"] == first_version_id
         assert "First version." in data["text"]
+
+        _ = second_path  # silence unused-binding lint
 
     def test_latest_version_falls_back_to_shell_when_no_versions(
         self, client: TestClient, storage: StorageService, monkeypatch: pytest.MonkeyPatch
@@ -314,25 +344,29 @@ class TestInvalidPolicyFallback:
 class TestOwnerVersionPreview:
     def test_owner_can_load_specific_version(self, owner_client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001")
-        storage.save_translated_chapter("novel-001", "ch001", "First version.", auto_activate=False)
-        storage.save_translated_chapter("novel-001", "ch001", "Second version.", auto_activate=False)
-        assert storage.activate_translated_chapter_version("novel-001", "ch001", "v2")
-        resp = owner_client.get("/api/public/novels/novel-001/chapters/ch001?version_id=v1")
+        first_path = storage.save_translated_chapter("novel-001", "ch001", "First version.", auto_activate=False)
+        second_path = storage.save_translated_chapter("novel-001", "ch001", "Second version.", auto_activate=False)
+        first_id = _overlay_first_version_id(first_path)
+        second_id = _overlay_second_version_id(second_path)
+        assert storage.activate_translated_chapter_version("novel-001", "ch001", second_id)
+        resp = owner_client.get(f"/api/public/novels/novel-001/chapters/ch001?version_id={first_id}")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["version_id"] == "v1"
+        assert data["version_id"] == first_id
         assert data["is_active_version"] is False
         assert "First version." in data["text"]
 
     def test_owner_preview_of_active_version(self, owner_client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001")
-        storage.save_translated_chapter("novel-001", "ch001", "First version.", auto_activate=False)
-        storage.save_translated_chapter("novel-001", "ch001", "Second version.", auto_activate=False)
-        assert storage.activate_translated_chapter_version("novel-001", "ch001", "v2")
-        resp = owner_client.get("/api/public/novels/novel-001/chapters/ch001?version_id=v2")
+        first_path = storage.save_translated_chapter("novel-001", "ch001", "First version.", auto_activate=False)
+        second_path = storage.save_translated_chapter("novel-001", "ch001", "Second version.", auto_activate=False)
+        _ = first_path  # shape parity with the prior test; we only exercise the active version here
+        second_id = _overlay_second_version_id(second_path)
+        assert storage.activate_translated_chapter_version("novel-001", "ch001", second_id)
+        resp = owner_client.get(f"/api/public/novels/novel-001/chapters/ch001?version_id={second_id}")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["version_id"] == "v2"
+        assert data["version_id"] == second_id
         assert data["is_active_version"] is True
 
     def test_owner_unknown_version_returns_404(self, owner_client: TestClient, storage: StorageService) -> None:

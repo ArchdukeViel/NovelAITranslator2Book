@@ -13,8 +13,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState, TranslationState
@@ -22,7 +25,11 @@ from novelai.core.errors import TranslationInProgressError
 from novelai.db.engine import session_scope
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
-from novelai.glossary import glossary_status_counts, normalize_glossary_entries
+from novelai.glossary import (
+    canonical_glossary_hash,
+    glossary_status_counts,
+    normalize_glossary_entries,
+)
 from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 from novelai.services.library_summary_service import best_effort_invalidate
 from novelai.services.orchestration.common import PreflightIssue, _make_state_data
@@ -33,6 +40,10 @@ from novelai.services.orchestration.translation_lineage import (
 from novelai.services.orchestration.translation_progress import _build_chapter_summary
 from novelai.services.pipeline.checkpoint import Checkpoint
 from novelai.sources.base import SourceAdapter
+from novelai.storage.generations import resolve_active_generation_id
+from novelai.translation.pipeline.stages.translate_result_assembly import hash_text
+from novelai.translation.run_manifest import TranslationRunManifest
+from novelai.utils.chapter_selection import ResolvedChapterSelection, resolve_chapter_selection
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +58,133 @@ def _get_translation_lock(novel_id: str, chapter_id: str) -> asyncio.Lock:
     return _translation_locks[key]
 
 
+def _resolve_effective_prompt_version(self: Any, meta: dict[str, Any]) -> str:
+    """Resolve the effective prompt template version for a translation run.
+
+    Section 9: do not hard-code ``translation_request_v1``. The pipeline
+    records the actual prompt template version produced by
+    :func:`build_translation_request`; if that import is unavailable
+    (e.g. during early import ordering) we fall back to whatever version
+    the metadata carries.
+    """
+    try:
+        from novelai.prompts import PROMPT_TEMPLATE_VERSION  # type: ignore[attr-defined]
+    except Exception:  # pragma: no cover - defensive
+        PROMPT_TEMPLATE_VERSION = None
+
+    if isinstance(PROMPT_TEMPLATE_VERSION, str) and PROMPT_TEMPLATE_VERSION.strip():
+        return PROMPT_TEMPLATE_VERSION.strip()
+    metadata_version = meta.get("prompt_template_version")
+    if isinstance(metadata_version, str) and metadata_version.strip():
+        return metadata_version.strip()
+    return "translation_request_v1"
+
+
+def _qa_policy_fingerprint(
+    *,
+    prompt_template_version: str | None,
+) -> str:
+    """Section 9: deterministic fingerprint of relevant QA policy inputs.
+
+    Captures the structural QA inputs (policy mode, deterministic-qa
+    version, LLM grader model, min-score, retry budget, structured-output
+    policy) plus the prompt template version so any change to one of them
+    invalidates downstream translation records.
+    """
+    payload = {
+        "qa_policy_mode": str(getattr(settings, "LLM_QA_POLICY", "") or ""),
+        "llm_qa_enabled": bool(getattr(settings, "LLM_QA_ENABLED", False)),
+        "llm_qa_min_score": float(getattr(settings, "LLM_QA_MIN_SCORE", 0.0) or 0.0),
+        "llm_qa_max_retry_attempts": int(getattr(settings, "LLM_QA_MAX_RETRY_ATTEMPTS", 0) or 0),
+        "deterministic_qa_version": str(getattr(settings, "DETERMINISTIC_QA_VERSION", "") or "v1"),
+        "structured_output_policy_version": str(getattr(settings, "STRUCTURED_OUTPUT_POLICY_VERSION", "") or "v1"),
+        "llm_grader_model": str(getattr(settings, "LLM_QA_GRADER_MODEL", "") or "default"),
+        "prompt_template_version": prompt_template_version or "",
+    }
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hash_text(serialized)
+
+
+def _resolve_effective_output_policy(
+    *,
+    style_preset: str | None,
+    consistency_mode: bool | None,
+    json_output: bool | None,
+    honorific_policy: str | None,
+    workflow_defaults: dict[str, Any] | None,
+) -> tuple[str | None, bool, bool, str | None]:
+    """Resolve caller-supplied output-shaping settings against workflow defaults.
+
+    The resolution is symmetric with the stored-version validity contract
+    (``is_translation_valid``): a caller-supplied value is always the
+    effective identity; workflow defaults apply ONLY when the caller did not
+    supply a value (``None`` means "not supplied" for every dimension).
+    ``consistency_mode`` and ``json_output`` are ``bool | None`` so an
+    explicit ``False`` is preserved instead of being indistinguishable from
+    an omitted value (which must fall back to the workflow default for
+    ``consistency_mode``). ``json_output`` has no workflow default, so an
+    omitted value resolves to ``False`` and an explicit value passes through.
+    """
+    defaults = workflow_defaults if isinstance(workflow_defaults, dict) else {}
+    effective_style_preset = style_preset if style_preset is not None else defaults.get("style_preset")
+    effective_consistency_mode = (
+        consistency_mode if consistency_mode is not None else bool(defaults.get("consistency_mode", False))
+    )
+    effective_json_output = json_output if json_output is not None else False
+    effective_honorific_policy = honorific_policy if honorific_policy is not None else defaults.get("honorific_policy")
+    return effective_style_preset, effective_consistency_mode, effective_json_output, effective_honorific_policy
+
+
+def _translation_lineage_kwargs(
+    storage: Any,
+    novel_id: str,
+    chapter_id: str,
+    *,
+    raw_text: str,
+    translated: str,
+    translation_run_id: str,
+    raw_generation_id: str,
+    source_language: str | None,
+    target_language: str | None,
+    style_preset: str | None,
+    consistency_mode: bool,
+    json_output: bool,
+    qa_policy_fingerprint: str | None,
+    auto_activate: bool,
+    honorific_policy: str | None = None,
+    # Source-native episode id (Kakuyomu ``episode_id``, Syosetu ``num``).
+    # ``load_chapter`` does not expose it, so the caller must pass the value
+    # resolved from the source index; the logical ``chapter_id`` is only the
+    # fallback (e.g. imported documents with no native episode identity).
+    source_episode_id: str | None = None,
+) -> dict[str, Any]:
+    """Section 8: assemble the complete raw-to-version lineage fields for a
+    stored machine translation version so validity checks can consume the
+    actual stored fields instead of the run manifest alone."""
+    raw_bundle = storage.load_chapter(novel_id, chapter_id) or {}
+
+    def _json_hash(value: Any) -> str:
+        return storage._hash_text(json.dumps(value, ensure_ascii=False, sort_keys=True, default=str))
+
+    return {
+        "source_hash": storage._hash_text(raw_text or ""),
+        "translation_run_id": translation_run_id,
+        "raw_generation_id": raw_generation_id,
+        "source_episode_id": str(source_episode_id or chapter_id),
+        "source_structure_hash": _json_hash(raw_bundle.get("source_blocks") or []),
+        "source_image_manifest_hash": _json_hash(raw_bundle.get("images") or []),
+        "qa_policy_fingerprint": qa_policy_fingerprint,
+        "source_language": source_language,
+        "target_language": target_language,
+        "style_preset": style_preset,
+        "consistency_mode": consistency_mode,
+        "json_output": json_output,
+        "output_hash": storage._hash_text(translated),
+        "activation_disposition": "auto_activate" if auto_activate else "low_confidence",
+        "honorific_policy": honorific_policy,
+    }
+
+
 def _update_db_translation_state(
     novel_id: str,
     chapter_id: str,
@@ -56,21 +194,18 @@ def _update_db_translation_state(
     """Update ``translation_state`` and ``translation_error`` on Chapter row.
 
     REQ-1.4: State must be updated before/after each pipeline stage.
+
+    Section 2: ``chapter_id`` is the stable logical identifier. The lookup
+    prefers ``logical_chapter_id`` (canonical stable key for both
+    numeric and Kakuyomu ids) and falls back to ``chapter_number`` for
+    legacy rows pre-dating the stable-id migration.
     """
     try:
         with session_scope() as session:
             novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
             if novel is None:
                 return
-            chapter_num = int(chapter_id) if chapter_id.isdigit() else -1
-            row = (
-                session.query(Chapter)
-                .filter(
-                    Chapter.novel_id == novel.id,
-                    Chapter.chapter_number == chapter_num,
-                )
-                .one_or_none()
-            )
+            row = _lookup_chapter_row(session, novel.id, chapter_id)
             if row is not None:
                 row.translation_state = state.value  # type: ignore[assignment]
                 if error is not None:
@@ -81,26 +216,56 @@ def _update_db_translation_state(
 
 
 def _load_db_translation_state(novel_id: str, chapter_id: str) -> str:
-    """Read ``translation_state`` from the Chapter row (REQ-3.1)."""
+    """Read ``translation_state`` from the Chapter row (REQ-3.1, Section 2)."""
     try:
         with session_scope() as session:
             novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
             if novel is None:
                 return TranslationState.PENDING.value
-            chapter_num = int(chapter_id) if chapter_id.isdigit() else -1
-            row = (
-                session.query(Chapter.translation_state)
-                .filter(
-                    Chapter.novel_id == novel.id,
-                    Chapter.chapter_number == chapter_num,
-                )
-                .one_or_none()
-            )
+            row = _lookup_chapter_row(session, novel.id, chapter_id)
             if row is not None:
-                return row[0] or TranslationState.PENDING.value
+                state_attr = getattr(row, "translation_state", None)
+                if state_attr is not None:
+                    return state_attr or TranslationState.PENDING.value
+                if isinstance(row, tuple):
+                    return row[0] or TranslationState.PENDING.value
     except Exception:
         logger.warning("Failed to load DB translation state %s/%s", novel_id, chapter_id, exc_info=True)
     return TranslationState.PENDING.value
+
+
+def _lookup_chapter_row(session: Any, novel_id: int, chapter_id: str) -> Any | None:
+    """Resolve a Chapter row by stable id then by numeric fallback (Section 2).
+
+    The lookup prefers the optional ``logical_chapter_id`` column when
+    the stable-id migration has been applied; before the migration is
+    in place we fall back to ``chapter_number`` so legacy rows remain
+    reachable.
+    """
+    from sqlalchemy import inspect
+
+    try:
+        mapper = inspect(Chapter)
+        if "logical_chapter_id" in {col.key for col in mapper.columns}:
+            stable = (
+                session.query(Chapter)
+                .filter(
+                    Chapter.novel_id == novel_id,
+                    Chapter.logical_chapter_id == str(chapter_id),
+                )
+                .one_or_none()
+            )
+            if stable is not None:
+                return stable
+    except Exception:
+        pass
+    if str(chapter_id).isdigit():
+        return (
+            session.query(Chapter)
+            .filter(Chapter.novel_id == novel_id, Chapter.chapter_number == int(chapter_id))
+            .one_or_none()
+        )
+    return None
 
 
 def _pipeline_context_from_exception(exc: BaseException) -> Any | None:
@@ -180,9 +345,15 @@ def _failed_stage_name_from_exception(exc: BaseException) -> str:
     return "Pipeline"
 
 
-def _persist_chunk_qa_results_to_outputs(storage: Any, novel_id: str, chunk_states: dict[str, Any]) -> None:
+def _persist_chunk_qa_results_to_outputs(storage: Any, novel_id: str, chunk_states: dict[str, Any]) -> dict[str, str]:
+    """Persist QA results onto the latest stored translation output per chunk.
+
+    Returns a mapping of ``chunk_id -> output_hash`` for every chunk that had
+    an existing output record, used as run-manifest evidence (Blocker D).
+    """
+    chunk_output_hashes: dict[str, str] = {}
     if not isinstance(novel_id, str) or not novel_id.strip():
-        return
+        return chunk_output_hashes
     for chunk_id, state in chunk_states.items():
         if not isinstance(chunk_id, str) or not chunk_id.strip() or not isinstance(state, dict):
             continue
@@ -211,6 +382,10 @@ def _persist_chunk_qa_results_to_outputs(storage: Any, novel_id: str, chunk_stat
                 "qa_status": qa_status,
             }
         )
+        output_hash = latest.get("output_hash")
+        if isinstance(output_hash, str) and output_hash.strip():
+            chunk_output_hashes[chunk_id] = output_hash
+    return chunk_output_hashes
 
 
 def _preflight_translation(
@@ -219,7 +394,7 @@ def _preflight_translation(
     novel_id: str,
     source_key: str,
     meta: dict[str, Any],
-    selected_numbers: list[int],
+    selected: list[ResolvedChapterSelection],
     force: bool,
     source_language: str | None,
     target_language: str | None,
@@ -229,7 +404,7 @@ def _preflight_translation(
 
     issues: list[PreflightIssue] = []
 
-    if not selected_numbers:
+    if not selected:
         issues.append(
             PreflightIssue(
                 code="empty_selection",
@@ -248,48 +423,37 @@ def _preflight_translation(
             )
         )
 
-    chapter_map = {
-        int(chapter["id"]): chapter
-        for chapter in meta.get("chapters", [])
-        if isinstance(chapter, dict) and str(chapter.get("id", "")).isdigit()
-    }
+    chapter_by_id = {record.chapter_id: record for record in selected}
 
-    missing_chapters = [number for number in selected_numbers if number not in chapter_map]
+    missing_chapters = [record.chapter_id for record in selected if record.chapter_id not in chapter_by_id]
     if missing_chapters:
         issues.append(
             PreflightIssue(
                 code="metadata_mismatch",
-                reason=(
-                    "Selected chapters are missing from metadata: "
-                    + ", ".join(str(number) for number in missing_chapters)
-                ),
+                reason=("Selected chapters are missing from metadata: " + ", ".join(missing_chapters)),
             )
         )
 
-    unresolved_urls: list[int] = []
-    for number in selected_numbers:
-        chapter = chapter_map.get(number)
-        if chapter is None:
-            continue
-        chapter_id = str(number)
+    unresolved_urls: list[str] = []
+    for record in selected:
+        chapter_id = record.chapter_id
+        chapter_meta = record.metadata
         raw_chapter = self.storage.load_chapter(novel_id, chapter_id)
-        if chapter.get("url") or (raw_chapter and isinstance(raw_chapter.get("text"), str)):
+        if chapter_meta.get("url") or (raw_chapter and isinstance(raw_chapter.get("text"), str)):
             continue
-        unresolved_urls.append(number)
+        unresolved_urls.append(chapter_id)
     if unresolved_urls:
         issues.append(
             PreflightIssue(
                 code="missing_chapter_url",
-                reason=(
-                    "Some selected chapters have no source URL: " + ", ".join(str(number) for number in unresolved_urls)
-                ),
+                reason=("Some selected chapters have no source URL: " + ", ".join(unresolved_urls)),
             )
         )
 
     effective_source_language = source_language or self._infer_source_language(source_key, meta)
     if not effective_source_language:
-        for number in selected_numbers:
-            raw_chapter = self.storage.load_chapter(novel_id, str(number))
+        for record in selected:
+            raw_chapter = self.storage.load_chapter(novel_id, record.chapter_id)
             if raw_chapter is None:
                 continue
             raw_text = raw_chapter.get("text")
@@ -371,8 +535,8 @@ def _preflight_translation(
         )
 
     chapters_missing_ocr_review: list[str] = []
-    for number in selected_numbers:
-        chapter_id = str(number)
+    for record in selected:
+        chapter_id = record.chapter_id
         media_state = self.storage.load_chapter_media_state(novel_id, chapter_id)
         if media_state is None:
             continue
@@ -397,10 +561,8 @@ def _preflight_translation(
 
     if not force:
         translatable = 0
-        for number in selected_numbers:
-            if number not in chapter_map:
-                continue
-            chapter_id = str(number)
+        for record in selected:
+            chapter_id = record.chapter_id
             raw_chapter = self.storage.load_chapter(novel_id, chapter_id)
             has_raw_text = isinstance(raw_chapter, dict) and isinstance(raw_chapter.get("text"), str)
             if self.storage.load_translated_chapter(novel_id, chapter_id) is None or (
@@ -442,18 +604,15 @@ async def polish_low_confidence_chapters(
     effective_provider = provider_key or profile_provider
     effective_model = provider_model or profile_model
 
-    chapter_map = {
-        int(chapter["id"]): chapter
-        for chapter in meta.get("chapters", [])
-        if isinstance(chapter, dict) and str(chapter.get("id", "")).isdigit()
-    }
-    selected_numbers = self._selected_chapter_numbers(meta, chapters)
+    resolved = resolve_chapter_selection(meta, chapters)
+    _chapter_by_id = {record.chapter_id: record for record in resolved}
+    selected_numbers = [record.sequence_number for record in resolved]
     low_confidence_ids: list[str] = []
     normalized_threshold = max(0.0, min(1.0, confidence_threshold))
 
-    for number in selected_numbers:
-        chapter_id = str(number)
-        if number not in chapter_map:
+    for record in resolved:
+        chapter_id = record.chapter_id
+        if chapter_id not in _chapter_by_id:
             continue
         raw = self.storage.load_chapter(novel_id, chapter_id) or {}
         translated = self.storage.load_translated_chapter(novel_id, chapter_id) or {}
@@ -701,8 +860,9 @@ async def translate_chapters(
     style_preset: str | None = None,
     confidence_threshold: float = 0.55,
     mark_polish_needed: bool = True,
-    consistency_mode: bool = False,
-    json_output: bool = False,
+    consistency_mode: bool | None = None,
+    json_output: bool | None = None,
+    honorific_policy: str | None = None,
     allow_cross_provider_fallback: bool = True,
     skip_glossary_gate: bool = False,
 ) -> dict[str, Any]:
@@ -737,15 +897,26 @@ async def translate_chapters(
     effective_provider_key = provider_key or profile_provider
     effective_provider_model = provider_model or profile_model
 
-    # Read workflow defaults from metadata and apply as fallbacks.
+    # Read workflow defaults from metadata and apply as fallbacks. The
+    # effective identity for each output-shaping dimension is symmetric with
+    # the validity contract: an explicit caller value is authoritative and an
+    # explicit ``False`` (``consistency_mode`` / ``json_output``) is preserved
+    # — only an omitted value falls back to the workflow default.
     workflow_defaults = meta.get("translation_defaults") if isinstance(meta, dict) else {}
     if not isinstance(workflow_defaults, dict):
         workflow_defaults = {}
-    effective_style_preset = style_preset if style_preset is not None else workflow_defaults.get("style_preset")
-    effective_consistency_mode = (
-        consistency_mode if consistency_mode else bool(workflow_defaults.get("consistency_mode", False))
+    (
+        effective_style_preset,
+        effective_consistency_mode,
+        effective_json_output,
+        effective_honorific_policy,
+    ) = _resolve_effective_output_policy(
+        style_preset=style_preset,
+        consistency_mode=consistency_mode,
+        json_output=json_output,
+        honorific_policy=honorific_policy,
+        workflow_defaults=workflow_defaults,
     )
-    effective_honorific_policy = workflow_defaults.get("honorific_policy")
 
     # Auto-load stored glossary when none was explicitly provided.
     if glossary is None:
@@ -753,15 +924,17 @@ async def translate_chapters(
         if stored_entries:
             glossary = stored_entries
 
-    chapter_map = {int(c["id"]): c for c in meta.get("chapters", [])}
-    selected_numbers = self._selected_chapter_numbers(meta, chapters)
+    resolved = resolve_chapter_selection(meta, chapters)
+    _chapter_by_id = {record.chapter_id: record for record in resolved}
+    selected_numbers = [record.sequence_number for record in resolved]
+    selected_chapter_ids = [record.chapter_id for record in resolved]
     normalized_threshold = max(0.0, min(1.0, confidence_threshold))
 
     preflight_issues = self._preflight_translation(
         novel_id=novel_id,
         source_key=source_key,
         meta=meta,
-        selected_numbers=selected_numbers,
+        selected=resolved,
         force=force,
         source_language=effective_source_language,
         target_language=effective_target_language,
@@ -778,9 +951,67 @@ async def translate_chapters(
     cp_mgr = _init_checkpoint_manager(
         self,
         novel_id=novel_id,
-        selected_numbers=selected_numbers,
+        selected_chapter_ids=selected_chapter_ids,
         force=force,
     )
+
+    # Section 9: link the run to the active raw generation so every
+    # translation version can be traced back to its immutable snapshot.
+    raw_generation_id = resolve_active_generation_id(self.storage, novel_id) or ""
+
+    # Section 9: hash the glossary through the canonical serializer
+    # (normalized source/target/status/locked/notes, sort_keys, JSON).
+    glossary_hash = canonical_glossary_hash(glossary)
+
+    # Section 9: resolve the effective prompt template version from
+    # :func:`build_translation_request` instead of a hard-coded literal so the
+    # manifest records what the pipeline actually used.
+    prompt_template_version = _resolve_effective_prompt_version(self, meta)
+
+    qa_policy_fingerprint = _qa_policy_fingerprint(prompt_template_version=prompt_template_version)
+
+    # Blocker D: derive one run id for the entire run and persist a
+    # TranslationRunManifest (initial "running" record).  The same id is
+    # stamped into pipeline metadata, cache entries, chunk states and
+    # translation outputs, so the manifest is hash-linked evidence of the
+    # exact inputs, provider, glossary and prompt used for the run.
+    translation_run_id = job_id or activity_id or f"translation_run_{uuid4().hex}"
+    manifest = TranslationRunManifest(
+        translation_run_id=translation_run_id,
+        novel_id=novel_id,
+        raw_generation_id=raw_generation_id,
+        status="running",
+        prompt_version=prompt_template_version,
+        prompt_template_version=prompt_template_version,
+        qa_policy_version=str(getattr(settings, "LLM_QA_POLICY", "") or ""),
+        qa_policy_fingerprint=qa_policy_fingerprint,
+        glossary_hash=glossary_hash,
+        glossary_revision=glossary_revision,
+        provider_key=effective_provider_key,
+        provider_model=effective_provider_model,
+        source_language=effective_source_language,
+        target_language=effective_target_language,
+        style_preset=effective_style_preset,
+        json_output=effective_json_output,
+        consistency_mode=effective_consistency_mode,
+        requested_chapters=[record.chapter_id for record in resolved],
+        expected_count=len(resolved),
+    )
+    # Initial manifest persistence is best-effort: a missing record must not
+    # abort translation. The failure is logged so CI / operators can see
+    # that the committed manifest went missing on the initial write.
+    manifest_persistence_warnings: list[str] = []
+    try:
+        self.storage.save_translation_run_manifest(novel_id, manifest)
+    except Exception as exc:
+        warning = f"initial_manifest_persistence_failed: {type(exc).__name__}: {exc}"
+        manifest_persistence_warnings.append(warning)
+        logger.warning(
+            "Initial translation run manifest persistence failed for %s/%s: %s",
+            novel_id,
+            translation_run_id,
+            exc,
+        )
 
     # Bounded chapter-level concurrency.  Default 1 preserves the previous
     # sequential behavior.  Each chapter is independent (per-chapter lock,
@@ -790,15 +1021,48 @@ async def translate_chapters(
     chapter_concurrency = min(chapter_concurrency, max(1, len(selected_numbers)) or 1)
     chapter_semaphore = asyncio.Semaphore(chapter_concurrency)
 
-    async def _run_chapter(chapter_num: int) -> dict[str, str]:
+    async def _run_chapter(record: ResolvedChapterSelection) -> dict[str, str]:
         async with chapter_semaphore:
-            chapter = chapter_map.get(chapter_num)
-            if not chapter:
-                return {"chapter_id": str(chapter_num), "status": "skipped", "reason": "missing_metadata"}
+            chapter = record.metadata if isinstance(record.metadata, dict) else {}
+            chapter_id = record.chapter_id
+            _chapter_num = record.sequence_number
 
-            chapter_id = str(chapter_num)
+            # Load raw bundle up-front so the resume gate can validate the
+            # existing translation against the *current* effective contract
+            # (source text / structure / image hash). Loading twice (once for
+            # the gate, once for translation) would be wasteful and would let
+            # the bundle change between calls.
+            raw_chapter = self.storage.load_chapter(novel_id, chapter_id)
+            current_raw_text = ""
+            current_source_structure_hash = ""
+            current_source_image_manifest_hash = ""
+            if isinstance(raw_chapter, dict):
+                raw_text_obj = raw_chapter.get("text")
+                if isinstance(raw_text_obj, str):
+                    current_raw_text = raw_text_obj
+                current_source_structure_hash = self.storage._hash_text(
+                    json.dumps(
+                        raw_chapter.get("source_blocks") or [],
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        default=str,
+                    )
+                )
+                current_source_image_manifest_hash = self.storage._hash_text(
+                    json.dumps(
+                        raw_chapter.get("images") or [],
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        default=str,
+                    )
+                )
+            current_source_text_hash = self.storage._hash_text(current_raw_text) if current_raw_text else ""
 
-            # Resume logic (REQ-3.1): skip COMPLETE, reset FAILED - bypassed when force=True (REQ-3.4)
+            # Resume logic (REQ-3.1): skip when previous translation is still
+            # valid against the current effective contract, reset FAILED. The
+            # DB ``COMPLETE`` state alone is insufficient evidence — a stale
+            # source text / glossary / prompt / QA change must retranslate.
+            # Bypassed entirely when force=True (REQ-3.4).
             from novelai.services.orchestration.translation_resume import _check_chapter_resume_state
 
             skip_result = _check_chapter_resume_state(
@@ -806,6 +1070,21 @@ async def translate_chapters(
                 novel_id=novel_id,
                 chapter_id=chapter_id,
                 force=force,
+                source_text_hash=current_source_text_hash,
+                effective_glossary_hash=glossary_hash,
+                prompt_template_version=prompt_template_version,
+                provider_key=effective_provider_key,
+                provider_model=effective_provider_model,
+                active_raw_generation_id=raw_generation_id or None,
+                source_structure_hash=current_source_structure_hash,
+                source_image_manifest_hash=current_source_image_manifest_hash,
+                qa_policy_fingerprint=qa_policy_fingerprint,
+                source_language=effective_source_language,
+                target_language=effective_target_language,
+                style_preset=effective_style_preset,
+                consistency_mode=effective_consistency_mode,
+                json_output=effective_json_output,
+                honorific_policy=effective_honorific_policy,
             )
             if skip_result is not None:
                 return skip_result
@@ -827,7 +1106,6 @@ async def translate_chapters(
             )
 
             try:
-                raw_chapter = self.storage.load_chapter(novel_id, chapter_id)
                 media_state = self.storage.load_chapter_media_state(novel_id, chapter_id) or {}
                 raw_text = None
                 raw_images: list[dict[str, Any]] | None = None
@@ -843,6 +1121,8 @@ async def translate_chapters(
                     else:
                         raw_text = raw_chapter.get("text") if isinstance(raw_chapter.get("text"), str) else None
                     raw_images = raw_chapter.get("images") if isinstance(raw_chapter.get("images"), list) else None
+                if raw_text is not None and raw_text.strip():
+                    manifest.chapter_source_hashes[chapter_id] = hash_text(raw_text)
                 chapter_url = str(
                     chapter.get("url") or (raw_chapter or {}).get("source_url") or f"import://{novel_id}/{chapter_id}"
                 )
@@ -865,9 +1145,13 @@ async def translate_chapters(
                         glossary=glossary,
                         style_preset=effective_style_preset,
                         consistency_mode=effective_consistency_mode,
+                        translation_run_id=translation_run_id,
                         job_id=job_id,
                         activity_id=activity_id,
                         allow_cross_provider_fallback=allow_cross_provider_fallback,
+                        json_output=effective_json_output,
+                        honorific_policy=effective_honorific_policy,
+                        active_raw_generation_id=raw_generation_id or None,
                     )
                     if delta_result.get("applied"):
                         translated = str(delta_result.get("text") or "")
@@ -899,6 +1183,24 @@ async def translate_chapters(
                             glossary_revision=glossary_revision,
                             glossary_injected_term_count=0,
                             auto_activate=auto_activate,
+                            **_translation_lineage_kwargs(
+                                self.storage,
+                                novel_id,
+                                chapter_id,
+                                raw_text=raw_text or "",
+                                translated=translated,
+                                translation_run_id=translation_run_id,
+                                raw_generation_id=raw_generation_id,
+                                source_language=effective_source_language,
+                                target_language=effective_target_language,
+                                style_preset=effective_style_preset,
+                                consistency_mode=effective_consistency_mode,
+                                json_output=effective_json_output,
+                                qa_policy_fingerprint=qa_policy_fingerprint,
+                                auto_activate=auto_activate,
+                                honorific_policy=effective_honorific_policy,
+                                source_episode_id=record.source_episode_id or chapter_id,
+                            ),
                         )
                         safely_refresh_catalog_projection_after_storage_write(
                             novel_id,
@@ -942,6 +1244,7 @@ async def translate_chapters(
                 result = await self.translation.translate_chapter(
                     source_adapter=source,
                     chapter_url=chapter_url,
+                    translation_run_id=translation_run_id,
                     job_id=job_id,
                     activity_id=activity_id,
                     novel_id=novel_id,
@@ -956,7 +1259,7 @@ async def translate_chapters(
                     style_preset=effective_style_preset,
                     consistency_mode=effective_consistency_mode,
                     honorific_policy=effective_honorific_policy,
-                    json_output=json_output,
+                    json_output=effective_json_output,
                     allow_cross_provider_fallback=allow_cross_provider_fallback,
                     force_retranslate=force,
                     glossary_revision=glossary_revision,
@@ -999,6 +1302,24 @@ async def translate_chapters(
                     glossary_revision=glossary_revision,
                     glossary_injected_term_count=glossary_injected_term_count,
                     auto_activate=auto_activate,
+                    **_translation_lineage_kwargs(
+                        self.storage,
+                        novel_id,
+                        chapter_id,
+                        raw_text=raw_text or "",
+                        translated=translated,
+                        translation_run_id=translation_run_id,
+                        raw_generation_id=raw_generation_id,
+                        source_language=effective_source_language,
+                        target_language=effective_target_language,
+                        style_preset=effective_style_preset,
+                        consistency_mode=effective_consistency_mode,
+                        json_output=effective_json_output,
+                        qa_policy_fingerprint=qa_policy_fingerprint,
+                        auto_activate=auto_activate,
+                        honorific_policy=effective_honorific_policy,
+                        source_episode_id=record.source_episode_id or chapter_id,
+                    ),
                 )
                 safely_refresh_catalog_projection_after_storage_write(
                     novel_id,
@@ -1015,7 +1336,9 @@ async def translate_chapters(
                 self.storage.append_pipeline_events(result.pipeline_events)
                 for chunk_state in result.chunk_states.values():
                     self.storage.upsert_chunk_state(chunk_state)
-                _persist_chunk_qa_results_to_outputs(self.storage, novel_id, result.chunk_states)
+                manifest.chunk_outputs.update(
+                    _persist_chunk_qa_results_to_outputs(self.storage, novel_id, result.chunk_states)
+                )
                 self.storage.create_checkpoint(novel_id, chapter_id, "translated")
                 # Mark COMPLETE in DB + write CheckpointManager checkpoint (REQ-2.3, REQ-3.1)
                 _update_db_translation_state(novel_id, chapter_id, TranslationState.COMPLETE)
@@ -1063,7 +1386,9 @@ async def translate_chapters(
                     for chunk_state in chunk_states.values():
                         if isinstance(chunk_state, dict):
                             self.storage.upsert_chunk_state(chunk_state)
-                    _persist_chunk_qa_results_to_outputs(self.storage, novel_id, chunk_states)
+                    manifest.chunk_outputs.update(
+                        _persist_chunk_qa_results_to_outputs(self.storage, novel_id, chunk_states)
+                    )
                 if isinstance(failed_chunk_id, str) and failed_chunk_id.strip():
                     self.storage.upsert_chunk_state(
                         {
@@ -1112,18 +1437,55 @@ async def translate_chapters(
     # independent (different chapter_id, different storage keys, different
     # DB rows).  Exceptions are captured via return_exceptions=True so a
     # single chapter failure does not abort the rest of the run.
-    tasks = [asyncio.create_task(_run_chapter(cn)) for cn in selected_numbers]
+    tasks = [asyncio.create_task(_run_chapter(record)) for record in resolved]
     task_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # Aggregate per-chapter progress in source order.  REQ-3.3.
 
     summary, first_error = _build_chapter_summary(
-        selected_numbers=selected_numbers,
+        resolved=resolved,
         task_results=task_results,
         chapters=chapters,
         force=force,
         target_language=effective_target_language,
     )
+
+    # Finalize the run manifest (Blocker D): succeeded chapter ids in source
+    # order, final counts, commit timestamp, and final status.  Best-effort
+    # so manifest storage failure never fails the translation run itself.
+    review_count = 0
+    succeeded_chapter_ids: list[str] = []
+    ordered_ids = [record.chapter_id for record in resolved]
+    for chapter_id in ordered_ids:
+        entry = summary["chapter_progress"].get(chapter_id)
+        if not isinstance(entry, dict):
+            continue
+        status = str(entry.get("status") or "")
+        if status == "succeeded":
+            succeeded_chapter_ids.append(chapter_id)
+        elif status == "requires_review" or entry.get("needs_review"):
+            review_count += 1
+
+    manifest.chapter_ids = succeeded_chapter_ids
+    manifest.completed_count = int(summary.get("succeeded") or 0)
+    manifest.skipped_count = int(summary.get("skipped") or 0)
+    manifest.failed_count = int(summary.get("failed") or 0)
+    manifest.review_count = review_count
+    manifest.status = "failed" if first_error is not None else "completed"
+    manifest.committed_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    # Section 9 surfaces persistence errors instead of swallowing them so
+    # CI and operators can see when the final committed manifest goes
+    # missing; running translation still tolerates a manifest write
+    # failure because the per-chapter storage writes already happened.
+    try:
+        self.storage.save_translation_run_manifest(novel_id, manifest)
+    except Exception as exc:
+        warning = f"final_manifest_persistence_failed: {type(exc).__name__}: {exc}"
+        manifest_persistence_warnings.append(warning)
+        logger.warning("Translation run manifest persistence failed for %s/%s: %s", novel_id, translation_run_id, exc)
+    summary["translation_run_id"] = translation_run_id
+    if manifest_persistence_warnings:
+        summary["manifest_persistence_warnings"] = manifest_persistence_warnings
     if first_error is not None:
         # Attach progress so the activity worker can surface a partial-failure
         # summary (REQ-3.3) while still propagating the underlying error so
@@ -1149,10 +1511,22 @@ async def retranslate_chapter(
     json_output: bool = False,
     allow_cross_provider_fallback: bool = True,
 ) -> None:
-    """Force retranslation for a single chapter using chapter-scoped selection."""
+    """Force retranslation for a single chapter using chapter-scoped selection.
+
+    Section 2: ``chapter_id`` is the stable logical identifier (numeric or
+    ``kakuyomu:<episode>``). Validation only ensures the id is non-empty;
+    resolution to a chapter must rely on the current source index.
+    """
     normalized_chapter_id = str(chapter_id).strip()
-    if not normalized_chapter_id.isdigit():
-        raise ValueError("chapter_id must be a numeric chapter identifier.")
+    if not normalized_chapter_id:
+        raise ValueError("chapter_id must be a non-empty identifier.")
+
+    meta = self.storage.load_metadata(novel_id)
+    if not meta:
+        raise RuntimeError("Metadata not found; run scrape-metadata first.")
+    resolved = resolve_chapter_selection(meta, normalized_chapter_id)
+    if not resolved:
+        raise ValueError(f"chapter_id {normalized_chapter_id!r} does not match any chapter in the current index.")
 
     await self.translate_chapters(
         source_key=source_key,

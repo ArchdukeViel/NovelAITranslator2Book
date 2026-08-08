@@ -100,14 +100,21 @@ enforce-admins. Re-enable review requirements when a second write-access
 reviewer exists. Remaining: sanitized incident/false-positive triage exercise
 (operator).
 
-## Active Work
+Revised 2026-08-08: `main-protection` ruleset (id `20510996`,
+`repos/.../rulesets/20510996`) updated to set `require_code_owner_review`
+and `require_last_push_approval` to `false` after the same solo-operator
+deadlock surfaced via the ruleset (no CODEOWNERS file exists, and the only
+write-access user cannot approve their own PR — verified on PR #41:
+`mergeable_state=blocked` with every required check passing). All other
+ruleset rules preserved: `deletion`, `pull_request`
+(`required_approving_review_count=0`, `required_review_thread_resolution`,
+`dismiss_stale_reviews_on_push`), `required_linear_history`,
+`non_fast_forward`, enforcement `active` on `refs/heads/main`. PR #41
+(`58da35c`, 63 commits) verified `mergeStateStatus=CLEAN` after the change;
+merge intentionally deferred. Re-enable both flags when a second
+write-access reviewer exists.
 
-| ID | Work | Status | Completion evidence required |
-|---|---|---|---|
-| DEBT-075 | Managed-service recovery and scheduling closure | Blocked on operator evidence | Real stale/failure SMTP alert; successful hosted PostgreSQL/R2 workflow. Tooling complete: backup stale alert, restore freshness max age, runtime-role verifier, rollback gate. |
-| DEBT-079 | Hosted production acceptance | Ongoing | Domains, OAuth, cookies, CORS/CSRF, host validation, storage boundaries, monitoring, rollback, and reliability verified on always-on topology. Tooling complete: authenticated smoke, external monitor, rollback compatibility gate, parser/YAML/router/diff, security review, GitGuardian scan. |
-| DEBT-FE-01 | Frontend design rework (Shuji Vermillion + Layout Rework) | FE-01 through FE-10 + review moderation contract shipped; operator-gated remainder open | Review visibility/moderation contract shipped; homepage layout matched to Stitch `1794eb02d11a407b9b6343d727670125` with full backend data bindings. Overhauled 404, Error, and Maintenance surfaces to card elevation/tactile editorial layout using pure UI icon components; deleted legacy PNG illustration assets and updated asset inventory docs. Enforced strict unauthenticated auth guard redirect on `/account` and all account sub-routes. Remaining: manual accessibility acceptance (DEBT-FE-01A); approved asset inventory; admin-curated featured rotation; chapter added/failure metadata; stable author identity; expanded library status/progress/update contracts. Unavailable/unsupported features (e.g. fake user engagement rankings, tickets leaderboards) replaced with honest catalog queries (`chapter_count`) or tracked in WORK.md. No gated surface is faked. |
-| DEBT-120 | Unconnected backend API endpoints and missing UI controls audit | Split-service route parity and verified dead client code closed; remainder is operator/CLI endpoints with no UI surface by design | Production route ownership locked: public contact/DMCA/analytics ingestion in reader (`main_reader.py`), admin analytics/audit/takedown/reviews/users + metrics in admin (`main_admin.py`), 0 stranded endpoints on the combined app, strict ownership regression tests. Verified-dead client code removed (12 legacy `api` methods, `authApi.csrf`, 3 unused types). Audit's "14 unused client functions" and "16 unused hooks" claims were stale — 54 live UI callers verified. |
+## Active Work
 
 ## Feature & Design Gaps / Deferred Work (Stitch Screen 1794eb02d11a407b9b6343d727670125)
 

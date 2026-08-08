@@ -23,9 +23,33 @@ Do not preload every document. Load canonical detail only when relevant:
 | Admin page design | `docs/design/admin/...` |
 | Shared design, system & accessibility rules | `docs/DESIGN.md` |
 | Configuration | `docs/CONFIGURATION.md` |
-| CI, deployment, or operator procedure | `docs/DEPLOYMENT.md` |
+| CI or deployment procedure | `docs/DEPLOYMENT.md` |
+| Operator runbook, health, or backup procedure | `docs/OPERATIONS.md` |
+| Translation quality policy & prompt lifecycle | `docs/TRANSLATION.md` |
 | Unfinished work | `docs/WORK.md` |
 | Completed evidence | `docs/HISTORY.md` |
+
+## Working Principles
+
+- **Stay within scope.** Act only on the user's stated request. If you discover an unrelated defect or improvement, surface it as a finding and stop; do not fix it without explicit authorization.
+- **Clarify before acting on ambiguity.** If the user's request is ambiguous in a way that affects scope, behavior, or contracts, ask before acting. Never resolve ambiguity by picking the cheaper interpretation.
+
+## Project Venv
+
+The project virtualenv at `.venv/` is the canonical interpreter. Python
+version: ≥ 3.13. PATH-precedence mistakes cannot poison results when the
+wrapper resolves to `.venv\Scripts\python.exe` explicitly. Always invoke
+backend tooling through the wrappers in `tools/`:
+
+- `tools/pytest.ps1` — runs the backend test suite.
+- `tools/pyright.ps1` — runs pyright.
+- `tools/ruff.ps1` — runs ruff check / format.
+
+Each script refuses to run when `.venv\Scripts\python.exe` is missing.
+The CI workflow installs `.[documents,gemini,dev,db,worker,s3,auth]`
+into the venv before invoking tooling. Bare `python` / `pytest` /
+`ruff` / `pyright` invocations outside the wrappers fall through to
+the system interpreter and lose the venv pinning.
 
 ## Verification
 
@@ -33,16 +57,19 @@ Run smallest check proving changed behavior, from repository root unless command
 
 | Command | Purpose |
 | --- | --- |
-| `python -m ruff check .` | Backend lint; do not fix unrelated pre-existing errors. |
-| `python -m pyright` | Backend type checking for `backend/src` and `backend/tests`. |
-| `python -m pytest backend/tests/test_<name>.py` | Focused backend test file. |
-| `python -m pytest backend/tests/e2e/` | Backend E2E tests; slower and fixture-dependent. |
+| `tools/ruff.ps1 check .` | Backend lint; do not fix unrelated pre-existing errors. |
+| `tools/pyright.ps1` | Backend type checking for `backend/src` and `backend/tests`. |
+| `tools/pytest.ps1 backend/tests/test_<name>.py` | Focused backend test file. |
+| `tools/pytest.ps1 backend/tests/e2e/` | Backend E2E tests; slower and fixture-dependent. |
 | `cd frontend; npm run typecheck` | Frontend TypeScript check. |
 | `cd frontend; npm run test` | Frontend Vitest suite. |
 | `cd frontend; npm run lint` | Frontend ESLint. |
 | `cd frontend; npx vitest run <file>` | Focused frontend test file(s). |
 | `cd frontend; npm run build` | Production frontend build. |
-| `cd backend; alembic -c alembic.ini upgrade head` | Apply migrations; requires `DATABASE_URL`. |
+| `alembic -c alembic.ini upgrade head` | Apply migrations from repository root; requires `DATABASE_URL`. |
+
+The `tools/*.ps1` wrappers resolve to `.venv\Scripts\python.exe`
+automatically; see *Project Venv* above.
 
 Router-layer guard must return no matches:
 
@@ -50,9 +77,15 @@ Router-layer guard must return no matches:
 rg -n "^from novelai\.(db\.models|storage\.service|sources\.)" backend/src/novelai/api/routers/ --glob "!dependencies.py"
 ```
 
+Canonical-doc heading uniqueness guard must return no matches (fails if any `## ` heading appears more than once in `AGENTS.md`):
+
+```powershell
+Get-Content AGENTS.md | Where-Object { $_ -match '^## ' } | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name }
+```
+
 ### Commit workflow
 
-1. Run formatters before staging.
+1. Run formatters before staging: `tools\ruff.ps1 format <every file in the diff>`. The pre-commit hook reformats all staged files (including previously committed ones), so an unformatted file anywhere in the staged set will be modified by the hook; `ruff check` enforces B905, so `zip()` calls need explicit `strict=`.
 2. Run affected lint, type checks, and focused tests.
 3. Stage exact intended paths; run `git diff --cached --check`.
 4. Commit with hooks enabled. Never use `--no-verify`.
@@ -61,7 +94,8 @@ rg -n "^from novelai\.(db\.models|storage\.service|sources\.)" backend/src/novel
 After every edit, including documentation edits, run:
 
 ```powershell
-graphify update . --no-cluster
+tools/pyright.ps1   # only when Python source changed
+graphify update . --no-cluster   # always (standalone binary; python -m graphify is unavailable in .venv)
 ```
 
 Record raw validation command, timeout when relevant, exit code, result count, and exact paths. Never claim a check passed unless run successfully.
@@ -192,6 +226,8 @@ Full architecture and operator detail belongs in canonical docs. Preserve these 
 - Pytest configuration supplies `backend/src` and `backend` python paths, disables cache provider, and defines `e2e`.
 - Add or update tests directly proving changed behavior. Run closest focused test first, then affected language type checking. Run broader checks only for cross-subsystem changes.
 - One-line changes still require one runnable verification command.
+- File-backed SQLite test databases should enable `PRAGMA journal_mode=WAL`; default-journal commits measure 16–66 ms each on Windows (WAL ≈ 4 ms) and synchronous commits serialize the event loop in async tests.
+- Avoid absolute wall-clock timing bounds in tests; prefer overhead-invariant metrics (e.g., total-overlap sums) that hold on slow machines and loaded CI.
 
 ## Dependencies and Lockfiles
 
@@ -223,7 +259,7 @@ Full architecture and operator detail belongs in canonical docs. Preserve these 
 When `.codegraph/` exists, use CodeGraph before broad file searches for current source questions. It locates symbols, current source, callers/callees, dynamic dispatch, blast radius, and affected tests:
 
 ```powershell
-codegraph explore "<symbol names or question>"
+python -m codegraph explore "<symbol names or question>"
 ```
 
 After results, read only decisive source locations. CodeGraph does not replace source verification, diff inspection, lint, type checks, migrations, tests, builds, or runtime checks. Do not initialize or edit `.codegraph/` during ordinary tasks.

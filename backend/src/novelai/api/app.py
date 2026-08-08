@@ -59,6 +59,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await container.activity_runner.stop()
         if container.scheduler_service.is_running:
             await container.scheduler_service.stop()
+        from novelai.infrastructure.http.fetch_service import get_default_fetch_service
+
+        await get_default_fetch_service().aclose()
         from novelai.db.engine import dispose_engines
 
         dispose_engines()

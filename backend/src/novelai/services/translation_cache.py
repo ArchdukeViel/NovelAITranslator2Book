@@ -117,6 +117,17 @@ class CacheEntry(BaseModel):
     created_at: str  # ISO timestamp
     ttl_seconds: int = 0
     novel_id: str | None = None
+    chunk_id: str | None = None
+    # Provenance fields (accepted-output-only contract): pending entries
+    # carry the exact attempt, run, and output identity so a flush can never
+    # cache an output from a rejected attempt.
+    attempt_number: int | None = None
+    translation_run_id: str | None = None
+    output_hash: str | None = None
+    # Acceptance provenance: stamped at flush time by CacheFlushStage so a
+    # cached entry records when and under which QA result it was accepted.
+    accepted_at: str | None = None
+    qa_status: str | None = None
 
 
 # ---------------------------------------------------------------------------

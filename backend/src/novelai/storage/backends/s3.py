@@ -110,33 +110,29 @@ class S3Backend(StorageBackend):
                 for obj in page.get("Contents", []):
                     k: str = obj["Key"]
                     if self._key_prefix and k.startswith(self._key_prefix + "/"):
-                        k = k[len(self._key_prefix) + 1:]
+                        k = k[len(self._key_prefix) + 1 :]
                     keys.append(k)
             return sorted(keys)
 
         # Non-recursive: use delimiter for directory grouping
-        resp = self._client.list_objects_v2(
-            Bucket=self._bucket, Prefix=prefix_str, Delimiter="/"
-        )
+        resp = self._client.list_objects_v2(Bucket=self._bucket, Prefix=prefix_str, Delimiter="/")
         keys = []
         for cp in resp.get("CommonPrefixes", []):
             k: str = cp["Prefix"]
             if self._key_prefix and k.startswith(self._key_prefix + "/"):
-                k = k[len(self._key_prefix) + 1:]
+                k = k[len(self._key_prefix) + 1 :]
             keys.append(k)
         for obj in resp.get("Contents", []):
             k: str = obj["Key"]
             if self._key_prefix and k.startswith(self._key_prefix + "/"):
-                k = k[len(self._key_prefix) + 1:]
+                k = k[len(self._key_prefix) + 1 :]
             keys.append(k)
         return sorted(keys)
 
     def has_keys(self, prefix: str | Path) -> bool:
         key = self._key(prefix)
         prefix_str = key if not key or key.endswith("/") else f"{key}/"
-        resp = self._client.list_objects_v2(
-            Bucket=self._bucket, Prefix=prefix_str, MaxKeys=1
-        )
+        resp = self._client.list_objects_v2(Bucket=self._bucket, Prefix=prefix_str, MaxKeys=1)
         return bool(resp.get("Contents"))
 
     def total_size_bytes(self) -> int:
@@ -149,3 +145,69 @@ class S3Backend(StorageBackend):
 
     def mkdirs(self, path: str | Path) -> None:
         pass  # S3 has no directories; objects are created implicitly
+
+    def compare_and_swap(self, path: str | Path, expected: bytes | None, new_value: bytes) -> bool:
+        """True compare-and-swap against the current object version.
+
+        Non-None ``expected``:
+
+        1. reads the current object and its ETag as **one observed version**
+           (``get_object``);
+        2. verifies the object's **bytes** equal the supplied ``expected`` —
+           an ETag alone is not a body comparison and is never used as a
+           substitute for the caller's expected value;
+        3. if the bytes differ (or the object is missing) returns ``False``;
+        4. conditionally PUTs ``new_value`` with ``If-Match`` on the exact
+           observed ETag;
+        5. a ``412 PreconditionFailed`` (concurrent writer won) returns
+           ``False``.
+
+        ``expected is None`` uses conditional creation: ``If-None-Match: "*"``
+        so the first writer wins; an already-existing object returns
+        ``False``.
+
+        Any other ``ClientError`` is re-raised so the caller treats it as a
+        real storage failure rather than silently degrading to
+        last-writer-wins.
+        """
+        from botocore.exceptions import ClientError
+
+        key = self._key(path)
+        if expected is None:
+            params: dict[str, Any] = {"Bucket": self._bucket, "Key": key, "Body": new_value}
+            params["IfNoneMatch"] = "*"
+        else:
+            # Observe the current object and its ETag as one version.
+            current: bytes | None = None
+            etag: str | None = None
+            try:
+                obj = self._client.get_object(Bucket=self._bucket, Key=key)
+                body = obj.get("Body")
+                etag = obj.get("ETag")
+                current = body.read() if body is not None else None
+            except ClientError as exc:
+                if not _is_not_found_error(exc):
+                    raise
+            if current is None:
+                # The expected bytes are not absent; a missing object must
+                # refuse the swap rather than silently degrading to
+                # last-writer-wins.
+                return False
+            if current != expected:
+                return False
+            params = {"Bucket": self._bucket, "Key": key, "Body": new_value}
+            if not etag:
+                return False
+            params["IfMatch"] = etag
+        try:
+            self._client.put_object(**params)
+        except ClientError as exc:
+            response = getattr(exc, "response", None)
+            if isinstance(response, dict):
+                status = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+                error = response.get("Error", {}) if isinstance(response.get("Error"), dict) else {}
+                code = str(error.get("Code", ""))
+                if status == 412 or code in {"PreconditionFailed"}:
+                    return False
+            raise
+        return True

@@ -65,6 +65,53 @@ class TwoChapterSource(SourceAdapter):
         return {"text": f"Content from {url}", "images": []}
 
 
+class DatedTwoChapterSource(SourceAdapter):
+    """2-chapter source whose chapters carry a stable source update date.
+
+    Used to prove that dated-unchanged chapters reuse without a body HTTP request.
+    """
+
+    source_key = "test_source"
+
+    def __init__(self) -> None:
+        self.fetch_count = 0
+
+    def can_handle(self, identifier_or_url: str) -> bool:
+        return False
+
+    async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
+        return {
+            "source_key": self.source_key,
+            "source_url": url,
+            "title": "Test Novel",
+            "author": "Test Author",
+            "chapters": [
+                {
+                    "id": "1",
+                    "num": 1,
+                    "title": "Chapter 1",
+                    "url": f"{url}/ch1",
+                    "source_update_date": "2024-01-01",
+                },
+                {
+                    "id": "2",
+                    "num": 2,
+                    "title": "Chapter 2",
+                    "url": f"{url}/ch2",
+                    "source_update_date": "2024-02-01",
+                },
+            ],
+        }
+
+    async def fetch_chapter(self, url: str) -> str:
+        payload = await self.fetch_chapter_payload(url)
+        return str(payload.get("text", ""))
+
+    async def fetch_chapter_payload(self, url: str, *, on_retry=None) -> dict[str, Any]:
+        self.fetch_count += 1
+        return {"text": f"Content from {url}", "images": []}
+
+
 class ChangingChapterSource(SourceAdapter):
     """Source where chapter content changes between scrapes."""
 
@@ -123,16 +170,19 @@ def crawl_env():
     # Pre-populate metadata so scrape_chapters can call update_onboarding_status
     # (which requires metadata to exist) before the full-mode re-scrape saves new metadata.
     for novel_id in ("novel-1", "novel-2", "novel-A", "novel-B"):
-        storage.save_metadata(novel_id, {
-            "source_key": "test_source",
-            "source_url": f"https://example.com/{novel_id}",
-            "title": f"Test Novel {novel_id}",
-            "author": "Test Author",
-            "chapters": [
-                {"id": "1", "num": 1, "title": "Chapter 1", "url": f"https://example.com/{novel_id}/ch1"},
-                {"id": "2", "num": 2, "title": "Chapter 2", "url": f"https://example.com/{novel_id}/ch2"},
-            ],
-        })
+        storage.save_metadata(
+            novel_id,
+            {
+                "source_key": "test_source",
+                "source_url": f"https://example.com/{novel_id}",
+                "title": f"Test Novel {novel_id}",
+                "author": "Test Author",
+                "chapters": [
+                    {"id": "1", "num": 1, "title": "Chapter 1", "url": f"https://example.com/{novel_id}/ch1"},
+                    {"id": "2", "num": 2, "title": "Chapter 2", "url": f"https://example.com/{novel_id}/ch2"},
+                ],
+            },
+        )
 
     yield {
         "data_dir": data_dir,
@@ -367,6 +417,39 @@ class TestChangedChapterUpdate:
         assert ch["text"].strip()
         assert len(ch["text"]) > 10
 
+    @pytest.mark.asyncio
+    async def test_dated_unchanged_chapters_reused_without_body_request(self, crawl_env) -> None:
+        """A dated-unchanged chapter is reused by the planner: no body HTTP
+        request, content preserved, and the same chapters survive (PR-41 blocker 3)."""
+        storage = crawl_env["storage"]
+        source = DatedTwoChapterSource()
+
+        service = NovelOrchestrationService(
+            storage=storage,
+            settings_service=crawl_env["settings"],
+            translation_cache=crawl_env["cache"],
+            usage_service=crawl_env["usage"],
+            source_factory=lambda k: source,
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
+        )
+        await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        assert source.fetch_count == 2
+
+        # Second scrape (update mode) — identical dated index.
+        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
+
+        # Planner reuse: zero body HTTP requests on the update pass.
+        assert source.fetch_count == 2
+        assert result["succeeded"] == 0
+        assert result["skipped"] == 2
+        assert result["failed"] == 0
+
+        # Content preserved.
+        stored = storage.list_stored_chapters("novel-1")
+        assert len(stored) == 2
+        ch1 = storage.load_chapter("novel-1", "1")
+        assert ch1 is not None and "Content from" in ch1["text"]
+
 
 # ---------------------------------------------------------------------------
 # Single chapter failure behavior tests
@@ -390,7 +473,7 @@ class TestSingleChapterFailure:
         source = TwoChapterSource()
 
         # Make chapter 1 fail
-        source.fetch_errors["novel-1/ch1"] = SourceError("Network timeout")
+        source.fetch_errors["https://example.com/novel-1/ch1"] = SourceError("Network timeout")
 
         service = NovelOrchestrationService(
             storage=storage,
@@ -402,7 +485,7 @@ class TestSingleChapterFailure:
         )
 
         # Scrape should NOT raise — it returns a summary
-        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
 
         # Chapter 1 failed, chapter 2 succeeded
         assert result["failed"] == 1
@@ -418,7 +501,7 @@ class TestSingleChapterFailure:
         source = TwoChapterSource()
 
         # Make chapter 1 fail
-        source.fetch_errors["novel-1/ch1"] = SourceError("Server error")
+        source.fetch_errors["https://example.com/novel-1/ch1"] = SourceError("Server error")
 
         service = NovelOrchestrationService(
             storage=storage,
@@ -429,7 +512,7 @@ class TestSingleChapterFailure:
             usage_service=crawl_env["usage"],
         )
 
-        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
 
         # Chapter 2 was saved
         ch2 = storage.load_chapter("novel-1", "2")
@@ -443,7 +526,7 @@ class TestSingleChapterFailure:
         storage = crawl_env["storage"]
         source = TwoChapterSource()
 
-        source.fetch_errors["novel-1/ch1"] = SourceError("Connection refused")
+        source.fetch_errors["https://example.com/novel-1/ch1"] = SourceError("Connection refused")
 
         service = NovelOrchestrationService(
             storage=storage,
@@ -454,14 +537,14 @@ class TestSingleChapterFailure:
             usage_service=crawl_env["usage"],
         )
 
-        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
 
         assert len(result["failures"]) == 1
         failure = result["failures"][0]
         assert failure["chapter_id"] == "1"
         assert failure["chapter_number"] == 1
         assert failure["title"] == "Chapter 1"
-        assert failure["source_url"] == "novel-1/ch1"
+        assert failure["source_url"] == "https://example.com/novel-1/ch1"
         assert failure["error_type"] == "SourceError"
         assert "Connection refused" in failure["error_message"]
 
@@ -472,7 +555,7 @@ class TestSingleChapterFailure:
         source = TwoChapterSource()
 
         # Chapter 1 returns non-string text
-        source.chapter_payloads["novel-1/ch1"] = {"text": 12345, "images": []}
+        source.chapter_payloads["https://example.com/novel-1/ch1"] = {"text": 12345, "images": []}
 
         service = NovelOrchestrationService(
             storage=storage,
@@ -483,7 +566,7 @@ class TestSingleChapterFailure:
             usage_service=crawl_env["usage"],
         )
 
-        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
 
         # Chapter 1 failed (invalid text), chapter 2 succeeded
         assert result["failed"] == 1
@@ -496,7 +579,7 @@ class TestSingleChapterFailure:
         storage = crawl_env["storage"]
         source = TwoChapterSource()
 
-        source.fetch_errors["novel-1/ch1"] = SourceError("Timeout")
+        source.fetch_errors["https://example.com/novel-1/ch1"] = SourceError("Timeout")
 
         service = NovelOrchestrationService(
             storage=storage,
@@ -507,9 +590,9 @@ class TestSingleChapterFailure:
             usage_service=crawl_env["usage"],
         )
 
-        await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
 
-        # Chapter 1 was NOT saved
+        # Chapter 1 was NOT saved (explicit unavailable, no bundle)
         ch1 = storage.load_chapter("novel-1", "1")
         assert ch1 is None
 
@@ -523,7 +606,7 @@ class TestSingleChapterFailure:
         storage = crawl_env["storage"]
         source = TwoChapterSource()
 
-        source.fetch_errors["novel-1/ch1"] = SourceError("Timeout")
+        source.fetch_errors["https://example.com/novel-1/ch1"] = SourceError("Timeout")
 
         events: list[str] = []
 
@@ -537,7 +620,10 @@ class TestSingleChapterFailure:
         )
 
         _result = await service.scrape_chapters(
-            "test_source", "novel-1", "all", mode="full",
+            "test_source",
+            "novel-1",
+            "all",
+            mode="update",
             progress_callback=events.append,
         )
 
@@ -651,7 +737,7 @@ class TestConcurrentCrawlLocking:
         """Lock is released after per-chapter partial failure."""
         storage = crawl_env["storage"]
         source = TwoChapterSource()
-        source.fetch_errors["novel-1/ch1"] = SourceError("Timeout")
+        source.fetch_errors["https://example.com/novel-1/ch1"] = SourceError("Timeout")
 
         service = NovelOrchestrationService(
             storage=storage,
@@ -662,15 +748,18 @@ class TestConcurrentCrawlLocking:
             usage_service=crawl_env["usage"],
         )
 
-        # First scrape has partial failure
-        result1 = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        # First scrape has partial failure (update mode: explicit
+        # unavailable marker; partial-update policy activates).
+        result1 = await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
         assert result1["failed"] == 1
         assert result1["succeeded"] == 1
 
-        # Second scrape should work (lock released)
+        # Second scrape should work (lock released): chapter 1 is now
+        # fetched and saved, chapter 2 is reused unchanged.
         source.fetch_errors.clear()  # Clear errors for second attempt
-        result2 = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
-        assert result2["succeeded"] == 2
+        result2 = await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
+        assert result2["failed"] == 0
+        assert result2["succeeded"] + result2["skipped"] == 2
 
     @pytest.mark.asyncio
     async def test_lock_released_after_metadata_failure(self, crawl_env) -> None:

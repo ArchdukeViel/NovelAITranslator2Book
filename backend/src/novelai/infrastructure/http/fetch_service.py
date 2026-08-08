@@ -3,16 +3,121 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from time import perf_counter
 from typing import Any
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
+from novelai.config.settings import settings
 from novelai.core.errors import SourceError
-from novelai.infrastructure.http.cache import FetchCache, FetchCacheEntry, InMemoryFetchCache
+from novelai.infrastructure.http.cache import FetchCache, FetchCacheEntry, LRUFetchCache
 from novelai.infrastructure.http.client import create_async_client, validate_safe_url
 from novelai.infrastructure.http.retry import Retrier, RetryConfig
 from novelai.infrastructure.http.throttle import DomainThrottle
+
+MAX_RESPONSE_SIZE = 50 * 1024 * 1024  # legacy fallback cap (per-kind limits come from settings)
+
+_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+
+# Headers that must not leak across origins on a redirect hop.  The first
+# group is outright security-sensitive (credentials / validators); the
+# second is conditional-request state tied to the original resource.
+_CROSS_ORIGIN_STRIPPED_HEADERS = frozenset(
+    {
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "host",
+        "if-none-match",
+        "if-modified-since",
+        "if-match",
+        "if-unmodified-since",
+        "if-range",
+    }
+)
+
+
+def _origin(url: str) -> tuple[str, str, int]:
+    """Return the (scheme, hostname, effective-port) origin tuple for an HTTP URL.
+
+    Section 11: an effective port different from the scheme default counts
+    as a cross-origin boundary. Default ports are 80 for http and 443 for
+    https; any other port is its own origin even when the host matches.
+    """
+    parsed = urlparse(url)
+    scheme = parsed.scheme.lower()
+    hostname = (parsed.hostname or "").lower()
+    port = parsed.port
+    if port is None:
+        port = 443 if scheme == "https" else 80
+    return scheme, hostname, int(port)
+
+
+# Section 11: the legacy 2-tuple form remains exported so callers that don't
+# care about effective port still match on scheme/hostname only. New code
+# should use the 3-tuple ``_origin`` directly.
+def _origin_no_port(url: str) -> tuple[str, str]:
+    """Backwards-compatible origin tuple (scheme, hostname)."""
+    scheme, hostname, _ = _origin(url)
+    return scheme, hostname
+
+
+def _strip_origin_sensitive_headers(headers: dict[str, str]) -> dict[str, str]:
+    """Return a copy of ``headers`` with cross-origin-sensitive entries removed.
+
+    Headers are stripped case-insensitively; the returned dict is a fresh
+    copy so the caller's headers are not mutated.  ``User-Agent`` and
+    ``Accept`` are intentionally preserved — they are safe to forward and
+    help the destination return appropriate content.
+    """
+    return {key: value for key, value in headers.items() if key.lower() not in _CROSS_ORIGIN_STRIPPED_HEADERS}
+
+
+def _kind_limit_bytes(kind: str) -> int:
+    """Return the configured response-size limit for a fetch kind."""
+    return {
+        "api": settings.HTTP_API_RESPONSE_MAX_BYTES,
+        "html": settings.HTTP_HTML_RESPONSE_MAX_BYTES,
+        "asset": settings.HTTP_ASSET_RESPONSE_MAX_BYTES,
+    }.get(kind, settings.HTTP_HTML_RESPONSE_MAX_BYTES)
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Parse a ``Retry-After`` header into seconds (seconds or HTTP-date).
+
+    Returns ``None`` when the value is absent or unparseable so callers fall
+    back to the regular backoff schedule.
+    """
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        seconds = float(text)
+        if seconds >= 0 and seconds == seconds:  # reject NaN
+            return seconds
+    except ValueError:
+        pass
+    try:
+        parsed = parsedate_to_datetime(text)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    delta = (parsed - datetime.now(UTC)).total_seconds()
+    return max(0.0, delta)
+
+
+@dataclass(frozen=True)
+class _FetchedBody:
+    """A fully streamed response with the validated final URL."""
+
+    final_url: str
+    status_code: int
+    headers: dict[str, str]
+    body: bytes
+    text: str
 
 
 @dataclass(frozen=True)
@@ -41,7 +146,14 @@ def _headers_dict(headers: httpx.Headers | dict[str, str]) -> dict[str, str]:
 
 
 class FetchService:
-    """Central HTTP fetcher for source adapters."""
+    """Central HTTP fetcher for source adapters.
+
+    HTTP clients are pooled per request profile (``regular`` vs ``r18``,
+    etc.) and reused across requests; per-request headers, referers, and
+    cookies are attached to individual calls. Responses are cached through
+    a bounded, TTL-aware cache keyed by ``(source_key, profile, url)`` so
+    identical URLs fetched under different profiles never collide.
+    """
 
     _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
@@ -54,7 +166,9 @@ class FetchService:
     ) -> None:
         self._client_factory = client_factory
         self._throttle = throttle or _GLOBAL_THROTTLE
-        self._cache = cache or InMemoryFetchCache()
+        self._cache = cache or LRUFetchCache()
+        # Pooled clients keyed by request profile ("" for the default).
+        self._clients: dict[str, httpx.AsyncClient] = {}
 
     async def get_text(
         self,
@@ -65,6 +179,8 @@ class FetchService:
         headers: dict[str, str] | None = None,
         cookies: Any = None,
         on_retry: Callable[[int, Exception], None] | None = None,
+        profile: str | None = None,
+        kind: str = "html",
     ) -> FetchResult:
         return await self._fetch(
             url,
@@ -73,6 +189,8 @@ class FetchService:
             headers=headers,
             cookies=cookies,
             on_retry=on_retry,
+            kind=kind,
+            profile=profile,
         )
 
     async def get_bytes(
@@ -83,6 +201,9 @@ class FetchService:
         referer: str | None = None,
         headers: dict[str, str] | None = None,
         cookies: Any = None,
+        on_retry: Callable[[int, Exception], None] | None = None,
+        profile: str | None = None,
+        kind: str = "asset",
     ) -> FetchResult:
         return await self._fetch(
             url,
@@ -90,6 +211,9 @@ class FetchService:
             referer=referer,
             headers=headers,
             cookies=cookies,
+            on_retry=on_retry,
+            kind=kind,
+            profile=profile,
         )
 
     async def _fetch(
@@ -100,42 +224,49 @@ class FetchService:
         referer: str | None,
         headers: dict[str, str] | None,
         cookies: Any,
+        kind: str,
+        profile: str | None,
         on_retry: Callable[[int, Exception], None] | None = None,
     ) -> FetchResult:
         requested_url = validate_safe_url(url)
         request_headers = dict(headers or {})
         if referer and referer.strip():
             request_headers["Referer"] = referer.strip()
-        request_headers.update(self._cache.conditional_headers(source_key, requested_url))
+        request_headers.update(self._cache.conditional_headers(source_key, requested_url, profile=profile))
 
-        await self._throttle.before_request(requested_url)
         started = perf_counter()
         try:
-            response = await self._with_retry(
-                lambda: self._request(requested_url, headers=request_headers, cookies=cookies),
+            fetched = await self._with_retry(
+                lambda: self._request(
+                    requested_url,
+                    headers=request_headers,
+                    cookies=cookies,
+                    profile=profile,
+                    kind=kind,
+                ),
                 on_retry=on_retry,
             )
         except httpx.HTTPStatusError as exc:
-            await self._throttle.after_response(requested_url, exc.response.status_code)
+            # Per-hop accounting already happened inside _request (before
+            # raise_for_status), attributed to the host that emitted the
+            # response; nothing to add here.
             raise SourceError(
-                f"Failed to fetch {source_key} page from {requested_url} "
-                f"(status={exc.response.status_code})."
+                f"Failed to fetch {source_key} page from {requested_url} (status={exc.response.status_code})."
             ) from exc
         except httpx.HTTPError as exc:
             raise SourceError(f"Failed to fetch {source_key} page from {requested_url}: {exc}") from exc
 
         elapsed = perf_counter() - started
-        await self._throttle.after_response(str(response.url), response.status_code)
-
-        if response.status_code == 304:
-            cached = self._cache.get(source_key, requested_url)
+        final_url = validate_safe_url(fetched.final_url)
+        if fetched.status_code == 304:
+            cached = self._cache.get(source_key, requested_url, profile=profile)
             if cached is None:
                 raise SourceError(f"{source_key} returned 304 for {requested_url}, but no cached response exists.")
             return FetchResult(
                 requested_url=requested_url,
-                final_url=str(response.url),
+                final_url=final_url,
                 status_code=304,
-                headers=_headers_dict(response.headers),
+                headers=fetched.headers,
                 text=cached.text,
                 body=cached.body,
                 source_key=source_key,
@@ -144,13 +275,13 @@ class FetchService:
                 elapsed_seconds=elapsed,
             )
 
-        headers_payload = _headers_dict(response.headers)
-        body = bytes(response.content)
-        text = response.text
+        headers_payload = fetched.headers
+        body = fetched.body
+        text = fetched.text
         result = FetchResult(
             requested_url=requested_url,
-            final_url=str(response.url),
-            status_code=response.status_code,
+            final_url=final_url,
+            status_code=fetched.status_code,
             headers=headers_payload,
             text=text,
             body=body,
@@ -169,20 +300,158 @@ class FetchService:
                 body=body,
                 source_key=source_key,
                 fetched_at=result.fetched_at,
+                kind=kind,
+                profile=profile,
             )
         )
         return result
 
-    async def _request(self, url: str, *, headers: dict[str, str], cookies: Any) -> httpx.Response:
-        async with self._client_factory(headers=headers, cookies=cookies) as client:
-            response = await client.get(url)
-            if response.status_code != 304:
-                response.raise_for_status()
-            return response
+    async def _request(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        cookies: Any,
+        profile: str | None,
+        kind: str,
+    ) -> _FetchedBody:
+        """Fetch ``url`` with bounded, validated manual redirect handling.
+
+        Redirect hops are followed only after the resolved destination passes
+        SSRF validation (scheme, credentials, hostname, resolved addresses).
+        Bodies are read incrementally and rejected as soon as the applicable
+        per-kind size limit is exceeded.
+
+        Section 11: cross-origin redirects must not leak credentials,
+        validators, or origin-specific ``Referer`` headers to the new host.
+        The per-hop headers are re-derived from the caller's input on each
+        hop, sensitive entries are stripped when the origin changes, and
+        the throttle accounts for every requested destination (not only the
+        initial URL).
+        """
+        client = self._pooled_client(profile)
+        current = url
+        visited: set[str] = {url}
+        max_redirects = settings.HTTP_MAX_REDIRECTS
+        current_origin = _origin(current)
+        current_headers = dict(headers)
+        # Section 11: only a genuine domain/path-aware cookie container
+        # (``httpx.Cookies``) may apply cookies to later origins. Plain
+        # mapping/dict cookies are hostless request cookies that only apply
+        # to the first hop; a dict exposes ``.get()``, so any
+        # ``hasattr(cookies, "get")`` detection would wrongly treat it as a
+        # jar and leak hostless cookies across an origin boundary.
+        cookies_is_jar = isinstance(cookies, httpx.Cookies)
+        current_cookies = cookies
+
+        for _ in range(max_redirects + 1):
+            # Per-hop throttle accounting.
+            await self._throttle.before_request(current)
+            async with client.stream("GET", current, headers=current_headers, cookies=current_cookies) as response:
+                status = response.status_code
+                if status in _REDIRECT_STATUSES:
+                    location = response.headers.get("location")
+                    if not location or not location.strip():
+                        await self._throttle.after_response(current, status)
+                        raise SourceError(f"Redirect response from {current} without Location header.")
+                    next_url = urljoin(current, location.strip())
+                    # Validate before requesting the destination (SSRF).
+                    validate_safe_url(next_url)
+                    if next_url in visited:
+                        await self._throttle.after_response(current, status)
+                        raise SourceError(f"Redirect loop detected at {next_url}.")
+                    next_origin = _origin(next_url)
+                    # Rebuild per-hop headers so we can strip credentials /
+                    # validators when the origin changes.
+                    origin_changed = next_origin != current_origin
+                    if origin_changed:
+                        current_headers = _strip_origin_sensitive_headers(headers)
+                        # Referer is origin-specific too: pointing the new
+                        # host at the original URL would leak the previous
+                        # origin to the redirect target.  Drop it.
+                        current_headers.pop("Referer", None)
+                        # Hostless (dict) cookies do not survive a
+                        # cross-origin hop; a real jar's domain matching
+                        # decides what applies.
+                        if not cookies_is_jar:
+                            current_cookies = None
+                    else:
+                        # Same-origin redirect: keep the caller's headers
+                        # (preserving any credentials stripped on an earlier
+                        # cross-origin hop) and set Referer to the URL we're
+                        # coming FROM.
+                        current_headers = dict(current_headers)
+                        current_headers["Referer"] = current
+                    visited.add(next_url)
+                    # Section 11: attribute the redirect response to the host
+                    # that returned it (``current``), not the destination.
+                    await self._throttle.after_response(current, status)
+                    current = next_url
+                    current_origin = next_origin
+                    continue
+                body = await self._read_body_limited(response, current, kind)
+                # Section 11: every response — 304, 429, 4xx, 5xx, success —
+                # is accounted to the host that actually emitted it *before*
+                # ``raise_for_status`` can raise, so a redirected error is
+                # never attributed to the original requested URL and a raise
+                # can never bypass throttle accounting. Retried statuses
+                # account per attempt because each retry re-enters _request.
+                await self._throttle.after_response(current, status)
+                if status != 304:
+                    response.raise_for_status()
+                return _FetchedBody(
+                    final_url=current,
+                    status_code=status,
+                    headers=_headers_dict(response.headers),
+                    body=body,
+                    text=body.decode(response.encoding or "utf-8", errors="replace"),
+                )
+
+        raise SourceError(f"Too many redirects (max {max_redirects}) fetching {url}.")
+
+    async def _read_body_limited(self, response: httpx.Response, url: str, kind: str) -> bytes:
+        """Stream a response body, enforcing the per-kind limit incrementally."""
+        limit = _kind_limit_bytes(kind)
+        declared = response.headers.get("content-length")
+        if declared:
+            try:
+                if int(declared) > limit:
+                    raise SourceError(
+                        f"Declared Content-Length {declared} for {url} exceeds the {kind} limit of {limit} bytes."
+                    )
+            except ValueError:
+                # Malformed header: rely on streaming enforcement below.
+                pass
+        chunks: list[bytes] = []
+        size = 0
+        async for chunk in response.aiter_bytes():
+            size += len(chunk)
+            if size > limit:
+                raise SourceError(f"Response from {url} exceeds the {kind} size limit of {limit} bytes.")
+            chunks.append(chunk)
+        return b"".join(chunks)
+
+    def _pooled_client(self, profile: str | None) -> httpx.AsyncClient:
+        key = profile or ""
+        client = self._clients.get(key)
+        if client is None:
+            client = self._client_factory()
+            self._clients[key] = client
+        return client
+
+    async def aclose(self) -> None:
+        for client in self._clients.values():
+            await client.aclose()
+        self._clients.clear()
+
+    def cache_stats(self) -> dict[str, int | float | None]:
+        if isinstance(self._cache, LRUFetchCache):
+            return self._cache.stats()
+        return {}
 
     async def _with_retry(
         self, fn: Callable[[], Any], *, on_retry: Callable[[int, Exception], None] | None = None
-    ) -> httpx.Response:
+    ) -> _FetchedBody:
         config = RetryConfig(
             max_attempts=3,
             initial_delay=1.0,
@@ -195,7 +464,16 @@ class FetchService:
         class _NonRetryableError(Exception):
             pass
 
-        async def _wrapped() -> httpx.Response:
+        def _retry_after_override(retry_number: int, exc: Exception) -> float | None:
+            """Honor a valid ``Retry-After`` header, bounded by configuration."""
+            if not isinstance(exc, httpx.HTTPStatusError):
+                return None
+            parsed = _parse_retry_after(exc.response.headers.get("retry-after"))
+            if parsed is None:
+                return None
+            return min(parsed, float(settings.HTTP_RETRY_AFTER_MAX_SECONDS))
+
+        async def _wrapped() -> _FetchedBody:
             try:
                 return await fn()
             except httpx.HTTPStatusError as exc:
@@ -204,7 +482,11 @@ class FetchService:
                 raise
 
         try:
-            return await retrier.execute_async(_wrapped, on_retry=on_retry)
+            return await retrier.execute_async(
+                _wrapped,
+                on_retry=on_retry,
+                retry_delay_override=_retry_after_override,
+            )
         except _NonRetryableError as exc:
             original = exc.args[0] if exc.args else None
             if isinstance(original, BaseException):

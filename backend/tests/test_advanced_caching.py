@@ -556,6 +556,9 @@ async def test_cache_flush_stage_writes_pending_entries(cache_dir: Path) -> None
         provider_key="p",
         provider_model="m",
         created_at=datetime.now(UTC).isoformat(),
+        chunk_id="c1",
+        attempt_number=1,
+        output_hash="oh1",
     )
     entry2 = CacheEntry(
         key="key2",
@@ -567,6 +570,9 @@ async def test_cache_flush_stage_writes_pending_entries(cache_dir: Path) -> None
         provider_key="p",
         provider_model="m",
         created_at=datetime.now(UTC).isoformat(),
+        chunk_id="c2",
+        attempt_number=1,
+        output_hash="oh2",
     )
     ctx = PipelineState(
         chapter_url="https://example.com/c1",
@@ -575,6 +581,26 @@ async def test_cache_flush_stage_writes_pending_entries(cache_dir: Path) -> None
         provider_key="p",
         provider_model="m",
     )
+    ctx.chunk_states = {
+        "c1": {
+            "status": "translated",
+            "qa_status": "passed",
+            "accepted_attempt_number": 1,
+            "accepted_provider_key": "p",
+            "accepted_provider_model": "m",
+            "accepted_cache_key": "key1",
+            "accepted_output_hash": "oh1",
+        },
+        "c2": {
+            "status": "translated",
+            "qa_status": "passed",
+            "accepted_attempt_number": 1,
+            "accepted_provider_key": "p",
+            "accepted_provider_model": "m",
+            "accepted_cache_key": "key2",
+            "accepted_output_hash": "oh2",
+        },
+    }
     ctx.metadata["_pending_cache_entries"] = [
         ("key1", entry1),
         ("key2", entry2),
@@ -590,6 +616,107 @@ async def test_cache_flush_stage_writes_pending_entries(cache_dir: Path) -> None
     assert entry2_result.translated_text == "bai"
     assert result.metadata["_pending_cache_entries"] == []
     assert result.metadata["progress"]["cache_flush_written"] == 2
+
+
+@pytest.mark.asyncio
+async def test_cache_flush_stage_suppresses_non_translated_chunks(cache_dir: Path) -> None:
+    """CacheFlushStage must not cache chunks whose QA status is not TRANSLATED."""
+    from novelai.services.translation_cache import TranslationCacheService
+    from novelai.translation.pipeline.stages.cache_flush import CacheFlushStage
+
+    svc = TranslationCacheService(cache_dir=cache_dir)
+    stage = CacheFlushStage(cache_service=svc)
+    ctx = PipelineState(
+        chapter_url="https://example.com/c1",
+        novel_id="novel1",
+        chapter_id="ch1",
+        provider_key="p",
+        provider_model="m",
+    )
+    ctx.chunk_states = {
+        "c0001": {
+            "status": "translated",
+            "qa_status": "passed",
+            "accepted_attempt_number": 1,
+            "accepted_provider_key": "p",
+            "accepted_provider_model": "m",
+            "accepted_cache_key": "key1",
+            "accepted_output_hash": "oh1",
+        },
+        "c0002": {"status": "needs_retry", "qa_status": "needs_llm_retry"},
+        "c0003": {"status": "needs_review", "qa_status": "needs_review"},
+        "c0004": {"status": "qa_failed", "qa_status": "qa_failed"},
+    }
+    ctx.metadata["_pending_cache_entries"] = [
+        (
+            "key1",
+            CacheEntry(
+                key="key1",
+                source_text="a",
+                translated_text="A",
+                glossary_hash="g",
+                provider_key="p",
+                provider_model="m",
+                created_at="2026-01-01T00:00:00Z",
+                chunk_id="c0001",
+                attempt_number=1,
+                output_hash="oh1",
+            ),
+        ),
+        (
+            "key2",
+            CacheEntry(
+                key="key2",
+                source_text="b",
+                translated_text="B",
+                glossary_hash="g",
+                provider_key="p",
+                provider_model="m",
+                created_at="2026-01-01T00:00:00Z",
+                chunk_id="c0002",
+                attempt_number=1,
+                output_hash="oh2",
+            ),
+        ),
+        (
+            "key3",
+            CacheEntry(
+                key="key3",
+                source_text="c",
+                translated_text="C",
+                glossary_hash="g",
+                provider_key="p",
+                provider_model="m",
+                created_at="2026-01-01T00:00:00Z",
+                chunk_id="c0003",
+                attempt_number=1,
+                output_hash="oh3",
+            ),
+        ),
+        (
+            "key4",
+            CacheEntry(
+                key="key4",
+                source_text="d",
+                translated_text="D",
+                glossary_hash="g",
+                provider_key="p",
+                provider_model="m",
+                created_at="2026-01-01T00:00:00Z",
+                chunk_id="c0004",
+                attempt_number=1,
+                output_hash="oh4",
+            ),
+        ),
+    ]
+    ctx.metadata["progress"] = {}
+
+    await stage.run(ctx)
+    assert svc.get("key1") is not None
+    assert svc.get("key2") is None
+    assert svc.get("key3") is None
+    assert svc.get("key4") is None
+    assert ctx.metadata["progress"]["cache_flush_written"] == 1
 
 
 @pytest.mark.asyncio

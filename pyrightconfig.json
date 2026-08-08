@@ -8,7 +8,18 @@
     ".venv",
     "node_modules",
     ".ruff_cache",
-    ".hypothesis"
+    ".hypothesis",
+    "frontend",
+    "graphify-out",
+    ".codegraph",
+    ".git",
+    ".github",
+    "deploy",
+    "tools",
+    "docs",
+    "artifacts",
+    ".tmp",
+    ".tmp.driveupload"
   ],
   "extraPaths": [
     "backend/src"

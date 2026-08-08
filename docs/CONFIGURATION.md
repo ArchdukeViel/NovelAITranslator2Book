@@ -15,6 +15,16 @@ Configuration contract. Exact fields/defaults live in
 - Settings are read through `novelai.config.settings.settings`; no direct
   `os.environ` outside settings module.
 
+## Python Interpreter
+
+The canonical interpreter is the project virtualenv at `.venv\Scripts\python.exe`
+(Python ≥ 3.13). Always invoke backend tooling through the wrappers in `tools/`
+(`tools/pytest.ps1`, `tools/pyright.ps1`, `tools/ruff.ps1`); they resolve the
+venv explicitly so a PATH-precedence mistake cannot poison results. Bare
+`python` / `pytest` / `ruff` / `pyright` invocations outside the wrappers
+fall through to the system interpreter. To rebuild the venv after schema or
+dependency changes, follow the entry in [`OPERATIONS.md`](OPERATIONS.md).
+
 ## Minimum Local Configuration
 
 ```dotenv
@@ -120,7 +130,7 @@ rotation logs out users; credential-encryption rotation requires re-encryption.
 ## Validation
 
 - Production startup runs fail-closed configuration validation.
-- Apply migrations from `backend`: `alembic -c alembic.ini upgrade head`.
+- Apply migrations from repository root: `alembic -c alembic.ini upgrade head`.
 - Verify OAuth URI exactly, TLS DB connection, explicit origins/hosts, Redis
   sharing, R2 scope separation, and restore target isolation.
 - When adding a setting, update `settings.py`, example env files, deployment

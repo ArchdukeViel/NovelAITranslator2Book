@@ -25,14 +25,24 @@ class Chapter(Base):
     __tablename__ = "chapters"
     __table_args__ = (
         Index("ix_chapters_novel_id_chapter_number", "novel_id", "chapter_number"),
+        Index("ix_chapters_novel_id_logical_chapter_id", "novel_id", "logical_chapter_id", unique=True),
+        Index("ix_chapters_novel_id_source_episode_id", "novel_id", "source_episode_id"),
+        Index("ix_chapters_novel_id_sequence_number", "novel_id", "sequence_number"),
         Index("ix_chapters_novel_id_translation_status_updated_at", "novel_id", "translation_status", "updated_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    novel_id: Mapped[int] = mapped_column(
-        ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    novel_id: Mapped[int] = mapped_column(ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True)
     chapter_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Section 2 stable identity. ``logical_chapter_id`` is the canonical
+    # key used by orchestrator, translation lineage, and the raw
+    # generation index; ``chapter_number`` is retained as a
+    # presentation/sequence compatibility field. The DB contract is
+    # UNIQUE(novel_id, logical_chapter_id) with a NOT NULL column — the
+    # migration and this ORM model agree exactly.
+    logical_chapter_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_episode_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    sequence_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     title: Mapped[str | None] = mapped_column(String(512), nullable=True)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -45,9 +55,7 @@ class Chapter(Base):
     translation_status: Mapped[str] = mapped_column(String(64), nullable=False, default="pending")
 
     # Translation pipeline state (tracked by TranslationService)
-    translation_state: Mapped[str] = mapped_column(
-        String(32), nullable=False, default=TranslationState.PENDING.value
-    )
+    translation_state: Mapped[str] = mapped_column(String(32), nullable=False, default=TranslationState.PENDING.value)
     translation_error: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
     word_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -74,5 +82,6 @@ class Chapter(Base):
     def __repr__(self) -> str:
         return (
             f"<Chapter id={self.id} novel_id={self.novel_id}"
+            f" logical_chapter_id={self.logical_chapter_id}"
             f" chapter_number={self.chapter_number}>"
         )

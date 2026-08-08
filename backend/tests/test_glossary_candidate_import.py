@@ -87,8 +87,10 @@ def _make_novel(session, slug: str) -> Novel:
     return novel
 
 
-def _make_chapter(session, novel: Novel, number: int) -> Chapter:
-    chapter = Chapter(novel_id=novel.id, chapter_number=number, title=f"Chapter {number}")
+def _make_chapter(session, novel: Novel, number: int, prefix: str = "test") -> Chapter:
+    chapter = Chapter(
+        logical_chapter_id=f"{prefix}-lid-{number}", novel_id=novel.id, chapter_number=number, title=f"Chapter {number}"
+    )
     session.add(chapter)
     session.flush()
     return chapter
@@ -109,8 +111,8 @@ def _seed_repeated_translations(storage: FakeChapterStorage, novel_slug: str) ->
 
 def test_dry_run_returns_candidates_without_writing_entries(session, storage) -> None:
     novel = _make_novel(session, "dry-run")
-    _make_chapter(session, novel, 1)
-    _make_chapter(session, novel, 2)
+    _make_chapter(session, novel, 1, prefix="dry-run")
+    _make_chapter(session, novel, 2, prefix="dry-run")
     _seed_repeated_translations(storage, novel.slug)
 
     result = GlossaryCandidateImporter(session, storage).import_from_saved_chapters(novel.id)
@@ -123,7 +125,7 @@ def test_dry_run_returns_candidates_without_writing_entries(session, storage) ->
 
 def test_apply_creates_backend_candidate_entries_only(session, storage) -> None:
     novel = _make_novel(session, "apply")
-    _make_chapter(session, novel, 1)
+    _make_chapter(session, novel, 1, prefix="apply")
     _seed_repeated_translations(storage, novel.slug)
 
     result = GlossaryCandidateImporter(session, storage).import_from_saved_chapters(novel.id, dry_run=False)
@@ -205,7 +207,7 @@ def test_candidates_across_different_novels_remain_separate(session, storage) ->
 
 def test_apply_creates_compact_source_agnostic_provenance(session, storage) -> None:
     novel = _make_novel(session, "provenance")
-    chapter = _make_chapter(session, novel, 1)
+    chapter = _make_chapter(session, novel, 1, prefix="provenance")
     storage.add_raw(novel.slug, "1", "ポコットで会った。ポコットは村です。", source_key="kakuyomu")
     storage.add_translated(
         novel.slug,
@@ -221,7 +223,9 @@ def test_apply_creates_compact_source_agnostic_provenance(session, storage) -> N
     assert all(item.novel_id == novel.id for item in provenance)
     assert all(item.chapter_id == chapter.id for item in provenance if item.source_chapter_id == "1")
     assert all(item.evidence_ref == "saved_chapter:1" for item in provenance if item.source_chapter_id == "1")
-    assert all((item.observed_translated_term or "") != storage.translated[(novel.slug, "1")]["text"] for item in provenance)
+    assert all(
+        (item.observed_translated_term or "") != storage.translated[(novel.slug, "1")]["text"] for item in provenance
+    )
 
 
 def test_banned_or_rejected_alias_conflict_is_reported_and_skipped(session, storage) -> None:

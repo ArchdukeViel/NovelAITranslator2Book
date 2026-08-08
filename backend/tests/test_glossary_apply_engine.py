@@ -29,6 +29,7 @@ _SQLITE = "sqlite:///:memory:"
 # Fake storage mimicking StorageService interface used by orchestrator
 # ---------------------------------------------------------------------------
 
+
 class FakeStorage:
     def __init__(self) -> None:
         self.metadata: dict[str, dict[str, Any]] = {}
@@ -75,15 +76,11 @@ class FakeStorage:
     def list_translated_chapters(self, novel_id: str) -> list[str]:
         return [c for (n, c) in self.translated if n == novel_id]
 
-    def load_translated_chapter(
-        self, novel_id: str, chapter_id: str
-    ) -> dict[str, Any] | None:
+    def load_translated_chapter(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
         item = self.active.get((novel_id, chapter_id))
         return deepcopy(item) if item is not None else None
 
-    def list_translated_chapter_versions(
-        self, novel_id: str, chapter_id: str
-    ) -> list[dict[str, Any]]:
+    def list_translated_chapter_versions(self, novel_id: str, chapter_id: str) -> list[dict[str, Any]]:
         return list(self.versions.get((novel_id, chapter_id), []))
 
     def save_translated_chapter(
@@ -162,19 +159,16 @@ class FakeOrchestrator:
     def __init__(self, storage: FakeStorage) -> None:
         self.storage = storage
         # Bind orchestrator functions onto instance
-        self.apply_glossary_to_chapters = lambda *a, **kw: apply_glossary_to_chapters(
-            self, *a, **kw
-        )
+        self.apply_glossary_to_chapters = lambda *a, **kw: apply_glossary_to_chapters(self, *a, **kw)
         from novelai.services.orchestration.glossary import _run_apply_glossary
 
-        self._run_apply_glossary = lambda *a, **kw: _run_apply_glossary(
-            self, *a, **kw
-        )
+        self._run_apply_glossary = lambda *a, **kw: _run_apply_glossary(self, *a, **kw)
 
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def engine():
@@ -241,7 +235,7 @@ def novel(session) -> Novel:
 
 @pytest.fixture()
 def chapter(session, novel: Novel) -> Chapter:
-    ch = Chapter(novel_id=novel.id, chapter_number=1, title="C1")
+    ch = Chapter(logical_chapter_id="lid-16", novel_id=novel.id, chapter_number=1, title="C1")
     session.add(ch)
     session.commit()
     return ch
@@ -250,6 +244,7 @@ def chapter(session, novel: Novel) -> Chapter:
 # ---------------------------------------------------------------------------
 # Engine-level tests
 # ---------------------------------------------------------------------------
+
 
 def test_apply_engine_simple_replacement():
     text = "Hello world, hello there."
@@ -315,6 +310,7 @@ def test_apply_engine_empty_replacements():
 # ---------------------------------------------------------------------------
 # Orchestration / apply-glossary tests
 # ---------------------------------------------------------------------------
+
 
 def _replacement(
     old_text: str,
@@ -432,9 +428,7 @@ def test_apply_needs_review_skipped_by_default(session, novel, storage, orchestr
         )
     )
     statuses = {ch.status for ch in result.chapters}
-    assert "skipped" not in statuses or "needs_review" not in {
-        ch.block_reason for ch in result.chapters
-    }
+    assert "skipped" not in statuses or "needs_review" not in {ch.block_reason for ch in result.chapters}
 
 
 def test_apply_force_needs_review_applies(session, novel, storage, orchestrator, monkeypatch, patched_session, chapter):
@@ -537,6 +531,7 @@ def test_apply_partial_failure_continues(session, novel, storage, orchestrator, 
 # Rollback tests
 # ---------------------------------------------------------------------------
 
+
 def test_rollback_by_batch_id(storage):
     from novelai.core.platform import ChapterVersionKind
 
@@ -582,6 +577,7 @@ def test_activate_unknown_version_returns_false(storage):
 # ---------------------------------------------------------------------------
 # Version metadata assertions
 # ---------------------------------------------------------------------------
+
 
 def test_applied_version_metadata(session, novel, storage, orchestrator, patched_session, chapter):
     storage.add_novel("demo", ["1"])

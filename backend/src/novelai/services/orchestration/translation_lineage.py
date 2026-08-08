@@ -23,8 +23,61 @@ from novelai.translation.qa import (
     evaluate_translation_quality,
     normalize_translation_output,
 )
+from novelai.translation.run_manifest import _normalize_honorific_policy
 
 logger = logging.getLogger(__name__)
+
+
+def _stored_output_contract_matches(
+    existing: dict[str, Any],
+    *,
+    style_preset: str | None,
+    consistency_mode: bool | None,
+    json_output: bool | None,
+    honorific_policy: str | None,
+    active_raw_generation_id: str | None,
+) -> bool:
+    """Mirror ``is_translation_valid`` for the output-shaping dimensions the
+    delta retranslation path bypasses the resume gate for.
+
+    With ``TRANSLATION_DELTA_RETRANSLATION_ENABLED`` at its default ``True``,
+    the resume gate (``_check_chapter_resume_state``) never runs its validity
+    branch, so ``whole_chapter_unchanged`` would otherwise silently reuse a
+    translation produced under a different style preset, consistency mode,
+    JSON-output flag, or honorific policy — and even re-stamp the new contract
+    over the reused (old-style) text. To keep the delta path's reuse/retranslate
+    decision identical to the gate's, fail closed exactly the same way:
+
+    - ``style_preset`` / ``honorific_policy`` are identity dimensions: a
+      non-empty current value must match the stored value (normalized for
+      honorifics); a ``None``/empty current value means the dimension is not
+      required, so a stored value (or a missing one) does not invalidate.
+    - ``consistency_mode`` / ``json_output`` are bool dimensions compared
+      whenever current is not ``None``; a missing stored value fails closed.
+    - ``active_raw_generation_id``: provenance is *required* when a generation
+      is active (Section 8). A missing stored ``raw_generation_id`` is
+      stale/needs-backfill, never silently reusable. Identity is never compared.
+    """
+    if style_preset:
+        if not existing.get("style_preset") or existing["style_preset"] != style_preset:
+            return False
+    if consistency_mode is not None:
+        stored_consistency = existing.get("consistency_mode")
+        if not isinstance(stored_consistency, bool) or stored_consistency != consistency_mode:
+            return False
+    if json_output is not None:
+        stored_json = existing.get("json_output")
+        if not isinstance(stored_json, bool) or stored_json != json_output:
+            return False
+    normalized_honorific = _normalize_honorific_policy(honorific_policy)
+    if normalized_honorific:
+        stored_honorific = existing.get("honorific_policy")
+        if not stored_honorific or _normalize_honorific_policy(stored_honorific) != normalized_honorific:
+            return False
+    if active_raw_generation_id:
+        if not existing.get("raw_generation_id"):
+            return False
+    return True
 
 
 def _positive_padding(value: object) -> int:
@@ -495,12 +548,37 @@ async def _try_delta_translate_chapter(
     glossary: Any | None,
     style_preset: str | None,
     consistency_mode: bool,
+    translation_run_id: str | None,
     job_id: str | None,
     activity_id: str | None,
     allow_cross_provider_fallback: bool,
+    json_output: bool | None = None,
+    honorific_policy: str | None = None,
+    active_raw_generation_id: str | None = None,
 ) -> dict[str, Any]:
     if not settings.TRANSLATION_DELTA_RETRANSLATION_ENABLED:
         return {"applied": False, "fallback_reason": "delta_disabled"}
+
+    # Output-contract invalidation. The delta path runs only when delta
+    # retranslation is enabled, which is also when the resume gate skips its
+    # ``is_translation_valid`` branch. Without this check the delta path would
+    # ``whole_chapter_unchanged``-reuse a prior translation produced under a
+    # different style preset / consistency mode / JSON-output flag / honorific
+    # policy — or under a now-active generation whose raw snapshot the stored
+    # version does not descend from — and then re-stamp the new contract on the
+    # reused (stale) text. Fail closed identically to the gate so the two reuse
+    # paths cannot diverge. Load the existing translation once and reuse it for
+    # both the contract check and the ``whole_chapter_unchanged`` reuse below.
+    existing_translation = self.storage.load_translated_chapter(novel_id, chapter_id)
+    if existing_translation and not _stored_output_contract_matches(
+        existing_translation,
+        style_preset=style_preset,
+        consistency_mode=consistency_mode,
+        json_output=json_output,
+        honorific_policy=honorific_policy,
+        active_raw_generation_id=active_raw_generation_id,
+    ):
+        return {"applied": False, "fallback_reason": "output_contract_changed"}
 
     segment = SmartSegmentStage()
     paragraphs, _, _ = segment.estimate_chapter_chunks(novel_id=novel_id, chapter_id=chapter_id, text=raw_text)
@@ -519,7 +597,6 @@ async def _try_delta_translate_chapter(
         comparison=comparison,
         padding=_positive_padding(settings.TRANSLATION_DELTA_WINDOW_PADDING_PARAGRAPHS),
     )
-    existing_translation = self.storage.load_translated_chapter(novel_id, chapter_id)
     if not windows:
         if existing_translation and isinstance(existing_translation.get("text"), str):
             return {
@@ -567,6 +644,7 @@ async def _try_delta_translate_chapter(
             result = await self.translation.translate_chapter(
                 source_adapter=source,
                 chapter_url=f"{chapter_url}#delta-window-{window_number}",
+                translation_run_id=translation_run_id,
                 job_id=job_id,
                 activity_id=activity_id,
                 novel_id=novel_id,

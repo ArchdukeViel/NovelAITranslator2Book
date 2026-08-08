@@ -100,8 +100,10 @@ def _make_novel(session, slug: str) -> Novel:
     return novel
 
 
-def _make_chapter(session, novel: Novel, number: int) -> Chapter:
-    chapter = Chapter(novel_id=novel.id, chapter_number=number, title=f"Chapter {number}")
+def _make_chapter(session, novel: Novel, number: int, prefix: str = "test") -> Chapter:
+    chapter = Chapter(
+        logical_chapter_id=f"{prefix}-lid-{number}", novel_id=novel.id, chapter_number=number, title=f"Chapter {number}"
+    )
     session.add(chapter)
     session.flush()
     return chapter
@@ -144,7 +146,7 @@ def _provider_payload(*, confidence: float = 0.86) -> dict[str, Any]:
 
 def test_dry_run_calls_fake_provider_and_writes_no_entries(session, storage) -> None:
     novel = _make_novel(session, "dry-provider")
-    _make_chapter(session, novel, 1)
+    _make_chapter(session, novel, 1, prefix="dry-provider")
     _seed_chapter(storage, novel.slug)
     provider = FakeProvider(_provider_payload())
 
@@ -166,7 +168,7 @@ def test_dry_run_calls_fake_provider_and_writes_no_entries(session, storage) -> 
 
 def test_apply_creates_candidate_entries_only(session, storage) -> None:
     novel = _make_novel(session, "apply-provider")
-    _make_chapter(session, novel, 1)
+    _make_chapter(session, novel, 1, prefix="apply-provider")
     _seed_chapter(storage, novel.slug)
 
     result = GlossaryProviderSuggestionService(
@@ -280,7 +282,12 @@ def test_invalid_candidate_fields_are_skipped_and_confidence_is_clamped(session,
                     "evidence": [{"source_chapter_id": "1"}],
                     "rationale": "Valid after normalization.",
                 },
-                {"raw_term": "ギルド", "suggested_translation": "Guild", "term_type": "organization", "confidence": "high"},
+                {
+                    "raw_term": "ギルド",
+                    "suggested_translation": "Guild",
+                    "term_type": "organization",
+                    "confidence": "high",
+                },
             ],
         }
     )
@@ -352,7 +359,7 @@ def test_provider_term_type_aliases_are_normalized_with_specific_warnings(sessio
 def test_provider_chapter_scope_reports_scan_count_and_safety_cap(session, storage) -> None:
     novel = _make_novel(session, "scope-provider")
     for number in range(1, 4):
-        _make_chapter(session, novel, number)
+        _make_chapter(session, novel, number, prefix="scope-provider")
         storage.add_raw(novel.slug, str(number), f"raw {number} ãƒã‚³ãƒƒãƒˆ")
         storage.add_translated(novel.slug, str(number), f"translated {number} Pocott")
 
@@ -393,7 +400,7 @@ def test_aliases_store_only_safe_alias_types(session, storage) -> None:
 
 def test_apply_creates_compact_provider_provenance_without_long_excerpts(session, storage) -> None:
     novel = _make_novel(session, "provenance-provider")
-    chapter = _make_chapter(session, novel, 1)
+    chapter = _make_chapter(session, novel, 1, prefix="provenance-provider")
     _seed_chapter(storage, novel.slug)
     payload = _provider_payload()
     payload["candidates"][0]["evidence"] = [

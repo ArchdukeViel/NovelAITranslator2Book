@@ -14,11 +14,16 @@ from typing import Any
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState, ChapterStateTransition
 from novelai.core.platform import ChapterVersionKind
+from novelai.core.security import decode_physical_stem
 from novelai.storage.chapters import (
     _chapter_dir,
     _chapter_path,
     _load_chapter_bundle,
     _persist_chapter_bundle,
+    _translation_active_pointer_path,
+    _translation_overlay_dir,
+    _translation_overlay_path,
+    build_chapter_payload,
     count_stored_chapters,
     existing_chapter_hash,
     get_chapter_progress,
@@ -29,6 +34,30 @@ from novelai.storage.chapters import (
     load_chapter,
     query_chapters,
     save_chapter,
+)
+from novelai.storage.generations import (
+    _copy_asset_to_generation,
+    _generation_dir,
+    _generations_dir,
+    activate_generation,
+    commit_generation,
+    commit_generation_recovery,
+    create_generation_stage,
+    get_active_generation,
+    list_generations,
+    load_generation_manifest,
+    record_refresh_failed_chapter,
+    record_staged_chapter,
+    record_unavailable_chapter,
+    resolve_active_generation_id,
+    rollback_generation,
+    seed_generation_from_active,
+    stage_generation_chapter,
+    stage_generation_chapter_index,
+    stage_generation_image,
+    stage_generation_metadata,
+    stage_generation_source_state,
+    validate_generation_activation,
 )
 from novelai.storage.glossary import load_glossary, save_glossary
 from novelai.storage.jobs import (
@@ -46,7 +75,9 @@ from novelai.storage.media import (
     _asset_relative_path,
     _chapter_image_dir,
     _guess_asset_suffix,
+    _load_media_overlay,
     _normalize_media_fields,
+    _save_media_overlay,
     clear_chapter_image_assets,
     load_chapter_media_state,
     resolve_asset_path,
@@ -77,8 +108,10 @@ from novelai.storage.novels import (
     list_novels,
     load_metadata,
     load_metadata_snapshot,
+    load_source_state,
     resolve_onboarding_status,
     save_metadata,
+    save_source_state,
     update_onboarding_status,
 )
 from novelai.storage.runtime_contracts import (
@@ -117,11 +150,9 @@ from novelai.storage.traceability import (
     upsert_chunk_state,
 )
 from novelai.storage.translations import (
-    _active_translation_version,
-    _append_edit_history,
-    _set_active_translation_version,
-    _translated_payload_to_version,
-    _translation_versions_from_payload,
+    _load_translation_overlay,
+    _persist_translation_overlay,
+    _translation_versions_from_payload_compat,
     activate_translated_chapter_version,
     count_translated_chapters,
     list_translated_chapter_versions,
@@ -129,8 +160,10 @@ from novelai.storage.translations import (
     load_translated_chapter,
     load_translated_chapter_by_version_id,
     load_translation_edit_history,
+    load_translation_run_manifest,
     save_edited_translation,
     save_translated_chapter,
+    save_translation_run_manifest,
 )
 
 logger = logging.getLogger(__name__)
@@ -246,12 +279,36 @@ class StorageService:
     def logical_id_from_stem(stem: str) -> str:
         """Convert a physical filename stem to a logical chapter ID.
 
-        ``0001`` (zero-padded) → ``1``, ``abc`` → ``abc``.
+        ``0001`` (zero-padded) → ``1``, ``kakuyomu%3A123`` →
+        ``kakuyomu:123``, legacy ``abc`` → ``abc``.
         """
         try:
             return str(int(stem))
         except (ValueError, TypeError):
-            return stem
+            return decode_physical_stem(stem)
+
+    def _content_root(self, novel_id: str) -> Path:
+        """Return the directory holding a novel's active content snapshot.
+
+        When an active generation exists:
+        - Raw reads (chapters, images) resolve through the active generation
+        - Committed generations are byte-immutable; they are never written to
+        - New raw writes must use staging (``generations/<gen-id>/``)
+        - Mutable translations/media use per-novel overlays
+          (``translations/``, ``media/``) which are composed over the active
+          generation at read time
+
+        When no active generation exists, the legacy novel-directory layout is
+        used for reads and writes.
+
+        Control artifacts (folder index, metadata backups, chapter state,
+        checkpoints, ``generations/`` itself) always stay in the novel
+        directory and are never generation-scoped.
+        """
+        active = get_active_generation(self, novel_id)
+        if active is not None:
+            return self._generations_dir(novel_id) / active.generation_id
+        return self._novel_dir(novel_id)
 
     def __init__(self, base_dir: Path | None = None, backend: Any | None = None) -> None:
         if backend is not None:
@@ -300,12 +357,16 @@ class StorageService:
         if backing == "s3":
             self._write_text(path, content)
             return
+        from novelai.storage.backends.filesystem import _replace_with_retry
+
         self._backend.mkdirs(self._rel(path.parent))
         temp_path = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
         replaced = False
         try:
             self._backend.save(self._rel(temp_path), content.encode(encoding))
-            os.replace(temp_path, path)
+            # Bounded retry for transient Windows WinError-5 file locks so an
+            # antivirus/reader-held handle cannot flake the atomic rename.
+            _replace_with_retry(temp_path, path)
             replaced = True
             _fsync_directory(path.parent)
         except Exception as exc:
@@ -557,6 +618,30 @@ class StorageService:
     delete_novel = delete_novel
     save_metadata = save_metadata
     load_metadata = load_metadata
+    save_source_state = save_source_state
+    load_source_state = load_source_state
+    _generations_dir = _generations_dir
+    _generation_dir = _generation_dir
+    create_generation_stage = create_generation_stage
+    record_staged_chapter = record_staged_chapter
+    stage_generation_chapter = stage_generation_chapter
+    stage_generation_image = stage_generation_image
+    stage_generation_metadata = stage_generation_metadata
+    stage_generation_chapter_index = stage_generation_chapter_index
+    stage_generation_source_state = stage_generation_source_state
+    seed_generation_from_active = seed_generation_from_active
+    _copy_asset_to_generation = _copy_asset_to_generation
+    commit_generation = commit_generation
+    commit_generation_recovery = commit_generation_recovery
+    validate_generation_activation = validate_generation_activation
+    resolve_active_generation_id = resolve_active_generation_id
+    record_unavailable_chapter = record_unavailable_chapter
+    record_refresh_failed_chapter = record_refresh_failed_chapter
+    activate_generation = activate_generation
+    rollback_generation = rollback_generation
+    list_generations = list_generations
+    load_generation_manifest = load_generation_manifest
+    get_active_generation = get_active_generation
     update_onboarding_status = update_onboarding_status
     resolve_onboarding_status = resolve_onboarding_status
     _load_latest_valid_metadata_backup = _load_latest_valid_metadata_backup
@@ -575,6 +660,7 @@ class StorageService:
     _persist_chapter_bundle = _persist_chapter_bundle
     existing_chapter_hash = existing_chapter_hash
     save_chapter = save_chapter
+    build_chapter_payload = build_chapter_payload
     load_chapter = load_chapter
     list_stored_chapters = list_stored_chapters
     count_stored_chapters = count_stored_chapters
@@ -583,12 +669,15 @@ class StorageService:
     query_chapters = query_chapters
     get_chapters_with_errors = get_chapters_with_errors
     get_scraping_progress = get_scraping_progress
-    _translated_payload_to_version = _translated_payload_to_version
-    _translation_versions_from_payload = _translation_versions_from_payload
-    _active_translation_version = _active_translation_version
-    _set_active_translation_version = _set_active_translation_version
-    _append_edit_history = _append_edit_history
+    _load_translation_overlay = _load_translation_overlay
+    _persist_translation_overlay = _persist_translation_overlay
+    _translation_versions_from_payload_compat = _translation_versions_from_payload_compat
+    _translation_overlay_path = _translation_overlay_path
+    _translation_overlay_dir = _translation_overlay_dir
+    _translation_active_pointer_path = _translation_active_pointer_path
     save_translated_chapter = save_translated_chapter
+    save_translation_run_manifest = save_translation_run_manifest
+    load_translation_run_manifest = load_translation_run_manifest
     load_translated_chapter = load_translated_chapter
     load_translated_chapter_by_version_id = load_translated_chapter_by_version_id
     list_translated_chapter_versions = list_translated_chapter_versions
@@ -604,6 +693,8 @@ class StorageService:
     save_chapter_image_asset = save_chapter_image_asset
     resolve_asset_path = resolve_asset_path
     _normalize_media_fields = _normalize_media_fields
+    _load_media_overlay = _load_media_overlay
+    _save_media_overlay = _save_media_overlay
     load_chapter_media_state = load_chapter_media_state
     save_chapter_media_state = save_chapter_media_state
     _get_state_dir = _get_state_dir
