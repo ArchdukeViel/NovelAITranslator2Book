@@ -100,55 +100,6 @@ enforce-admins. Re-enable review requirements when a second write-access
 reviewer exists. Remaining: sanitized incident/false-positive triage exercise
 (operator).
 
-## Completed: PR-41 Audit Follow-up — Production-Path Hardening (2026-08-07)
-
-All 13 remaining PR-41 audit blockers resolved on branch
-`feat/pipeline-upgrade-phases-1-8` (final HEAD `d60d7bd` with commits
-`0357a32`, `51b9ef2`, `ad1b7bc`, `1bb402b`). Every production-path blocker from the
-PR-41 review is resolved; the full backend suite (2973 passed, 26 skipped), e2e
-suite (5 passed), and all focused test files (171 focused tests) pass.
-
-**S2**: Scoped crawls seed every still-current chapter from the previous active
-generation; generation membership = complete current index; empty selection
-rejected.
-**S3**: `refresh_failed_retained` (prior bundle carried) distinct from
-`unavailable` (no usable bundle); full-mode unresolved content rolls back.
-**S4**: `validate_generation_activation` enforces `status == "staging"`,
-exact id/hash membership, per-bundle canonical hashes, backend-abstracted
-asset checks, exact counter reconciliation.
-**S5**: `commit_generation` is a true CAS on `active_generation.json` with
-`starting_active_generation_id`; `skip_validation` removed from normal path;
-recovery-only API with explicit reason/evidence.
-**S6**: Generation-first metadata/source-state/chapter/asset reads; per-chapter
-catalog refresh removed; projections refreshed once post-commit.
-**S7**: DB stable chapter identity — ORM/migration aligned on
-`UNIQUE(novel_id, logical_chapter_id)` NOT NULL; safe backfill; ORM
-resolves by `logical_chapter_id`; catalog never resolves by title; reorder
-updates `sequence_number` in place.
-**S8**: `save_translated_chapter` / `load_translated_chapter` round-trip
-`translation_run_id`, `raw_generation_id`, `source_episode_id`,
-`source_{content,structure,image_manifest}_hash`, `qa_policy_fingerprint`,
-`source/target_language`, `style/consistency/json` policy, `output_hash`,
-`activation_disposition`; `is_translation_valid` validates complete contract;
-legacy incomplete lineage under active generation = stale/needs-backfill.
-**S9**: `CacheFlushStage` writes only the exact QA-accepted attempt tuple
-(attempt/provider/model/cache_key/output_hash); cross-model retry cannot
-cache rejected output.
-**S10**: `create_crawl_plan` uses persisted `ordered_episode_ids`; removals
-only newly missing episodes; reappearance clears `missing_since`; convergence
-after one update.
-**S11**: Dict cookies never cross origin; `httpx.Cookies` jars follow
-redirects; `after_response` per hop before `raise_for_status`; per-attempt
-accounting for retries.
-**S12**: `save/clear_chapter_image_asset` + `_content_root` refuse raw
-writes under active generations.
-**S13**: Bounded retry (8 attempts, 20–160 ms backoff) around `os.replace`
-in filesystem backend and `StorageService._write_text_atomic`; focused test
-proves recovery from transient WinError-5.
-
-Evidence: 171 focused tests + 2973 full backend + 5 e2e + 141 translation
-cache/QA — all pass; Pyright 0 errors; Ruff clean; Graphify updated.
-
 ## Active Work
 
 ## Feature & Design Gaps / Deferred Work (Stitch Screen 1794eb02d11a407b9b6343d727670125)

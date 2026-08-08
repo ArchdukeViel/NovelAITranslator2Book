@@ -1,3 +1,52 @@
+## 2026-08-08 PR-41 Final Correctness Pass — Activation Counters, CAS Pointer Semantics, Translation Validity
+
+Follow-up to the PR-41 production-path hardening on
+`feat/pipeline-upgrade-phases-1-8` (commit `d392f51`). Closes the remaining
+review blockers: exact derived activation counters, filesystem CAS pointer
+semantics, and translation-validity provenance semantics. Full backend suite
+(2999 passed, 26 skipped), e2e (5 passed), Pyright 0 errors, Ruff clean.
+
+### Commit `d392f51` `fix(pipeline): derive exact activation counters and enforce CAS pointer semantics`
+
+- `GenerationManifest` now persists derived aggregates
+  (`unchanged_selected_count`, `refresh_failed_retained_count`,
+  `unavailable_count`, `failed_refresh_count`, `removed_count`) reconciled by
+  `validate_generation_activation`; an empty disposition map is a validation
+  failure, never a bypass; `acknowledge_removed` must match the crawl-plan
+  removal delta.
+- `failed_refresh_count = refresh_failed_retained_count +
+  unavailable_fetch_failure_count`; deliberate `not_fetched` scoped entries
+  never count (two failure kinds stay distinct).
+- Filesystem active-pointer CAS reads/compares/writes inside the
+  `InterProcessFileLock`; corrupt/empty pointer bytes conflict instead of
+  overwriting; S3 backend uses only its conditional `If-Match`/`If-None-Match`
+  PUT (local lock removed from remote backends).
+- `is_translation_valid` treats `raw_generation_id` as provenance (must exist
+  when a generation is active; never equality-compared), adds
+  `style_preset`/`consistency_mode`/`json_output`/`honorific_policy`
+  (normalized identity) as validity dimensions, and fails closed on a missing
+  stored language.
+- Catalog chapter resolution falls back to `sequence_number` /
+  `chapter_number` when `logical_chapter_id` is absent; crawler, run-manifest,
+  and resume paths persist and surface the new counts.
+
+### Test evidence (all passing)
+
+- New `test_pr41_final_correctness.py` + updates to
+  `test_pr41_audit_fixes.py`, `test_pr41_membership_failure_semantics.py`,
+  `test_section12_stable_identity.py`,
+  `test_section67_immutable_raw_and_carried_images.py`,
+  `test_staged_generations.py`.
+- Full backend suite: 2999 passed, 26 skipped (was 2973 on PR-41 close).
+- E2E suite: 5 passed. Pyright: 0 errors, 0 warnings. Ruff: clean, format
+  clean.
+- Graphify: updated (`graphify update . --no-cluster`).
+
+### Remaining
+
+Unchanged from the prior entry: hosted/manual acceptance gates per
+`WORK.md` (NO-GO) and the documented non-blocking debt list.
+
 ## 2026-08-07 PR-41 Final Correctness Pass — Production-Path Hardening Complete
 
 Closed all remaining PR-41 audit gaps on `feat/pipeline-upgrade-phases-1-8`
