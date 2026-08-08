@@ -147,45 +147,56 @@ class S3Backend(StorageBackend):
         pass  # S3 has no directories; objects are created implicitly
 
     def compare_and_swap(self, path: str | Path, expected: bytes | None, new_value: bytes) -> bool:
-        """Atomic conditional PUT against the active pointer object.
+        """True compare-and-swap against the current object version.
 
-        Reads the current object's ETag, then ``put_object`` with the
-        ``IfMatch=ETag`` constraint so a concurrent writer cannot silently
-        overwrite an activation pointer with stale expected bytes. A
-        missing current object (``expected is None``) uses ``IfNoneMatch='*'``
-        so first-writer-wins on activation.
+        Non-None ``expected``:
 
-        Returns ``False`` when:
+        1. reads the current object and its ETag as **one observed version**
+           (``get_object``);
+        2. verifies the object's **bytes** equal the supplied ``expected`` —
+           an ETag alone is not a body comparison and is never used as a
+           substitute for the caller's expected value;
+        3. if the bytes differ (or the object is missing) returns ``False``;
+        4. conditionally PUTs ``new_value`` with ``If-Match`` on the exact
+           observed ETag;
+        5. a ``412 PreconditionFailed`` (concurrent writer won) returns
+           ``False``.
 
-        - the local ``expected`` does not match the current ETag
-          (``PreconditionFailed``, ``412``);
-        - the object already exists when ``expected`` is ``None``
-          (``PreconditionFailed`` for ``IfNoneMatch='*'``).
+        ``expected is None`` uses conditional creation: ``If-None-Match: "*"``
+        so the first writer wins; an already-existing object returns
+        ``False``.
 
-        On any other ``ClientError`` we re-raise so the caller can treat it
-        as a real storage failure rather than silently degrading to
+        Any other ``ClientError`` is re-raised so the caller treats it as a
+        real storage failure rather than silently degrading to
         last-writer-wins.
         """
         from botocore.exceptions import ClientError
 
         key = self._key(path)
-        etag = None
-        try:
-            head = self._client.head_object(Bucket=self._bucket, Key=key)
-            etag = head.get("ETag")
-        except ClientError as exc:
-            if not _is_not_found_error(exc):
-                raise
-            # Object is absent; that is a valid expected=None state.
         if expected is None:
             params: dict[str, Any] = {"Bucket": self._bucket, "Key": key, "Body": new_value}
             params["IfNoneMatch"] = "*"
         else:
+            # Observe the current object and its ETag as one version.
+            current: bytes | None = None
+            etag: str | None = None
+            try:
+                obj = self._client.get_object(Bucket=self._bucket, Key=key)
+                body = obj.get("Body")
+                etag = obj.get("ETag")
+                current = body.read() if body is not None else None
+            except ClientError as exc:
+                if not _is_not_found_error(exc):
+                    raise
+            if current is None:
+                # The expected bytes are not absent; a missing object must
+                # refuse the swap rather than silently degrading to
+                # last-writer-wins.
+                return False
+            if current != expected:
+                return False
             params = {"Bucket": self._bucket, "Key": key, "Body": new_value}
-            if etag is None:
-                # The expected bytes are not absent; if the object truly
-                # does not exist we must refuse the swap rather than
-                # silently degrading to last-writer-wins.
+            if not etag:
                 return False
             params["IfMatch"] = etag
         try:

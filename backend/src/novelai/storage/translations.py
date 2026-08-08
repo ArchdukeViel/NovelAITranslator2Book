@@ -260,6 +260,7 @@ def save_translated_chapter(
     json_output: bool | None = None,
     output_hash: str | None = None,
     activation_disposition: str | None = None,
+    honorific_policy: str | None = None,
 ) -> Any:
     """Persist a translation version into the per-chapter overlay.
 
@@ -339,6 +340,7 @@ def save_translated_chapter(
         ("style_preset", style_preset),
         ("output_hash", output_hash),
         ("activation_disposition", activation_disposition),
+        ("honorific_policy", honorific_policy),
     ):
         if isinstance(value, str) and value.strip():
             translated_payload[key] = value.strip()
@@ -464,6 +466,7 @@ def load_translated_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[s
         "style_preset": translated.get("style_preset", None),
         "consistency_mode": translated.get("consistency_mode", None),
         "json_output": translated.get("json_output", None),
+        "honorific_policy": translated.get("honorific_policy", None),
         "output_hash": translated.get("output_hash", None),
         "activation_disposition": translated.get("activation_disposition", None),
         "input_adapter_key": metadata_source.get("input_adapter_key"),

@@ -373,12 +373,16 @@ def test_cas_prevents_stale_stage_overwriting_newer_active() -> None:
     _stage("gen-B", "2")
 
     # B activates first.
-    storage.commit_generation(novel_id, "gen-B", starting_active_generation_id=None)
+    storage.commit_generation(
+        novel_id, "gen-B", chapter_dispositions={"2": "fetched_new"}, starting_active_generation_id=None
+    )
     assert storage.resolve_active_generation_id(novel_id) == "gen-B"
 
     # A attempts commit with its stale captured pointer: must fail, not overwrite.
     with pytest.raises(GenerationConflictError):
-        storage.commit_generation(novel_id, "gen-A", starting_active_generation_id=None)
+        storage.commit_generation(
+            novel_id, "gen-A", chapter_dispositions={"1": "fetched_new"}, starting_active_generation_id=None
+        )
     assert storage.resolve_active_generation_id(novel_id) == "gen-B"
     # A's stage is not activated; rollback is the caller's job.
     storage.rollback_generation(novel_id, "gen-A", reason="lost race")
@@ -407,7 +411,11 @@ def test_cas_success_path_with_captured_pointer() -> None:
         )
 
     _stage("gen-1", "1")
-    storage.commit_generation(novel_id, "gen-1", starting_active_generation_id=None)
+    storage.commit_generation(
+        novel_id, "gen-1", chapter_dispositions={"1": "fetched_new"}, starting_active_generation_id=None
+    )
     _stage("gen-2", "2")
-    storage.commit_generation(novel_id, "gen-2", starting_active_generation_id="gen-1")
+    storage.commit_generation(
+        novel_id, "gen-2", chapter_dispositions={"2": "fetched_new"}, starting_active_generation_id="gen-1"
+    )
     assert storage.resolve_active_generation_id(novel_id) == "gen-2"

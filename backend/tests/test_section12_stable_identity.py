@@ -161,7 +161,7 @@ def test_pre_activation_validation_rejects_incomplete_snapshot(tmp_path) -> None
         {"id": "1", "raw": {"text": "x"}},
     )
     with pytest.raises(RuntimeError):
-        storage.commit_generation("novel-validate", "gen-validate")
+        storage.commit_generation("novel-validate", "gen-validate", chapter_dispositions={"1": "fetched_new"})
     assert storage.get_active_generation("novel-validate") is None
 
 
@@ -178,7 +178,7 @@ def test_resolve_active_generation_id_returns_committed_generation(tmp_path) -> 
         "1",
         {"id": "1", "raw": {"text": "x"}},
     )
-    storage.commit_generation("novel-rg", "gen-rg-1")
+    storage.commit_generation("novel-rg", "gen-rg-1", chapter_dispositions={"1": "fetched_new"})
 
     assert storage.resolve_active_generation_id("novel-rg") == "gen-rg-1"
 
@@ -209,7 +209,11 @@ def test_scoped_crawl_carries_unselected_chapters_forward(tmp_path) -> None:
         storage.stage_generation_chapter(
             novel_id, "gen-A", f"kakuyomu:{ep}", {"id": f"kakuyomu:{ep}", "raw": {"text": f"raw-{ep}", "images": []}}
         )
-    storage.commit_generation(novel_id, "gen-A")
+    storage.commit_generation(
+        novel_id,
+        "gen-A",
+        chapter_dispositions={f"kakuyomu:{ep}": "fetched_new" for ep in range(1, 5)},
+    )
 
     # A scope crawl selects only chapter 1, but every chapter in the
     # index gets seeded forward so the activated snapshot is complete.
@@ -228,7 +232,10 @@ def test_scoped_crawl_carries_unselected_chapters_forward(tmp_path) -> None:
     storage.stage_generation_source_state(novel_id, "gen-B", {"chapters": []})
     storage.seed_generation_from_active(novel_id, "gen-B", [f"kakuyomu:{ep}" for ep in range(1, 5)])
     storage.commit_generation(
-        novel_id, "gen-B", starting_active_generation_id=storage.resolve_active_generation_id(novel_id)
+        novel_id,
+        "gen-B",
+        chapter_dispositions={f"kakuyomu:{ep}": "carried_unselected" for ep in range(1, 5)},
+        starting_active_generation_id=storage.resolve_active_generation_id(novel_id),
     )
 
     # Every chapter bundle exists in gen-B.
@@ -263,7 +270,7 @@ def test_failed_chapter_refresh_preserves_previous_content(tmp_path) -> None:
     storage.stage_generation_chapter(
         novel_id, "gen-A", "kakuyomu:1", {"id": "kakuyomu:1", "raw": {"text": "previous", "images": []}}
     )
-    storage.commit_generation(novel_id, "gen-A")
+    storage.commit_generation(novel_id, "gen-A", chapter_dispositions={"kakuyomu:1": "fetched_new"})
 
     # Build a fresh stage that carries the prior chapter forward, then
     # explicitly records the chapter as unavailable so the validation
@@ -285,7 +292,10 @@ def test_failed_chapter_refresh_preserves_previous_content(tmp_path) -> None:
         error_category="server_error",
     )
     storage.commit_generation(
-        novel_id, "gen-B", starting_active_generation_id=storage.resolve_active_generation_id(novel_id)
+        novel_id,
+        "gen-B",
+        chapter_dispositions={"kakuyomu:1": "refresh_failed_retained"},
+        starting_active_generation_id=storage.resolve_active_generation_id(novel_id),
     )
 
     # The carried-forward bundle is still readable to readers.
@@ -315,7 +325,7 @@ def test_translation_overlay_points_at_active_raw_generation(tmp_path) -> None:
         novel_id, "gen-A", [{"id": "1", "chapter_id": "1", "title": "T", "url": "u"}]
     )
     storage.stage_generation_chapter(novel_id, "gen-A", "1", {"id": "1", "raw": {"text": "raw", "images": []}})
-    storage.commit_generation(novel_id, "gen-A")
+    storage.commit_generation(novel_id, "gen-A", chapter_dispositions={"1": "fetched_new"})
 
     active_id_before = storage.resolve_active_generation_id(novel_id)
     assert active_id_before == "gen-A"

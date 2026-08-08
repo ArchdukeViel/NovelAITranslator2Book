@@ -142,6 +142,27 @@ def derive_counts_from_dispositions(
     return counts
 
 
+def derive_failed_refresh_count(
+    unavailable_chapter_records: dict[str, dict[str, Any]],
+    refresh_failed_chapter_ids: list[str] | set[str],
+) -> int:
+    """Count real failed-refresh attempts from explicit records.
+
+    ``failed_refresh_count = refresh_failed_retained_count +
+    unavailable_due_to_fetch_failure_count``. A deliberate not-fetched scoped
+    unavailable entry (``error_category == "not_fetched"``) is not an HTTP
+    fetch failure and never counts here — the two failure kinds stay distinct
+    instead of overloading one counter.
+    """
+    unavailable_fetch_failures = 0
+    for record in (unavailable_chapter_records or {}).values():
+        if not isinstance(record, dict):
+            continue
+        if str(record.get("error_category") or "") != "not_fetched":
+            unavailable_fetch_failures += 1
+    return len(set(refresh_failed_chapter_ids or ())) + unavailable_fetch_failures
+
+
 @dataclass
 class GenerationManifest:
     """Manifest tracking a staged generation run matching Section 8 requirements."""
@@ -178,6 +199,19 @@ class GenerationManifest:
     # Carried unselected chapter count surfaced explicitly so scoped crawls
     # can describe the membership without recomputing from dispositions.
     carried_unselected_count: int = 0
+    # Exact derived aggregate counts. Derived from ``chapter_dispositions``
+    # (plus explicit unavailable records for ``failed_refresh_count``) at
+    # commit time and reconciled by the pre-activation validator so caller
+    # summaries can never disagree with the stage.
+    unchanged_selected_count: int = 0
+    refresh_failed_retained_count: int = 0
+    unavailable_count: int = 0
+    # Real failed-refresh attempts:
+    # ``refresh_failed_retained_count + unavailable_due_to_fetch_failure_count``.
+    # Deliberate not-fetched scoped unavailable entries (``error_category ==
+    # "not_fetched"``) are NOT fetch failures and never count here.
+    failed_refresh_count: int = 0
+    removed_count: int = 0
     chapter_ids: list[str] = field(default_factory=list)
     source_hashes: dict[str, str] = field(default_factory=dict)
     structure_hashes: dict[str, str] = field(default_factory=dict)
@@ -217,6 +251,11 @@ class GenerationManifest:
             refresh_failed_chapter_records=dict(data.get("refresh_failed_chapter_records", {})),
             chapter_dispositions=dict(data.get("chapter_dispositions", {})),
             carried_unselected_count=int(data.get("carried_unselected_count", 0)),
+            unchanged_selected_count=int(data.get("unchanged_selected_count", 0)),
+            refresh_failed_retained_count=int(data.get("refresh_failed_retained_count", 0)),
+            unavailable_count=int(data.get("unavailable_count", 0)),
+            failed_refresh_count=int(data.get("failed_refresh_count", 0)),
+            removed_count=int(data.get("removed_count", 0)),
             chapter_ids=list(data.get("chapter_ids", [])),
             source_hashes=dict(data.get("source_hashes", {})),
             structure_hashes=dict(data.get("structure_hashes", {})),
@@ -237,40 +276,92 @@ def _active_generation_lock_path(self: Any, novel_id: str) -> Path:
     """Return the per-novel cross-process lock path guarding the active pointer.
 
     The lock lives in the same ``generations/`` directory the pointer lives
-    in, so a single lock covers both filesystem- and S3-backed deployments
-    (the S3 backend falls back to a conditional PUT; the lock is a no-op for
-    it but the bookkeeping stays identical).
+    in. It is used **only** for the filesystem backend: the pointer read,
+    expected-generation verification, and atomic replacement all happen
+    inside this lock so two processes can never both observe the same
+    expected pointer and both succeed. Object-store backends rely on their
+    own conditional CAS and never take this local lock (it is not
+    distributed and is not the source of truth for remote backends).
     """
     return self._generations_dir(novel_id) / ".active_generation.lock"
 
 
-def _compare_and_swap_active_pointer(
+def _parse_active_generation_id(raw: bytes | None) -> str | None:
+    """Parse ``active_generation_id`` out of pointer bytes.
+
+    Returns ``None`` for a missing pointer, malformed JSON, or an empty id so
+    a corrupt pointer always conflicts with a non-empty captured contract.
+    """
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    gen_id = data.get("active_generation_id")
+    return str(gen_id) if isinstance(gen_id, str) and gen_id.strip() else None
+
+
+def _activate_generation_pointer(
     self: Any,
     novel_id: str,
     *,
-    expected_raw: bytes | None,
-    new_value: bytes,
-) -> bool:
-    """Cross-process atomic compare-and-swap on the active generation pointer.
+    generation_id: str,
+    starting_active_generation_id: str | None,
+    pointer_payload: str,
+) -> None:
+    """Atomically verify the captured contract and replace the active pointer.
 
-    Filesystem backend: the read+compare+write is wrapped in an
-    :class:`InterProcessFileLock` so two independent processes cannot both
-    observe the same expected pointer and both succeed; exactly one wins,
-    the loser receives ``False`` (the caller raises :class:`GenerationConflictError`).
+    The expected state comes from ``starting_active_generation_id`` captured
+    by the caller at crawl start — never from whatever happens to be present
+    after a race. The verification and the conditional replacement form a
+    single transaction:
 
-    S3 / object-store backend: the backend's own conditional
-    ``If-Match`` / ``If-None-Match`` PUT provides the same guarantee; the
-    local file lock is taken defensively but is not the source of truth on
-    remote backends.
+    - **Filesystem backend:** the pointer read, expected-generation
+      verification, and atomic replacement all happen inside the same
+      per-novel :class:`InterProcessFileLock`. There is no window between
+      "verify expected generation" and "conditional replacement" outside the
+      lock, so a stale writer that observed gen-1 can never replace a newer
+      gen-2 pointer.
+    - **S3 / object-store backend:** no local lock (it is not distributed
+      across containers and is not the source of truth). The current object
+      is read once as one observed version, verified against the captured
+      contract, then replaced with a conditional PUT — ``If-Match`` on the
+      observed ETag (or ``If-None-Match: *`` for first activation). A
+      concurrent activation fails the conditional PUT.
+
+    Raises :class:`GenerationConflictError` when the pointer no longer
+    matches the captured contract or the conditional replacement loses.
     """
-    lock_path = _active_generation_lock_path(self, novel_id)
-    from novelai.storage.file_lock import InterProcessFileLock
+    backing = getattr(self._backend, "_BACKING", "filesystem")
+    active_pointer_path = self._generations_dir(novel_id) / "active_generation.json"
+    rel_pointer = self._rel(active_pointer_path)
+    new_value = pointer_payload.encode("utf-8")
 
-    with InterProcessFileLock(lock_path):
-        return self._backend.compare_and_swap(
-            self._rel(self._generations_dir(novel_id) / "active_generation.json"),
-            expected_raw,
-            new_value,
+    def _verify_and_swap() -> bool:
+        observed = self._backend.load(rel_pointer) if self._path_exists(active_pointer_path) else None
+        observed_id = _parse_active_generation_id(observed)
+        if observed_id != starting_active_generation_id:
+            raise GenerationConflictError(
+                f"Active generation for {novel_id} changed during crawl: expected "
+                f"{starting_active_generation_id!r}, found {observed_id!r}. "
+                "Losing stage is not activated; roll it back explicitly."
+            )
+        return self._backend.compare_and_swap(rel_pointer, observed, new_value)
+
+    if backing == "s3":
+        swapped = _verify_and_swap()
+    else:
+        lock_path = _active_generation_lock_path(self, novel_id)
+        from novelai.storage.file_lock import InterProcessFileLock
+
+        with InterProcessFileLock(lock_path):
+            swapped = _verify_and_swap()
+    if not swapped:
+        raise GenerationConflictError(
+            f"Active pointer for {novel_id} changed during activation; {generation_id} was not activated."
         )
 
 
@@ -1007,6 +1098,45 @@ def validate_generation_activation(
                 f"carried_unselected_count={manifest.carried_unselected_count} != derived carried_unselected_count={derived['carried_unselected_count']}",
             )
         )
+        checks.append(
+            _check(
+                "derived_unchanged_selected_count_matches_manifest",
+                manifest.unchanged_selected_count == derived["unchanged_selected_count"],
+                f"unchanged_selected_count={manifest.unchanged_selected_count} != derived unchanged_selected_count={derived['unchanged_selected_count']}",
+            )
+        )
+        checks.append(
+            _check(
+                "derived_refresh_failed_retained_count_matches_manifest",
+                manifest.refresh_failed_retained_count == derived["refresh_failed_retained_count"],
+                f"refresh_failed_retained_count={manifest.refresh_failed_retained_count} != derived refresh_failed_retained_count={derived['refresh_failed_retained_count']}",
+            )
+        )
+        checks.append(
+            _check(
+                "derived_unavailable_exact_count_matches_manifest",
+                manifest.unavailable_count == derived["unavailable_count"],
+                f"unavailable_count={manifest.unavailable_count} != derived unavailable_count={derived['unavailable_count']}",
+            )
+        )
+        expected_failed_refresh = derive_failed_refresh_count(
+            manifest.unavailable_chapter_records,
+            set(manifest.refresh_failed_chapter_ids or []),
+        )
+        checks.append(
+            _check(
+                "derived_failed_refresh_count_matches_manifest",
+                manifest.failed_refresh_count == expected_failed_refresh,
+                f"failed_refresh_count={manifest.failed_refresh_count} != derived failed_refresh_count={expected_failed_refresh}",
+            )
+        )
+        checks.append(
+            _check(
+                "derived_removed_count_matches_manifest",
+                manifest.removed_count == len(manifest.removed_episode_ids),
+                f"removed_count={manifest.removed_count} != removed_episode_ids count={len(manifest.removed_episode_ids)}",
+            )
+        )
 
     # ── snapshot hash integrity (empty required hash fails) ────────────
     metadata_text = self._read_text(metadata_path) if self._path_exists(metadata_path) else ""
@@ -1162,6 +1292,10 @@ def commit_generation(
     saved_chapters: int | None = None,
     failed_chapters: int = 0,
     starting_active_generation_id: str | None = None,
+    # Modern normal commits must reconcile a canonical disposition map.
+    # ``False`` is the explicit legacy/recovery compatibility escape hatch
+    # (mirrors the legacy counters branch); production crawls never use it.
+    require_dispositions: bool = True,
 ) -> GenerationManifest:
     """Finalize a staged generation and atomically activate it.
 
@@ -1176,7 +1310,10 @@ def commit_generation(
     become visible through the normal path. Aggregate counts are derived
     from ``chapter_dispositions`` (the canonical source of truth) and
     reconciled against the physical staged state — caller-supplied summary
-    counters cannot disagree with the dispositions.
+    counters cannot disagree with the dispositions. Modern normal commits
+    must supply the disposition map; a missing map raises instead of
+    silently bypassing disposition reconciliation (``require_dispositions``).
+    The explicit recovery path is :func:`commit_generation_recovery`.
 
     Section 5: activation is a compare-and-swap on the active pointer,
     wrapped in an inter-process file lock so two independent processes
@@ -1191,6 +1328,17 @@ def commit_generation(
     if manifest is None:
         raise FileNotFoundError(f"Generation manifest for {novel_id}/{generation_id} not found.")
 
+    # Never re-activate an already-committed manifest through the normal
+    # path. The guard is explicit because the staging state below is
+    # persisted before validation (validation reloads the manifest from
+    # disk and must observe the exact reconciliation it verifies).
+    if manifest.status == "committed":
+        raise RuntimeError(
+            f"Generation {generation_id} for {novel_id} is already committed; "
+            "it cannot be re-activated through the normal commit path (manifest_status_staging). "
+            "Use commit_generation_recovery for explicit operator recovery."
+        )
+
     if removed_episode_ids:
         manifest.removed_episode_ids = sorted(set(removed_episode_ids))
 
@@ -1204,6 +1352,24 @@ def commit_generation(
         manifest.reused_chapters = derived["reused_count"]
         manifest.failed_chapters = derived["unavailable_count"]
         manifest.carried_unselected_count = derived["carried_unselected_count"]
+        manifest.unchanged_selected_count = derived["unchanged_selected_count"]
+        manifest.refresh_failed_retained_count = derived["refresh_failed_retained_count"]
+        manifest.unavailable_count = derived["unavailable_count"]
+        manifest.removed_count = len(manifest.removed_episode_ids)
+        # ``failed_chapters`` is the legacy "no usable chapter" count
+        # (unavailable entries). ``failed_refresh_count`` is the explicit
+        # failed-refresh aggregate: retained-refresh failures plus
+        # unavailable entries caused by real fetch failures. A deliberate
+        # not-fetched scoped unavailable entry never counts as a fetch
+        # failure.
+        manifest.failed_refresh_count = derive_failed_refresh_count(
+            manifest.unavailable_chapter_records,
+            derived_refresh_failed_ids := {
+                cid
+                for cid, disp in manifest.chapter_dispositions.items()
+                if disp == DISPOSITION_REFRESH_FAILED_RETAINED
+            },
+        )
         # Reconcile derived lists with the staged explicit records. The
         # disposition map is authoritative: any chapter marked
         # ``unavailable`` must appear in ``unavailable_chapter_ids`` and
@@ -1213,10 +1379,18 @@ def commit_generation(
         manifest.unavailable_chapter_ids = sorted(
             cid for cid, disp in manifest.chapter_dispositions.items() if disp == DISPOSITION_UNAVAILABLE
         )
-        manifest.refresh_failed_chapter_ids = sorted(
-            cid for cid, disp in manifest.chapter_dispositions.items() if disp == DISPOSITION_REFRESH_FAILED_RETAINED
-        )
+        manifest.refresh_failed_chapter_ids = sorted(derived_refresh_failed_ids)
     else:
+        # Explicit legacy/recovery compatibility: no disposition map. This
+        # path silently skipped disposition reconciliation before, so it is
+        # now gated behind ``require_dispositions=False`` and never used by
+        # the production crawler (which always supplies the canonical map).
+        if require_dispositions:
+            raise RuntimeError(
+                f"Generation {generation_id} for {novel_id} has no chapter_dispositions; "
+                "modern normal commits must reconcile dispositions. Use "
+                "commit_generation_recovery for the explicit recovery path."
+            )
         # Legacy callers without a disposition map: keep the explicit
         # counters, but treat them as advisory and require the manifest
         # to already carry the explicit disposition lists.
@@ -1226,6 +1400,12 @@ def commit_generation(
             manifest.saved_chapters = saved_chapters
     manifest.status = "staging"
     manifest.committed_at = manifest.committed_at or _utc_now_iso()
+
+    # Persist the derived staging state (disposition map, aggregate counts,
+    # explicit id lists) BEFORE validation: the validator reloads the
+    # manifest from disk, and an unpersisted derivation would be invisible
+    # to it — silently skipping the disposition reconciliation checks.
+    _save_manifest(self, novel_id, generation_id, manifest)
 
     result = validate_generation_activation(self, novel_id, generation_id)
     if not result.is_valid:
@@ -1246,16 +1426,12 @@ def commit_generation(
     # Manifest-last write: content + manifest are durable before activation.
     _save_manifest(self, novel_id, generation_id, manifest)
 
-    # Section 5: compare-and-swap the active pointer.
-    current_active_id = self.resolve_active_generation_id(novel_id)
-    if current_active_id != starting_active_generation_id:
-        raise GenerationConflictError(
-            f"Active generation for {novel_id} changed during crawl: expected "
-            f"{starting_active_generation_id!r}, found {current_active_id!r}. "
-            "Losing stage is not activated; roll it back explicitly."
-        )
-
-    active_pointer_path = self._generations_dir(novel_id) / "active_generation.json"
+    # Section 5: activation is a single atomic transaction — the captured
+    # ``starting_active_generation_id`` is verified against the current
+    # pointer and the pointer is conditionally replaced under the same
+    # per-novel inter-process lock (filesystem) or backend-native conditional
+    # CAS (S3/R2). There is no window between verification and replacement
+    # outside the lock, so a stale writer can never overwrite a winner.
     pointer_payload = json.dumps(
         {
             "novel_id": novel_id,
@@ -1265,19 +1441,13 @@ def commit_generation(
         ensure_ascii=False,
         indent=2,
     )
-    expected_raw = (
-        self._backend.load(self._rel(active_pointer_path)) if self._path_exists(active_pointer_path) else None
-    )
-    swapped = _compare_and_swap_active_pointer(
+    _activate_generation_pointer(
         self,
         novel_id,
-        expected_raw=expected_raw,
-        new_value=pointer_payload.encode("utf-8"),
+        generation_id=generation_id,
+        starting_active_generation_id=starting_active_generation_id,
+        pointer_payload=pointer_payload,
     )
-    if not swapped:
-        raise GenerationConflictError(
-            f"Active pointer for {novel_id} changed during activation; {generation_id} was not activated."
-        )
     return manifest
 
 
@@ -1335,9 +1505,20 @@ def activate_generation(
     self: Any,
     novel_id: str,
     generation_id: str,
+    *,
+    chapter_dispositions: dict[str, str] | None = None,
+    starting_active_generation_id: str | None = None,
+    require_dispositions: bool = True,
 ) -> GenerationManifest:
     """Atomically activate a staged generation (alias kept for compatibility)."""
-    return commit_generation(self, novel_id, generation_id)
+    return commit_generation(
+        self,
+        novel_id,
+        generation_id,
+        chapter_dispositions=chapter_dispositions,
+        starting_active_generation_id=starting_active_generation_id,
+        require_dispositions=require_dispositions,
+    )
 
 
 def rollback_generation(

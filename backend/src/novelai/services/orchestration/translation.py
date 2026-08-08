@@ -121,6 +121,7 @@ def _translation_lineage_kwargs(
     json_output: bool,
     qa_policy_fingerprint: str | None,
     auto_activate: bool,
+    honorific_policy: str | None = None,
 ) -> dict[str, Any]:
     """Section 8: assemble the complete raw-to-version lineage fields for a
     stored machine translation version so validity checks can consume the
@@ -145,6 +146,7 @@ def _translation_lineage_kwargs(
         "json_output": json_output,
         "output_hash": storage._hash_text(translated),
         "activation_disposition": "auto_activate" if auto_activate else "low_confidence",
+        "honorific_policy": honorific_policy,
     }
 
 
@@ -1032,6 +1034,10 @@ async def translate_chapters(
                 qa_policy_fingerprint=qa_policy_fingerprint,
                 source_language=effective_source_language,
                 target_language=effective_target_language,
+                style_preset=effective_style_preset,
+                consistency_mode=bool(effective_consistency_mode),
+                json_output=bool(json_output),
+                honorific_policy=effective_honorific_policy,
             )
             if skip_result is not None:
                 return skip_result
@@ -1259,6 +1265,7 @@ async def translate_chapters(
                         json_output=bool(json_output),
                         qa_policy_fingerprint=qa_policy_fingerprint,
                         auto_activate=auto_activate,
+                        honorific_policy=effective_honorific_policy,
                     ),
                 )
                 safely_refresh_catalog_projection_after_storage_write(

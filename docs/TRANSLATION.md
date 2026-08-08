@@ -119,15 +119,24 @@ resume path builds the **current effective translation contract** and calls
 - `source_structure_hash` (current raw structure hash)
 - `source_image_manifest_hash` (current image manifest hash)
 - `qa_policy_fingerprint` (current QA policy)
-- `source_language`, `target_language` (current languages)
+- `source_language`, `target_language` (current languages; missing stored
+  language fails closed)
+- `style_preset`, `consistency_mode`, `json_output`, `honorific_policy`
+  (current output-shaping settings — any change alters generated text and
+  forces retranslation; honorific policy compares normalized identity, so
+  case/whitespace spelling variation never causes spurious retranslation)
 
 `is_translation_valid` **fails closed** when a required input has no stored
 value on the existing translation version. A DB `COMPLETE` state is evidence
 of previous completion, **not** of current validity — a stale source text,
-glossary, prompt, QA policy, provider/model, target language, structure, or
-image manifest forces retranslation. The previous version is retained in the
-per-chapter overlay history. Generation activation ID mismatch alone does not
-invalidate an otherwise identical translation (hashes are the validity gate).
+glossary, prompt, QA policy, provider/model, target language, structure,
+image manifest, or output-shaping setting forces retranslation. The previous
+version is retained in the per-chapter overlay history. `raw_generation_id`
+is **provenance**: a stored id must exist when a generation is active
+(missing lineage is stale / needs-backfill), but the stored id is never
+compared for equality with the current active generation id — an otherwise
+identical translation stays reusable across generation activations (hashes
+and the effective contract are the validity gate).
 
 ## Chapter Selection
 

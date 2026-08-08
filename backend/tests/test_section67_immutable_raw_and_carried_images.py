@@ -88,7 +88,7 @@ def _write_minimal_generation(storage: StorageService, novel_id: str, generation
             },
         },
     )
-    storage.commit_generation(novel_id, generation_id)
+    storage.commit_generation(novel_id, generation_id, chapter_dispositions={"1": "fetched_new"})
     return stored_image["local_path"]
 
 
@@ -183,7 +183,10 @@ def test_carried_image_survives_prior_generation_deletion(tmp_path: Path) -> Non
     storage.stage_generation_source_state(novel_id, "gen-B", {"chapters": []})
     storage.seed_generation_from_active(novel_id, "gen-B", ["1"])
     storage.commit_generation(
-        novel_id, "gen-B", starting_active_generation_id=storage.resolve_active_generation_id(novel_id)
+        novel_id,
+        "gen-B",
+        chapter_dispositions={"1": "carried_unselected"},
+        starting_active_generation_id=storage.resolve_active_generation_id(novel_id),
     )
 
     gen_b_dir = storage.base_dir / "novels" / novel_id / "generations" / "gen-B"

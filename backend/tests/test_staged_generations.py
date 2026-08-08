@@ -66,7 +66,7 @@ def test_activate_generation_atomic_write(storage: StorageService):
     storage.record_staged_chapter("novel-1", "gen-200", "1", "v1", "hash1")
     _stage_active_snapshot(storage, "gen-200")
 
-    activated = storage.activate_generation("novel-1", "gen-200")
+    activated = storage.activate_generation("novel-1", "gen-200", chapter_dispositions={"1": "fetched_new"})
     assert activated.status == "committed"
     assert activated.activated_at is not None
 
@@ -113,7 +113,7 @@ def test_stage_snapshot_files_are_files_not_directories(storage: StorageService)
     )
     # The logical local_path is generation-agnostic.  After activation the
     # reader API can resolve it through the active generation layout.
-    storage.commit_generation("novel-1", "gen-300")
+    storage.commit_generation("novel-1", "gen-300", chapter_dispositions={"1": "fetched_new"})
     resolved = storage.resolve_asset_path("novel-1", stored["local_path"])
     assert resolved is not None and resolved.is_file()
 
@@ -143,7 +143,7 @@ def test_pre_activation_validation_aborts_when_stage_incomplete(storage: Storage
     )
 
     with pytest.raises(RuntimeError):
-        storage.commit_generation("novel-1", "gen-empty")
+        storage.commit_generation("novel-1", "gen-empty", chapter_dispositions={"1": "fetched_new"})
 
     assert storage.get_active_generation("novel-1") is None
 
@@ -183,7 +183,7 @@ def test_normal_commit_never_accepts_committed_manifest(storage: StorageService)
         evidence="test fixture",
     )
     with pytest.raises(RuntimeError, match="manifest_status_staging"):
-        storage.commit_generation("novel-1", "gen-recommit")
+        storage.commit_generation("novel-1", "gen-recommit", chapter_dispositions={})
 
 
 def test_atomic_write_survives_transient_windows_file_lock(monkeypatch, storage: StorageService):

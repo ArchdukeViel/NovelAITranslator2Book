@@ -27,6 +27,7 @@ from novelai.sources.quality import (
 )
 from novelai.storage.generations import (
     DISPOSITION_CARRIED_UNSELECTED,
+    DISPOSITION_FETCHED_NEW,
     DISPOSITION_FETCHED_REPLACED,
     DISPOSITION_REFRESH_FAILED_RETAINED,
     DISPOSITION_REUSED_PLANNER,
@@ -857,7 +858,16 @@ async def _scrape_chapters_impl(
                 if any(img.get("download_error") for img in downloaded_images):
                     image_download_failures += 1
                 succeeded += 1
-                chapter_dispositions[chapter_id] = DISPOSITION_FETCHED_REPLACED
+                # Section 3: fetched_new vs fetched_replaced — decided by the
+                # stable logical chapter id's previous usable bundle, never by
+                # sequence number. A brand-new logical chapter (no prior
+                # bundle anywhere) is ``fetched_new``; a chapter whose previous
+                # bundle was replaced by freshly fetched content is
+                # ``fetched_replaced``.
+                if existing:
+                    chapter_dispositions[chapter_id] = DISPOSITION_FETCHED_REPLACED
+                else:
+                    chapter_dispositions[chapter_id] = DISPOSITION_FETCHED_NEW
                 cached_stored_hashes.add(new_signature)
                 scraped_chapters_for_state.append(
                     {
@@ -1023,6 +1033,12 @@ async def _scrape_chapters_impl(
             # Update mode: partial-update policy — mark genuinely unavailable
             # new/current content explicitly so the activated generation stays
             # complete, and removed episodes are excluded from membership.
+            # The disposition map must agree with the explicit unavailable
+            # marker: ``commit_generation`` regenerates
+            # ``unavailable_chapter_ids`` from the disposition map, so a
+            # chapter recorded as unavailable here but still labelled
+            # ``carried_unselected`` would erase its own unavailable record
+            # and fail activation validation.
             for cid in missing_current_ids:
                 self.storage.record_unavailable_chapter(
                     novel_id,
@@ -1031,6 +1047,7 @@ async def _scrape_chapters_impl(
                     reason="current index entry has no usable raw bundle after a scoped crawl",
                     error_category="not_fetched",
                 )
+                chapter_dispositions[cid] = DISPOSITION_UNAVAILABLE
 
         # Section 4: validation must succeed before we swap the active pointer.
         # Section 5: activation compare-and-swaps the pointer captured at

@@ -42,6 +42,13 @@ def _check_chapter_resume_state(
     qa_policy_fingerprint: str | None = None,
     source_language: str | None = None,
     target_language: str | None = None,
+    # Output-shaping settings participate in the effective contract: a change
+    # in style preset, consistency mode, JSON output, or honorific policy
+    # alters generated text and must retranslate.
+    style_preset: str | None = None,
+    consistency_mode: bool | None = None,
+    json_output: bool | None = None,
+    honorific_policy: str | None = None,
 ) -> dict[str, str] | None:
     """Check whether a chapter should be skipped or reset before translation.
 
@@ -86,6 +93,10 @@ def _check_chapter_resume_state(
             qa_policy_fingerprint=qa_policy_fingerprint,
             source_language=source_language,
             target_language=target_language,
+            style_preset=style_preset,
+            consistency_mode=consistency_mode,
+            json_output=json_output,
+            honorific_policy=honorific_policy,
         )
         if valid:
             logger.info(

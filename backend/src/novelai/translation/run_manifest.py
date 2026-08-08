@@ -81,6 +81,17 @@ class TranslationRunManifest:
         )
 
 
+def _normalize_honorific_policy(honorific_policy: str | None) -> str | None:
+    """Normalize honorific-policy identity for the validity contract.
+
+    Only normalized identities are compared so spelling variations
+    (whitespace / case) never cause spurious reuse or retranslation.
+    """
+    if not isinstance(honorific_policy, str) or not honorific_policy.strip():
+        return None
+    return honorific_policy.strip().lower()
+
+
 def is_translation_valid(
     *,
     source_text_hash: str,
@@ -90,7 +101,7 @@ def is_translation_valid(
     provider_model: str | None,
     record: dict[str, Any],
     # Section 8: complete effective translation contract. When supplied, the
-    # record's stored lineage must match exactly.
+    # record's stored lineage must match exactly (fail closed on missing).
     active_raw_generation_id: str | None = None,
     source_structure_hash: str | None = None,
     source_image_manifest_hash: str | None = None,
@@ -98,6 +109,13 @@ def is_translation_valid(
     output_hash: str | None = None,
     source_language: str | None = None,
     target_language: str | None = None,
+    # Output-shaping settings: any change to these alters the generated text
+    # and must invalidate the stored version (fail closed on missing stored
+    # value when the current contract materially requires it).
+    style_preset: str | None = None,
+    consistency_mode: bool | None = None,
+    json_output: bool | None = None,
+    honorific_policy: str | None = None,
 ) -> bool:
     """Verify if a translation record is valid against current input hashes matching Section 10 requirements.
 
@@ -106,10 +124,16 @@ def is_translation_valid(
     falling back to the legacy spellings (``source_text_hash`` /
     ``prompt_version``) for entries persisted before the overlay layout.
 
-    Section 8: when an active raw generation exists, the record must carry a
-    matching ``raw_generation_id`` — a record with missing/incomplete lineage
-    is ``stale``/``needs-backfill`` and never silently valid. Reorder alone
-    never invalidates (reorder does not change any hash).
+    Validity is hash- and policy-based. ``raw_generation_id`` is **provenance
+    only**: when a current generation is active the record must carry *a*
+    stored ``raw_generation_id`` (missing lineage is ``stale`` /
+    ``needs-backfill`` and never silently valid), but the stored id is never
+    compared for equality with the current generation id. An otherwise
+    identical translation remains reusable across generation activation
+    changes; only changed source/structure/image hashes, glossary, prompt,
+    QA policy, provider/model, languages, or output-shaping settings force
+    retranslation. Reorder alone never invalidates (reorder does not change
+    any hash).
     """
     if not isinstance(record, dict):
         return False
@@ -138,14 +162,15 @@ def is_translation_valid(
         if not rec_provider_model or rec_provider_model != provider_model:
             return False
 
-    # Section 8 lineage contract.
+    # Section 8 lineage contract: provenance is required, equality is not.
+    # A stored raw_generation_id proves the version descends from an immutable
+    # raw snapshot; a *different* current generation id never invalidates an
+    # otherwise identical translation.
     if active_raw_generation_id:
         rec_generation_id = record.get("raw_generation_id")
         if not rec_generation_id:
             # Missing lineage under an active generation: stale /
             # needs-backfill, never silently valid.
-            return False
-        if rec_generation_id != active_raw_generation_id:
             return False
 
     if source_structure_hash:
@@ -168,14 +193,40 @@ def is_translation_valid(
         if not rec_output or rec_output != output_hash:
             return False
 
+    # Languages: fail closed — a missing stored language is stale lineage,
+    # never silently valid.
     if source_language:
         rec_source_lang = record.get("source_language")
-        if rec_source_lang and rec_source_lang != source_language:
+        if not rec_source_lang or rec_source_lang != source_language:
             return False
 
     if target_language:
         rec_target_lang = record.get("target_language")
-        if rec_target_lang and rec_target_lang != target_language:
+        if not rec_target_lang or rec_target_lang != target_language:
+            return False
+
+    # Output-shaping settings. ``None`` on the current contract means the
+    # dimension is not required; a supplied value must exist on the stored
+    # version and match exactly.
+    if style_preset:
+        rec_style = record.get("style_preset")
+        if not rec_style or rec_style != style_preset:
+            return False
+
+    if consistency_mode is not None:
+        rec_consistency = record.get("consistency_mode")
+        if not isinstance(rec_consistency, bool) or rec_consistency != consistency_mode:
+            return False
+
+    if json_output is not None:
+        rec_json = record.get("json_output")
+        if not isinstance(rec_json, bool) or rec_json != json_output:
+            return False
+
+    normalized_honorific = _normalize_honorific_policy(honorific_policy)
+    if normalized_honorific:
+        rec_honorific = record.get("honorific_policy")
+        if not rec_honorific or _normalize_honorific_policy(rec_honorific) != normalized_honorific:
             return False
 
     return True

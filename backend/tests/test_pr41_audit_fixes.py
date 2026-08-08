@@ -94,7 +94,11 @@ def _commit_minimal_generation(
             cid,
             {"id": cid, "raw": {"text": f"Raw {cid}", "paragraphs": [f"Raw {cid}"]}},
         )
-    storage.commit_generation(novel_id, generation_id)
+    storage.commit_generation(
+        novel_id,
+        generation_id,
+        chapter_dispositions={cid: "fetched_new" for cid in chapter_ids},
+    )
 
 
 def _generation_dir(storage: StorageService, novel_id: str, generation_id: str) -> Path:
@@ -259,18 +263,30 @@ def test_commit_requires_staged_source_state() -> None:
     storage.stage_generation_chapter("n4", "gen-1", "1", {"id": "1", "raw": {"text": "Hello"}})
 
     with pytest.raises(RuntimeError, match="source_state_present"):
-        storage.commit_generation("n4", "gen-1")
+        storage.commit_generation("n4", "gen-1", chapter_dispositions={"1": "fetched_new"})
 
 
 def test_commit_rejects_tampered_staged_metadata() -> None:
+    """A tampered staged metadata file must fail pre-activation validation
+    (the tamper check reads the on-disk manifest's recorded hash)."""
     storage = _fresh_storage()
-    _commit_minimal_generation(storage, "n4-tamper", "gen-1")
+    storage.create_generation_stage(
+        "n4-tamper", "gen-1", source_key="test_source", source_work_id="n4-tamper", mode="full", expected_chapters=1
+    )
+    storage.stage_generation_metadata("n4-tamper", "gen-1", {"title": "T", "source_novel_id": "n4-tamper"})
+    storage.stage_generation_source_state("n4-tamper", "gen-1", {"chapters": []})
+    storage.stage_generation_chapter_index(
+        "n4-tamper", "gen-1", [{"id": "1", "chapter_id": "1", "title": "C", "url": "u"}]
+    )
+    storage.stage_generation_chapter("n4-tamper", "gen-1", "1", {"id": "1", "raw": {"text": "Hello"}})
 
     metadata_path = _generation_dir(storage, "n4-tamper", "gen-1") / "metadata.json"
     metadata_path.write_text(json.dumps({"title": "Tampered", "source_novel_id": "n4-tamper"}), encoding="utf-8")
 
     with pytest.raises(RuntimeError, match="manifest_metadata_hash_matches_stage"):
-        storage.commit_generation("n4-tamper", "gen-1")
+        storage.commit_generation("n4-tamper", "gen-1", chapter_dispositions={"1": "fetched_new"})
+    # The tampered generation never becomes active.
+    assert storage.get_active_generation("n4-tamper") is None
 
 
 def test_manifest_membership_without_physical_bundle_fails_validation() -> None:
@@ -499,15 +515,30 @@ def test_lineage_stale_when_raw_generation_missing_under_active_generation() -> 
     )
 
 
-def test_lineage_stale_when_raw_generation_changed() -> None:
-    assert not is_translation_valid(
+def test_lineage_provenance_does_not_require_pointer_equality() -> None:
+    """``raw_generation_id`` is provenance, not a validity gate.
+
+    A version records which raw generation fed it; the record never has to
+    match the *current* active pointer. A content-identical translation made
+    under an earlier generation stays valid when a later crawl activates a
+    new generation without changing the source text (same source hash) —
+    requiring pointer equality would force pointless re-translation on every
+    crawl. Presence is still required when an active pointer is supplied.
+    """
+    record = _lineage_record(raw_generation_id="gen-1")
+    assert is_translation_valid(
         source_text_hash="src-hash",
         active_glossary_hash="gloss-1",
         prompt_version="prompt-v9",
         provider_key="p",
         provider_model="m",
         active_raw_generation_id="gen-2",
-        record=_lineage_record(),
+        source_structure_hash="struct-hash",
+        source_image_manifest_hash="img-hash",
+        qa_policy_fingerprint="qa-fp-v1",
+        source_language="ja",
+        target_language="en",
+        record=record,
     )
 
 
@@ -582,6 +613,7 @@ def test_save_translated_chapter_persists_lineage() -> None:
         style_preset="literary",
         consistency_mode=True,
         json_output=False,
+        honorific_policy="default_honorifics",
         output_hash="out-hash",
     )
     version = storage.load_translated_chapter("n8-lineage", "1")
@@ -597,6 +629,7 @@ def test_save_translated_chapter_persists_lineage() -> None:
     assert version["target_language"] == "en"
     assert version["style_preset"] == "literary"
     assert version["consistency_mode"] is True
+    assert version["honorific_policy"] == "default_honorifics"
     assert version["output_hash"] == "out-hash"
 
 
