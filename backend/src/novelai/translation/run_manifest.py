@@ -81,14 +81,23 @@ class TranslationRunManifest:
         )
 
 
-def _normalize_honorific_policy(honorific_policy: str | None) -> str | None:
+def _normalize_style_preset(style_preset: str | None) -> str:
+    """Normalize style-preset identity for the validity contract.
+
+    Empty or None maps to explicit canonical default '__default__'.
+    """
+    if not isinstance(style_preset, str) or not style_preset.strip():
+        return "__default__"
+    return style_preset.strip().lower()
+
+
+def _normalize_honorific_policy(honorific_policy: str | None) -> str:
     """Normalize honorific-policy identity for the validity contract.
 
-    Only normalized identities are compared so spelling variations
-    (whitespace / case) never cause spurious reuse or retranslation.
+    Empty or None maps to explicit canonical default '__default__'.
     """
     if not isinstance(honorific_policy, str) or not honorific_policy.strip():
-        return None
+        return "__default__"
     return honorific_policy.strip().lower()
 
 
@@ -116,6 +125,10 @@ def is_translation_valid(
     consistency_mode: bool | None = None,
     json_output: bool | None = None,
     honorific_policy: str | None = None,
+    # When True the source-content hash check is skipped. Used by the delta
+    # reuse path: source-text change is handled by paragraph lineage, not by
+    # the validity contract.
+    skip_source_hash: bool = False,
 ) -> bool:
     """Verify if a translation record is valid against current input hashes matching Section 10 requirements.
 
@@ -139,8 +152,9 @@ def is_translation_valid(
         return False
 
     rec_source_hash = record.get("source_hash") or record.get("source_content_hash") or record.get("source_text_hash")
-    if not rec_source_hash or rec_source_hash != source_text_hash:
-        return False
+    if not skip_source_hash:
+        if not rec_source_hash or rec_source_hash != source_text_hash:
+            return False
 
     if active_glossary_hash:
         rec_glossary_hash = record.get("glossary_hash")
@@ -208,10 +222,10 @@ def is_translation_valid(
     # Output-shaping settings. ``None`` on the current contract means the
     # dimension is not required; a supplied value must exist on the stored
     # version and match exactly.
-    if style_preset:
-        rec_style = record.get("style_preset")
-        if not rec_style or rec_style != style_preset:
-            return False
+    normalized_style = _normalize_style_preset(style_preset)
+    rec_style = _normalize_style_preset(record.get("style_preset"))
+    if rec_style != normalized_style:
+        return False
 
     if consistency_mode is not None:
         rec_consistency = record.get("consistency_mode")
@@ -224,9 +238,5 @@ def is_translation_valid(
             return False
 
     normalized_honorific = _normalize_honorific_policy(honorific_policy)
-    if normalized_honorific:
-        rec_honorific = record.get("honorific_policy")
-        if not rec_honorific or _normalize_honorific_policy(rec_honorific) != normalized_honorific:
-            return False
-
-    return True
+    rec_honorific = _normalize_honorific_policy(record.get("honorific_policy"))
+    return rec_honorific == normalized_honorific
