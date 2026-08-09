@@ -43,12 +43,16 @@ def _stored_output_contract_matches(
     json_output: bool | None = None,
     honorific_policy: str | None = None,
     active_raw_generation_id: str | None = None,
+    source_structure_hash: str | None = None,
+    source_image_manifest_hash: str | None = None,
+    qa_policy_fingerprint: str | None = None,
 ) -> bool:
     """Validate stored lineage against the COMPLETE effective contract.
 
     Uses ``is_translation_valid`` to verify all identity dimensions (glossary,
-    prompt, QA policy, provider/model, languages, output shaping, raw generation
-    provenance). Any mismatch or missing required field bails from delta reuse.
+    prompt, QA policy, provider/model, languages, output shaping, raw
+    generation provenance, source structure, source image manifest). Any
+    mismatch or missing required field bails from delta reuse.
 
     Source-text hash is NOT checked here: paragraph lineage handles source
     changes within the delta path. A global contract change forces full
@@ -63,6 +67,9 @@ def _stored_output_contract_matches(
         provider_model=provider_model,
         record=existing,
         active_raw_generation_id=active_raw_generation_id,
+        source_structure_hash=source_structure_hash,
+        source_image_manifest_hash=source_image_manifest_hash,
+        qa_policy_fingerprint=qa_policy_fingerprint,
         source_language=source_language,
         target_language=target_language,
         style_preset=style_preset,
@@ -554,6 +561,8 @@ async def _try_delta_translate_chapter(
     glossary_hash: str | None = None,
     prompt_template_version: str | None = None,
     qa_policy_fingerprint: str | None = None,
+    source_structure_hash: str | None = None,
+    source_image_manifest_hash: str | None = None,
 ) -> dict[str, Any]:
     if not settings.TRANSLATION_DELTA_RETRANSLATION_ENABLED:
         return {"applied": False, "fallback_reason": "delta_disabled"}
@@ -587,6 +596,9 @@ async def _try_delta_translate_chapter(
         json_output=json_output,
         honorific_policy=honorific_policy,
         active_raw_generation_id=active_raw_generation_id,
+        source_structure_hash=source_structure_hash,
+        source_image_manifest_hash=source_image_manifest_hash,
+        qa_policy_fingerprint=qa_policy_fingerprint,
     ):
         return {"applied": False, "fallback_reason": "output_contract_changed"}
 
@@ -609,19 +621,25 @@ async def _try_delta_translate_chapter(
     )
     if not windows:
         if existing_translation and isinstance(existing_translation.get("text"), str):
+            # Section 6: whole-chapter reuse is a real no-op. The caller must
+            # NOT persist a new version; it records the reuse and preserves
+            # the stored version's identity (version_id / run / provider /
+            # model / created_at) untouched.
             return {
                 "applied": True,
                 "mode": "whole_chapter_unchanged",
                 "text": existing_translation["text"],
                 # Preserve original producer provenance: the stored version's
                 # provider/model produced the reused text, NOT the current
-                # contract's provider/model. The caller uses these to persist
-                # an explicit reuse/reference version that does not masquerade
-                # as freshly generated machine output.
+                # contract's provider/model. The caller uses these to record
+                # the reuse without creating a new producer version.
                 "provider_key": existing_translation.get("provider_key") or existing_translation.get("provider"),
                 "provider_model": existing_translation.get("provider_model") or existing_translation.get("model"),
                 "provider": existing_translation.get("provider"),
                 "model": existing_translation.get("model"),
+                "version_id": existing_translation.get("version_id"),
+                "translation_run_id": existing_translation.get("translation_run_id"),
+                "created_at": existing_translation.get("created_at") or existing_translation.get("translated_at"),
                 "provenance": {
                     "delta_retranslation": True,
                     "mode": "whole_chapter_unchanged",
@@ -675,7 +693,13 @@ async def _try_delta_translate_chapter(
                 glossary=glossary,
                 style_preset=style_preset,
                 consistency_mode=consistency_mode,
-                json_output=True,
+                # Section 5: the changed window executes the EFFECTIVE output
+                # policy, not a hard-coded default. ``json_output`` and
+                # ``honorific_policy`` must match what the full path would
+                # have produced so a delta window never diverges from the
+                # contract the stored lineage records.
+                json_output=json_output,
+                honorific_policy=honorific_policy,
                 allow_cross_provider_fallback=allow_cross_provider_fallback,
                 force_retranslate=True,
                 raw_text=window_text,

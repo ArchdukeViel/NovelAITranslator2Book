@@ -35,6 +35,7 @@ def _build_chapter_summary(
     succeeded_count = 0
     failed_count = 0
     skipped_count = 0
+    reused_count = 0
     first_error: BaseException | None = None
     for record, result in zip(resolved, task_results, strict=False):
         chapter_id = record.chapter_id
@@ -58,6 +59,10 @@ def _build_chapter_summary(
             succeeded_count += 1
         elif status == "skipped":
             skipped_count += 1
+        elif status == "reused":
+            # Section 6: whole-chapter reuse no-op — counted separately from
+            # skipped so operators can see reused output in the summary.
+            reused_count += 1
         else:
             failed_count += 1
 
@@ -69,6 +74,7 @@ def _build_chapter_summary(
         "succeeded": succeeded_count,
         "failed": failed_count,
         "skipped": skipped_count,
+        "reused": reused_count,
         "total": len(resolved),
         "scheduler_summary": build_scheduler_summary(collect_scheduler_decisions()),
     }

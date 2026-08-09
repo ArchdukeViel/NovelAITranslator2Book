@@ -105,6 +105,44 @@ def _qa_policy_fingerprint(
     return hash_text(serialized)
 
 
+def _resolve_effective_translation_source(
+    storage: Any,
+    novel_id: str,
+    chapter_id: str,
+    raw_chapter: dict[str, Any] | None,
+) -> tuple[str | None, str]:
+    """Resolve the effective translation source text for a chapter.
+
+    Section 4: mutable OCR state lives in the novel-root media overlay and
+    wins over the committed raw snapshot. When OCR is required, the review
+    is complete (``ocr_status == "reviewed"``) and reviewed text exists, the
+    reviewed OCR text IS the source; otherwise the raw chapter text is used.
+    Every consumer (resume gate, run-manifest source hash, delta and full
+    translation, stored ``source_hash`` lineage) must hash and translate the
+    SAME effective text, so this helper is the single resolution point.
+
+    Returns ``(effective_text, effective_source_hash)``; ``effective_text``
+    is ``None`` when no usable source exists and the hash is ``""``.
+    """
+    media_state = storage.load_chapter_media_state(novel_id, chapter_id) or {}
+    effective_text: str | None = None
+    if isinstance(raw_chapter, dict):
+        reviewed_ocr_text = media_state.get("ocr_text")
+        if (
+            bool(media_state.get("ocr_required", False))
+            and str(media_state.get("ocr_status") or "").strip().lower() == "reviewed"
+            and isinstance(reviewed_ocr_text, str)
+            and reviewed_ocr_text.strip()
+        ):
+            effective_text = reviewed_ocr_text
+        else:
+            raw_text_obj = raw_chapter.get("text")
+            if isinstance(raw_text_obj, str):
+                effective_text = raw_text_obj
+    effective_hash = storage._hash_text(effective_text) if effective_text else ""
+    return effective_text, effective_hash
+
+
 def _resolve_effective_output_policy(
     *,
     style_preset: str | None,
@@ -1043,7 +1081,7 @@ async def translate_chapters(
     chapter_concurrency = min(chapter_concurrency, max(1, len(selected_numbers)) or 1)
     chapter_semaphore = asyncio.Semaphore(chapter_concurrency)
 
-    async def _run_chapter(record: ResolvedChapterSelection) -> dict[str, str]:
+    async def _run_chapter(record: ResolvedChapterSelection) -> dict[str, Any]:
         async with chapter_semaphore:
             chapter = record.metadata if isinstance(record.metadata, dict) else {}
             chapter_id = record.chapter_id
@@ -1055,13 +1093,9 @@ async def translate_chapters(
             # the gate, once for translation) would be wasteful and would let
             # the bundle change between calls.
             raw_chapter = self.storage.load_chapter(novel_id, chapter_id)
-            current_raw_text = ""
             current_source_structure_hash = ""
             current_source_image_manifest_hash = ""
             if isinstance(raw_chapter, dict):
-                raw_text_obj = raw_chapter.get("text")
-                if isinstance(raw_text_obj, str):
-                    current_raw_text = raw_text_obj
                 current_source_structure_hash = self.storage._hash_text(
                     json.dumps(
                         raw_chapter.get("source_blocks") or [],
@@ -1078,7 +1112,18 @@ async def translate_chapters(
                         default=str,
                     )
                 )
-            current_source_text_hash = self.storage._hash_text(current_raw_text) if current_raw_text else ""
+            # Section 4: the effective source is resolved ONCE (reviewed OCR
+            # text wins over raw text) and every downstream consumer — resume
+            # gate hash, run-manifest chapter hash, delta and full
+            # translation, stored source_hash lineage — uses it. Resolving
+            # the media overlay here (before the gate) keeps the gate and the
+            # translation path on the same source.
+            current_raw_text, current_source_text_hash = _resolve_effective_translation_source(
+                self.storage,
+                novel_id,
+                chapter_id,
+                raw_chapter,
+            )
 
             # Resume logic (REQ-3.1): skip when previous translation is still
             # valid against the current effective contract, reset FAILED. The
@@ -1128,20 +1173,12 @@ async def translate_chapters(
             )
 
             try:
-                media_state = self.storage.load_chapter_media_state(novel_id, chapter_id) or {}
-                raw_text = None
+                # Section 4: effective source resolved above (before the
+                # resume gate); the same text feeds the manifest hash, delta
+                # and full translation, and the stored source_hash lineage.
+                raw_text = current_raw_text
                 raw_images: list[dict[str, Any]] | None = None
-                if raw_chapter is not None:
-                    reviewed_ocr_text = media_state.get("ocr_text")
-                    if (
-                        bool(media_state.get("ocr_required", False))
-                        and str(media_state.get("ocr_status") or "").strip().lower() == "reviewed"
-                        and isinstance(reviewed_ocr_text, str)
-                        and reviewed_ocr_text.strip()
-                    ):
-                        raw_text = reviewed_ocr_text
-                    else:
-                        raw_text = raw_chapter.get("text") if isinstance(raw_chapter.get("text"), str) else None
+                if isinstance(raw_chapter, dict):
                     raw_images = raw_chapter.get("images") if isinstance(raw_chapter.get("images"), list) else None
                 if raw_text is not None and raw_text.strip():
                     manifest.chapter_source_hashes[chapter_id] = hash_text(raw_text)
@@ -1177,8 +1214,31 @@ async def translate_chapters(
                         glossary_hash=glossary_hash,
                         prompt_template_version=prompt_template_version,
                         qa_policy_fingerprint=qa_policy_fingerprint,
+                        source_structure_hash=current_source_structure_hash or None,
+                        source_image_manifest_hash=current_source_image_manifest_hash or None,
                     )
                     if delta_result.get("applied"):
+                        if delta_result.get("mode") == "whole_chapter_unchanged":
+                            # Section 6: whole-chapter reuse is a TRUE no-op.
+                            # No new version is persisted: the stored version's
+                            # version_id / translation_run_id / provider /
+                            # model / created_at stay untouched, so reuse can
+                            # never create false producer lineage. The DB state
+                            # was flipped to FETCHING above; restore COMPLETE
+                            # and record the reuse (the run manifest carries
+                            # it via the summary finalize below).
+                            _update_db_translation_state(novel_id, chapter_id, TranslationState.COMPLETE)
+                            cp_mgr.delete(chapter_id)
+                            return {
+                                "chapter_id": chapter_id,
+                                "status": "reused",
+                                "reason": "whole_chapter_unchanged",
+                                "version_id": delta_result.get("version_id"),
+                                "translation_run_id": delta_result.get("translation_run_id"),
+                                "created_at": delta_result.get("created_at"),
+                                "provider_key": delta_result.get("provider_key"),
+                                "provider_model": delta_result.get("provider_model"),
+                            }
                         translated = str(delta_result.get("text") or "")
                         confidence_score = self._score_translation_confidence(raw_text or "", translated)
                         polish_needed = mark_polish_needed and confidence_score < normalized_threshold
@@ -1484,6 +1544,7 @@ async def translate_chapters(
     # so manifest storage failure never fails the translation run itself.
     review_count = 0
     succeeded_chapter_ids: list[str] = []
+    reused_chapter_ids: list[str] = []
     ordered_ids = [record.chapter_id for record in resolved]
     for chapter_id in ordered_ids:
         entry = summary["chapter_progress"].get(chapter_id)
@@ -1492,6 +1553,11 @@ async def translate_chapters(
         status = str(entry.get("status") or "")
         if status == "succeeded":
             succeeded_chapter_ids.append(chapter_id)
+        elif status == "reused":
+            # Section 6: whole-chapter reuse no-ops are recorded explicitly so
+            # the manifest distinguishes reused output from newly generated,
+            # skipped, or failed chapters.
+            reused_chapter_ids.append(chapter_id)
         elif status == "requires_review" or entry.get("needs_review"):
             review_count += 1
 
@@ -1499,6 +1565,8 @@ async def translate_chapters(
     manifest.completed_count = int(summary.get("succeeded") or 0)
     manifest.skipped_count = int(summary.get("skipped") or 0)
     manifest.failed_count = int(summary.get("failed") or 0)
+    manifest.reused_chapter_ids = reused_chapter_ids
+    manifest.reused_count = len(reused_chapter_ids)
     manifest.review_count = review_count
     manifest.status = "failed" if first_error is not None else "completed"
     manifest.committed_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
