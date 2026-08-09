@@ -660,9 +660,17 @@ async def polish_low_confidence_chapters(
     meta = self.storage.load_metadata(novel_id)
     if not meta:
         raise RuntimeError("Metadata not found; import or scrape a novel first.")
-    profile_provider, profile_model = self._resolve_workflow_profile("polish", meta)
-    effective_provider = provider_key or profile_provider
-    effective_model = provider_model or profile_model
+    # Section 3: ONE authoritative provider identity per run, resolved here
+    # before the manifest / resume gate / delta / execution / lineage are
+    # created. Precedence: explicit caller > workflow profile > global
+    # preferred. Never None: the pipeline stage must never silently execute a
+    # different provider than the one the contract records.
+    effective_provider, effective_model = self._resolve_effective_provider_contract(
+        step="polish",
+        metadata=meta,
+        provider_key=provider_key,
+        provider_model=provider_model,
+    )
 
     resolved = resolve_chapter_selection(meta, chapters)
     _chapter_by_id = {record.chapter_id: record for record in resolved}
@@ -953,9 +961,20 @@ async def translate_chapters(
 
     effective_source_language = source_language or self._infer_source_language(source_key, meta)
     effective_target_language = target_language or settings.TRANSLATION_TARGET_LANGUAGE
-    profile_provider, profile_model = self._resolve_workflow_profile("body_translation", meta)
-    effective_provider_key = provider_key or profile_provider
-    effective_provider_model = provider_model or profile_model
+    # Section 3: ONE authoritative provider identity per run, resolved HERE —
+    # before the run manifest, the resume gate, delta retranslation, pipeline
+    # execution and stored lineage are created. Precedence is strict: explicit
+    # caller values > body-translation workflow profile > global preferred
+    # provider/model. The result is never None, so the contract, the executed
+    # pipeline call and the stored lineage can never diverge (a version must
+    # never record a missing provider identity while the pipeline silently
+    # executes the global preferred one).
+    effective_provider_key, effective_provider_model = self._resolve_effective_provider_contract(
+        step="body_translation",
+        metadata=meta,
+        provider_key=provider_key,
+        provider_model=provider_model,
+    )
 
     # Read workflow defaults from metadata and apply as fallbacks. The
     # effective identity for each output-shaping dimension is symmetric with

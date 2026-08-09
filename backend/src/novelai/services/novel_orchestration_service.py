@@ -285,13 +285,42 @@ class NovelOrchestrationService:
         }
         return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
-    def _resolve_provider_and_model(
+    def _resolve_effective_provider_contract(
         self,
-        provider_key: str | None = None,
-        provider_model: str | None = None,
+        *,
+        step: str | None,
+        metadata: dict[str, Any] | None,
+        provider_key: str | None,
+        provider_model: str | None,
     ) -> tuple[str, str]:
-        key = provider_key or self._settings.get_preferred_provider()
-        model = provider_model or self._settings.get_provider_model()
+        """Resolve the authoritative provider/model identity for a workflow step.
+
+        Section 3 (PR 41 closure): this is the SINGLE resolution point for the
+        provider contract identity. Precedence is strict:
+
+        1. Explicit caller values (``provider_key`` / ``provider_model``)
+        2. The workflow profile for ``step`` (novel-level profiles, then
+           global step configs, then endpoint profiles — already merged by
+           ``_resolve_workflow_step_config`` / ``resolve_step_llm_config``)
+        3. The global preferred provider / model preferences
+
+        The result is guaranteed non-empty (never ``None``): every consumer —
+        run manifest, resume gate, delta retranslation, pipeline execution and
+        stored lineage — records and compares this identity, so a translation
+        version must never be created with a missing provider identity while
+        the pipeline silently executes a different one. Configuration errors
+        (Gemini without an API key, ``dummy`` outside ``ENV=test``) fail closed
+        here, before any contract is created.
+
+        ``step`` may be ``None`` to skip the workflow-profile layer entirely
+        (used by the metadata/glossary/crawler steps that predate profiles).
+        """
+        profile_provider: str | None = None
+        profile_model: str | None = None
+        if step is not None:
+            profile_provider, profile_model = self._resolve_workflow_profile(step, metadata)
+        key = provider_key or profile_provider or self._settings.get_preferred_provider()
+        model = provider_model or profile_model or self._settings.get_provider_model()
         if self._provider_requires_api_key(key) and not self._settings.get_api_key(key):
             raise ProviderConfigError(
                 ProviderErrorCode.CONFIGURATION,
@@ -309,6 +338,25 @@ class NovelOrchestrationService:
                 )
             return "dummy", "dummy"
         return key, model
+
+    def _resolve_provider_and_model(
+        self,
+        provider_key: str | None = None,
+        provider_model: str | None = None,
+    ) -> tuple[str, str]:
+        """Legacy two-level resolution (explicit caller > global preferred).
+
+        Used by the metadata translation / glossary / crawler steps that do not
+        participate in workflow profiles; delegates to the authoritative
+        contract resolver with no profile layer so the Gemini/dummy guards stay
+        in exactly one place.
+        """
+        return self._resolve_effective_provider_contract(
+            step=None,
+            metadata=None,
+            provider_key=provider_key,
+            provider_model=provider_model,
+        )
 
     def _record_usage(self, provider_key: str, model: str, metadata: Any) -> None:
         usage = metadata.get("usage") if isinstance(metadata, dict) else None
