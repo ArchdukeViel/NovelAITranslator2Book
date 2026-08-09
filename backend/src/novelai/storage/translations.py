@@ -145,6 +145,31 @@ def _normalized_version_payload(translated: dict[str, Any]) -> dict[str, Any]:
         version["qa_warnings"] = list(translated["qa_warnings"])
     if isinstance(translated.get("qa_errors"), list):
         version["qa_errors"] = list(translated["qa_errors"])
+    # Section 9: historical version reads must preserve the complete stored
+    # lineage — the same fields ``save_translated_chapter`` persists and
+    # ``load_translated_chapter`` passes through — so validity checks and
+    # provenance consumers work against ANY version, not only the active one.
+    for key in (
+        "translation_run_id",
+        "raw_generation_id",
+        "source_episode_id",
+        "source_content_hash",
+        "source_structure_hash",
+        "source_image_manifest_hash",
+        "qa_policy_fingerprint",
+        "source_language",
+        "target_language",
+        "style_preset",
+        "output_hash",
+        "activation_disposition",
+        "honorific_policy",
+    ):
+        if isinstance(translated.get(key), str) and translated[key]:
+            version[key] = translated[key]
+    if isinstance(translated.get("consistency_mode"), bool):
+        version["consistency_mode"] = translated["consistency_mode"]
+    if isinstance(translated.get("json_output"), bool):
+        version["json_output"] = translated["json_output"]
     return version
 
 
@@ -517,13 +542,20 @@ def load_translated_chapter_by_version_id(
     chapter_id: str,
     version_id: str,
 ) -> dict[str, Any] | None:
+    """Load a specific historical translation version with full lineage.
+
+    Section 9: the returned payload must preserve the complete stored
+    lineage (translation_run_id, raw_generation_id, source hashes, QA
+    fingerprint, policy inputs, output_hash, …) so provenance consumers and
+    validity checks work against ANY version, not only the active one.
+    """
     overlay = self._load_translation_overlay(novel_id, chapter_id)
     if isinstance(overlay, dict):
         for version in overlay.get("translation_versions") or []:
             if isinstance(version, dict) and version.get("version_id") == version_id:
                 created_at = version.get("created_at") or version.get("translated_at")
                 translated_at = version.get("translated_at") or version.get("created_at")
-                return {
+                payload: dict[str, Any] = {
                     "chapter_id": chapter_id,
                     "version_id": version_id,
                     "version_kind": version.get("version_kind"),
@@ -539,6 +571,33 @@ def load_translated_chapter_by_version_id(
                     if isinstance(version.get("glossary_revision"), int)
                     else 0,
                 }
+                for key in (
+                    "base_version_id",
+                    "source_hash",
+                    "prompt_template_version",
+                    "glossary_hash",
+                    "batch_id",
+                    "translation_run_id",
+                    "raw_generation_id",
+                    "source_episode_id",
+                    "source_content_hash",
+                    "source_structure_hash",
+                    "source_image_manifest_hash",
+                    "qa_policy_fingerprint",
+                    "source_language",
+                    "target_language",
+                    "style_preset",
+                    "output_hash",
+                    "activation_disposition",
+                    "honorific_policy",
+                ):
+                    if isinstance(version.get(key), str) and version[key]:
+                        payload[key] = version[key]
+                if isinstance(version.get("consistency_mode"), bool):
+                    payload["consistency_mode"] = version["consistency_mode"]
+                if isinstance(version.get("json_output"), bool):
+                    payload["json_output"] = version["json_output"]
+                return payload
     payload = self._load_chapter_bundle(novel_id, chapter_id)
     if not isinstance(payload, dict):
         return None
