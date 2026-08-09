@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -9,6 +10,11 @@ from typing import Any
 
 def _utc_now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _output_hash(text: str) -> str:
+    """Canonical output hash: sha256 of utf-8 text (mirrors storage hashing)."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 @dataclass
@@ -41,6 +47,13 @@ class TranslationRunManifest:
     skipped_count: int = 0
     review_count: int = 0
     failed_count: int = 0
+    # Section 6: whole-chapter reuse (delta "whole_chapter_unchanged") is a
+    # real no-op: no new version is persisted and the stored version's
+    # identity/provenance is preserved. Reused chapters are recorded here so
+    # operators can see that the run re-used prior output instead of
+    # generating or failing it.
+    reused_chapter_ids: list[str] = field(default_factory=list)
+    reused_count: int = 0
     chapter_source_hashes: dict[str, str] = field(default_factory=dict)
     chunk_outputs: dict[str, str] = field(default_factory=dict)  # chunk_id -> output_hash
 
@@ -76,6 +89,8 @@ class TranslationRunManifest:
             skipped_count=int(data.get("skipped_count", 0)),
             review_count=int(data.get("review_count", 0)),
             failed_count=int(data.get("failed_count", 0)),
+            reused_chapter_ids=list(data.get("reused_chapter_ids", [])),
+            reused_count=int(data.get("reused_count", 0)),
             chapter_source_hashes=dict(data.get("chapter_source_hashes", {})),
             chunk_outputs=dict(data.get("chunk_outputs", {})),
         )
@@ -205,6 +220,21 @@ def is_translation_valid(
     if output_hash:
         rec_output = record.get("output_hash")
         if not rec_output or rec_output != output_hash:
+            return False
+
+    # Output-hash self-consistency (Section 10): when the stored version
+    # carries an ``output_hash`` AND its stored text, the hash must equal the
+    # recomputed hash of the stored text. A version whose text was mutated
+    # without re-hashing is corrupted lineage — reusing it would serve output
+    # the recorded producer never generated — so it fails closed even when the
+    # current contract does not require the output-hash dimension. Versions
+    # persisted before output hashing existed (no stored output_hash) keep
+    # the legacy policy above: required only when the current contract
+    # supplies one.
+    rec_output_self = record.get("output_hash")
+    rec_text = record.get("text")
+    if isinstance(rec_output_self, str) and rec_output_self.strip() and isinstance(rec_text, str):
+        if rec_output_self.strip() != _output_hash(rec_text):
             return False
 
     # Languages: fail closed — a missing stored language is stale lineage,
