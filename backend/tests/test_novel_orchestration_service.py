@@ -207,6 +207,116 @@ class StubTranslationService(TranslationService):
         )
 
 
+class MarkerAwareStubTranslationService(TranslationService):
+    """Realistic delta-window provider: plain ``[P ...]`` markers when
+    ``json_output=False``, JSON ``paragraph_map`` when ``json_output=True``.
+
+    Mirrors the production prompt contract (templates.py): paragraph ids are
+    copied from the window's prompt (``paragraph_ids`` kwarg), every marker
+    appears exactly once in source order, and a blank body keeps its marker.
+    Malformed-output knobs exercise the strict marker parser's fail-closed
+    behavior. The result echoes the REQUESTED provider identity like the
+    production service.
+    """
+
+    def __init__(
+        self,
+        *,
+        prefix: str = "tr:",
+        drop_paragraph_ids: set[str] | None = None,
+        duplicate_paragraph_id: str | None = None,
+        extra_paragraph_id: str | None = None,
+        reorder: bool = False,
+        preamble: str | None = None,
+        blank_paragraph_ids: set[str] | None = None,
+        fail: bool = False,
+    ) -> None:
+        self.prefix = prefix
+        self.drop_paragraph_ids = drop_paragraph_ids or set()
+        self.duplicate_paragraph_id = duplicate_paragraph_id
+        self.extra_paragraph_id = extra_paragraph_id
+        self.reorder = reorder
+        self.preamble = preamble
+        self.blank_paragraph_ids = blank_paragraph_ids or set()
+        self.fail = fail
+        self.calls: list[dict[str, Any]] = []
+
+    async def translate_chapter(self, **kwargs: Any) -> PipelineResult:
+        self.calls.append(kwargs)
+        if self.fail:
+            raise RuntimeError("provider failure")
+        provider_key = str(kwargs.get("provider_key") or "mock")
+        provider_model = str(kwargs.get("provider_model") or "mock-1.0")
+        chapter_id = str(kwargs.get("chapter_id") or "1")
+        json_output = bool(kwargs.get("json_output", False))
+        raw_text = str(kwargs.get("raw_text") or "")
+        paragraphs = [part.strip() for part in raw_text.split("\n\n") if part.strip()]
+        paragraph_ids = [str(pid) for pid in (kwargs.get("paragraph_ids") or [])]
+        if len(paragraph_ids) != len(paragraphs):
+            paragraph_ids = [f"p{index:04d}" for index in range(1, len(paragraphs) + 1)]
+
+        translated_by_id = {
+            pid: ("" if pid in self.blank_paragraph_ids else f"{self.prefix}{part}")
+            for pid, part in zip(paragraph_ids, paragraphs, strict=True)
+        }
+        emitted_ids: list[str] = []
+        for pid in paragraph_ids:
+            if pid in self.drop_paragraph_ids:
+                continue
+            emitted_ids.append(pid)
+            if pid == self.duplicate_paragraph_id:
+                emitted_ids.append(pid)
+        if self.reorder:
+            emitted_ids = list(reversed(emitted_ids))
+        if self.extra_paragraph_id:
+            emitted_ids.append(self.extra_paragraph_id)
+
+        if json_output:
+            paragraph_map = [
+                {
+                    "chapter_id": chapter_id,
+                    "paragraph_id": pid,
+                    "translated_text": translated_by_id.get(pid, f"{self.prefix}{pid}"),
+                }
+                for pid in emitted_ids
+            ]
+            raw = json.dumps(
+                {
+                    "translated_text": "\n\n".join(item["translated_text"] for item in paragraph_map),
+                    "paragraph_map": paragraph_map,
+                }
+            )
+            return PipelineResult(
+                final_text="\n\n".join(item["translated_text"] for item in paragraph_map),
+                chapter_url=str(kwargs.get("chapter_url") or ""),
+                provider_key=provider_key,
+                provider_model=provider_model,
+                translations=[raw],
+                metadata={"raw_provider_translations": [raw]},
+            )
+
+        lines: list[str] = []
+        if self.preamble:
+            lines.append(self.preamble)
+        lines.append(f"[CHAPTER {chapter_id}]")
+        lines.append("")
+        for pid in emitted_ids:
+            lines.append(f"[P {pid}]")
+            body = translated_by_id.get(pid, f"{self.prefix}{pid}")
+            if body:
+                lines.append(body)
+            lines.append("")
+        raw_output = "\n".join(lines).strip()
+        return PipelineResult(
+            final_text=raw_output,
+            chapter_url=str(kwargs.get("chapter_url") or ""),
+            provider_key=provider_key,
+            provider_model=provider_model,
+            translations=[raw_output],
+            metadata={"raw_provider_translations": [raw_output]},
+        )
+
+
 class RuntimeSimulationTranslationService(TranslationService):
     def __init__(self, storage: StorageService, *, fail_chapter_once: str | None = None) -> None:
         self.storage = storage
@@ -965,6 +1075,10 @@ async def test_translate_chapters_passes_provider_lock_to_translation_service(or
         },
     )
     storage.save_chapter("locked-novel", "1", "raw text", title="Chapter 1")
+    # Gemini requires a configured API key before contract resolution; the
+    # resolver fails closed otherwise. Provide a runtime-only fake key so this
+    # test can keep verifying identity forwarding to the translation service.
+    orchestration_env["settings"].set_api_key("test-key-not-real", "gemini")
     translation = StubTranslationService(final_text="translated body")
     orchestrator = NovelOrchestrationService(
         storage=storage,
@@ -2327,9 +2441,7 @@ def _save_delta_execution_fixture(
         )
 
 
-async def _run_delta_translate(
-    orchestration_env, translation: StubTranslationService
-) -> tuple[StorageService, StubTranslationService]:
+async def _run_delta_translate(orchestration_env, translation: Any) -> tuple[StorageService, Any]:
     storage = orchestration_env["storage"]
     orchestrator = NovelOrchestrationService(
         storage=storage,
@@ -3505,7 +3617,7 @@ async def test_pipeline_phase_two_blocks_when_pending_glossary(orchestration_env
 # reuse decision.
 
 
-def _s6_orchestrator(orchestration_env, translation: StubTranslationService) -> NovelOrchestrationService:
+def _s6_orchestrator(orchestration_env, translation: Any) -> NovelOrchestrationService:
     return NovelOrchestrationService(
         storage=orchestration_env["storage"],
         translation=translation,
@@ -5225,3 +5337,479 @@ async def test_pr41_output_hash_corruption_fails_closed(orchestration_env) -> No
     assert len(translation.calls) == 1
     assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
     assert saved["output_hash"] == storage._hash_text("fresh retranslation")
+
+
+# ---------------------------------------------------------------------------
+# PR-41 FINAL: authoritative provider contract resolution (section 3).
+# The contract identity is resolved ONCE with strict precedence
+# (explicit caller > workflow profile > global preferred), never None, and is
+# what the manifest / resume gate / delta / execution / lineage all record.
+# ---------------------------------------------------------------------------
+
+
+def _seed_fresh_provider_novel(storage: StorageService, novel_id: str = "novel-provider") -> None:
+    storage.save_metadata(
+        novel_id,
+        {
+            "source_key": "stub",
+            "source_language": "Japanese",
+            "chapters": [{"id": "1", "num": 1, "title": "Chapter One", "url": f"https://example.com/{novel_id}/1"}],
+        },
+    )
+    storage.save_chapter(novel_id, "1", "A.\n\nB.")
+
+
+@pytest.mark.asyncio
+async def test_pr41_provider_contract_implicit_resolution_uses_global_preferred(orchestration_env) -> None:
+    """Section 3: omitted caller + omitted profile resolve to global preferred.
+
+    The contract identity is resolved BEFORE execution: the pipeline call, the
+    stored version and the run manifest all record the same non-None identity.
+    """
+    storage = orchestration_env["storage"]
+    _seed_fresh_provider_novel(storage)
+
+    translation = StubTranslationService(final_text="implicit text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    summary = await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-provider",
+        chapters="1",
+        source_language="Japanese",
+    )
+
+    assert len(translation.calls) == 1
+    assert translation.calls[0]["provider_key"] == "mock"
+    assert translation.calls[0]["provider_model"] == "mock-1.0"
+    saved = storage.load_translated_chapter("novel-provider", "1")
+    assert saved is not None
+    assert saved["provider_key"] == "mock"
+    assert saved["provider_model"] == "mock-1.0"
+    manifest = storage.load_translation_run_manifest("novel-provider", summary["translation_run_id"])
+    assert manifest is not None
+    assert manifest.provider_key == "mock"
+    assert manifest.provider_model == "mock-1.0"
+
+
+@pytest.mark.asyncio
+async def test_pr41_provider_contract_implicit_rerun_reuses_without_calls(orchestration_env) -> None:
+    """Section 3: a stable implicit contract reuses the stored version with no
+    new provider calls (identity resolved identically on both runs)."""
+    storage = orchestration_env["storage"]
+    # Seed a stored version whose lineage carries the SAME implicit contract
+    # (mock / mock-1.0 from the global preferred preferences) so the delta
+    # path can whole-chapter reuse it — exactly what a prior implicit run
+    # would have produced.
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old whole chapter",
+        structured=False,
+    )
+    version_id_before = storage.list_translated_chapter_versions("novel-delta", "1")[0]["version_id"]
+
+    translation = StubTranslationService(final_text="should not be called")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    summary = await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        source_language="Japanese",
+    )
+
+    assert translation.calls == []
+    assert summary["reused"] == 1
+    versions = storage.list_translated_chapter_versions("novel-delta", "1")
+    assert [version["version_id"] for version in versions] == [version_id_before]
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["provider_key"] == "mock"
+    assert saved["provider_model"] == "mock-1.0"
+
+
+@pytest.mark.asyncio
+async def test_pr41_provider_contract_preferred_model_change_retranslates(orchestration_env) -> None:
+    """Section 3: changing the global preferred model invalidates the stored
+    version and retranslates with the NEW identity recorded in the contract."""
+    storage = orchestration_env["storage"]
+    _seed_fresh_provider_novel(storage)
+
+    translation = StubTranslationService(final_text="model change text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-provider",
+        chapters="1",
+        source_language="Japanese",
+    )
+    first_version = storage.list_translated_chapter_versions("novel-provider", "1")[0]["version_id"]
+
+    orchestration_env["settings"].set_preferred_model("mock-2.0")
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-provider",
+        chapters="1",
+        source_language="Japanese",
+    )
+
+    assert len(translation.calls) == 2
+    assert translation.calls[1]["provider_key"] == "mock"
+    assert translation.calls[1]["provider_model"] == "mock-2.0"
+    saved = storage.load_translated_chapter("novel-provider", "1")
+    assert saved is not None
+    assert saved["provider_model"] == "mock-2.0"
+    versions = storage.list_translated_chapter_versions("novel-provider", "1")
+    assert [version["version_id"] for version in versions] != [first_version]
+    assert len(versions) == 2
+
+
+@pytest.mark.asyncio
+async def test_pr41_provider_contract_preferred_provider_change_retranslates(orchestration_env) -> None:
+    """Section 3: changing the global preferred provider invalidates the stored
+    version and retranslates with the NEW provider identity recorded."""
+    storage = orchestration_env["storage"]
+    _seed_fresh_provider_novel(storage)
+
+    translation = StubTranslationService(final_text="provider change text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-provider",
+        chapters="1",
+        source_language="Japanese",
+    )
+    first_version = storage.list_translated_chapter_versions("novel-provider", "1")[0]["version_id"]
+
+    orchestration_env["settings"].set_preferred_provider("mock-other")
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-provider",
+        chapters="1",
+        source_language="Japanese",
+    )
+
+    assert len(translation.calls) == 2
+    assert translation.calls[1]["provider_key"] == "mock-other"
+    saved = storage.load_translated_chapter("novel-provider", "1")
+    assert saved is not None
+    assert saved["provider_key"] == "mock-other"
+    versions = storage.list_translated_chapter_versions("novel-provider", "1")
+    assert [version["version_id"] for version in versions] != [first_version]
+    assert len(versions) == 2
+
+
+@pytest.mark.asyncio
+async def test_pr41_provider_contract_workflow_profile_overrides_global(orchestration_env) -> None:
+    """Section 3: with caller omitted, the body-translation workflow profile
+    wins over the global preferred provider/model."""
+    storage = orchestration_env["storage"]
+    _seed_fresh_provider_novel(storage)
+    orchestration_env["settings"].set_llm_step_config(
+        "body_translation",
+        provider_key="wf-provider",
+        provider_model="wf-model",
+    )
+
+    translation = StubTranslationService(final_text="profile text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    summary = await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-provider",
+        chapters="1",
+        source_language="Japanese",
+    )
+
+    assert len(translation.calls) == 1
+    assert translation.calls[0]["provider_key"] == "wf-provider"
+    assert translation.calls[0]["provider_model"] == "wf-model"
+    saved = storage.load_translated_chapter("novel-provider", "1")
+    assert saved is not None
+    assert saved["provider_key"] == "wf-provider"
+    assert saved["provider_model"] == "wf-model"
+    manifest = storage.load_translation_run_manifest("novel-provider", summary["translation_run_id"])
+    assert manifest is not None
+    assert manifest.provider_key == "wf-provider"
+
+
+@pytest.mark.asyncio
+async def test_pr41_provider_contract_explicit_overrides_workflow(orchestration_env) -> None:
+    """Section 3: explicit caller values win over the workflow profile."""
+    storage = orchestration_env["storage"]
+    _seed_fresh_provider_novel(storage)
+    orchestration_env["settings"].set_llm_step_config(
+        "body_translation",
+        provider_key="wf-provider",
+        provider_model="wf-model",
+    )
+
+    translation = StubTranslationService(final_text="explicit text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-provider",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    assert len(translation.calls) == 1
+    assert translation.calls[0]["provider_key"] == "mock"
+    assert translation.calls[0]["provider_model"] == "mock-1.0"
+    saved = storage.load_translated_chapter("novel-provider", "1")
+    assert saved is not None
+    assert saved["provider_key"] == "mock"
+    assert saved["provider_model"] == "mock-1.0"
+
+
+@pytest.mark.asyncio
+async def test_pr41_provider_contract_never_records_none_identity(orchestration_env) -> None:
+    """Section 3 negative invariant: no successful translation version is ever
+    created with a missing provider identity — the pipeline stage must not
+    silently execute an identity the contract does not record."""
+    storage = orchestration_env["storage"]
+    _seed_fresh_provider_novel(storage)
+
+    translation = StubTranslationService(final_text="non-none text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    summary = await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-provider",
+        chapters="1",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-provider", "1")
+    assert saved is not None
+    assert saved["provider_key"] is not None
+    assert saved["provider_model"] is not None
+    manifest = storage.load_translation_run_manifest("novel-provider", summary["translation_run_id"])
+    assert manifest is not None
+    assert manifest.provider_key is not None
+    assert manifest.provider_model is not None
+    # The executed call carried exactly the contract identity.
+    assert translation.calls[0]["provider_key"] == saved["provider_key"]
+    assert translation.calls[0]["provider_model"] == saved["provider_model"]
+
+
+# ---------------------------------------------------------------------------
+# PR-41 FINAL: plain-output delta windows (section 6/7).
+# Default policy is json_output=False; a strict ``[P ...]`` marker parser maps
+# plain provider output onto the window's absolute paragraph ids. Any
+# ambiguity fails closed to a full translation.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pr41_plain_delta_default_policy_applies_window(orchestration_env) -> None:
+    """Section 6/7: with the default json_output=False policy, a realistic
+    provider's plain marker output drives the changed window; the full path is
+    not used and reuse/order are preserved."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole c",
+        structured=True,
+    )
+
+    storage, translation = await _run_delta_translate(orchestration_env, MarkerAwareStubTranslationService())
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "tr:A.\n\ntr:Bee.\n\ntr:C."
+    assert len(translation.calls) == 1
+    # The changed window executes the effective policy (False, not hard-coded)
+    # and carries the chapter's ABSOLUTE paragraph ids in the prompt.
+    assert translation.calls[0]["json_output"] is False
+    assert translation.calls[0]["paragraph_ids"] == ["p0001", "p0002", "p0003"]
+    assert saved["json_output"] is False
+    assert saved["confidence_details"]["delta"]["mode"] == "delta"
+    assert saved["confidence_details"]["delta"]["newly_translated_paragraph_ids"] == ["p0001", "p0002", "p0003"]
+
+
+@pytest.mark.asyncio
+async def test_pr41_plain_delta_json_output_true_uses_json_path(orchestration_env) -> None:
+    """Section 6/7: with json_output=True the realistic provider emits a JSON
+    paragraph_map and the structured path still drives the window."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole j",
+        translated_chapter_lineage_overrides={"json_output": True},
+        structured=True,
+    )
+
+    translation = MarkerAwareStubTranslationService()
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+        json_output=True,
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "tr:A.\n\ntr:Bee.\n\ntr:C."
+    assert len(translation.calls) == 1
+    assert translation.calls[0]["json_output"] is True
+    assert saved["json_output"] is True
+    assert saved["confidence_details"]["delta"]["mode"] == "delta"
+
+
+@pytest.mark.asyncio
+async def test_pr41_plain_delta_blank_paragraph_marker_preserved(orchestration_env) -> None:
+    """Section 6: a blank translated paragraph KEEPS its marker and maps to an
+    empty body — the parser must not reject it."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole b",
+        structured=True,
+    )
+
+    storage, translation = await _run_delta_translate(
+        orchestration_env, MarkerAwareStubTranslationService(blank_paragraph_ids={"p0002"})
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["confidence_details"]["delta"]["mode"] == "delta"
+    # p0002 translated but blank: marker preserved, empty body kept in order
+    # (the two "\n\n" separators around the empty body yield 4 newlines).
+    assert saved["text"] == "tr:A.\n\n\n\ntr:C."
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["newly_translated_paragraph_ids"] == ["p0001", "p0002", "p0003"]
+
+
+@pytest.mark.asyncio
+async def test_pr41_plain_delta_missing_marker_falls_back_to_full(orchestration_env) -> None:
+    """Section 6 fail-closed: a dropped marker is missing from the expected set
+    -> the window result is rejected and the chapter is fully retranslated."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole m",
+        structured=True,
+    )
+
+    storage, translation = await _run_delta_translate(
+        orchestration_env, MarkerAwareStubTranslationService(drop_paragraph_ids={"p0002"})
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "changed_window_qa_failed"
+    assert len(translation.calls) == 2
+    assert "[P p0001]" in saved["text"]
+    assert "[P p0003]" in saved["text"]
+
+
+@pytest.mark.asyncio
+async def test_pr41_plain_delta_duplicate_marker_falls_back_to_full(orchestration_env) -> None:
+    """Section 6 fail-closed: a duplicated marker breaks uniqueness -> full."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole d",
+        structured=True,
+    )
+
+    storage, translation = await _run_delta_translate(
+        orchestration_env, MarkerAwareStubTranslationService(duplicate_paragraph_id="p0002")
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "changed_window_qa_failed"
+    assert len(translation.calls) == 2
+    assert "[P p0001]" in saved["text"]
+
+
+@pytest.mark.asyncio
+async def test_pr41_plain_delta_reordered_markers_fail_closed(orchestration_env) -> None:
+    """Section 6 fail-closed: markers out of source order -> full."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole r",
+        structured=True,
+    )
+
+    storage, translation = await _run_delta_translate(
+        orchestration_env, MarkerAwareStubTranslationService(reorder=True)
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "changed_window_qa_failed"
+    assert len(translation.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_pr41_plain_delta_extra_marker_falls_back_to_full(orchestration_env) -> None:
+    """Section 6 fail-closed: an unknown extra marker is ambiguity -> full."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole e",
+        structured=True,
+    )
+
+    storage, translation = await _run_delta_translate(
+        orchestration_env, MarkerAwareStubTranslationService(extra_paragraph_id="p0099")
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "changed_window_qa_failed"
+    assert len(translation.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_pr41_plain_delta_preamble_falls_back_to_full(orchestration_env) -> None:
+    """Section 6 fail-closed: non-marker preamble text before the first
+    paragraph marker is ambiguity -> full."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole p",
+        structured=True,
+    )
+
+    storage, translation = await _run_delta_translate(
+        orchestration_env, MarkerAwareStubTranslationService(preamble="Here is the translation:")
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "changed_window_qa_failed"
+    assert len(translation.calls) == 2
