@@ -157,6 +157,15 @@ def _translation_lineage_kwargs(
     # resolved from the source index; the logical ``chapter_id`` is only the
     # fallback (e.g. imported documents with no native episode identity).
     source_episode_id: str | None = None,
+    # Effective canonical glossary hash the validator will compare against.
+    # Production passes ``canonical_glossary_hash(glossary)`` so the stored
+    # lineage matches the effective contract even when the novel metadata has
+    # no ``glossary_hash`` (e.g. no glossary applied); the metadata fallback
+    # below keeps older callers consistent when no hash is supplied.
+    glossary_hash: str | None = None,
+    # Effective prompt template version the validator compares against; the
+    # fallback below resolves the same value when not supplied.
+    prompt_template_version: str | None = None,
 ) -> dict[str, Any]:
     """Section 8: assemble the complete raw-to-version lineage fields for a
     stored machine translation version so validity checks can consume the
@@ -166,6 +175,17 @@ def _translation_lineage_kwargs(
     def _json_hash(value: Any) -> str:
         return storage._hash_text(json.dumps(value, ensure_ascii=False, sort_keys=True, default=str))
 
+    glossary_hash_value: str | None = glossary_hash
+    if not glossary_hash_value and hasattr(storage, "load_metadata"):
+        try:
+            meta = storage.load_metadata(novel_id) or {}
+            if isinstance(meta, dict):
+                gh = meta.get("glossary_hash")
+                if isinstance(gh, str) and gh.strip():
+                    glossary_hash_value = gh.strip()
+        except Exception:
+            glossary_hash_value = None
+
     return {
         "source_hash": storage._hash_text(raw_text or ""),
         "translation_run_id": translation_run_id,
@@ -173,6 +193,8 @@ def _translation_lineage_kwargs(
         "source_episode_id": str(source_episode_id or chapter_id),
         "source_structure_hash": _json_hash(raw_bundle.get("source_blocks") or []),
         "source_image_manifest_hash": _json_hash(raw_bundle.get("images") or []),
+        "glossary_hash": glossary_hash_value,
+        "prompt_template_version": prompt_template_version or _resolve_effective_prompt_version(storage, raw_bundle),
         "qa_policy_fingerprint": qa_policy_fingerprint,
         "source_language": source_language,
         "target_language": target_language,
@@ -1152,6 +1174,9 @@ async def translate_chapters(
                         json_output=effective_json_output,
                         honorific_policy=effective_honorific_policy,
                         active_raw_generation_id=raw_generation_id or None,
+                        glossary_hash=glossary_hash,
+                        prompt_template_version=prompt_template_version,
+                        qa_policy_fingerprint=qa_policy_fingerprint,
                     )
                     if delta_result.get("applied"):
                         translated = str(delta_result.get("text") or "")
@@ -1200,6 +1225,8 @@ async def translate_chapters(
                                 auto_activate=auto_activate,
                                 honorific_policy=effective_honorific_policy,
                                 source_episode_id=record.source_episode_id or chapter_id,
+                                glossary_hash=glossary_hash,
+                                prompt_template_version=prompt_template_version,
                             ),
                         )
                         safely_refresh_catalog_projection_after_storage_write(
@@ -1319,6 +1346,8 @@ async def translate_chapters(
                         auto_activate=auto_activate,
                         honorific_policy=effective_honorific_policy,
                         source_episode_id=record.source_episode_id or chapter_id,
+                        glossary_hash=glossary_hash,
+                        prompt_template_version=prompt_template_version,
                     ),
                 )
                 safely_refresh_catalog_projection_after_storage_write(

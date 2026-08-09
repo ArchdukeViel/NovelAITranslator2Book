@@ -23,7 +23,7 @@ from novelai.translation.qa import (
     evaluate_translation_quality,
     normalize_translation_output,
 )
-from novelai.translation.run_manifest import _normalize_honorific_policy
+from novelai.translation.run_manifest import is_translation_valid
 
 logger = logging.getLogger(__name__)
 
@@ -31,53 +31,46 @@ logger = logging.getLogger(__name__)
 def _stored_output_contract_matches(
     existing: dict[str, Any],
     *,
-    style_preset: str | None,
-    consistency_mode: bool | None,
-    json_output: bool | None,
-    honorific_policy: str | None,
-    active_raw_generation_id: str | None,
+    source_text_hash: str | None = None,
+    active_glossary_hash: str | None = None,
+    prompt_template_version: str | None = None,
+    provider_key: str | None = None,
+    provider_model: str | None = None,
+    source_language: str | None = None,
+    target_language: str | None = None,
+    style_preset: str | None = None,
+    consistency_mode: bool | None = None,
+    json_output: bool | None = None,
+    honorific_policy: str | None = None,
+    active_raw_generation_id: str | None = None,
 ) -> bool:
-    """Mirror ``is_translation_valid`` for the output-shaping dimensions the
-    delta retranslation path bypasses the resume gate for.
+    """Validate stored lineage against the COMPLETE effective contract.
 
-    With ``TRANSLATION_DELTA_RETRANSLATION_ENABLED`` at its default ``True``,
-    the resume gate (``_check_chapter_resume_state``) never runs its validity
-    branch, so ``whole_chapter_unchanged`` would otherwise silently reuse a
-    translation produced under a different style preset, consistency mode,
-    JSON-output flag, or honorific policy — and even re-stamp the new contract
-    over the reused (old-style) text. To keep the delta path's reuse/retranslate
-    decision identical to the gate's, fail closed exactly the same way:
+    Uses ``is_translation_valid`` to verify all identity dimensions (glossary,
+    prompt, QA policy, provider/model, languages, output shaping, raw generation
+    provenance). Any mismatch or missing required field bails from delta reuse.
 
-    - ``style_preset`` / ``honorific_policy`` are identity dimensions: a
-      non-empty current value must match the stored value (normalized for
-      honorifics); a ``None``/empty current value means the dimension is not
-      required, so a stored value (or a missing one) does not invalidate.
-    - ``consistency_mode`` / ``json_output`` are bool dimensions compared
-      whenever current is not ``None``; a missing stored value fails closed.
-    - ``active_raw_generation_id``: provenance is *required* when a generation
-      is active (Section 8). A missing stored ``raw_generation_id`` is
-      stale/needs-backfill, never silently reusable. Identity is never compared.
+    Source-text hash is NOT checked here: paragraph lineage handles source
+    changes within the delta path. A global contract change forces full
+    retranslation; only source-text-only changes under an unchanged global
+    contract can use paragraph-level delta reuse.
     """
-    if style_preset:
-        if not existing.get("style_preset") or existing["style_preset"] != style_preset:
-            return False
-    if consistency_mode is not None:
-        stored_consistency = existing.get("consistency_mode")
-        if not isinstance(stored_consistency, bool) or stored_consistency != consistency_mode:
-            return False
-    if json_output is not None:
-        stored_json = existing.get("json_output")
-        if not isinstance(stored_json, bool) or stored_json != json_output:
-            return False
-    normalized_honorific = _normalize_honorific_policy(honorific_policy)
-    if normalized_honorific:
-        stored_honorific = existing.get("honorific_policy")
-        if not stored_honorific or _normalize_honorific_policy(stored_honorific) != normalized_honorific:
-            return False
-    if active_raw_generation_id:
-        if not existing.get("raw_generation_id"):
-            return False
-    return True
+    return is_translation_valid(
+        source_text_hash=source_text_hash or existing.get("source_hash") or "",
+        active_glossary_hash=active_glossary_hash,
+        prompt_version=prompt_template_version,
+        provider_key=provider_key,
+        provider_model=provider_model,
+        record=existing,
+        active_raw_generation_id=active_raw_generation_id,
+        source_language=source_language,
+        target_language=target_language,
+        style_preset=style_preset,
+        consistency_mode=consistency_mode,
+        json_output=json_output,
+        honorific_policy=honorific_policy,
+        skip_source_hash=True,
+    )
 
 
 def _positive_padding(value: object) -> int:
@@ -555,6 +548,12 @@ async def _try_delta_translate_chapter(
     json_output: bool | None = None,
     honorific_policy: str | None = None,
     active_raw_generation_id: str | None = None,
+    # Global contract identity fields used by the authoritative validator. When
+    # supplied they override the glossary-derived hash (production passes the
+    # canonical hash directly).
+    glossary_hash: str | None = None,
+    prompt_template_version: str | None = None,
+    qa_policy_fingerprint: str | None = None,
 ) -> dict[str, Any]:
     if not settings.TRANSLATION_DELTA_RETRANSLATION_ENABLED:
         return {"applied": False, "fallback_reason": "delta_disabled"}
@@ -570,8 +569,19 @@ async def _try_delta_translate_chapter(
     # paths cannot diverge. Load the existing translation once and reuse it for
     # both the contract check and the ``whole_chapter_unchanged`` reuse below.
     existing_translation = self.storage.load_translated_chapter(novel_id, chapter_id)
+    # Use the canonical glossary hash passed from translate_chapters when
+    # available; fall back to glossary.glossary_hash for older callers.
+    effective_glossary_hash = glossary_hash
+    if not effective_glossary_hash and glossary:
+        effective_glossary_hash = getattr(glossary, "glossary_hash", None)
     if existing_translation and not _stored_output_contract_matches(
         existing_translation,
+        active_glossary_hash=effective_glossary_hash,
+        prompt_template_version=prompt_template_version,
+        provider_key=provider_key,
+        provider_model=provider_model,
+        source_language=source_language,
+        target_language=target_language,
         style_preset=style_preset,
         consistency_mode=consistency_mode,
         json_output=json_output,
@@ -603,6 +613,13 @@ async def _try_delta_translate_chapter(
                 "applied": True,
                 "mode": "whole_chapter_unchanged",
                 "text": existing_translation["text"],
+                # Preserve original producer provenance: the stored version's
+                # provider/model produced the reused text, NOT the current
+                # contract's provider/model. The caller uses these to persist
+                # an explicit reuse/reference version that does not masquerade
+                # as freshly generated machine output.
+                "provider_key": existing_translation.get("provider_key") or existing_translation.get("provider"),
+                "provider_model": existing_translation.get("provider_model") or existing_translation.get("model"),
                 "provider": existing_translation.get("provider"),
                 "model": existing_translation.get("model"),
                 "provenance": {
