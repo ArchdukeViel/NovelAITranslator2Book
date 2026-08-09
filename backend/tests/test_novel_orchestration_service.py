@@ -145,16 +145,35 @@ class StubTranslationService(TranslationService):
         final_text: str = "translated",
         fail: bool = False,
         paragraph_prefix: str | None = None,
+        reported_provider_key: str | None = None,
+        reported_provider_model: str | None = None,
     ) -> None:
         self.final_text = final_text
         self.fail = fail
         self.paragraph_prefix = paragraph_prefix
+        # Optional identity the stub reports on the RESULT, independent of the
+        # requested provider (defaults to echoing the request, like the
+        # production service). Passing a divergent value exercises the
+        # orchestrator's invariant that stored lineage always records the
+        # EFFECTIVE (requested) identity.
+        self.reported_provider_key = reported_provider_key
+        self.reported_provider_model = reported_provider_model
         self.calls: list[dict[str, Any]] = []
 
     async def translate_chapter(self, **kwargs: Any) -> PipelineResult:
         self.calls.append(kwargs)
         if self.fail:
             raise RuntimeError("provider failure")
+        provider_key = (
+            self.reported_provider_key
+            if self.reported_provider_key is not None
+            else str(kwargs.get("provider_key") or "mock")
+        )
+        provider_model = (
+            self.reported_provider_model
+            if self.reported_provider_model is not None
+            else str(kwargs.get("provider_model") or "mock-1.0")
+        )
         if self.paragraph_prefix is not None:
             raw_text = str(kwargs.get("raw_text") or "")
             paragraphs = [part.strip() for part in raw_text.split("\n\n") if part.strip()]
@@ -175,16 +194,16 @@ class StubTranslationService(TranslationService):
             return PipelineResult(
                 final_text="\n\n".join(item["translated_text"] for item in paragraph_map),
                 chapter_url=str(kwargs.get("chapter_url") or ""),
-                provider_key="mock",
-                provider_model="mock-1.0",
+                provider_key=provider_key,
+                provider_model=provider_model,
                 translations=[raw],
                 metadata={"raw_provider_translations": [raw]},
             )
         return PipelineResult(
             final_text=self.final_text,
             chapter_url=str(kwargs.get("chapter_url") or ""),
-            provider_key="mock",
-            provider_model="mock-1.0",
+            provider_key=provider_key,
+            provider_model=provider_model,
         )
 
 
@@ -4646,9 +4665,9 @@ async def test_pr41_matrix_model_only_change_full_retranslate(orchestration_env)
     assert saved["text"] == "new model text"
     assert len(translation.calls) == 1
     assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
-    # Stored producer identity follows the pipeline RESULT (the stub echoes its
-    # hardcoded "mock-1.0"); what proves the model change forced a retranslate
-    # is that the actual provider call requested the new model.
+    # Stored producer identity is the EFFECTIVE (requested) identity, so the
+    # new model must land on the stored lineage as well as on the provider call.
+    assert saved["provider_model"] == "mock-2.0"
     assert translation.calls[0]["provider_model"] == "mock-2.0"
 
 
@@ -4953,9 +4972,51 @@ async def test_pr41_matrix_source_and_model_change_full_retranslate(orchestratio
     assert len(translation.calls) == 1
     assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
     assert saved["source_hash"] == storage._hash_text("A.\n\nBee.")
-    # Stored producer identity follows the pipeline result (stub hardcodes
-    # "mock-1.0"); the requested model is what must reach the provider.
+    # Stored producer identity is the EFFECTIVE (requested) identity.
+    assert saved["provider_model"] == "mock-2.0"
     assert translation.calls[0]["provider_model"] == "mock-2.0"
+
+
+@pytest.mark.asyncio
+async def test_pr41_stored_provider_identity_always_effective(orchestration_env) -> None:
+    """A divergent result identity never poisons stored lineage.
+
+    The full path stores the EFFECTIVE (requested) provider identity even when
+    the pipeline result reports a different producer — future reuse decisions
+    compare the stored identity against the current contract, so a lying
+    result must never be recorded as the producer.
+    """
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old identity text",
+        structured=False,
+    )
+
+    translation = StubTranslationService(
+        final_text="identity new text",
+        reported_provider_key="rogue",
+        reported_provider_model="rogue-9",
+    )
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-2.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "identity new text"
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
+    assert saved["provider_key"] == "mock"
+    assert saved["provider_model"] == "mock-2.0"
 
 
 @pytest.mark.asyncio

@@ -1364,12 +1364,39 @@ async def translate_chapters(
                 scheduler_policy = (
                     result.scheduler_state.get("policy") if isinstance(result.scheduler_state, dict) else None
                 )
+                # Stored producer identity is the EFFECTIVE contract identity the
+                # output was requested under — never the pipeline result's report.
+                # The production service builds the result from the request, so
+                # the two agree; a broken or divergent result must not poison
+                # stored lineage, because future reuse decisions compare the
+                # stored identity against the current contract. Per-chunk actual
+                # execution identity (scheduler model fallbacks) is recorded in
+                # chunk_states, not in the version identity.
+                if (
+                    isinstance(result.provider_key, str)
+                    and result.provider_key
+                    and result.provider_key != effective_provider_key
+                ) or (
+                    isinstance(result.provider_model, str)
+                    and result.provider_model
+                    and result.provider_model != effective_provider_model
+                ):
+                    logger.warning(
+                        "Provider identity divergence for %s/%s: requested %s/%s but result reported %s/%s; "
+                        "storing the effective (requested) identity",
+                        novel_id,
+                        chapter_id,
+                        effective_provider_key,
+                        effective_provider_model,
+                        result.provider_key,
+                        result.provider_model,
+                    )
                 self.storage.save_translated_chapter(
                     novel_id,
                     chapter_id,
                     translated,
-                    provider_key=result.provider_key,
-                    provider_model=result.provider_model,
+                    provider_key=effective_provider_key,
+                    provider_model=effective_provider_model,
                     confidence_score=confidence_score,
                     polish_needed=polish_needed,
                     confidence_details={
