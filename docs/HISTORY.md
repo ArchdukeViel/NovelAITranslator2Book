@@ -1,3 +1,57 @@
+## 2026-08-09 PR-41 FINAL — Provider-Identity and Plain-Delta Closure
+
+Closed the two remaining PR #41 production-path defects on
+`feat/pipeline-upgrade-phases-1-8`: (1) the run-manifest/resume-gate/delta/
+execution/lineage could record a missing provider identity while the pipeline
+silently executed a different one (`provider_key or profile_provider` could be
+`None`); (2) plain (`json_output=False`) delta windows always fell back to full
+translation because the window parser only accepted a structured
+`paragraph_map`.
+
+### Implementation Summary
+
+- **S3 (Single Provider Identity Resolution Point)**: New
+  `_resolve_effective_provider_contract(step, metadata, provider_key,
+  provider_model)` in `NovelOrchestrationService` — strict precedence explicit
+  caller values > workflow profile for the step (`body_translation`/`polish`)
+  > global preferred provider/model; result is never `None`; Gemini-without-
+  API-key and `dummy`-outside-test fail closed before any contract is created.
+  `translate_chapters` and `polish_low_confidence_chapters` resolve through
+  it; legacy `_resolve_provider_and_model` delegates with no profile layer.
+- **S6 (Plain-Output Delta Windows)**: `_structured_map_from_result` now
+  accepts `expected_chapter_id`, tries structured JSON first, then falls back
+  to a strict `[P <id>]` marker parser (`_strict_marker_paragraph_map`):
+  every marker exactly once, in source order, absolute chapter paragraph ids
+  stamped into the window prompt via a new `paragraph_ids` option threaded
+  through `TranslationService.chapter()` into `SmartSegmentStage` (honored
+  only on 1:1 segmentation match); `[CHAPTER <id>]` allowed once before the
+  first paragraph when it matches; blank bodies preserved in order; any
+  missing/duplicate/extra/reordered marker, preamble, or contradictory raw
+  outputs fails closed to full translation.
+- Tests: 15 new production-path tests (7 provider-contract: implicit
+  resolution, rerun reuse, preferred-model/provider change, workflow-profile
+  override, explicit override, never-None invariant; 8 plain-delta:
+  delta applied, json_output=True, blank marker preserved, missing/duplicate/
+  reorder/extra marker → full fallback, preamble → full fallback) with a
+  realistic `MarkerAwareStubTranslationService`.
+- Docs: `docs/TRANSLATION.md` gained "Provider Identity — Single Resolution
+  Point" and "Plain-Output Delta Windows (strict marker contract)".
+
+### Test Evidence (all passing)
+
+- Focused new suite: 15 passed (provider contract + plain delta).
+- Full backend suite: 3090 passed, 26 skipped.
+- Backend E2E suite: 5 passed in 41.15s.
+- Pyright: 0 errors, 0 warnings.
+- Ruff: clean (`check` and `format --check`).
+- Frontend Typecheck: clean (`npm run typecheck`).
+- Frontend Vitest: 76 files / 847 tests passed in 191.66s.
+- Frontend ESLint: clean (`npm run lint`).
+- Frontend Build: succeeded (`npm run build`, compiled in 36.8s).
+- Docker: admin/reader/frontend images built successfully.
+- Graphify: updated (`graphify update . --no-cluster`; 13571 nodes).
+- Router-layer guard: no matches. Alembic head `c7a8b9d0e1f2` (no migration).
+
 ## 2026-08-09 PR-41 Final Correctness Pass — Full Audit Completion (S3–S9)
 
 Complete verification of all PR #41 audit items (S3 through S9) on
