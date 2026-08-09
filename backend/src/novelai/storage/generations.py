@@ -296,22 +296,38 @@ def _active_generation_lock_path(self: Any, novel_id: str) -> Path:
     return self._generations_dir(novel_id) / ".active_generation.lock"
 
 
-def _parse_active_generation_id(raw: bytes | None) -> str | None:
-    """Parse ``active_generation_id`` out of pointer bytes.
+class PointerState:
+    MISSING = "missing"
+    VALID = "valid"
+    CORRUPT = "corrupt"
 
-    Returns ``None`` for a missing pointer, malformed JSON, or an empty id so
-    a corrupt pointer always conflicts with a non-empty captured contract.
-    """
+
+def _inspect_active_generation_pointer(raw: bytes | None) -> tuple[str, str | None]:
+    """Inspect raw pointer bytes returning (PointerState, active_generation_id)."""
+    if raw is None:
+        return PointerState.MISSING, None
     if not raw:
-        return None
+        return PointerState.CORRUPT, None
     try:
         data = json.loads(raw.decode("utf-8"))
     except Exception:
-        return None
+        return PointerState.CORRUPT, None
     if not isinstance(data, dict):
-        return None
+        return PointerState.CORRUPT, None
     gen_id = data.get("active_generation_id")
-    return str(gen_id) if isinstance(gen_id, str) and gen_id.strip() else None
+    if isinstance(gen_id, str) and gen_id.strip():
+        return PointerState.VALID, gen_id.strip()
+    return PointerState.CORRUPT, None
+
+
+def _parse_active_generation_id(raw: bytes | None) -> str | None:
+    """Parse ``active_generation_id`` out of pointer bytes.
+
+    Returns ``None`` for a missing or corrupt pointer so a corrupt pointer
+    always conflicts with a non-empty captured contract.
+    """
+    state, gen_id = _inspect_active_generation_pointer(raw)
+    return gen_id if state == PointerState.VALID else None
 
 
 def _activate_generation_pointer(
@@ -352,7 +368,12 @@ def _activate_generation_pointer(
 
     def _verify_and_swap() -> bool:
         observed = self._backend.load(rel_pointer) if self._path_exists(active_pointer_path) else None
-        observed_id = _parse_active_generation_id(observed)
+        state, observed_id = _inspect_active_generation_pointer(observed)
+        if state == PointerState.CORRUPT:
+            raise GenerationConflictError(
+                f"Active generation pointer for {novel_id} is corrupt. "
+                "Normal activation cannot overwrite corrupt storage pointer; use explicit recovery API."
+            )
         if observed_id != starting_active_generation_id:
             raise GenerationConflictError(
                 f"Active generation for {novel_id} changed during crawl: expected "
@@ -1322,10 +1343,6 @@ def commit_generation(
     saved_chapters: int | None = None,
     failed_chapters: int = 0,
     starting_active_generation_id: str | None = None,
-    # Modern normal commits must reconcile a canonical disposition map.
-    # ``False`` is the explicit legacy/recovery compatibility escape hatch
-    # (mirrors the legacy counters branch); production crawls never use it.
-    require_dispositions: bool = True,
 ) -> GenerationManifest:
     """Finalize a staged generation and atomically activate it.
 
@@ -1420,28 +1437,12 @@ def commit_generation(
         )
         manifest.refresh_failed_chapter_ids = sorted(derived_refresh_failed_ids)
     else:
-        # Explicit legacy/recovery compatibility: no disposition map. This
-        # path silently skipped disposition reconciliation before, so it is
-        # now gated behind ``require_dispositions=False`` and never used by
-        # the production crawler (which always supplies the canonical map).
-        if require_dispositions:
-            raise RuntimeError(
-                f"Generation {generation_id} for {novel_id} has no chapter_dispositions; "
-                "modern normal commits must reconcile dispositions. Use "
-                "commit_generation_recovery for the explicit recovery path."
-            )
-        # Legacy callers without a disposition map: keep the explicit
-        # counters, but treat them as advisory and require the manifest
-        # to already carry the explicit disposition lists. The manifest's
-        # map is explicitly cleared to ``None`` so the pre-activation
-        # validator skips disposition reconciliation for this legacy path
-        # (an old-code stage may have persisted ``{}``, which must not be
-        # misread as an empty-map bypass).
-        manifest.chapter_dispositions = None
-        manifest.reused_chapters = reused_chapters
-        manifest.failed_chapters = failed_chapters
-        if saved_chapters is not None:
-            manifest.saved_chapters = saved_chapters
+        # Legacy/recovery compatibility: normal commit requires canonical disposition map.
+        raise RuntimeError(
+            f"Generation {generation_id} for {novel_id} has no chapter_dispositions; "
+            "normal commits must reconcile dispositions. Use "
+            "commit_generation_recovery for the explicit recovery path."
+        )
     manifest.status = "staging"
     manifest.committed_at = manifest.committed_at or _utc_now_iso()
 
@@ -1552,7 +1553,6 @@ def activate_generation(
     *,
     chapter_dispositions: dict[str, str] | None = None,
     starting_active_generation_id: str | None = None,
-    require_dispositions: bool = True,
 ) -> GenerationManifest:
     """Atomically activate a staged generation (alias kept for compatibility)."""
     return commit_generation(
@@ -1561,7 +1561,6 @@ def activate_generation(
         generation_id,
         chapter_dispositions=chapter_dispositions,
         starting_active_generation_id=starting_active_generation_id,
-        require_dispositions=require_dispositions,
     )
 
 
