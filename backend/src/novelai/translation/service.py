@@ -68,6 +68,7 @@ class TranslationService:
         glossary_revision: int = 0,
         raw_text: str | None = None,
         raw_images: list[dict[str, Any]] | None = None,
+        paragraph_ids: list[str] | None = None,
     ) -> PipelineResult:
         """Run the translation pipeline for a single chapter.
 
@@ -76,6 +77,12 @@ class TranslationService:
             chapter_url: URL or identifier for the chapter
             provider_key: Override default provider
             provider_model: Override default model
+            paragraph_ids: Optional stable paragraph ids to stamp onto the
+                segmented paragraphs of ``raw_text`` (delta changed windows
+                pass the chapter's absolute ids so provider markers and
+                lineage records use the same identity). The ids are honored
+                only when they match the segmentation 1:1; otherwise the
+                segmenter's own ids are used.
 
         Returns:
             PipelineResult with final_text and metadata
@@ -136,6 +143,8 @@ class TranslationService:
             state.metadata["_prefetched_text"] = raw_text
         if raw_images is not None:
             state.metadata["_prefetched_images"] = raw_images
+        if paragraph_ids:
+            state.metadata["_paragraph_ids_override"] = [str(pid) for pid in paragraph_ids]
 
         # Run pipeline
         logger.debug(f"Running pipeline with stages: {[s.__class__.__name__ for s in self.pipeline.stages]}")

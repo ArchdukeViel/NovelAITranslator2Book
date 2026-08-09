@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from itertools import pairwise
 from typing import Any
 
@@ -482,7 +483,12 @@ def _structured_paragraphs_from_outputs(
     return translated_by_ref
 
 
-def _structured_map_from_result(result: Any, window_items: list[dict[str, Any]]) -> list[str] | None:
+def _structured_map_from_result(
+    result: Any,
+    window_items: list[dict[str, Any]],
+    *,
+    expected_chapter_id: str | None = None,
+) -> list[str] | None:
     raw_outputs: list[str] = []
     metadata = getattr(result, "metadata", None)
     if isinstance(metadata, dict):
@@ -499,6 +505,7 @@ def _structured_map_from_result(result: Any, window_items: list[dict[str, Any]])
     if isinstance(final_text, str):
         raw_outputs.append(final_text)
 
+    # 1) Structured JSON ``paragraph_map`` (unchanged semantics).
     mapped: list[str] = []
     for raw in raw_outputs:
         parsed = normalize_translation_output(raw)
@@ -508,9 +515,96 @@ def _structured_map_from_result(result: Any, window_items: list[dict[str, Any]])
             translated = item.get("translated_text")
             if isinstance(translated, str):
                 mapped.append(translated)
-    if len(mapped) < len(window_items):
+    if len(mapped) >= len(window_items):
+        return mapped[: len(window_items)]
+
+    # 2) Plain-output fallback (Section 6, PR 41 closure): strict ``[P ...]``
+    # marker parsing. Production prompts instruct providers to copy every
+    # ``[P pNNNN]`` marker exactly once, in source order, and to keep the
+    # marker with a blank body when a paragraph cannot be translated. The
+    # chapter's absolute paragraph ids (stamped into the window prompt by the
+    # delta window call) are the authoritative expected set: any missing,
+    # duplicate, extra or reordered marker — or any preamble / unknown
+    # ``[CHAPTER ...]`` marker — is treated as ambiguity and fails closed to
+    # a full translation.
+    complete_mappings: list[list[str]] = []
+    for raw in raw_outputs:
+        parsed_markers = _strict_marker_paragraph_map(raw, window_items, expected_chapter_id=expected_chapter_id)
+        if parsed_markers is not None:
+            complete_mappings.append(parsed_markers)
+    if not complete_mappings:
         return None
-    return mapped[: len(window_items)]
+    if len(complete_mappings) > 1 and any(mapping != complete_mappings[0] for mapping in complete_mappings[1:]):
+        # Contradictory raw outputs are ambiguous; fail closed.
+        return None
+    return complete_mappings[0]
+
+
+_PARAGRAPH_MARKER_RE = re.compile(r"^\[P\s+([^\]]+)\]\s*$")
+_CHAPTER_MARKER_RE = re.compile(r"^\[CHAPTER\s+([^\]]+)\]\s*$")
+
+
+def _strict_marker_paragraph_map(
+    raw: str,
+    window_items: list[dict[str, Any]],
+    expected_chapter_id: str | None,
+) -> list[str] | None:
+    """Strictly parse plain marker output into per-paragraph translated text.
+
+    Grammar (mirrors the production prompt contract):
+    - ``[P <id>]`` on its own line opens a paragraph; its body runs until the
+      next marker line or the end of the output.
+    - ``[CHAPTER <id>]`` may appear only before the first paragraph and only
+      when ``expected_chapter_id`` matches (never counted as a paragraph).
+    - Blank lines are allowed anywhere; body boundary whitespace is stripped.
+    - Any other non-blank line before the first paragraph marker, any
+      duplicate/extra/missing/reordered paragraph id, or a mismatched chapter
+      marker returns ``None`` (ambiguity → full translation).
+    """
+    expected_ids = [str(item.get("paragraph_id") or "") for item in window_items]
+    if not expected_ids or any(not pid for pid in expected_ids):
+        return None
+    if len(set(expected_ids)) != len(expected_ids):
+        return None
+    expected_set = set(expected_ids)
+
+    ordered: list[tuple[str, list[str]]] = []
+    seen: set[str] = set()
+    current: list[str] | None = None
+    chapter_seen = False
+    for line in raw.splitlines():
+        paragraph_match = _PARAGRAPH_MARKER_RE.match(line)
+        chapter_match = _CHAPTER_MARKER_RE.match(line)
+        if paragraph_match:
+            paragraph_id = paragraph_match.group(1).strip()
+            if paragraph_id in seen or paragraph_id not in expected_set:
+                return None  # duplicate or extra paragraph marker
+            seen.add(paragraph_id)
+            body: list[str] = []
+            ordered.append((paragraph_id, body))
+            current = body
+            continue
+        if chapter_match:
+            chapter_id = chapter_match.group(1).strip()
+            if not expected_chapter_id or chapter_id != expected_chapter_id:
+                return None  # chapter marker not valid for this window
+            if chapter_seen or ordered:
+                return None  # chapter marker must appear once, before any paragraph
+            chapter_seen = True
+            continue
+        if current is not None:
+            # Body content (blank lines included) until the next marker.
+            current.append(line)
+            continue
+        if line.strip():
+            # Non-marker, non-blank content before the first paragraph marker
+            # (preamble, context blocks, JSON remnants) → ambiguity.
+            return None
+    if len(ordered) != len(expected_ids):
+        return None
+    if [paragraph_id for paragraph_id, _ in ordered] != expected_ids:
+        return None
+    return ["\n".join(body).strip() for _, body in ordered]
 
 
 def _qa_reassembled_chapter(
@@ -703,12 +797,17 @@ async def _try_delta_translate_chapter(
                 allow_cross_provider_fallback=allow_cross_provider_fallback,
                 force_retranslate=True,
                 raw_text=window_text,
+                # Section 6: stamp the chapter's ABSOLUTE paragraph ids onto
+                # the window prompt so the provider's ``[P ...]`` markers are
+                # the same identities the lineage records — the strict marker
+                # fallback validates against exactly this set.
+                paragraph_ids=[str(item["paragraph_id"]) for item in window_items],
             )
         except Exception:
             if settings.TRANSLATION_DELTA_FORCE_FULL_ON_UNSAFE:
                 return {"applied": False, "fallback_reason": "changed_window_qa_failed"}
             raise
-        mapped = _structured_map_from_result(result, window_items)
+        mapped = _structured_map_from_result(result, window_items, expected_chapter_id=chapter_id)
         if mapped is None:
             return {"applied": False, "fallback_reason": "changed_window_qa_failed"}
         for offset, translated in enumerate(mapped):
