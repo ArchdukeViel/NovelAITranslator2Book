@@ -2361,15 +2361,42 @@ async def test_delta_unchanged_chapter_reuses_whole_old_output(orchestration_env
         translated_chapter_text="old whole chapter",
     )
 
-    storage, translation = await _run_delta_translate(
-        orchestration_env, StubTranslationService(final_text="full translation")
+    storage = orchestration_env["storage"]
+    versions_before = storage.list_translated_chapter_versions("novel-delta", "1")
+    assert len(versions_before) == 1
+    version_id_before = versions_before[0]["version_id"]
+
+    translation = StubTranslationService(final_text="full translation")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+
+    summary = await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
     )
 
     saved = storage.load_translated_chapter("novel-delta", "1")
     assert saved is not None
     assert saved["text"] == "old whole chapter"
     assert translation.calls == []
-    assert saved["confidence_details"]["delta"]["mode"] == "whole_chapter_unchanged"
+    # Section 6: whole-chapter reuse is a TRUE no-op — no new version is
+    # persisted and the stored version identity is preserved untouched.
+    versions_after = storage.list_translated_chapter_versions("novel-delta", "1")
+    assert [version["version_id"] for version in versions_after] == [version_id_before]
+    assert saved["version_id"] == version_id_before
+    assert saved["translation_run_id"] == "prior-run"
+    # The reuse is recorded in the run manifest with its own status.
+    assert summary["reused"] == 1
+    assert summary["chapter_progress"]["1"]["status"] == "reused"
+    manifest = storage.load_translation_run_manifest("novel-delta", summary["translation_run_id"])
+    assert manifest is not None
+    assert manifest.reused_chapter_ids == ["1"]
+    assert manifest.reused_count == 1
+    assert manifest.completed_count == 0
+    assert manifest.chapter_ids == []
 
 
 @pytest.mark.asyncio
@@ -2389,7 +2416,9 @@ async def test_delta_changed_paragraph_translates_window_and_reassembles(orchest
     assert saved is not None
     assert saved["text"] == "new:A.\n\nnew:Bee.\n\nnew:C."
     assert len(translation.calls) == 1
-    assert translation.calls[0]["json_output"] is True
+    # Section 5: the changed window executes the EFFECTIVE output policy —
+    # no json_output supplied resolves to False, never a hard-coded True.
+    assert translation.calls[0]["json_output"] is False
     assert saved["confidence_details"]["delta"]["mode"] == "delta"
     assert saved["confidence_details"]["delta"]["newly_translated_paragraph_ids"] == ["p0001", "p0002", "p0003"]
 
@@ -3624,7 +3653,10 @@ async def test_s6_unchanged_contract_reuses_without_provider_call(orchestration_
     assert saved is not None
     assert saved["text"] == "old whole chapter"
     assert translation.calls == []
-    assert saved["confidence_details"]["delta"]["mode"] == "whole_chapter_unchanged"
+    # Section 6: true no-op — reuse records no new version.
+    versions = orchestration_env["storage"].list_translated_chapter_versions("novel-delta", "1")
+    assert len(versions) == 1
+    assert saved["version_id"] == versions[0]["version_id"]
 
 
 @pytest.mark.asyncio
@@ -3774,7 +3806,11 @@ async def test_s6_generation_change_identical_source_reuses(orchestration_env) -
     assert saved is not None
     assert saved["text"] == "gen-a translation"  # provenance-only: gen changed, source identical
     assert translation.calls == []
-    assert saved["confidence_details"]["delta"]["mode"] == "whole_chapter_unchanged"
+    # Section 6: true no-op — the reuse never creates a new version.
+    versions = storage.list_translated_chapter_versions("novel-delta", "1")
+    assert len(versions) == 1
+    assert saved["version_id"] == versions[0]["version_id"]
+    assert saved["raw_generation_id"] == "gen-a"
 
 
 @pytest.mark.asyncio
@@ -4320,7 +4356,7 @@ async def test_pr41_unchanged_contract_skips_provider_zero_calls(orchestration_e
     translation = StubTranslationService(final_text="should not be called")
     orchestrator = _s6_orchestrator(orchestration_env, translation)
 
-    await orchestrator.translate_chapters(
+    summary = await orchestrator.translate_chapters(
         source_key="stub",
         novel_id="novel-delta",
         chapters="1",
@@ -4333,7 +4369,18 @@ async def test_pr41_unchanged_contract_skips_provider_zero_calls(orchestration_e
     assert saved is not None
     assert saved["text"] == "old whole chapter"
     assert translation.calls == []
-    assert saved["confidence_details"]["delta"]["mode"] == "whole_chapter_unchanged"
+    # Section 6: true no-op — no new version; stored identity preserved and
+    # the reuse is recorded in the run manifest with its own status.
+    versions = storage.list_translated_chapter_versions("novel-delta", "1")
+    assert len(versions) == 1
+    assert saved["version_id"] == versions[0]["version_id"]
+    assert summary["reused"] == 1
+    assert summary["chapter_progress"]["1"]["status"] == "reused"
+    manifest = storage.load_translation_run_manifest("novel-delta", summary["translation_run_id"])
+    assert manifest is not None
+    assert manifest.reused_chapter_ids == ["1"]
+    assert manifest.reused_count == 1
+    assert manifest.completed_count == 0
 
 
 @pytest.mark.asyncio
@@ -4483,3 +4530,637 @@ async def test_pr41_whole_chapter_reuse_preserves_original_provenance(orchestrat
     # Original producer must be preserved (not stamped as new contract).
     assert saved.get("provider_key") == "original-provider"
     assert saved.get("provider_model") == "original-model"
+    # Section 6: the reuse is a no-op — no reuse-record version was created,
+    # so the stored version count is unchanged.
+    versions = storage.list_translated_chapter_versions("novel-delta", "1")
+    assert len(versions) == 1
+    assert saved.get("version_id") == versions[0]["version_id"]
+
+
+# ---------------------------------------------------------------------------
+# PR-41 FINAL: production-path contract matrix (section 7) — every case runs
+# the real orchestrator (translate_chapters) so validation AND execution are
+# both exercised. Cases use the delta-enabled production path.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pr41_matrix_prompt_template_change_full_retranslate(orchestration_env) -> None:
+    """Matrix: prompt template version change -> contract mismatch -> full retranslate."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old prompt text",
+        translated_chapter_lineage_overrides={"prompt_template_version": "prompt-v1"},
+        structured=False,
+    )
+    # The effective prompt version resolves from novel metadata.
+    storage.save_metadata("novel-delta", {"prompt_template_version": "prompt-v2"})
+
+    translation = StubTranslationService(final_text="new prompt text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "new prompt text"
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
+    assert saved["prompt_template_version"] == "prompt-v2"
+
+
+@pytest.mark.asyncio
+async def test_pr41_matrix_qa_policy_change_full_retranslate(orchestration_env, monkeypatch) -> None:
+    """Matrix: QA policy fingerprint change -> contract mismatch -> full retranslate."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old qa text",
+        structured=False,
+    )
+    from novelai.services.orchestration.translation import _qa_policy_fingerprint
+    from novelai.services.orchestration.translation import _resolve_effective_prompt_version as _resolve_prompt
+
+    meta = storage.load_metadata("novel-delta") or {}
+    seed_prompt = _resolve_prompt(storage, meta)
+    old_fingerprint = _qa_policy_fingerprint(prompt_template_version=seed_prompt)
+    monkeypatch.setattr(settings, "LLM_QA_MIN_SCORE", 0.9)
+    new_fingerprint = _qa_policy_fingerprint(prompt_template_version=seed_prompt)
+    assert new_fingerprint != old_fingerprint
+
+    translation = StubTranslationService(final_text="new qa text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "new qa text"
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
+    assert saved["qa_policy_fingerprint"] == new_fingerprint
+
+
+@pytest.mark.asyncio
+async def test_pr41_matrix_model_only_change_full_retranslate(orchestration_env) -> None:
+    """Matrix: provider model change alone -> contract mismatch -> full retranslate."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old model text",
+        structured=False,
+    )
+
+    translation = StubTranslationService(final_text="new model text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-2.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "new model text"
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
+    # Stored producer identity follows the pipeline RESULT (the stub echoes its
+    # hardcoded "mock-1.0"); what proves the model change forced a retranslate
+    # is that the actual provider call requested the new model.
+    assert translation.calls[0]["provider_model"] == "mock-2.0"
+
+
+@pytest.mark.asyncio
+async def test_pr41_matrix_source_structure_change_full_retranslate(orchestration_env) -> None:
+    """Matrix: source structure change only -> contract mismatch -> full retranslate."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old structure text",
+        structured=False,
+    )
+    # Identical text, changed source structure: only the structure dimension
+    # differs. Use canonical line blocks — ``_normalize_source_blocks`` drops
+    # any non-line/break block, so an arbitrary dict would vanish and the
+    # structure hash would stay ``hash([])`` (matching the seeded baseline).
+    storage.save_chapter(
+        "novel-delta",
+        "1",
+        "A.\n\nB.",
+        source_blocks=[{"type": "line", "text": "A."}, {"type": "line", "text": "B."}],
+    )
+
+    translation = StubTranslationService(final_text="new structure text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "new structure text"
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
+    # The stored hash is computed over the NORMALIZED blocks; read them back
+    # from storage so the expectation matches the production computation.
+    normalized_blocks = storage.load_chapter("novel-delta", "1")["source_blocks"]
+    expected_structure = storage._hash_text(
+        json.dumps(normalized_blocks, ensure_ascii=False, sort_keys=True, default=str)
+    )
+    assert saved["source_structure_hash"] == expected_structure
+
+
+@pytest.mark.asyncio
+async def test_pr41_matrix_source_image_change_full_retranslate(orchestration_env) -> None:
+    """Matrix: source image manifest change only -> contract mismatch -> full retranslate."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old image text",
+        structured=False,
+    )
+    storage.save_chapter("novel-delta", "1", "A.\n\nB.", images=[{"url": "https://example.com/panel.png"}])
+
+    translation = StubTranslationService(final_text="new image text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "new image text"
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
+    expected_image = storage._hash_text(
+        json.dumps([{"url": "https://example.com/panel.png"}], ensure_ascii=False, sort_keys=True, default=str)
+    )
+    assert saved["source_image_manifest_hash"] == expected_image
+
+
+@pytest.mark.asyncio
+async def test_pr41_matrix_ocr_reviewed_text_change_delta_window(orchestration_env) -> None:
+    """Matrix: reviewed OCR text changes the effective source -> delta window."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        old_translations=["old:A.", "old:B."],
+        translated_chapter_text="old whole",
+        structured=True,
+    )
+    storage.save_chapter_media_state(
+        "novel-delta",
+        "1",
+        ocr_required=True,
+        ocr_text="A.\n\nBee.",
+        ocr_status="reviewed",
+    )
+
+    translation = StubTranslationService(paragraph_prefix="new:")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert len(translation.calls) == 1
+    assert "Bee." in translation.calls[0]["raw_text"]
+    assert saved["confidence_details"]["delta"]["mode"] == "delta"
+    # The stored source_hash lineage is the effective (OCR) source, not the raw text.
+    assert saved["source_hash"] == storage._hash_text("A.\n\nBee.")
+
+
+@pytest.mark.asyncio
+async def test_pr41_matrix_ocr_reviewed_text_identical_reuses(orchestration_env) -> None:
+    """Matrix: reviewed OCR text identical to raw text -> reuse no-op."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old whole chapter",
+        structured=False,
+    )
+    storage.save_chapter_media_state(
+        "novel-delta",
+        "1",
+        ocr_required=True,
+        ocr_text="A.\n\nB.",
+        ocr_status="reviewed",
+    )
+
+    translation = StubTranslationService(final_text="should not be called")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    summary = await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "old whole chapter"
+    assert translation.calls == []
+    assert summary["reused"] == 1
+    versions = storage.list_translated_chapter_versions("novel-delta", "1")
+    assert len(versions) == 1
+
+
+@pytest.mark.asyncio
+async def test_pr41_matrix_unchanged_contract_creates_no_version(orchestration_env) -> None:
+    """Matrix: fully unchanged contract -> reuse no-op, zero new versions."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="stable chapter",
+        structured=False,
+    )
+    version_id_before = storage.list_translated_chapter_versions("novel-delta", "1")[0]["version_id"]
+
+    translation = StubTranslationService(final_text="should not be called")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    summary = await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    assert summary["reused"] == 1
+    assert summary["succeeded"] == 0
+    assert summary["skipped"] == 0
+    versions = storage.list_translated_chapter_versions("novel-delta", "1")
+    assert [version["version_id"] for version in versions] == [version_id_before]
+    manifest = storage.load_translation_run_manifest("novel-delta", summary["translation_run_id"])
+    assert manifest is not None
+    assert manifest.reused_chapter_ids == ["1"]
+    assert manifest.reused_count == 1
+    assert manifest.completed_count == 0
+
+
+@pytest.mark.asyncio
+async def test_pr41_matrix_source_and_qa_change_full_retranslate(orchestration_env, monkeypatch) -> None:
+    """Matrix: source text AND QA policy change -> full retranslate with new lineage."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old combo text",
+        structured=False,
+    )
+    storage.save_chapter("novel-delta", "1", "A.\n\nBee.")
+    # 0.9 differs from the default 0.75, so the QA-policy dimension changes;
+    # patching AFTER the fixture seeds the baseline with the old fingerprint.
+    monkeypatch.setattr(settings, "LLM_QA_MIN_SCORE", 0.9)
+
+    translation = StubTranslationService(final_text="combo new text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "combo new text"
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
+    assert saved["source_hash"] == storage._hash_text("A.\n\nBee.")
+    from novelai.services.orchestration.translation import _qa_policy_fingerprint
+
+    assert saved["qa_policy_fingerprint"] == _qa_policy_fingerprint(
+        prompt_template_version=saved["prompt_template_version"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_pr41_matrix_source_and_prompt_change_full_retranslate(orchestration_env) -> None:
+    """Matrix: source text AND prompt change -> full retranslate with new lineage."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old combo prompt text",
+        structured=False,
+    )
+    storage.save_chapter("novel-delta", "1", "A.\n\nBee.")
+    storage.save_metadata("novel-delta", {"prompt_template_version": "prompt-v9"})
+
+    translation = StubTranslationService(final_text="combo prompt new text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "combo prompt new text"
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
+    assert saved["source_hash"] == storage._hash_text("A.\n\nBee.")
+    assert saved["prompt_template_version"] == "prompt-v9"
+
+
+@pytest.mark.asyncio
+async def test_pr41_matrix_source_and_model_change_full_retranslate(orchestration_env) -> None:
+    """Matrix: source text AND provider model change -> full retranslate."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old combo model text",
+        structured=False,
+    )
+    storage.save_chapter("novel-delta", "1", "A.\n\nBee.")
+
+    translation = StubTranslationService(final_text="combo model new text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-2.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "combo model new text"
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
+    assert saved["source_hash"] == storage._hash_text("A.\n\nBee.")
+    # Stored producer identity follows the pipeline result (stub hardcodes
+    # "mock-1.0"); the requested model is what must reach the provider.
+    assert translation.calls[0]["provider_model"] == "mock-2.0"
+
+
+@pytest.mark.asyncio
+async def test_pr41_matrix_honorific_policy_applied_in_delta_window(orchestration_env) -> None:
+    """Matrix: honorific policy is EXECUTED in the changed-window call."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "Bee."],
+        old_translations=["old:A.", "old:B."],
+        translated_chapter_text="old whole h",
+        translated_chapter_lineage_overrides={"honorific_policy": "default_honorifics"},
+        structured=True,
+    )
+
+    translation = StubTranslationService(paragraph_prefix="new:")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+        honorific_policy="default_honorifics",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["mode"] == "delta"
+    # The effective honorific policy reached the provider call.
+    assert translation.calls[0]["honorific_policy"] == "default_honorifics"
+    assert saved["honorific_policy"] == "default_honorifics"
+
+
+@pytest.mark.asyncio
+async def test_pr41_matrix_json_output_policy_applied_in_delta_window(orchestration_env) -> None:
+    """Matrix: effective json_output policy is EXECUTED in the changed-window call."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "Bee."],
+        old_translations=["old:A.", "old:B."],
+        translated_chapter_text="old whole j",
+        translated_chapter_lineage_overrides={"json_output": True},
+        structured=True,
+    )
+
+    translation = StubTranslationService(paragraph_prefix="new:")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+        json_output=True,
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["mode"] == "delta"
+    assert translation.calls[0]["json_output"] is True
+    assert saved["json_output"] is True
+
+
+@pytest.mark.asyncio
+async def test_pr41_matrix_leftover_ocr_without_required_uses_raw_text(orchestration_env) -> None:
+    """Matrix: stale OCR text without ocr_required never hijacks the source."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old whole chapter",
+        structured=False,
+    )
+    storage.save_chapter_media_state(
+        "novel-delta",
+        "1",
+        ocr_required=False,
+        ocr_text="A.\n\nDIFFERENT.",
+        ocr_status="skipped",
+    )
+
+    translation = StubTranslationService(final_text="should not be called")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    summary = await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    assert translation.calls == []
+    assert summary["reused"] == 1
+    versions = storage.list_translated_chapter_versions("novel-delta", "1")
+    assert len(versions) == 1
+
+
+# ---------------------------------------------------------------------------
+# PR-41 FINAL: exact stored lineage values (section 8) + output-hash
+# self-consistency on the production path (section 10).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pr41_stored_lineage_exact_values(orchestration_env) -> None:
+    """Section 8: stored lineage carries the EXACT effective contract values."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text=None,
+        structured=False,
+    )
+    from novelai.glossary import canonical_glossary_hash
+    from novelai.services.orchestration.translation import (
+        _qa_policy_fingerprint,
+        _resolve_effective_prompt_version,
+    )
+
+    translation = StubTranslationService(final_text="exact lineage text")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+        target_language="English",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    meta = storage.load_metadata("novel-delta") or {}
+    expected_prompt = _resolve_effective_prompt_version(storage, meta)
+    raw_text = "A.\n\nB."
+
+    def json_dumps(value: object) -> str:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+
+    assert saved["source_hash"] == storage._hash_text(raw_text)
+    assert saved["source_structure_hash"] == storage._hash_text(json_dumps([]))
+    assert saved["source_image_manifest_hash"] == storage._hash_text(json_dumps([]))
+    assert saved["glossary_hash"] == canonical_glossary_hash(None)
+    assert saved["prompt_template_version"] == expected_prompt
+    assert saved["qa_policy_fingerprint"] == _qa_policy_fingerprint(prompt_template_version=expected_prompt)
+    assert saved["provider_key"] == "mock"
+    assert saved["provider_model"] == "mock-1.0"
+    assert saved["source_language"] == "Japanese"
+    assert saved["target_language"] == "English"
+    assert saved["style_preset"] is None
+    assert saved["consistency_mode"] is False
+    assert saved["json_output"] is False
+    assert saved["honorific_policy"] is None
+    assert saved["source_episode_id"] == "1"
+    assert saved["translation_run_id"] is not None
+    assert saved["output_hash"] == storage._hash_text("exact lineage text")
+    assert saved["activation_disposition"] == "auto_activate"
+
+
+@pytest.mark.asyncio
+async def test_pr41_output_hash_corruption_fails_closed(orchestration_env) -> None:
+    """Section 10: stored text mutated without re-hash -> reuse fails closed."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="original text",
+        structured=False,
+    )
+    # Corrupt the stored version: change the text but NOT the output_hash.
+    overlay = storage._load_translation_overlay("novel-delta", "1")
+    assert overlay is not None
+    version = overlay["translation_versions"][0]
+    assert version["output_hash"] == storage._hash_text("original text")
+    version["text"] = "mutated text"
+    assert version["output_hash"] != storage._hash_text("mutated text")
+    storage._persist_translation_overlay("novel-delta", "1", overlay)
+
+    translation = StubTranslationService(final_text="fresh retranslation")
+    orchestrator = _s6_orchestrator(orchestration_env, translation)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "fresh retranslation"
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
+    assert saved["output_hash"] == storage._hash_text("fresh retranslation")

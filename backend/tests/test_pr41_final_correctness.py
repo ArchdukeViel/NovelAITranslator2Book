@@ -39,7 +39,7 @@ from novelai.sources import SourceAdapter
 from novelai.storage.backends.s3 import S3Backend
 from novelai.storage.generations import GenerationConflictError
 from novelai.storage.service import StorageService
-from novelai.translation.run_manifest import is_translation_valid
+from novelai.translation.run_manifest import _output_hash, is_translation_valid
 
 _TMP = Path(__file__).resolve().parent / ".tmp" / "pr41_final"
 
@@ -78,6 +78,9 @@ def _lineage_record(**overrides: Any) -> dict[str, Any]:
         "output_hash": "out-hash",
         "text": "translated",
     }
+    # Section 10: a valid record's output_hash is the hash of its stored text.
+    # Overrides may intentionally break the pairing to exercise corruption.
+    record["output_hash"] = _output_hash(str(record["text"]))
     record.update(overrides)
     return record
 
@@ -198,6 +201,66 @@ def test_contract_without_output_shaping_dims_skips_them() -> None:
         provider_model="m",
         record=record,
     )
+
+
+def test_qa_policy_fingerprint_change_retranslates() -> None:
+    """A changed QA policy fingerprint invalidates the stored version."""
+    assert not _valid(_lineage_record(qa_policy_fingerprint="qa-fp-v2"))
+    # Missing stored fingerprint fails closed.
+    assert not _valid(_lineage_record(qa_policy_fingerprint=None))
+
+
+def test_source_structure_hash_change_retranslates() -> None:
+    """A changed source structure hash invalidates the stored version."""
+    assert not _valid(_lineage_record(source_structure_hash="struct-v2"))
+    # Missing stored structure hash fails closed.
+    assert not _valid(_lineage_record(source_structure_hash=None))
+
+
+def test_source_image_manifest_hash_change_retranslates() -> None:
+    """A changed source image manifest hash invalidates the stored version."""
+    assert not _valid(_lineage_record(source_image_manifest_hash="img-v2"))
+    # Missing stored image manifest hash fails closed.
+    assert not _valid(_lineage_record(source_image_manifest_hash=None))
+
+
+def test_output_hash_self_consistency_enforced() -> None:
+    """Section 10: a stored output_hash must equal the hash of the stored text.
+
+    The check runs even when the current contract does not supply an
+    ``output_hash``: a mutated text with a stale hash is corrupted lineage and
+    never reusable.
+    """
+    record = _lineage_record()
+    assert _valid(record)
+    corrupt = _lineage_record(text="mutated without re-hash")
+    assert corrupt["output_hash"] != _output_hash(corrupt["text"])
+    assert not _valid(corrupt)
+
+
+def test_output_hash_legacy_record_without_hash_stays_valid() -> None:
+    """Legacy policy: a version persisted before output hashing existed (no
+    stored output_hash) is valid when the current contract does not require
+    the dimension."""
+    record = _lineage_record(output_hash=None)
+    assert record.get("output_hash") is None
+    assert _valid(record)
+
+
+def test_output_hash_required_when_contract_supplies_it() -> None:
+    """When the current contract supplies an output_hash the stored version
+    must carry the same value; missing stored lineage fails closed."""
+    record = _lineage_record(output_hash=None)
+    assert not is_translation_valid(
+        source_text_hash="src-hash",
+        active_glossary_hash="gloss-1",
+        prompt_version="prompt-v9",
+        provider_key="p",
+        provider_model="m",
+        record=record,
+        output_hash=_output_hash("translated"),
+    )
+    assert _valid(_lineage_record(), output_hash=_output_hash("translated"))
 
 
 # ---------------------------------------------------------------------------

@@ -173,6 +173,115 @@ def test_translated_chapter_versions_keep_machine_history(storage):
     assert loaded["version_id"] == versions[1]["version_id"]
 
 
+def test_translated_chapter_versions_preserve_full_lineage(storage):
+    """Section 9: historical version lists keep the complete stored lineage.
+
+    ``list_translated_chapter_versions`` must surface every lineage field
+    written by ``save_translated_chapter`` so provenance consumers and
+    validity checks work against ANY version, not only the active one.
+    """
+    storage.save_translated_chapter(
+        "novel1",
+        "ch1",
+        "lineage text",
+        provider_key="gemini",
+        provider_model="gemini-3.1-flash-lite",
+        source_hash="src-hash",
+        translation_run_id="run-1",
+        raw_generation_id="gen-7",
+        source_episode_id="42",
+        source_structure_hash="struct-hash",
+        source_image_manifest_hash="image-hash",
+        qa_policy_fingerprint="qa-fp",
+        source_language="Japanese",
+        target_language="English",
+        style_preset="casual",
+        consistency_mode=True,
+        json_output=True,
+        output_hash="out-hash",
+        activation_disposition="auto_activate",
+        honorific_policy="keigo",
+        prompt_template_version="translation_request_v1",
+        glossary_hash="glossary-hash",
+        batch_id="batch-1",
+    )
+
+    versions = storage.list_translated_chapter_versions("novel1", "ch1")
+    assert len(versions) == 1
+    record = versions[0]
+    assert record["source_content_hash"] == "src-hash"
+    assert record["translation_run_id"] == "run-1"
+    assert record["raw_generation_id"] == "gen-7"
+    assert record["source_episode_id"] == "42"
+    assert record["source_structure_hash"] == "struct-hash"
+    assert record["source_image_manifest_hash"] == "image-hash"
+    assert record["qa_policy_fingerprint"] == "qa-fp"
+    assert record["source_language"] == "Japanese"
+    assert record["target_language"] == "English"
+    assert record["style_preset"] == "casual"
+    assert record["consistency_mode"] is True
+    assert record["json_output"] is True
+    assert record["output_hash"] == "out-hash"
+    assert record["activation_disposition"] == "auto_activate"
+    assert record["honorific_policy"] == "keigo"
+    assert record["prompt_template_version"] == "translation_request_v1"
+    assert record["glossary_hash"] == "glossary-hash"
+    assert record["batch_id"] == "batch-1"
+
+
+def test_load_translated_chapter_by_version_id_preserves_full_lineage(storage):
+    """Section 9: version-id reads (overlay branch) pass through full lineage."""
+    storage.save_translated_chapter(
+        "novel1",
+        "ch1",
+        "lineage text",
+        provider_key="gemini",
+        provider_model="gemini-3.1-flash-lite",
+        source_hash="src-hash",
+        translation_run_id="run-1",
+        raw_generation_id="gen-7",
+        source_episode_id="42",
+        source_structure_hash="struct-hash",
+        source_image_manifest_hash="image-hash",
+        qa_policy_fingerprint="qa-fp",
+        source_language="Japanese",
+        target_language="English",
+        style_preset="casual",
+        consistency_mode=True,
+        json_output=True,
+        output_hash="out-hash",
+        activation_disposition="auto_activate",
+        honorific_policy="keigo",
+        prompt_template_version="translation_request_v1",
+        glossary_hash="glossary-hash",
+        batch_id="batch-1",
+    )
+
+    versions = storage.list_translated_chapter_versions("novel1", "ch1")
+    loaded = storage.load_translated_chapter_by_version_id("novel1", "ch1", versions[0]["version_id"])
+    assert loaded is not None
+    assert loaded["text"] == "lineage text"
+    assert loaded["source_hash"] == "src-hash"
+    assert loaded["source_content_hash"] == "src-hash"
+    assert loaded["translation_run_id"] == "run-1"
+    assert loaded["raw_generation_id"] == "gen-7"
+    assert loaded["source_episode_id"] == "42"
+    assert loaded["source_structure_hash"] == "struct-hash"
+    assert loaded["source_image_manifest_hash"] == "image-hash"
+    assert loaded["qa_policy_fingerprint"] == "qa-fp"
+    assert loaded["source_language"] == "Japanese"
+    assert loaded["target_language"] == "English"
+    assert loaded["style_preset"] == "casual"
+    assert loaded["consistency_mode"] is True
+    assert loaded["json_output"] is True
+    assert loaded["output_hash"] == "out-hash"
+    assert loaded["activation_disposition"] == "auto_activate"
+    assert loaded["honorific_policy"] == "keigo"
+    assert loaded["prompt_template_version"] == "translation_request_v1"
+    assert loaded["glossary_hash"] == "glossary-hash"
+    assert loaded["batch_id"] == "batch-1"
+
+
 def test_save_edited_translation_creates_manual_version_and_history(storage):
     storage.save_translated_chapter(
         "novel1",

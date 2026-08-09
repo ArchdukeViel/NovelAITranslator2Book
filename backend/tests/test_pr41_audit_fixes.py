@@ -46,7 +46,7 @@ from novelai.sources import SourceAdapter
 from novelai.storage.service import StorageService
 from novelai.translation.pipeline.context import PipelineState
 from novelai.translation.pipeline.stages.cache_flush import CacheFlushStage
-from novelai.translation.run_manifest import is_translation_valid
+from novelai.translation.run_manifest import _output_hash, is_translation_valid
 
 _TMP = Path(__file__).resolve().parent / ".tmp" / "audit_fixes"
 
@@ -477,6 +477,11 @@ def _lineage_record(**overrides: Any) -> dict[str, Any]:
         "text": "translated",
     }
     record.update(overrides)
+    # Section 10: is_translation_valid enforces output-hash self-consistency
+    # (the stored output_hash must equal the hash of the stored text), so the
+    # fixture hash must always be derived from the text it stores.
+    if isinstance(record.get("text"), str) and record["text"]:
+        record["output_hash"] = _output_hash(record["text"])
     return record
 
 
@@ -492,7 +497,7 @@ def test_lineage_contract_valid_when_all_fields_match() -> None:
         source_structure_hash="struct-hash",
         source_image_manifest_hash="img-hash",
         qa_policy_fingerprint="qa-fp-v1",
-        output_hash="out-hash",
+        output_hash=_output_hash("translated"),
         source_language="ja",
         target_language="en",
         record=record,
