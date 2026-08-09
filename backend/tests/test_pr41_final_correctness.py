@@ -124,8 +124,42 @@ def test_missing_stored_language_fails_closed() -> None:
 
 def test_style_preset_change_retranslates() -> None:
     assert not _valid(_lineage_record(style_preset="casual"))
-    # Missing stored value fails closed (never silently valid).
+    # Default to literary or literary to default retranslates symmetrically.
     assert not _valid(_lineage_record(style_preset=None))
+
+
+def test_effective_output_policy_symmetry() -> None:
+    """Default-to-non-default and non-default-to-default transitions retranslate."""
+    # literary -> default (None)
+    assert not is_translation_valid(
+        source_text_hash="src-hash",
+        active_glossary_hash="gloss-1",
+        prompt_version="prompt-v9",
+        provider_key="p",
+        provider_model="m",
+        record=_lineage_record(style_preset="literary"),
+        style_preset=None,
+    )
+    # default (None) -> literary
+    assert not is_translation_valid(
+        source_text_hash="src-hash",
+        active_glossary_hash="gloss-1",
+        prompt_version="prompt-v9",
+        provider_key="p",
+        provider_model="m",
+        record=_lineage_record(style_preset=None),
+        style_preset="literary",
+    )
+    # retain -> default (None) honorific
+    assert not is_translation_valid(
+        source_text_hash="src-hash",
+        active_glossary_hash="gloss-1",
+        prompt_version="prompt-v9",
+        provider_key="p",
+        provider_model="m",
+        record=_lineage_record(honorific_policy="retain"),
+        honorific_policy=None,
+    )
 
 
 def test_consistency_mode_change_retranslates() -> None:
@@ -284,7 +318,54 @@ def test_lineage_uses_native_episode_id_not_logical_prefix() -> None:
         source_episode_id="16818093075570329555",
     )
     assert kwargs["source_episode_id"] == "16818093075570329555"
-    assert kwargs["source_episode_id"] != "kakuyomu:16818093075570329555"
+
+
+def test_stored_overlay_version_contains_glossary_and_prompt_version() -> None:
+    storage = _fresh_storage()
+    storage.save_metadata("novel-overlay", {"glossary_hash": "gloss-abc"})
+    storage.save_translated_chapter(
+        "novel-overlay",
+        "1",
+        "translated text",
+        provider_key="provider-x",
+        provider_model="model-y",
+        glossary_hash="gloss-abc",
+        prompt_template_version="prompt-v123",
+        source_hash="src-hash-1",
+        source_language="ja",
+        target_language="en",
+    )
+    loaded = storage.load_translated_chapter("novel-overlay", "1")
+    assert loaded is not None
+    assert loaded.get("glossary_hash") == "gloss-abc"
+    assert loaded.get("prompt_template_version") == "prompt-v123"
+
+
+def test_corrupt_active_generation_pointer_fails_closed() -> None:
+    from novelai.storage.generations import (
+        PointerState,
+        _inspect_active_generation_pointer,
+        _parse_active_generation_id,
+    )
+
+    assert _inspect_active_generation_pointer(None) == (PointerState.MISSING, None)
+    assert _inspect_active_generation_pointer(b"")[0] == PointerState.CORRUPT
+    assert _inspect_active_generation_pointer(b"invalid json")[0] == PointerState.CORRUPT
+    assert _inspect_active_generation_pointer(b'{"active_generation_id": ""}')[0] == PointerState.CORRUPT
+    assert _parse_active_generation_id(b"invalid json") is None
+
+
+def test_commit_generation_strictly_requires_dispositions() -> None:
+    storage = _fresh_storage()
+    novel_id = "novel-no-disp"
+    generation_id = "gen-123"
+    storage.stage_generation_metadata(novel_id, generation_id, {"title": "T", "source_novel_id": novel_id})
+    storage.stage_generation_source_state(novel_id, generation_id, {"chapters": []})
+    storage.stage_generation_chapter_index(novel_id, generation_id, [{"id": "1"}])
+    storage.stage_generation_chapter(novel_id, generation_id, "1", {"id": "1", "raw": {"text": "raw"}})
+    # chapter_dispositions=None must be rejected by the normal path (no bypass).
+    with pytest.raises(RuntimeError, match="has no chapter_dispositions"):
+        storage.commit_generation(novel_id, generation_id, chapter_dispositions=None)
 
 
 def test_lineage_numeric_episode_id_regression() -> None:
