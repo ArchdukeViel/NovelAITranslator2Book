@@ -525,19 +525,13 @@ def _structured_map_from_result(
         # closed to a full translation rather than persist a wrong mapping.
         return None
 
-    # 2) Structured JSON ``paragraph_map`` (unchanged semantics; single-chunk
-    # windows only).
-    mapped: list[str] = []
-    for raw in raw_outputs:
-        parsed = normalize_translation_output(raw)
-        if not parsed.paragraph_map:
-            continue
-        for item in parsed.paragraph_map:
-            translated = item.get("translated_text")
-            if isinstance(translated, str):
-                mapped.append(translated)
-    if len(mapped) >= len(window_items):
-        return mapped[: len(window_items)]
+    # 2) Structured JSON ``paragraph_map`` (single-chunk windows).
+    expected_ids = [str(item.get("paragraph_id") or "") for item in window_items]
+    if expected_ids and not any(not pid for pid in expected_ids):
+        for raw in raw_outputs:
+            parsed_json = _json_map_for_expected_ids(raw, expected_ids, expected_chapter_id=expected_chapter_id)
+            if parsed_json is not None:
+                return parsed_json
 
     # 3) Plain-output fallback (Section 6, PR 41 closure): strict ``[P ...]``
     # marker parsing. Production prompts instruct providers to copy every
@@ -616,7 +610,7 @@ def _piecewise_map_from_result(
         chunk_items = [{"paragraph_id": pid} for pid in chunk_ids]
         parsed = _strict_marker_paragraph_map(raw, chunk_items, expected_chapter_id=expected_chapter_id)
         if parsed is None:
-            parsed = _json_map_for_expected_ids(raw, chunk_ids)
+            parsed = _json_map_for_expected_ids(raw, chunk_ids, expected_chapter_id=expected_chapter_id)
         if parsed is None:
             return None
         for pid, text in zip(chunk_ids, parsed, strict=True):
@@ -631,20 +625,38 @@ def _piecewise_map_from_result(
     return merged
 
 
-def _json_map_for_expected_ids(raw: str, expected_ids: list[str]) -> list[str] | None:
-    """Positional structured ``paragraph_map`` fallback for one chunk output."""
+def _json_map_for_expected_ids(
+    raw: str,
+    expected_ids: list[str],
+    *,
+    expected_chapter_id: str | None = None,
+) -> list[str] | None:
+    """Strict structured ``paragraph_map`` parser for delta windows.
+
+    Validates that a raw provider output containing a JSON ``paragraph_map``
+    matches the chunk/window's expected paragraph IDs exactly:
+    - ``len(paragraph_map) == len(expected_ids)``
+    - Each item's ``paragraph_id`` matches ``expected_ids`` positionally (preserving
+      ordered repeated occurrences for split sub-paragraphs).
+    - If ``chapter_id`` is supplied on an item, it must match ``expected_chapter_id``.
+    - Every item must have a valid string ``translated_text``.
+    """
     parsed = normalize_translation_output(raw)
-    if not parsed.paragraph_map:
+    if not parsed.paragraph_map or len(parsed.paragraph_map) != len(expected_ids):
         return None
     texts: list[str] = []
-    for item in parsed.paragraph_map:
+    for item, exp_pid in zip(parsed.paragraph_map, expected_ids, strict=True):
         translated = item.get("translated_text")
         if not isinstance(translated, str):
             return None
+        pid = item.get("paragraph_id")
+        if not pid or str(pid).strip() != exp_pid:
+            return None
+        ch_id = item.get("chapter_id")
+        if ch_id and expected_chapter_id and str(ch_id).strip() != expected_chapter_id:
+            return None
         texts.append(translated)
-    if len(texts) < len(expected_ids):
-        return None
-    return texts[: len(expected_ids)]
+    return texts
 
 
 _PARAGRAPH_MARKER_RE = re.compile(r"^\[P\s+([^\]]+)\]\s*$")
@@ -772,7 +784,7 @@ async def _try_delta_translate_chapter(
     source_image_manifest_hash: str | None = None,
 ) -> dict[str, Any]:
     if not settings.TRANSLATION_DELTA_RETRANSLATION_ENABLED:
-        return {"applied": False, "fallback_reason": "delta_disabled"}
+        return {"applied": False, "fallback_reason": "delta_disabled", "fresh_full_required": False}
 
     # Output-contract invalidation. The delta path runs only when delta
     # retranslation is enabled, which is also when the resume gate skips its
@@ -807,7 +819,7 @@ async def _try_delta_translate_chapter(
         source_image_manifest_hash=source_image_manifest_hash,
         qa_policy_fingerprint=qa_policy_fingerprint,
     ):
-        return {"applied": False, "fallback_reason": "output_contract_changed"}
+        return {"applied": False, "fallback_reason": "output_contract_changed", "fresh_full_required": False}
 
     segment = SmartSegmentStage()
     paragraphs, _, _ = segment.estimate_chapter_chunks(novel_id=novel_id, chapter_id=chapter_id, text=raw_text)
@@ -815,11 +827,11 @@ async def _try_delta_translate_chapter(
     old_by_chapter, notes = _old_lineage_by_chapter(self.storage, novel_id)
     old_lineage = old_by_chapter.get(chapter_id)
     if not old_lineage:
-        return {"applied": False, "fallback_reason": "missing_lineage", "notes": notes}
+        return {"applied": False, "fallback_reason": "missing_lineage", "notes": notes, "fresh_full_required": False}
 
     comparison = _compare_lineage(old_lineage, new_lineage)
     if comparison["ambiguous_new_indexes"]:
-        return {"applied": False, "fallback_reason": "ambiguous_or_moved_region"}
+        return {"applied": False, "fallback_reason": "ambiguous_or_moved_region", "fresh_full_required": False}
 
     windows = _changed_windows_for_chapter(
         new_items=new_lineage,
@@ -858,11 +870,11 @@ async def _try_delta_translate_chapter(
                     "qa_result": {"passed": True, "warnings": [], "errors": []},
                 },
             }
-        return {"applied": False, "fallback_reason": "missing_previous_translation"}
+        return {"applied": False, "fallback_reason": "missing_previous_translation", "fresh_full_required": False}
 
     old_translations = _structured_paragraphs_from_outputs(self.storage, novel_id, chapter_id)
     if settings.TRANSLATION_DELTA_REQUIRE_STRUCTURED_PARAGRAPH_MAP and not old_translations:
-        return {"applied": False, "fallback_reason": "missing_structured_paragraph_map"}
+        return {"applied": False, "fallback_reason": "missing_structured_paragraph_map", "fresh_full_required": False}
 
     changed_indexes: set[int] = set()
     for window in windows:
@@ -874,7 +886,11 @@ async def _try_delta_translate_chapter(
         key = (chapter_id, str(item["paragraph_id"]))
         old = old_translations.get(key)
         if old is None or old.get("source_hash") != item.get("source_hash"):
-            return {"applied": False, "fallback_reason": "missing_structured_paragraph_map"}
+            return {
+                "applied": False,
+                "fallback_reason": "missing_structured_paragraph_map",
+                "fresh_full_required": False,
+            }
         reused[index] = old["translated_text"]
 
     newly_translated: dict[int, str] = {}
@@ -918,11 +934,11 @@ async def _try_delta_translate_chapter(
             )
         except Exception:
             if settings.TRANSLATION_DELTA_FORCE_FULL_ON_UNSAFE:
-                return {"applied": False, "fallback_reason": "changed_window_qa_failed"}
+                return {"applied": False, "fallback_reason": "changed_window_qa_failed", "fresh_full_required": True}
             raise
         mapped = _structured_map_from_result(result, window_items, expected_chapter_id=chapter_id)
         if mapped is None:
-            return {"applied": False, "fallback_reason": "changed_window_qa_failed"}
+            return {"applied": False, "fallback_reason": "changed_window_qa_failed", "fresh_full_required": True}
         for offset, translated in enumerate(mapped):
             newly_translated[window["start"] + offset] = translated
         changed_windows_payload.append(
@@ -945,16 +961,21 @@ async def _try_delta_translate_chapter(
             final_parts.append(reused[index])
             reused_ids.append(str(item["paragraph_id"]))
         else:
-            return {"applied": False, "fallback_reason": "incomplete_reassembly"}
+            return {"applied": False, "fallback_reason": "incomplete_reassembly", "fresh_full_required": False}
     if len(final_parts) != len(new_lineage):
-        return {"applied": False, "fallback_reason": "incomplete_reassembly"}
+        return {"applied": False, "fallback_reason": "incomplete_reassembly", "fresh_full_required": False}
 
     final_text = "\n\n".join(final_parts)
     qa_result = _qa_reassembled_chapter(
         source_text=raw_text, translated_text=final_text, chapter_id=chapter_id, lineage=new_lineage
     )
     if not qa_result.get("passed"):
-        return {"applied": False, "fallback_reason": "final_qa_failed", "qa_result": qa_result}
+        return {
+            "applied": False,
+            "fallback_reason": "final_qa_failed",
+            "qa_result": qa_result,
+            "fresh_full_required": True,
+        }
 
     return {
         "applied": True,

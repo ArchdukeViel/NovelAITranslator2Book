@@ -1334,8 +1334,12 @@ async def translate_chapters(
                         cp_mgr.delete(chapter_id)
                         return {"chapter_id": chapter_id, "status": "succeeded"}
                     delta_fallback_reason = str(delta_result.get("fallback_reason") or "unsafe_delta")
+                    fresh_full_required = bool(delta_result.get("fresh_full_required"))
                 elif force:
                     delta_fallback_reason = "force_full_translation"
+                    fresh_full_required = True
+                else:
+                    fresh_full_required = False
 
                 # Update DB state + write checkpoint before full pipeline (REQ-1.4, REQ-2.3)
                 _update_db_translation_state(novel_id, chapter_id, TranslationState.TRANSLATING)
@@ -1367,7 +1371,7 @@ async def translate_chapters(
                     honorific_policy=effective_honorific_policy,
                     json_output=effective_json_output,
                     allow_cross_provider_fallback=allow_cross_provider_fallback,
-                    force_retranslate=force or bool(delta_fallback_reason),
+                    force_retranslate=force or fresh_full_required,
                     glossary_revision=glossary_revision,
                     raw_text=raw_text,
                     raw_images=raw_images,
