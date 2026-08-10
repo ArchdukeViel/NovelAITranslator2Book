@@ -110,7 +110,9 @@ class CheckpointManager:
                 if age > timedelta(days=CHECKPOINT_MAX_AGE_DAYS):
                     logger.warning(
                         "Stale checkpoint %s — age %s > %d days",
-                        chapter_id, age, CHECKPOINT_MAX_AGE_DAYS,
+                        chapter_id,
+                        age,
+                        CHECKPOINT_MAX_AGE_DAYS,
                     )
                     path.unlink(missing_ok=True)
                     return None
@@ -136,11 +138,14 @@ class CheckpointManager:
             )
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(checkpoint.to_dict(), f, ensure_ascii=False, indent=2)
-            os.replace(tmp, str(path))
+            from novelai.storage.backends.filesystem import _replace_with_retry
+
+            _replace_with_retry(Path(tmp), path)
         except OSError as exc:
             logger.warning(
                 "Failed to write checkpoint %s — %s (translation continues)",
-                checkpoint.chapter_id, exc,
+                checkpoint.chapter_id,
+                exc,
             )
 
     def delete(self, chapter_id: str) -> None:

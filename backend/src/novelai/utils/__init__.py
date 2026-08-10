@@ -5,6 +5,8 @@ import os
 import tempfile
 from pathlib import Path
 
+from novelai.storage.backends.filesystem import _replace_with_retry
+
 
 def format_usd(amount: float, decimals: int = 4) -> str:
     """Format a USD amount for human-readable display."""
@@ -29,15 +31,15 @@ def atomic_write(path: Path, content: str) -> None:
             f.flush()
             os.fsync(f.fileno())
         try:
-            os.replace(tmp, path)
+            _replace_with_retry(Path(tmp), path)
             replaced = True
             _fsync_directory(path.parent)
         except PermissionError:
-            # On Windows the target may be briefly locked; try to remove then replace.
+            # On Windows if the target remains locked after retries, attempt fallback remove-then-replace
             try:
                 with contextlib.suppress(OSError):
                     os.remove(path)
-                os.replace(tmp, path)
+                _replace_with_retry(Path(tmp), path)
                 replaced = True
                 _fsync_directory(path.parent)
             except Exception:
