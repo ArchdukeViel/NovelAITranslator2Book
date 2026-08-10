@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from collections.abc import Mapping
 from pathlib import Path
@@ -17,6 +18,7 @@ from sqlalchemy.orm import sessionmaker
 
 from novelai.config.settings import GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODEL, settings
 from novelai.core.chapter_state import ChapterState
+from novelai.core.errors import ProviderConfigError, ProviderErrorCode
 from novelai.db.base import Base
 from novelai.db.models.novel import Novel
 from novelai.inputs.base import DocumentAdapter
@@ -28,18 +30,20 @@ from novelai.services.novel_orchestration_service import NovelOrchestrationServi
 from novelai.services.orchestration import crawler as crawler_module
 from novelai.services.orchestration.translation import _translation_lineage_kwargs
 from novelai.services.preferences_service import PreferencesService
-from novelai.services.translation_cache import TranslationCache
+from novelai.services.translation_cache import TranslationCache, TranslationCacheService
 from novelai.services.usage_service import UsageService
 from novelai.sources.base import SourceAdapter
 from novelai.storage.service import StorageService
 from novelai.translation.pipeline.context import PipelineResult, PipelineState, paragraph_source_hash
 from novelai.translation.pipeline.pipeline import TranslationPipeline
 from novelai.translation.pipeline.stages.base import PipelineStage
+from novelai.translation.pipeline.stages.cache_flush import CacheFlushStage
 from novelai.translation.pipeline.stages.fetch import FetchStage
 from novelai.translation.pipeline.stages.parse import ParseStage
 from novelai.translation.pipeline.stages.post_process import PostProcessStage
 from novelai.translation.pipeline.stages.segment import SmartSegmentStage
 from novelai.translation.pipeline.stages.translate import TranslateStage
+from novelai.translation.pipeline.stages.translation_qa import TranslationQAStage
 from novelai.translation.service import TranslationService
 from novelai.utils.chapter_selection import ResolvedChapterSelection
 from tests.conftest import TESTS_TMP_ROOT, MockTranslationProvider
@@ -2095,6 +2099,7 @@ def test_estimate_translation_requests_uses_adaptive_body_chunk_count(orchestrat
         storage=storage,
         translation=StubTranslationService(),
         source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
         settings_service=orchestration_env["settings"],
         translation_cache=orchestration_env["cache"],
         usage_service=orchestration_env["usage"],
@@ -2161,6 +2166,7 @@ def _delta_estimate(orchestration_env, *, old_paragraphs: list[str], new_paragra
         storage=storage,
         translation=StubTranslationService(),
         source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
         settings_service=orchestration_env["settings"],
         translation_cache=orchestration_env["cache"],
         usage_service=orchestration_env["usage"],
@@ -2266,6 +2272,7 @@ def test_estimate_translation_requests_delta_missing_old_lineage_unavailable(orc
         storage=storage,
         translation=StubTranslationService(),
         source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
         settings_service=orchestration_env["settings"],
         translation_cache=orchestration_env["cache"],
         usage_service=orchestration_env["usage"],
@@ -2299,6 +2306,7 @@ def test_estimate_translation_requests_delta_older_records_without_hashes_unavai
         storage=storage,
         translation=StubTranslationService(),
         source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
         settings_service=orchestration_env["settings"],
         translation_cache=orchestration_env["cache"],
         usage_service=orchestration_env["usage"],
@@ -2717,6 +2725,7 @@ def test_estimate_translation_requests_counts_batched_unique_chapter_titles(orch
         storage=storage,
         translation=StubTranslationService(),
         source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
         settings_service=orchestration_env["settings"],
         translation_cache=orchestration_env["cache"],
         usage_service=orchestration_env["usage"],
@@ -2752,6 +2761,7 @@ def test_estimate_translation_requests_reports_missing_raw_chapter_text(orchestr
         storage=storage,
         translation=StubTranslationService(),
         source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
         settings_service=orchestration_env["settings"],
         translation_cache=orchestration_env["cache"],
         usage_service=orchestration_env["usage"],
@@ -2791,6 +2801,7 @@ def test_estimate_translation_requests_can_exclude_or_include_translated_chapter
         storage=storage,
         translation=StubTranslationService(),
         source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
         settings_service=orchestration_env["settings"],
         translation_cache=orchestration_env["cache"],
         usage_service=orchestration_env["usage"],
@@ -4777,7 +4788,7 @@ async def test_pr41_matrix_model_only_change_full_retranslate(orchestration_env)
     assert saved["text"] == "new model text"
     assert len(translation.calls) == 1
     assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
-    # Stored producer identity is the EFFECTIVE (requested) identity, so the
+    # Stored identity is the EFFECTIVE REQUESTED contract identity, so the
     # new model must land on the stored lineage as well as on the provider call.
     assert saved["provider_model"] == "mock-2.0"
     assert translation.calls[0]["provider_model"] == "mock-2.0"
@@ -5084,7 +5095,7 @@ async def test_pr41_matrix_source_and_model_change_full_retranslate(orchestratio
     assert len(translation.calls) == 1
     assert saved["confidence_details"]["delta"]["fallback_reason"] == "output_contract_changed"
     assert saved["source_hash"] == storage._hash_text("A.\n\nBee.")
-    # Stored producer identity is the EFFECTIVE (requested) identity.
+    # Stored identity is the EFFECTIVE REQUESTED contract identity.
     assert saved["provider_model"] == "mock-2.0"
     assert translation.calls[0]["provider_model"] == "mock-2.0"
 
@@ -5359,6 +5370,48 @@ def _seed_fresh_provider_novel(storage: StorageService, novel_id: str = "novel-p
     storage.save_chapter(novel_id, "1", "A.\n\nB.")
 
 
+class AuthoritativeListProvider(MockTranslationProvider):
+    """Test provider with an authoritative ``available_models()`` contract.
+
+    A non-empty ``available_models()`` list is the provider's declared model
+    contract: a model not on the list is unsupported and must fail closed at
+    resolution time (it is never silently swapped for another model).
+    """
+
+    def __init__(self, key: str, models: list[str], default_model: str) -> None:
+        super().__init__(key=key, model=default_model)
+        self._models = list(models)
+
+    def available_models(self) -> list[str]:
+        return list(self._models)
+
+
+def _authoritative_orchestrator(
+    orchestration_env, translation: Any, *, settings_service: PreferencesService | None = None
+) -> NovelOrchestrationService:
+    """Orchestrator over authoritative-list test providers plus one free-form.
+
+    - ``alpha`` declares ``["alpha-1.0", "alpha-1.1"]``;
+    - ``beta`` declares ``["beta-1.0", "beta-2.0"]``;
+    - ``gamma`` is free-form (``available_models() == []``) and accepts any
+      non-empty explicit model.
+    """
+    providers = {
+        "alpha": AuthoritativeListProvider("alpha", ["alpha-1.0", "alpha-1.1"], "alpha-1.0"),
+        "beta": AuthoritativeListProvider("beta", ["beta-1.0", "beta-2.0"], "beta-1.0"),
+        "gamma": MockTranslationProvider(key="gamma", model="gamma-free"),
+    }
+    return NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=translation,
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: providers[key],
+        settings_service=settings_service or orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+
 @pytest.mark.asyncio
 async def test_pr41_provider_contract_implicit_resolution_uses_global_preferred(orchestration_env) -> None:
     """Section 3: omitted caller + omitted profile resolve to global preferred.
@@ -5591,6 +5644,835 @@ async def test_pr41_provider_contract_never_records_none_identity(orchestration_
     # The executed call carried exactly the contract identity.
     assert translation.calls[0]["provider_key"] == saved["provider_key"]
     assert translation.calls[0]["provider_model"] == saved["provider_model"]
+
+
+@pytest.mark.asyncio
+async def test_pr41_contract_explicit_provider_only_uses_provider_default_model(orchestration_env) -> None:
+    """Section 5.1: an explicit provider with an omitted model resolves the
+    provider's OWN default model — never a model configured for a different
+    provider (the cross-provider leak from the reproduction)."""
+    storage = orchestration_env["storage"]
+    _seed_fresh_provider_novel(storage)
+    # Global preferred provider/model belong to a DIFFERENT provider (alpha);
+    # with explicit provider "beta" they must not bleed into the pair.
+    orchestration_env["settings"].set_preferred_provider("alpha")
+    orchestration_env["settings"].set_preferred_model("alpha-1.0")
+
+    translation = StubTranslationService(final_text="beta default text")
+    orchestrator = _authoritative_orchestrator(orchestration_env, translation)
+    summary = await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-provider",
+        chapters="1",
+        provider_key="beta",
+        source_language="Japanese",
+    )
+
+    assert len(translation.calls) == 1
+    assert translation.calls[0]["provider_key"] == "beta"
+    assert translation.calls[0]["provider_model"] == "beta-1.0"
+    saved = storage.load_translated_chapter("novel-provider", "1")
+    assert saved is not None
+    assert (saved["provider_key"], saved["provider_model"]) == ("beta", "beta-1.0")
+    manifest = storage.load_translation_run_manifest("novel-provider", summary["translation_run_id"])
+    assert manifest is not None
+    assert (manifest.provider_key, manifest.provider_model) == ("beta", "beta-1.0")
+
+
+@pytest.mark.asyncio
+async def test_pr41_contract_explicit_provider_and_supported_model_exact_pair(orchestration_env) -> None:
+    """Section 5.2: an explicit provider + an explicit model from its
+    authoritative list resolve to exactly that pair."""
+    storage = orchestration_env["storage"]
+    _seed_fresh_provider_novel(storage)
+
+    translation = StubTranslationService(final_text="beta 2.0 text")
+    orchestrator = _authoritative_orchestrator(orchestration_env, translation)
+    summary = await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-provider",
+        chapters="1",
+        provider_key="beta",
+        provider_model="beta-2.0",
+        source_language="Japanese",
+    )
+
+    assert len(translation.calls) == 1
+    assert translation.calls[0]["provider_key"] == "beta"
+    assert translation.calls[0]["provider_model"] == "beta-2.0"
+    saved = storage.load_translated_chapter("novel-provider", "1")
+    assert saved is not None
+    assert (saved["provider_key"], saved["provider_model"]) == ("beta", "beta-2.0")
+    manifest = storage.load_translation_run_manifest("novel-provider", summary["translation_run_id"])
+    assert manifest is not None
+    assert (manifest.provider_key, manifest.provider_model) == ("beta", "beta-2.0")
+
+
+@pytest.mark.asyncio
+async def test_pr41_contract_workflow_profile_model_never_carried_across_providers(orchestration_env) -> None:
+    """Section 5.3: a workflow-profile model is coherent only with the
+    workflow-profile provider. Explicit provider "beta" + a body-translation
+    profile (alpha / alpha-1.0) must resolve beta's own model — the profile
+    model is never validated against or carried into another provider."""
+    storage = orchestration_env["storage"]
+    _seed_fresh_provider_novel(storage)
+    orchestration_env["settings"].set_llm_step_config(
+        "body_translation",
+        provider_key="alpha",
+        provider_model="alpha-1.0",
+    )
+
+    translation = StubTranslationService(final_text="profile leak text")
+    orchestrator = _authoritative_orchestrator(orchestration_env, translation)
+    summary = await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-provider",
+        chapters="1",
+        provider_key="beta",
+        source_language="Japanese",
+    )
+
+    assert len(translation.calls) == 1
+    assert translation.calls[0]["provider_key"] == "beta"
+    assert translation.calls[0]["provider_model"] == "beta-1.0"
+    saved = storage.load_translated_chapter("novel-provider", "1")
+    assert saved is not None
+    assert (saved["provider_key"], saved["provider_model"]) == ("beta", "beta-1.0")
+    manifest = storage.load_translation_run_manifest("novel-provider", summary["translation_run_id"])
+    assert manifest is not None
+    assert (manifest.provider_key, manifest.provider_model) == ("beta", "beta-1.0")
+
+
+@pytest.mark.asyncio
+async def test_pr41_contract_unsupported_explicit_model_fails_closed(orchestration_env) -> None:
+    """Section 5.4: an explicit model outside the selected provider's
+    authoritative list is a configuration error — it fails closed before any
+    manifest or execution, never silently swapped for a supported model."""
+    storage = orchestration_env["storage"]
+    _seed_fresh_provider_novel(storage)
+
+    translation = StubTranslationService(final_text="must not run")
+    orchestrator = _authoritative_orchestrator(orchestration_env, translation)
+    with pytest.raises(ProviderConfigError) as exc_info:
+        await orchestrator.translate_chapters(
+            source_key="stub",
+            novel_id="novel-provider",
+            chapters="1",
+            provider_key="beta",
+            provider_model="alpha-1.0",
+            source_language="Japanese",
+        )
+
+    assert exc_info.value.provider_error_code == ProviderErrorCode.CONFIGURATION
+    assert exc_info.value.provider_key == "beta"
+    assert translation.calls == []
+    assert storage.list_translated_chapter_versions("novel-provider", "1") == []
+
+
+@pytest.mark.asyncio
+async def test_pr41_contract_unknown_provider_fails_closed_before_manifest(orchestration_env) -> None:
+    """Section 5.5: a provider key no factory can produce is a configuration
+    error at resolution time — no manifest, no stored version, no call."""
+    storage = orchestration_env["storage"]
+    _seed_fresh_provider_novel(storage)
+
+    translation = StubTranslationService(final_text="must not run")
+    orchestrator = _authoritative_orchestrator(orchestration_env, translation)
+    with pytest.raises(ProviderConfigError) as exc_info:
+        await orchestrator.translate_chapters(
+            source_key="stub",
+            novel_id="novel-provider",
+            chapters="1",
+            provider_key="no-such-provider",
+            source_language="Japanese",
+        )
+
+    assert exc_info.value.provider_error_code == ProviderErrorCode.CONFIGURATION
+    assert translation.calls == []
+    assert storage.list_translated_chapter_versions("novel-provider", "1") == []
+
+
+@pytest.mark.asyncio
+async def test_pr41_contract_whitespace_identity_normalized(orchestration_env) -> None:
+    """Section 5.6: surrounding whitespace is stripped from provider/model
+    inputs; empty / whitespace-only values are treated as absent."""
+    storage = orchestration_env["storage"]
+    _seed_fresh_provider_novel(storage)
+
+    translation = StubTranslationService(final_text="normalized text")
+    orchestrator = _authoritative_orchestrator(orchestration_env, translation)
+    summary = await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-provider",
+        chapters="1",
+        provider_key=" beta ",
+        provider_model=" beta-2.0 ",
+        source_language="Japanese",
+    )
+
+    assert len(translation.calls) == 1
+    assert (translation.calls[0]["provider_key"], translation.calls[0]["provider_model"]) == ("beta", "beta-2.0")
+    saved = storage.load_translated_chapter("novel-provider", "1")
+    assert saved is not None
+    assert (saved["provider_key"], saved["provider_model"]) == ("beta", "beta-2.0")
+    manifest = storage.load_translation_run_manifest("novel-provider", summary["translation_run_id"])
+    assert manifest is not None
+    assert (manifest.provider_key, manifest.provider_model) == ("beta", "beta-2.0")
+
+
+@pytest.mark.asyncio
+async def test_pr41_contract_gemini_without_api_key_fails_closed(orchestration_env) -> None:
+    """Section 5.7: Gemini without a configured API key fails closed before a
+    manifest is created — even with a valid explicit model."""
+    storage = orchestration_env["storage"]
+    _seed_fresh_provider_novel(storage)
+    orchestration_env["settings"].clear_api_key("gemini")
+
+    def factory(key: str) -> TranslationProvider:
+        return MockTranslationProvider(key=key, model=GEMINI_DEFAULT_MODEL)
+
+    translation = StubTranslationService(final_text="must not run")
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=translation,
+        source_factory=lambda key: StubSource(),
+        provider_factory=factory,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+    with pytest.raises(ProviderConfigError) as exc_info:
+        await orchestrator.translate_chapters(
+            source_key="stub",
+            novel_id="novel-provider",
+            chapters="1",
+            provider_key="gemini",
+            provider_model=GEMINI_DEFAULT_MODEL,
+            source_language="Japanese",
+        )
+
+    assert exc_info.value.provider_error_code == ProviderErrorCode.CONFIGURATION
+    assert exc_info.value.provider_key == "gemini"
+    assert translation.calls == []
+    assert storage.list_translated_chapter_versions("novel-provider", "1") == []
+
+
+@pytest.mark.asyncio
+async def test_pr41_contract_dummy_provider_outside_test_environment_fails_closed(
+    orchestration_env, monkeypatch
+) -> None:
+    """Section 5.8: the dummy provider is available only when ENV=test; outside
+    test the guard fails closed at resolution time."""
+    storage = orchestration_env["storage"]
+    _seed_fresh_provider_novel(storage)
+    monkeypatch.setattr(settings, "ENV", "production")
+
+    translation = StubTranslationService(final_text="must not run")
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=translation,
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key=key, model="dummy"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+    with pytest.raises(ProviderConfigError) as exc_info:
+        await orchestrator.translate_chapters(
+            source_key="stub",
+            novel_id="novel-provider",
+            chapters="1",
+            provider_key="dummy",
+            provider_model="dummy",
+            source_language="Japanese",
+        )
+
+    assert exc_info.value.provider_error_code == ProviderErrorCode.CONFIGURATION
+    assert exc_info.value.provider_key == "dummy"
+    assert translation.calls == []
+    assert storage.list_translated_chapter_versions("novel-provider", "1") == []
+
+
+@pytest.mark.asyncio
+async def test_pr41_contract_free_form_provider_accepts_explicit_model(orchestration_env) -> None:
+    """Section 5.9: a provider with ``available_models() == []`` is free-form —
+    any non-empty explicit model is valid and passes through exactly."""
+    storage = orchestration_env["storage"]
+    _seed_fresh_provider_novel(storage)
+
+    translation = StubTranslationService(final_text="free form text")
+    orchestrator = _authoritative_orchestrator(orchestration_env, translation)
+    summary = await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-provider",
+        chapters="1",
+        provider_key="gamma",
+        provider_model="gamma-custom-model",
+        source_language="Japanese",
+    )
+
+    assert len(translation.calls) == 1
+    assert (translation.calls[0]["provider_key"], translation.calls[0]["provider_model"]) == (
+        "gamma",
+        "gamma-custom-model",
+    )
+    saved = storage.load_translated_chapter("novel-provider", "1")
+    assert saved is not None
+    assert (saved["provider_key"], saved["provider_model"]) == ("gamma", "gamma-custom-model")
+    manifest = storage.load_translation_run_manifest("novel-provider", summary["translation_run_id"])
+    assert manifest is not None
+    assert (manifest.provider_key, manifest.provider_model) == ("gamma", "gamma-custom-model")
+
+
+@pytest.mark.asyncio
+async def test_pr41_contract_no_provider_configured_fails_closed(orchestration_env) -> None:
+    """Section 5.10: with no explicit, profile, or global preferred provider,
+    resolution fails closed instead of inventing an identity."""
+    storage = orchestration_env["storage"]
+    _seed_fresh_provider_novel(storage)
+    fresh_settings = PreferencesService(orchestration_env["data_dir"])
+
+    translation = StubTranslationService(final_text="must not run")
+    orchestrator = _authoritative_orchestrator(orchestration_env, translation, settings_service=fresh_settings)
+    with pytest.raises(ProviderConfigError) as exc_info:
+        await orchestrator.translate_chapters(
+            source_key="stub",
+            novel_id="novel-provider",
+            chapters="1",
+            source_language="Japanese",
+        )
+
+    assert exc_info.value.provider_error_code == ProviderErrorCode.CONFIGURATION
+    assert translation.calls == []
+    assert storage.list_translated_chapter_versions("novel-provider", "1") == []
+
+
+@pytest.mark.asyncio
+async def test_pr41_contract_identity_identical_across_all_consumers_and_resume(orchestration_env) -> None:
+    """Section 5.11: one authoritative pair is recorded identically in the
+    executed call, the stored version and the run manifest — and the resume
+    gate reuses on the same contract instead of calling the provider again.
+
+    The stored version's lineage carries the exact effective contract (here
+    seeded with the explicit alpha / alpha-1.1 pair, as a prior production run
+    would have written it); the second run's delta path compares the SAME pair
+    and performs a true whole-chapter no-op reuse (no new version, no call).
+    """
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old whole chapter",
+        structured=False,
+        translated_chapter_lineage_overrides={"provider_key": "alpha", "provider_model": "alpha-1.1"},
+    )
+    version_id_before = storage.list_translated_chapter_versions("novel-delta", "1")[0]["version_id"]
+
+    translation = StubTranslationService(final_text="should not be called")
+    orchestrator = _authoritative_orchestrator(orchestration_env, translation)
+    summary = await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="alpha",
+        provider_model="alpha-1.1",
+        source_language="Japanese",
+    )
+
+    assert translation.calls == []
+    assert summary["reused"] == 1
+    # The reuse preserved the stored contract identity untouched — no new
+    # version, no divergence, the same pair the contract would have executed.
+    versions = storage.list_translated_chapter_versions("novel-delta", "1")
+    assert [version["version_id"] for version in versions] == [version_id_before]
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert (saved["provider_key"], saved["provider_model"]) == ("alpha", "alpha-1.1")
+
+
+# ---------------------------------------------------------------------------
+# PR-41 FINAL: REAL-pipeline delta-window evidence (section 5/6/7 closure).
+# The stub-based tests above prove the orchestrator's delta decision. These
+# tests wire the orchestrator to the REAL production pipeline (Fetch → Parse →
+# SmartSegment → Translate → QA → CacheFlush → PostProcess) with a
+# deterministic provider that parses the ``[P ...]`` markers out of the
+# TranslationRequest and echoes them back — so marker handling, QA coverage
+# and fail-closed behavior are proven against the actual stages, including
+# the section-6 absolute-paragraph-id stamping and the strict marker parser.
+# ---------------------------------------------------------------------------
+
+
+def _parse_marker_source(source_text: str) -> tuple[str | None, list[str], dict[str, str]]:
+    """Parse ``[CHAPTER <id>]`` / ``[P <id>]`` blocks out of a prompt source."""
+    chapter_id: str | None = None
+    ids: list[str] = []
+    bodies: dict[str, str] = {}
+    current_id: str | None = None
+    current_body: list[str] = []
+    for line in (source_text or "").splitlines():
+        paragraph_match = re.match(r"^\[P\s+([^\]]+)\]\s*$", line)
+        if paragraph_match:
+            if current_id is not None:
+                bodies[current_id] = "\n".join(current_body).strip()
+            matched_paragraph_id = paragraph_match.group(1)
+            if matched_paragraph_id is None:
+                continue
+            current_id = matched_paragraph_id.strip()
+            current_body = []
+            if current_id is not None:
+                ids.append(current_id)
+            continue
+        chapter_match = re.match(r"^\[CHAPTER\s+([^\]]+)\]\s*$", line)
+        if chapter_match:
+            if chapter_id is None:
+                matched_chapter_id = chapter_match.group(1)
+                if matched_chapter_id is not None:
+                    chapter_id = matched_chapter_id.strip()
+            continue
+        if current_id is not None:
+            current_body.append(line)
+    if current_id is not None:
+        bodies[current_id] = "\n".join(current_body).strip()
+    return chapter_id, ids, bodies
+
+
+class DeterministicTranslationProvider(TranslationProvider):
+    """Real-pipeline deterministic provider.
+
+    Copies every ``[P <id>]`` marker from the ``TranslationRequest`` text
+    (the delta window's ABSOLUTE paragraph ids) exactly once with a ``tr:``
+    body, mirroring the production prompt contract. Malformed-output knobs
+    (drop / duplicate / extra / reorder / preamble) exercise the strict marker
+    parser's fail-closed behavior through the REAL stages. Every call records
+    the requested model, schema and prompt so tests can assert the requested
+    identity and paragraph ids reached the provider verbatim.
+    """
+
+    def __init__(
+        self,
+        key: str = "mock",
+        model: str = "mock-1.0",
+        *,
+        prefix: str = "tr:",
+        drop_paragraph_ids: set[str] | None = None,
+        duplicate_paragraph_id: str | None = None,
+        extra_paragraph_id: str | None = None,
+        reorder: bool = False,
+        preamble: str | None = None,
+    ) -> None:
+        super().__init__()
+        self._key = key
+        self.model = model
+        self.prefix = prefix
+        self.drop_paragraph_ids = drop_paragraph_ids or set()
+        self.duplicate_paragraph_id = duplicate_paragraph_id
+        self.extra_paragraph_id = extra_paragraph_id
+        self.reorder = reorder
+        self.preamble = preamble
+        self.calls: list[dict[str, Any]] = []
+
+    @property
+    def key(self) -> str:
+        return self._key
+
+    async def translate(
+        self,
+        prompt: str,
+        model: str | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        request = kwargs.get("request")
+        source_text = getattr(request, "text", None) if request is not None else None
+        if not isinstance(source_text, str) or not source_text.strip():
+            source_text = prompt
+        json_output = bool(getattr(request, "json_output", False)) if request is not None else False
+        self.calls.append(
+            {
+                "model": model,
+                "json_output": json_output,
+                "request": request,
+                "source_text": source_text,
+            }
+        )
+        chapter_id, marker_ids, bodies = _parse_marker_source(source_text)
+
+        emitted_ids: list[str] = []
+        for pid in marker_ids:
+            if pid in self.drop_paragraph_ids:
+                continue
+            emitted_ids.append(pid)
+            if pid == self.duplicate_paragraph_id:
+                emitted_ids.append(pid)
+        if self.reorder:
+            emitted_ids = list(reversed(emitted_ids))
+        extra_id = self.extra_paragraph_id
+        if extra_id:
+            emitted_ids.append(extra_id)
+
+        body_for = lambda pid: f"{self.prefix}{bodies.get(pid, pid)}"  # noqa: E731 - intentional local helper
+        if json_output:
+            paragraph_map = [
+                {
+                    "chapter_id": chapter_id or "1",
+                    "paragraph_id": pid,
+                    "translated_text": body_for(pid),
+                }
+                for pid in emitted_ids
+            ]
+            raw = json.dumps(
+                {
+                    "translated_text": "\n\n".join(item["translated_text"] for item in paragraph_map),
+                    "paragraph_map": paragraph_map,
+                }
+            )
+            return {"text": raw, "metadata": {}}
+
+        lines: list[str] = []
+        if self.preamble:
+            lines.append(self.preamble)
+        if chapter_id:
+            lines.append(f"[CHAPTER {chapter_id}]")
+            lines.append("")
+        for pid in emitted_ids:
+            lines.append(f"[P {pid}]")
+            lines.append(body_for(pid))
+            lines.append("")
+        return {"text": "\n".join(lines).strip(), "metadata": {}}
+
+
+def _real_pipeline_orchestrator(
+    orchestration_env, provider: TranslationProvider, *, settings_service: PreferencesService | None = None
+) -> NovelOrchestrationService:
+    """Orchestrator wired to the REAL production translation pipeline.
+
+    The same stage set the production container builds (Fetch, Parse,
+    SmartSegment, Translate with the provider factory, QA, CacheFlush,
+    PostProcess) — so delta-window evidence runs through actual marker
+    parsing, QA coverage, chunk persistence and cache flush. The sharded
+    ``TranslationCacheService`` is isolated per test (the production default
+    points at the shared library directory, which would leak cache entries
+    between tests).
+    """
+    cache_service = TranslationCacheService(cache_dir=orchestration_env["data_dir"] / "translation_cache")
+    service = TranslationService(
+        pipeline=TranslationPipeline(
+            stages=[
+                FetchStage(),
+                ParseStage(),
+                SmartSegmentStage(),
+                TranslateStage(
+                    provider_factory=lambda key: provider,
+                    cache=orchestration_env["cache"],
+                    cache_service=cache_service,
+                    settings_service=settings_service or orchestration_env["settings"],
+                    usage_service=orchestration_env["usage"],
+                    storage=orchestration_env["storage"],
+                ),
+                TranslationQAStage(),
+                CacheFlushStage(cache_service=cache_service),
+                PostProcessStage(),
+            ]
+        )
+    )
+    return NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=service,
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: provider,
+        settings_service=settings_service or orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_pr41_real_pipeline_plain_delta_uses_absolute_paragraph_ids(orchestration_env) -> None:
+    """Section 6/7 real pipeline: with the default json_output=False policy,
+    the delta window executes through the REAL stages; the provider receives
+    the chapter's ABSOLUTE paragraph ids verbatim in the prompt and the saved
+    chapter reuses + translates by exactly those identities."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole rp",
+        structured=True,
+    )
+
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0")
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+    summary = await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    assert len(provider.calls) == 1
+    call = provider.calls[0]
+    # The requested contract identity reached the real TranslateStage verbatim.
+    assert call["model"] == "mock-1.0"
+    assert call["json_output"] is False
+    assert "[P p0001]" in call["source_text"]
+    assert "[P p0002]" in call["source_text"]
+    assert "[P p0003]" in call["source_text"]
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "tr:A.\n\ntr:Bee.\n\ntr:C."
+    assert saved["json_output"] is False
+    assert saved["confidence_details"]["delta"]["mode"] == "delta"
+    assert saved["confidence_details"]["delta"]["newly_translated_paragraph_ids"] == ["p0001", "p0002", "p0003"]
+    manifest = storage.load_translation_run_manifest("novel-delta", summary["translation_run_id"])
+    assert manifest is not None
+    assert (manifest.provider_key, manifest.provider_model) == ("mock", "mock-1.0")
+
+
+@pytest.mark.asyncio
+async def test_pr41_real_pipeline_json_paragraph_map_regression(orchestration_env) -> None:
+    """Section 6/7 real pipeline: with json_output=True the REAL provider JSON
+    ``paragraph_map`` drives the changed window (regression guard for the
+    structured path through the actual stages)."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole jr",
+        translated_chapter_lineage_overrides={"json_output": True},
+        structured=True,
+    )
+
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0")
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+        json_output=True,
+    )
+
+    assert len(provider.calls) == 1
+    assert provider.calls[0]["json_output"] is True
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "tr:A.\n\ntr:Bee.\n\ntr:C."
+    assert saved["json_output"] is True
+    assert saved["confidence_details"]["delta"]["mode"] == "delta"
+    assert saved["confidence_details"]["delta"]["newly_translated_paragraph_ids"] == ["p0001", "p0002", "p0003"]
+
+
+@pytest.mark.asyncio
+async def test_pr41_real_pipeline_missing_marker_fails_closed(orchestration_env, monkeypatch) -> None:
+    """Section 6 real pipeline fail-closed: a dropped marker fails the REAL QA
+    gate (paragraph_missing) on the window AND the full retranslation; the
+    chapter run fails and no new version with a wrong mapping is ever stored."""
+    monkeypatch.setattr(settings, "TRANSLATION_MAX_ATTEMPTS_PER_CHUNK", 1)
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole mrp",
+        structured=True,
+    )
+
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0", drop_paragraph_ids={"p0002"})
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+    with pytest.raises(RuntimeError):
+        await orchestrator.translate_chapters(
+            source_key="stub",
+            novel_id="novel-delta",
+            chapters="1",
+            provider_key="mock",
+            provider_model="mock-1.0",
+            source_language="Japanese",
+        )
+
+    # The malformed window never produced a stored chapter: the seeded version
+    # is preserved untouched (no wrong mapping was persisted).
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "old whole mrp"
+    assert len(storage.list_translated_chapter_versions("novel-delta", "1")) == 1
+
+
+@pytest.mark.asyncio
+async def test_pr41_real_pipeline_duplicate_marker_fails_closed(orchestration_env, monkeypatch) -> None:
+    """Section 6 real pipeline fail-closed: a duplicated marker is
+    ``paragraph_duplicate`` — QA rejects it and nothing is stored."""
+    monkeypatch.setattr(settings, "TRANSLATION_MAX_ATTEMPTS_PER_CHUNK", 1)
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole drp",
+        structured=True,
+    )
+
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0", duplicate_paragraph_id="p0002")
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+    with pytest.raises(RuntimeError):
+        await orchestrator.translate_chapters(
+            source_key="stub",
+            novel_id="novel-delta",
+            chapters="1",
+            provider_key="mock",
+            provider_model="mock-1.0",
+            source_language="Japanese",
+        )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "old whole drp"
+    assert len(storage.list_translated_chapter_versions("novel-delta", "1")) == 1
+
+
+@pytest.mark.asyncio
+async def test_pr41_real_pipeline_extra_marker_fails_closed(orchestration_env, monkeypatch) -> None:
+    """Section 6 real pipeline fail-closed: an unknown extra marker is
+    ``paragraph_unexpected`` — QA rejects it and nothing is stored."""
+    monkeypatch.setattr(settings, "TRANSLATION_MAX_ATTEMPTS_PER_CHUNK", 1)
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole erp",
+        structured=True,
+    )
+
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0", extra_paragraph_id="p0099")
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+    with pytest.raises(RuntimeError):
+        await orchestrator.translate_chapters(
+            source_key="stub",
+            novel_id="novel-delta",
+            chapters="1",
+            provider_key="mock",
+            provider_model="mock-1.0",
+            source_language="Japanese",
+        )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "old whole erp"
+    assert len(storage.list_translated_chapter_versions("novel-delta", "1")) == 1
+
+
+@pytest.mark.asyncio
+async def test_pr41_real_pipeline_reordered_markers_fall_back_to_full(orchestration_env) -> None:
+    """Section 6 real pipeline fail-closed: reordered markers pass the QA
+    warning-level check but the STRICT lineage parser rejects the window —
+    the delta path falls back to a full retranslation."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole rrp",
+        structured=True,
+    )
+
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0", reorder=True)
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "changed_window_qa_failed"
+    assert len(provider.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_pr41_real_pipeline_preamble_falls_back_to_full(orchestration_env) -> None:
+    """Section 6 real pipeline fail-closed: preamble text before the first
+    marker is rejected by the strict parser -> full retranslation."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole prp",
+        structured=True,
+    )
+
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0", preamble="Here is the translation:")
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "changed_window_qa_failed"
+    assert len(provider.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_pr41_real_pipeline_oversized_paragraph_fails_closed(orchestration_env, monkeypatch) -> None:
+    """Section 6 real pipeline fail-closed: an oversized paragraph in the
+    changed window is split by SmartSegmentStage while preserving the source
+    paragraph_id on every piece — the override no longer matches 1:1, the
+    segmenter's own ids win, and the strict validation fails closed instead of
+    persisting a wrong mapping. (Splitting the delta window into valid
+    sub-paragraphs is recorded as non-blocking optimization debt.)"""
+    monkeypatch.setattr(settings, "TRANSLATION_MAX_ATTEMPTS_PER_CHUNK", 1)
+    storage = orchestration_env["storage"]
+    oversized = "B." + ("x" * 9000)
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", oversized, "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole orp",
+        structured=True,
+    )
+
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0")
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+    with pytest.raises(RuntimeError):
+        await orchestrator.translate_chapters(
+            source_key="stub",
+            novel_id="novel-delta",
+            chapters="1",
+            provider_key="mock",
+            provider_model="mock-1.0",
+            source_language="Japanese",
+        )
+
+    # Fail closed: the seeded version stays; no wrong mapping was persisted.
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "old whole orp"
+    assert len(storage.list_translated_chapter_versions("novel-delta", "1")) == 1
 
 
 # ---------------------------------------------------------------------------
