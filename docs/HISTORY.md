@@ -1,3 +1,61 @@
+## 2026-08-10 PR-41 FINAL — Provider-Pair Validation and Real-Pipeline Evidence Closure
+
+Final PR #41 closure pass on `feat/pipeline-upgrade-phases-1-8`: the resolver
+hardening from S3/S6 is validated end-to-end through the real production
+pipeline, and two cache-related fail-closed defects found by that evidence are
+fixed in production code.
+
+### Implementation Summary
+
+- **Resolver hardening (S3 final)**: `_resolve_effective_provider_contract`
+  now normalizes identities (whitespace-stripped, empty treated as absent),
+  validates provider existence at resolution time through the registered
+  factory (`_provider_instance`, factory `KeyError` → `ProviderConfigError`),
+  validates an explicit model against the resolved provider's own
+  `available_models()` (authoritative list; `[]` = free-form), and resolves
+  workflow/global models only when coherent with the resolved provider —
+  a manifest is never created for an unknown provider or an unsupported
+  explicit model pair.
+- **Delta fallback forces a fresh full retranslation**: the full retranslation
+  after any delta decline now runs with `force_retranslate=True`
+  (`force_retranslate=force or bool(delta_fallback_reason)`), realizing
+  `TRANSLATION_DELTA_FORCE_FULL_ON_UNSAFE`: the full path no longer reuses the
+  very window output the strict marker gate rejected.
+- **`force_retranslate` bypasses the translation cache**: `TranslateStage` skips
+  the sharded `TranslationCacheService` lookup when `force_retranslate` is set
+  (contract already documented by `test_translation_cache_contract.py`); a
+  forced retranslation is a fresh provider request, never a cache reuse.
+- **Real-pipeline evidence suite** (`test_novel_orchestration_service.py`):
+  `DeterministicTranslationProvider` + `_parse_marker_source` + a
+  `_real_pipeline_orchestrator` running the real stage set (Fetch/Parse/
+  SmartSegment/Translate/QA/CacheFlush/PostProcess) with per-test isolated
+  `TranslationCacheService`; 9 tests prove absolute paragraph ids reach the
+  provider verbatim, the structured `paragraph_map` path, and fail-closed
+  behavior for missing/duplicate/extra/reordered/preamble/oversized output —
+  plus 11 provider-contract tests (explicit/omitted model, model validated
+  against the resolved provider only, unknown provider, whitespace identity,
+  Gemini/dummy guards, free-form provider, no-provider fail closed, resume
+  reuse identity) exercising the real `translate_chapters` entry point.
+- Docs: `docs/HISTORY.md` records this pass; `docs/TRANSLATION.md` already
+  documents the authoritative contract resolution.
+
+### Test Evidence (all passing)
+
+- Full backend suite: 3104 passed, 26 skipped (was 3099 before the two
+  orchestrator-wiring fixes in `test_integration.py` / `test_translation_qa.py`
+  that let the new resolution-time validation see the mocked provider).
+- Backend E2E suite: 5 passed in 17.45s.
+- Focused PR-41 suite: `test_novel_orchestration_service.py` 156 passed
+  (137 stored + 11 contract + 8 real-pipeline); cache/scheduler suites
+  (`test_translation_scheduler.py`, `test_advanced_caching.py`,
+  `test_translation_cache_contract.py`, `test_translation_integration_regression.py`)
+  112 passed.
+- Pyright: 0 errors, 0 warnings. Ruff: clean (`check` + `format --check`).
+- Frontend Typecheck / ESLint clean; Vitest 76 files passed; production build
+  compiled successfully.
+- Graphify: updated (`graphify update . --no-cluster`; 13635 nodes).
+- Router-layer guard: no matches. Alembic head unchanged (no migration).
+
 ## 2026-08-09 PR-41 FINAL — Provider-Identity and Plain-Delta Closure
 
 Closed the two remaining PR #41 production-path defects on
