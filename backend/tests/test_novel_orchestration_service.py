@@ -7044,7 +7044,7 @@ def test_pr41_strict_structured_map_matrix() -> None:
         is None
     )
 
-    # I. raw malformed entry in paragraph_map -> dropped by normalize_translation_output, len mismatch -> reject
+    # I. raw malformed entry in paragraph_map -> rejected directly before identity acceptance
     assert (
         _json_map_for_expected_ids(
             _make_json(
@@ -7061,8 +7061,10 @@ def test_pr41_strict_structured_map_matrix() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pr41_provider_available_models_exception_fails_closed(orchestration_env) -> None:
-    """Section 12: provider.available_models() exception raises ProviderConfigError and does not record run manifest."""
+async def test_pr41_provider_available_models_exception_fails_closed(orchestration_env, caplog) -> None:
+    """Section 12: provider.available_models() exception raises ProviderConfigError and does not leak secrets into logs or error."""
+    import logging
+
     from novelai.core.errors import ProviderConfigError
 
     storage = orchestration_env["storage"]
@@ -7091,7 +7093,7 @@ async def test_pr41_provider_available_models_exception_fails_closed(orchestrati
     provider = RaisingProvider()
     orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
 
-    with pytest.raises(ProviderConfigError) as exc_info:
+    with caplog.at_level(logging.WARNING), pytest.raises(ProviderConfigError) as exc_info:
         await orchestrator.translate_chapters(
             source_key="stub",
             novel_id="novel-delta",
@@ -7100,8 +7102,35 @@ async def test_pr41_provider_available_models_exception_fails_closed(orchestrati
             provider_model="some-model",
             source_language="Japanese",
         )
+
     assert "raising-mock" in str(exc_info.value)
     assert "secret_api_key_12345" not in str(exc_info.value)
+    assert "secret_api_key_12345" not in caplog.text
+    assert exc_info.value.__cause__ is None
+
+
+@pytest.mark.asyncio
+async def test_pr41_provider_instance_exception_sanitizes_logs(orchestration_env, caplog) -> None:
+    """Section 12: provider factory exception raises ProviderConfigError and sanitizes caplog text."""
+    import logging
+
+    from novelai.core.errors import ProviderConfigError
+
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0")
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+
+    def raising_factory(key: str) -> TranslationProvider:
+        raise RuntimeError("Authorization: Bearer secret_provider_token_67890")
+
+    orchestrator._provider_factory = raising_factory
+
+    with caplog.at_level(logging.WARNING), pytest.raises(ProviderConfigError) as exc_info:
+        orchestrator._provider_instance("raising-factory")
+
+    assert "raising-factory" in str(exc_info.value)
+    assert "secret_provider_token_67890" not in str(exc_info.value)
+    assert "secret_provider_token_67890" not in caplog.text
+    assert exc_info.value.__cause__ is None
 
 
 @pytest.mark.asyncio
