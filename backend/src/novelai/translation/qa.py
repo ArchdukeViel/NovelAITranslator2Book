@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -479,18 +480,38 @@ def _paragraph_diagnostics(
     expected: list[tuple[str, str]],
     actual: list[tuple[str, str]],
 ) -> dict[str, Any]:
-    missing = [ref for ref in expected if ref not in actual]
-    unexpected = [ref for ref in actual if ref not in expected]
-    matching_order = [ref for ref in actual if ref in expected]
+    exp_counts = Counter(expected)
+    act_counts = Counter(actual)
+
+    missing_refs: list[tuple[str, str]] = []
+    for ref, exp_n in exp_counts.items():
+        act_n = act_counts.get(ref, 0)
+        if act_n < exp_n:
+            missing_refs.extend([ref] * (exp_n - act_n))
+
+    unexpected_refs: list[tuple[str, str]] = []
+    for ref, act_n in act_counts.items():
+        if ref not in exp_counts:
+            unexpected_refs.extend([ref] * act_n)
+
+    excess_refs: list[tuple[str, str]] = []
+    duplicate_ids: list[tuple[str, str]] = []
+    for ref, act_n in act_counts.items():
+        exp_n = exp_counts.get(ref, 0)
+        if exp_n > 0 and act_n > exp_n:
+            excess_refs.extend([ref] * (act_n - exp_n))
+            duplicate_ids.append(ref)
+
+    matching_order = [ref for ref in actual if ref in exp_counts]
     return {
         "expected_count": len(expected),
         "output_count": len(actual),
-        "missing_count": len(missing),
-        "unexpected_count": len(unexpected),
-        "duplicate_count": len(_duplicate_refs(actual)),
-        "missing_ids": [_ref_id(ref) for ref in missing],
-        "unexpected_ids": [_ref_id(ref) for ref in unexpected],
-        "duplicate_ids": [_ref_id(ref) for ref in _duplicate_refs(actual)],
+        "missing_count": len(missing_refs),
+        "unexpected_count": len(unexpected_refs),
+        "duplicate_count": len(excess_refs),
+        "missing_ids": [_ref_id(ref) for ref in missing_refs],
+        "unexpected_ids": [_ref_id(ref) for ref in unexpected_refs],
+        "duplicate_ids": [_ref_id(ref) for ref in duplicate_ids],
         "order_matches_expected": matching_order == expected,
     }
 
