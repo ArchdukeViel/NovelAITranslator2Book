@@ -505,7 +505,28 @@ def _structured_map_from_result(
     if isinstance(final_text, str):
         raw_outputs.append(final_text)
 
-    # 1) Structured JSON ``paragraph_map`` (unchanged semantics).
+    chunks = getattr(result, "translation_chunks", None)
+    multi_chunk = isinstance(chunks, list) and len(chunks) > 1
+
+    # 1) Piecewise path (Section 6 closure debt): a changed window can span
+    # several pipeline chunks when an oversized source paragraph is split
+    # (``split_oversized_paragraph`` preserves the absolute paragraph id on
+    # every piece) or when the window itself exceeds one chunk budget. Each
+    # chunk's raw provider output covers only the ids stamped in that chunk,
+    # so no single output can validate against the whole window — and
+    # accumulating partial maps would silently drop or duplicate paragraphs.
+    # Parse every chunk output strictly against its own ids and merge the
+    # pieces back in chunk order.
+    if multi_chunk:
+        piecewise = _piecewise_map_from_result(result, window_items, expected_chapter_id=expected_chapter_id)
+        if piecewise is not None:
+            return piecewise
+        # Multi-chunk windows have no valid whole-window interpretation; fail
+        # closed to a full translation rather than persist a wrong mapping.
+        return None
+
+    # 2) Structured JSON ``paragraph_map`` (unchanged semantics; single-chunk
+    # windows only).
     mapped: list[str] = []
     for raw in raw_outputs:
         parsed = normalize_translation_output(raw)
@@ -518,7 +539,7 @@ def _structured_map_from_result(
     if len(mapped) >= len(window_items):
         return mapped[: len(window_items)]
 
-    # 2) Plain-output fallback (Section 6, PR 41 closure): strict ``[P ...]``
+    # 3) Plain-output fallback (Section 6, PR 41 closure): strict ``[P ...]``
     # marker parsing. Production prompts instruct providers to copy every
     # ``[P pNNNN]`` marker exactly once, in source order, and to keep the
     # marker with a blank body when a paragraph cannot be translated. The
@@ -538,6 +559,92 @@ def _structured_map_from_result(
         # Contradictory raw outputs are ambiguous; fail closed.
         return None
     return complete_mappings[0]
+
+
+def _piecewise_map_from_result(
+    result: Any,
+    window_items: list[dict[str, Any]],
+    *,
+    expected_chapter_id: str | None,
+) -> list[str] | None:
+    """Map per-chunk provider outputs back onto a multi-chunk delta window.
+
+    A changed window spans several pipeline chunks in two ways:
+    - an oversized source paragraph that ``split_oversized_paragraph`` split
+      across chunks (every piece keeps the same absolute paragraph id — a
+      chunk may even hold several pieces of the same paragraph), and
+    - a window whose total size exceeds one chunk budget.
+
+    In both cases each chunk's raw provider output covers only the ids stamped
+    in that chunk, so parsing any single output against the whole window fails
+    (and accumulating partial maps would silently drop or duplicate
+    paragraphs). This path parses each chunk output strictly against its own
+    ``paragraph_ids`` (marker grammar first, then structured
+    ``paragraph_map``), then merges the pieces of each source paragraph back
+    in chunk order with the same ``"\\n\\n"`` separator the full path uses.
+    An unaligned output list, missing/duplicate/extra/reordered marker,
+    preamble, unknown ``[CHAPTER ...]`` marker, or an id outside the window
+    fails closed (``None`` → full translation).
+    """
+    chunks = getattr(result, "translation_chunks", None)
+    if not isinstance(chunks, list) or len(chunks) <= 1:
+        return None
+    metadata = getattr(result, "metadata", None)
+    raw_values = metadata.get("raw_provider_translations") if isinstance(metadata, dict) else None
+    if not isinstance(raw_values, list) or len(raw_values) != len(chunks):
+        # Per-chunk outputs must align 1:1 with the chunks; the QA stage
+        # records them before any normalization strips the markers.
+        return None
+    outputs: list[str] = []
+    for value in raw_values:
+        if not isinstance(value, str):
+            return None
+        outputs.append(value)
+
+    window_ids = [str(item.get("paragraph_id") or "") for item in window_items]
+    if not window_ids or any(not pid for pid in window_ids):
+        return None
+    window_id_set = set(window_ids)
+
+    pieces_by_id: dict[str, list[str]] = {}
+    for chunk, raw in zip(chunks, outputs, strict=True):
+        chunk_ids = [str(pid) for pid in getattr(chunk, "paragraph_ids", [])]
+        if not chunk_ids or any(not pid for pid in chunk_ids):
+            return None
+        if any(pid not in window_id_set for pid in chunk_ids):
+            return None  # chunk references an id outside the window → ambiguity
+        chunk_items = [{"paragraph_id": pid} for pid in chunk_ids]
+        parsed = _strict_marker_paragraph_map(raw, chunk_items, expected_chapter_id=expected_chapter_id)
+        if parsed is None:
+            parsed = _json_map_for_expected_ids(raw, chunk_ids)
+        if parsed is None:
+            return None
+        for pid, text in zip(chunk_ids, parsed, strict=True):
+            pieces_by_id.setdefault(pid, []).append(text)
+
+    merged: list[str] = []
+    for pid in window_ids:
+        pieces = pieces_by_id.get(pid)
+        if not pieces:
+            return None
+        merged.append("\n\n".join(pieces))
+    return merged
+
+
+def _json_map_for_expected_ids(raw: str, expected_ids: list[str]) -> list[str] | None:
+    """Positional structured ``paragraph_map`` fallback for one chunk output."""
+    parsed = normalize_translation_output(raw)
+    if not parsed.paragraph_map:
+        return None
+    texts: list[str] = []
+    for item in parsed.paragraph_map:
+        translated = item.get("translated_text")
+        if not isinstance(translated, str):
+            return None
+        texts.append(translated)
+    if len(texts) < len(expected_ids):
+        return None
+    return texts[: len(expected_ids)]
 
 
 _PARAGRAPH_MARKER_RE = re.compile(r"^\[P\s+([^\]]+)\]\s*$")
@@ -560,16 +667,21 @@ def _strict_marker_paragraph_map(
     - Any other non-blank line before the first paragraph marker, any
       duplicate/extra/missing/reordered paragraph id, or a mismatched chapter
       marker returns ``None`` (ambiguity → full translation).
+    - When the expected id sequence itself repeats — split sub-paragraphs of
+      one oversized paragraph packed into the same chunk all keep the source
+      paragraph id — each occurrence must appear exactly that many times, in
+      order. A repeat beyond the expected count still fails closed.
     """
     expected_ids = [str(item.get("paragraph_id") or "") for item in window_items]
     if not expected_ids or any(not pid for pid in expected_ids):
         return None
-    if len(set(expected_ids)) != len(expected_ids):
-        return None
+    expected_counts: dict[str, int] = {}
+    for pid in expected_ids:
+        expected_counts[pid] = expected_counts.get(pid, 0) + 1
     expected_set = set(expected_ids)
 
     ordered: list[tuple[str, list[str]]] = []
-    seen: set[str] = set()
+    seen_counts: dict[str, int] = {}
     current: list[str] | None = None
     chapter_seen = False
     for line in raw.splitlines():
@@ -577,9 +689,10 @@ def _strict_marker_paragraph_map(
         chapter_match = _CHAPTER_MARKER_RE.match(line)
         if paragraph_match:
             paragraph_id = paragraph_match.group(1).strip()
-            if paragraph_id in seen or paragraph_id not in expected_set:
+            seen_count = seen_counts.get(paragraph_id, 0) + 1
+            if paragraph_id not in expected_set or seen_count > expected_counts.get(paragraph_id, 0):
                 return None  # duplicate or extra paragraph marker
-            seen.add(paragraph_id)
+            seen_counts[paragraph_id] = seen_count
             body: list[str] = []
             ordered.append((paragraph_id, body))
             current = body

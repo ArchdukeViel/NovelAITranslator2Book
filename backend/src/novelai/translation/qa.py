@@ -197,6 +197,9 @@ def extract_unambiguous_json_object(raw_output: str) -> str:
 _CHAPTER_MARKER_RE = re.compile(r"^\[CHAPTER\s+([^\]]+)\]\s*$", re.MULTILINE)
 _PARAGRAPH_MARKER_RE = re.compile(r"^\[P\s+([^\]]+)\]\s*$", re.MULTILINE)
 _MARKER_LINE_RE = re.compile(r"^\[(?:CHAPTER\s+[^\]]+|P\s+[^\]]+)\]\s*$", re.MULTILINE)
+# Context-overlap blocks carry prior-chunk CONTEXT, not content the provider is
+# asked to translate; the block (markers and content) is stripped as a unit.
+_CONTEXT_OVERLAP_BLOCK_RE = re.compile(r"\[CONTEXT OVERLAP\].*?\[END CONTEXT OVERLAP\]", re.DOTALL)
 _IMAGE_PLACEHOLDER_RE = re.compile(
     r"(\[(?:image|img|illustration|cover)[^\]]*\]|\{\{\s*(?:image|img)[^}]*\}\}|!\[[^\]]*\]\([^)]+\))",
     re.IGNORECASE,
@@ -354,7 +357,7 @@ def _normalize_paragraph_map(value: Any) -> list[dict[str, str]]:
 
 
 def _strip_markers(text: str) -> str:
-    return _MARKER_LINE_RE.sub("", text or "").strip()
+    return _MARKER_LINE_RE.sub("", _CONTEXT_OVERLAP_BLOCK_RE.sub("", text or "")).strip()
 
 
 def _compact(text: str) -> str:
