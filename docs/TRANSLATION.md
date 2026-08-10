@@ -183,6 +183,26 @@ reordered marker — or preamble, an unknown `[CHAPTER ...]` marker, or
 contradictory raw outputs — is ambiguity, and the delta path fails closed to
 a full translation (`fallback_reason="changed_window_qa_failed"`).
 
+**Multi-chunk windows (piecewise apply).** A changed window may span several
+pipeline chunks — an oversized source paragraph split by
+`split_oversized_paragraph`, or a window exceeding one chunk budget. When
+`len(result.translation_chunks) > 1`, `_piecewise_map_from_result` runs first:
+raw provider outputs (`metadata["raw_provider_translations"]`, aligned 1:1
+with chunks) are parsed **per chunk** against that chunk's own
+`paragraph_ids` — marker grammar first, then the structured `paragraph_map` —
+and pieces of the same source paragraph are merged back in chunk order with
+the `"\n\n"` separator the full path uses. Because `split_oversized_paragraph`
+keeps the absolute `paragraph_id` on every piece, repeated ids are matched
+positionally (`expected_counts` in `_strict_marker_paragraph_map`) instead of
+being rejected as duplicates; a repeat beyond the expected count still fails
+closed. Multi-chunk windows with no valid per-chunk parse fail closed to a
+full translation like any other ambiguity.
+
+**Context overlap is not missing output.** `[CONTEXT OVERLAP]` blocks carry
+prior-chunk context the provider is not asked to translate; the QA content
+strip removes the whole block before ratio checks, so overlap content never
+inflates the source length or trips `translation_too_short`.
+
 ## Chapter Selection
 
 A selection string (`"all"`, `"1-3;8"`, `"2"`, `"kakuyomu:1681809307..."`)

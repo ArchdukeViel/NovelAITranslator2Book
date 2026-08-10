@@ -36,17 +36,38 @@ fixed in production code.
   against the resolved provider only, unknown provider, whitespace identity,
   Gemini/dummy guards, free-form provider, no-provider fail closed, resume
   reuse identity) exercising the real `translate_chapters` entry point.
+- **Oversized-paragraph delta debt resolved**: a changed window spanning
+  several pipeline chunks (an oversized source paragraph split by
+  `split_oversized_paragraph`, or a window exceeding one chunk budget) now
+  applies instead of failing closed. `_structured_map_from_result` gains a
+  piecewise path (`_piecewise_map_from_result`): each chunk's raw provider
+  output is parsed strictly against that chunk's own `paragraph_ids` (marker
+  grammar, then structured `paragraph_map`), and pieces of the same source
+  paragraph are merged back in chunk order with the same `"\n\n"` separator
+  the full path uses. `_strict_marker_paragraph_map` now matches repeated ids
+  positionally (split pieces of one paragraph can share a chunk). Multi-chunk
+  windows with no valid per-chunk parse still fail closed; the old
+  whole-window accumulation could never validate them.
+- **Context-overlap QA ratio fix**: `[CONTEXT OVERLAP]` blocks carry
+  prior-chunk context the provider is not asked to translate; `_strip_markers`
+  now removes the whole block so the `translation_too_short` ratio no longer
+  counts overlap content as missing output (this also unblocked multi-chunk
+  windows on the full path).
 - Docs: `docs/HISTORY.md` records this pass; `docs/TRANSLATION.md` already
   documents the authoritative contract resolution.
 
 ### Test Evidence (all passing)
 
-- Full backend suite: 3104 passed, 26 skipped (was 3099 before the two
+- Full backend suite: 3105 passed, 26 skipped (was 3099 before the two
   orchestrator-wiring fixes in `test_integration.py` / `test_translation_qa.py`
   that let the new resolution-time validation see the mocked provider).
 - Backend E2E suite: 5 passed in 17.45s.
-- Focused PR-41 suite: `test_novel_orchestration_service.py` 156 passed
-  (137 stored + 11 contract + 8 real-pipeline); cache/scheduler suites
+- Focused PR-41 suite: `test_novel_orchestration_service.py` 157 passed
+  (137 stored + 11 contract + 9 real-pipeline; the oversized-paragraph
+  fail-closed test is replaced by two window-apply tests — marker and JSON
+  modes — each asserting `mode == "delta"`, all three window ids applied,
+  ≥2 provider calls with `[P p0002]` in ≥2 sources, and the merged middle
+  part preserved in window order); cache/scheduler suites
   (`test_translation_scheduler.py`, `test_advanced_caching.py`,
   `test_translation_cache_contract.py`, `test_translation_integration_regression.py`)
   112 passed.

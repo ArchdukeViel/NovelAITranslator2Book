@@ -6437,14 +6437,12 @@ async def test_pr41_real_pipeline_preamble_falls_back_to_full(orchestration_env)
 
 
 @pytest.mark.asyncio
-async def test_pr41_real_pipeline_oversized_paragraph_fails_closed(orchestration_env, monkeypatch) -> None:
-    """Section 6 real pipeline fail-closed: an oversized paragraph in the
-    changed window is split by SmartSegmentStage while preserving the source
-    paragraph_id on every piece — the override no longer matches 1:1, the
-    segmenter's own ids win, and the strict validation fails closed instead of
-    persisting a wrong mapping. (Splitting the delta window into valid
-    sub-paragraphs is recorded as non-blocking optimization debt.)"""
-    monkeypatch.setattr(settings, "TRANSLATION_MAX_ATTEMPTS_PER_CHUNK", 1)
+async def test_pr41_real_pipeline_oversized_paragraph_applies_window(orchestration_env) -> None:
+    """Section 6 real pipeline: an oversized paragraph in the changed window
+    is split by SmartSegmentStage into multiple chunks while preserving the
+    source paragraph_id on every piece. Each chunk output is parsed strictly
+    against its own ids and the pieces are merged back onto the single source
+    paragraph, so the delta window applies instead of failing closed."""
     storage = orchestration_env["storage"]
     oversized = "B." + ("x" * 9000)
     _save_delta_execution_fixture(
@@ -6458,21 +6456,76 @@ async def test_pr41_real_pipeline_oversized_paragraph_fails_closed(orchestration
 
     provider = DeterministicTranslationProvider(key="mock", model="mock-1.0")
     orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
-    with pytest.raises(RuntimeError):
-        await orchestrator.translate_chapters(
-            source_key="stub",
-            novel_id="novel-delta",
-            chapters="1",
-            provider_key="mock",
-            provider_model="mock-1.0",
-            source_language="Japanese",
-        )
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
 
-    # Fail closed: the seeded version stays; no wrong mapping was persisted.
     saved = storage.load_translated_chapter("novel-delta", "1")
     assert saved is not None
-    assert saved["text"] == "old whole orp"
-    assert len(storage.list_translated_chapter_versions("novel-delta", "1")) == 1
+    assert saved["confidence_details"]["delta"]["mode"] == "delta"
+    assert saved["confidence_details"]["delta"]["newly_translated_paragraph_ids"] == ["p0001", "p0002", "p0003"]
+    # One window executed (one provider call per pipeline chunk); the
+    # oversized paragraph reached the provider split across several chunks
+    # with its absolute paragraph id repeated on every piece.
+    assert len(provider.calls) >= 2
+    assert sum(1 for call in provider.calls if "[P p0002]" in call["source_text"]) >= 2
+    # The window applied with the split pieces merged back onto the single
+    # source paragraph: exactly three chapter paragraphs, the middle one
+    # longer than any single chunk budget (proof the pieces were merged).
+    parts = saved["text"].split("\n\n")
+    assert parts[0] == "tr:A."
+    assert parts[-1] == "tr:C."
+    middle = "\n\n".join(parts[1:-1])
+    assert middle.startswith("tr:B.")
+    assert len(middle) > 7000
+    assert len(parts) >= 3
+
+
+@pytest.mark.asyncio
+async def test_pr41_real_pipeline_oversized_paragraph_json_applies_window(orchestration_env) -> None:
+    """Section 6 real pipeline, json_output=True: the split oversized window
+    is mapped through the per-chunk structured ``paragraph_map`` path and the
+    pieces are merged back onto the single source paragraph."""
+    storage = orchestration_env["storage"]
+    oversized = "B." + ("x" * 9000)
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", oversized, "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole orp",
+        structured=True,
+        translated_chapter_lineage_overrides={"json_output": True},
+    )
+
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0")
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+        json_output=True,
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["confidence_details"]["delta"]["mode"] == "delta"
+    assert all(call["json_output"] is True for call in provider.calls)
+    parts = saved["text"].split("\n\n")
+    assert parts[0] == "tr:A."
+    assert parts[-1] == "tr:C."
+    middle = "\n\n".join(parts[1:-1])
+    assert middle.startswith("tr:B.")
+    assert len(middle) > 7000
+    assert len(parts) >= 3
 
 
 # ---------------------------------------------------------------------------
