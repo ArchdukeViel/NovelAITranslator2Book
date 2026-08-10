@@ -9,6 +9,7 @@ REQ-2, REQ-5.2
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -130,23 +131,29 @@ class CheckpointManager:
         """
         checkpoint.last_updated = datetime.now(UTC).isoformat()
         path = self._path(checkpoint.chapter_id)
+        tmp_path = None
         try:
             fd, tmp = tempfile.mkstemp(
                 dir=str(self.checkpoint_dir),
                 suffix=".tmp",
                 prefix=f"{checkpoint.chapter_id}_",
             )
+            tmp_path = Path(tmp)
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(checkpoint.to_dict(), f, ensure_ascii=False, indent=2)
-            from novelai.storage.backends.filesystem import _replace_with_retry
+            from novelai.utils.filesystem import replace_with_retry
 
-            _replace_with_retry(Path(tmp), path)
+            replace_with_retry(tmp_path, path)
         except OSError as exc:
             logger.warning(
                 "Failed to write checkpoint %s — %s (translation continues)",
                 checkpoint.chapter_id,
                 exc,
             )
+        finally:
+            if tmp_path is not None and tmp_path.exists():
+                with contextlib.suppress(OSError):
+                    tmp_path.unlink()
 
     def delete(self, chapter_id: str) -> None:
         """Remove checkpoint file (called after successful completion)."""

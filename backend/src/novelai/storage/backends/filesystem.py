@@ -5,30 +5,10 @@ from __future__ import annotations
 import contextlib
 import os
 import tempfile
-import time
 from pathlib import Path
 
 from novelai.storage.backends.base import StorageBackend
-
-
-def _replace_with_retry(src: Path, dst: Path, *, attempts: int = 8) -> None:
-    """os.replace with bounded retry for Windows WinError-5 transient locks.
-
-    Windows can briefly hold a destination file open (antivirus scan,
-    directory-watcher, a reader mid-stream); the atomic rename then fails
-    with PermissionError. Retrying a bounded number of times with a tiny
-    backoff makes the atomic replace deterministic without broad sleeps or
-    unbounded loops. The retry budget is fixed (max ~1s total); a genuine
-    permission problem still fails fast.
-    """
-    for attempt in range(attempts):
-        try:
-            os.replace(src, dst)
-            return
-        except PermissionError:
-            if attempt == attempts - 1:
-                raise
-            time.sleep(0.02 * (attempt + 1))
+from novelai.utils.filesystem import replace_with_retry
 
 
 class FilesystemBackend(StorageBackend):
@@ -58,7 +38,7 @@ class FilesystemBackend(StorageBackend):
         try:
             with os.fdopen(fd, "wb") as f:
                 f.write(data)
-            _replace_with_retry(Path(tmp), dest)
+            replace_with_retry(Path(tmp), dest)
         except BaseException:
             _try_unlink(Path(tmp))
             raise
@@ -83,7 +63,7 @@ class FilesystemBackend(StorageBackend):
         try:
             with os.fdopen(fd, "wb") as f:
                 f.write(new_value)
-            _replace_with_retry(Path(tmp), dest)
+            replace_with_retry(Path(tmp), dest)
         except BaseException:
             _try_unlink(Path(tmp))
             raise

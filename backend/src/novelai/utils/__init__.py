@@ -5,7 +5,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from novelai.storage.backends.filesystem import _replace_with_retry
+from novelai.utils.filesystem import replace_with_retry
 
 
 def format_usd(amount: float, decimals: int = 4) -> str:
@@ -24,33 +24,18 @@ def atomic_write(path: Path, content: str) -> None:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-    replaced = False
+    tmp_path = Path(tmp)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(content)
             f.flush()
             os.fsync(f.fileno())
-        try:
-            _replace_with_retry(Path(tmp), path)
-            replaced = True
-            _fsync_directory(path.parent)
-        except PermissionError:
-            # On Windows if the target remains locked after retries, attempt fallback remove-then-replace
-            try:
-                with contextlib.suppress(OSError):
-                    os.remove(path)
-                _replace_with_retry(Path(tmp), path)
-                replaced = True
-                _fsync_directory(path.parent)
-            except Exception:
-                with contextlib.suppress(OSError):
-                    os.unlink(tmp)
-                raise
-    except BaseException:
-        if not replaced:
+        replace_with_retry(tmp_path, path)
+        _fsync_directory(path.parent)
+    finally:
+        if tmp_path.exists():
             with contextlib.suppress(OSError):
-                os.unlink(tmp)
-        raise
+                tmp_path.unlink()
 
 
 def _fsync_directory(directory: Path) -> None:

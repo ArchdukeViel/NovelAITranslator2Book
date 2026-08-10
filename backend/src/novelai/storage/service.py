@@ -357,7 +357,7 @@ class StorageService:
         if backing == "s3":
             self._write_text(path, content)
             return
-        from novelai.storage.backends.filesystem import _replace_with_retry
+        from novelai.utils.filesystem import replace_with_retry
 
         self._backend.mkdirs(self._rel(path.parent))
         temp_path = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
@@ -366,7 +366,7 @@ class StorageService:
             self._backend.save(self._rel(temp_path), content.encode(encoding))
             # Bounded retry for transient Windows WinError-5 file locks so an
             # antivirus/reader-held handle cannot flake the atomic rename.
-            _replace_with_retry(temp_path, path)
+            replace_with_retry(temp_path, path)
             replaced = True
             _fsync_directory(path.parent)
         except Exception as exc:
