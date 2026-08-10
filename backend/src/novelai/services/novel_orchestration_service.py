@@ -304,12 +304,19 @@ class NovelOrchestrationService:
 
         ``available_models() == []`` means the provider accepts free-form model
         identifiers (any non-empty model is valid); a non-empty list is the
-        authoritative set the model must belong to.
+        authoritative set the model must belong to. An exception raised by
+        ``available_models()`` means the provider contract cannot be determined
+        and must fail closed with ``ProviderConfigError``.
         """
         try:
             models = provider.available_models()
-        except Exception:
-            return []
+        except Exception as exc:
+            pkey = getattr(provider, "key", None) or getattr(provider, "name", "unknown")
+            raise ProviderConfigError(
+                ProviderErrorCode.CONFIGURATION,
+                provider_key=str(pkey),
+                message=f"Failed to resolve available models for provider {pkey!r}: {exc}",
+            ) from None
         return [str(model) for model in models] if isinstance(models, list) else []
 
     def _provider_instance(self, key: str, *, for_model: str | None = None) -> TranslationProvider:
