@@ -747,9 +747,17 @@ class TranslateStage(PipelineStage):
                                 chunk_id,
                                 context.chunk_states.get(chunk_id, {}).get("status"),
                             )
+                        # Force retranslate must also bypass the translation
+                        # cache (contract: ``force_retranslate`` means "issue a
+                        # fresh provider request", not "reuse the last cached
+                        # output"). The delta fallback after an unsafe window
+                        # (``TRANSLATION_DELTA_FORCE_FULL_ON_UNSAFE``) relies on
+                        # this: without it, the full retranslation would reuse
+                        # the very window output the strict marker gate rejected.
+                        force_retranslate = force_retranslate_h(context)
                         cached = (
                             None
-                            if retry_marked
+                            if retry_marked or force_retranslate
                             else self._cached_translation(
                                 context,
                                 provider_key=used_provider_key,

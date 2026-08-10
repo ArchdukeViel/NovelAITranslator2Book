@@ -466,6 +466,7 @@ async def test_orchestration_does_not_save_final_translation_when_qa_fails():
             storage=fixture.storage,
             translation=TranslationService(pipeline=pipeline),
             source_factory=lambda key: fixture.mock_source,
+            provider_factory=lambda key: EmptyOutputProvider(),
             settings_service=fixture.settings_service,
             translation_cache=fixture.cache,
             usage_service=fixture.usage_service,

@@ -1367,7 +1367,7 @@ async def translate_chapters(
                     honorific_policy=effective_honorific_policy,
                     json_output=effective_json_output,
                     allow_cross_provider_fallback=allow_cross_provider_fallback,
-                    force_retranslate=force,
+                    force_retranslate=force or bool(delta_fallback_reason),
                     glossary_revision=glossary_revision,
                     raw_text=raw_text,
                     raw_images=raw_images,
@@ -1383,7 +1383,7 @@ async def translate_chapters(
                 scheduler_policy = (
                     result.scheduler_state.get("policy") if isinstance(result.scheduler_state, dict) else None
                 )
-                # Stored producer identity is the EFFECTIVE contract identity the
+                # Stored identity is the EFFECTIVE REQUESTED CONTRACT identity the
                 # output was requested under — never the pipeline result's report.
                 # The production service builds the result from the request, so
                 # the two agree; a broken or divergent result must not poison

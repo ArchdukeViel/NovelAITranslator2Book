@@ -285,6 +285,87 @@ class NovelOrchestrationService:
         }
         return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
+    @staticmethod
+    def _normalize_identity(value: str | None) -> str | None:
+        """Normalize a provider/model identity input.
+
+        Surrounding whitespace is stripped; empty / whitespace-only values and
+        non-strings are treated as absent (``None``). The resolver never emits
+        a malformed-whitespace identity as part of a contract.
+        """
+        if not isinstance(value, str):
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+    @staticmethod
+    def _available_models_for(provider: TranslationProvider) -> list[str]:
+        """Return the provider's authoritative model list, or ``[]`` (free-form).
+
+        ``available_models() == []`` means the provider accepts free-form model
+        identifiers (any non-empty model is valid); a non-empty list is the
+        authoritative set the model must belong to.
+        """
+        try:
+            models = provider.available_models()
+        except Exception:
+            return []
+        return [str(model) for model in models] if isinstance(models, list) else []
+
+    def _provider_instance(self, key: str, *, for_model: str | None = None) -> TranslationProvider:
+        """Return the provider registered for *key*.
+
+        Converts factory lookup failures (an incidental ``KeyError`` from an
+        unregistered provider) into the established ``ProviderConfigError``
+        configuration-error contract so a translation run never persists a
+        manifest for a provider that does not exist. Called at resolution time
+        (here, for validation) and again later by ``TranslateStage`` for the
+        real execution; both are deterministic constructor calls with no
+        network side effects.
+        """
+        try:
+            return self._provider_factory(key)
+        except KeyError:
+            raise ProviderConfigError(
+                ProviderErrorCode.CONFIGURATION,
+                provider_key=key,
+                provider_model=for_model,
+                message=f"Unknown translation provider: {key!r}. "
+                f"Registered providers are managed in the provider registry.",
+            ) from None
+        except ProviderConfigError:
+            raise
+        except Exception as exc:
+            raise ProviderConfigError(
+                ProviderErrorCode.CONFIGURATION,
+                provider_key=key,
+                provider_model=for_model,
+                message=f"Translation provider {key!r} could not be created: {exc}.",
+            ) from exc
+
+    def _assert_special_provider_guards(self, key: str, *, model: str | None = None) -> None:
+        """Preserve the established fail-closed configuration guards.
+
+        Gemini requires a configured API key and ``dummy`` is available only
+        when ``ENV=test``. Both are checked here so they run before any
+        TranslationRunManifest is created — the pipeline stage never discovers
+        these misconfigurations late.
+        """
+        if self._provider_requires_api_key(key) and not self._settings.get_api_key(key):
+            raise ProviderConfigError(
+                ProviderErrorCode.CONFIGURATION,
+                provider_key=key,
+                provider_model=model,
+                message="Gemini provider is not configured. Add an API key in Settings.",
+            )
+        if key == "dummy" and settings.ENV != "test":
+            raise ProviderConfigError(
+                ProviderErrorCode.CONFIGURATION,
+                provider_key=key,
+                provider_model=model or "dummy",
+                message="The dummy provider is available only when ENV=test.",
+            )
+
     def _resolve_effective_provider_contract(
         self,
         *,
@@ -293,51 +374,122 @@ class NovelOrchestrationService:
         provider_key: str | None,
         provider_model: str | None,
     ) -> tuple[str, str]:
-        """Resolve the authoritative provider/model identity for a workflow step.
+        """Resolve the authoritative provider/model contract identity for a
+        workflow step as ONE validated pair.
 
-        Section 3 (PR 41 closure): this is the SINGLE resolution point for the
-        provider contract identity. Precedence is strict:
+        This is the SINGLE resolution point for the requested provider/model
+        contract identity (Section 3, PR 41 closure). The pair is resolved,
+        validated and returned atomically — every consumer (run manifest,
+        resume gate, delta retranslation, pipeline execution, stored lineage)
+        records and compares the same pair, so a translation version never
+        records a provider identity while silently executing a model selected
+        for a different provider.
+
+        Provider precedence is strict:
 
         1. Explicit caller values (``provider_key`` / ``provider_model``)
-        2. The workflow profile for ``step`` (novel-level profiles, then
-           global step configs, then endpoint profiles — already merged by
+        2. The effective workflow profile for ``step`` (novel-level profiles,
+           then global step configs, then endpoint profiles — already merged by
            ``_resolve_workflow_step_config`` / ``resolve_step_llm_config``)
         3. The global preferred provider / model preferences
 
-        The result is guaranteed non-empty (never ``None``): every consumer —
-        run manifest, resume gate, delta retranslation, pipeline execution and
-        stored lineage — records and compares this identity, so a translation
-        version must never be created with a missing provider identity while
-        the pipeline silently executes a different one. Configuration errors
-        (Gemini without an API key, ``dummy`` outside ``ENV=test``) fail closed
-        here, before any contract is created.
+        The model is resolved FOR the selected provider so a model validated
+        against a different provider is never carried across. Inputs are
+        normalized (whitespace stripped; empty / whitespace-only treated as
+        absent); the result is guaranteed non-empty (never ``""`` / ``None``).
+        Configuration errors — unknown provider, Gemini without an API key,
+        ``dummy`` outside ``ENV=test``, an explicit model the provider contract
+        declares unsupported — fail closed here, before any contract is
+        created. A provider with ``available_models() == []`` is treated as
+        free-form (any non-empty explicit/identifiable model is valid); a
+        provider with an authoritative list validates against it.
 
         ``step`` may be ``None`` to skip the workflow-profile layer entirely
         (used by the metadata/glossary/crawler steps that predate profiles).
         """
+        explicit_provider = self._normalize_identity(provider_key)
+        explicit_model = self._normalize_identity(provider_model)
         profile_provider: str | None = None
         profile_model: str | None = None
         if step is not None:
-            profile_provider, profile_model = self._resolve_workflow_profile(step, metadata)
-        key = provider_key or profile_provider or self._settings.get_preferred_provider()
-        model = provider_model or profile_model or self._settings.get_provider_model()
-        if self._provider_requires_api_key(key) and not self._settings.get_api_key(key):
+            raw_profile_provider, raw_profile_model = self._resolve_workflow_profile(step, metadata)
+            profile_provider = self._normalize_identity(raw_profile_provider)
+            profile_model = self._normalize_identity(raw_profile_model)
+        global_provider = self._normalize_identity(self._settings.get_preferred_provider())
+        global_model = self._normalize_identity(self._settings.get_preferred_model())
+
+        # 1) Resolve the provider (explicit > workflow > global); never None.
+        resolved_provider = explicit_provider or profile_provider or global_provider
+        if not resolved_provider:
             raise ProviderConfigError(
                 ProviderErrorCode.CONFIGURATION,
-                provider_key=key,
-                provider_model=model,
-                message="Gemini provider is not configured. Add an API key in Settings.",
+                provider_key=explicit_provider,
+                provider_model=explicit_model,
+                message="No translation provider is configured. "
+                "Set a preferred provider or pass an explicit provider key.",
             )
-        if key == "dummy":
-            if settings.ENV != "test":
+
+        # 2) Validate provider existence + the established config guards BEFORE
+        #    the model is even chosen, so a manifest is never created for a
+        #    provider that does not exist or cannot authenticate.
+        provider = self._provider_instance(resolved_provider, for_model=explicit_model)
+        self._assert_special_provider_guards(resolved_provider, model=explicit_model)
+        supported = self._available_models_for(provider)
+
+        # 3) Validate an explicit model up front (fail closed, do not silently
+        #    fall back to a default — the caller asked for a specific model).
+        #    Section 4.3 A/E: an unsupported explicit model is a configuration
+        #    error, not an opportunity to pick another model.
+        if explicit_model:
+            if supported and explicit_model not in supported:
                 raise ProviderConfigError(
                     ProviderErrorCode.CONFIGURATION,
-                    provider_key=key,
-                    provider_model="dummy",
-                    message="The dummy provider is available only when ENV=test.",
+                    provider_key=resolved_provider,
+                    provider_model=explicit_model,
+                    message=(
+                        f"Translation provider {resolved_provider!r} does not support "
+                        f"model {explicit_model!r}. Supported models: {', '.join(supported)}."
+                    ),
                 )
-            return "dummy", "dummy"
-        return key, model
+            return resolved_provider, explicit_model
+
+        # 4) Resolve the model FOR the selected provider when the caller did
+        #    not give one. Candidates, in precedence order:
+        #    - the workflow profile's model ONLY when it is coherent with the
+        #      selected provider (i.e. the workflow provider equals the
+        #      resolved provider); a workflow model validated against a
+        #      different provider is never carried across (Section 4.3 B/D).
+        #    - the global preferred model ONLY when the global preferred
+        #      provider equals the resolved provider (Section 4.3 F).
+        #    - the provider's own preferred/default model.
+        candidate_models: list[str] = []
+        if profile_model and profile_provider == resolved_provider:
+            candidate_models.append(profile_model)
+        if global_model and global_provider == resolved_provider:
+            candidate_models.append(global_model)
+        provider_default = supported[0] if supported else None
+        if provider_default:
+            candidate_models.append(provider_default)
+
+        resolved_model: str | None = None
+        for candidate in candidate_models:
+            if not candidate:
+                continue
+            # Free-form (supported == []) accepts any non-empty model.
+            if not supported or candidate in supported:
+                resolved_model = candidate
+                break
+        if not resolved_model:
+            raise ProviderConfigError(
+                ProviderErrorCode.CONFIGURATION,
+                provider_key=resolved_provider,
+                provider_model=None,
+                message=(
+                    f"No translation model is configured for provider {resolved_provider!r}. "
+                    "Configure a preferred model or pass an explicit model."
+                ),
+            )
+        return resolved_provider, resolved_model
 
     def _resolve_provider_and_model(
         self,
@@ -348,8 +500,8 @@ class NovelOrchestrationService:
 
         Used by the metadata translation / glossary / crawler steps that do not
         participate in workflow profiles; delegates to the authoritative
-        contract resolver with no profile layer so the Gemini/dummy guards stay
-        in exactly one place.
+        contract resolver with no profile layer so the normalization,
+        provider-existence and Gemini/dummy guards stay in exactly one place.
         """
         return self._resolve_effective_provider_contract(
             step=None,
