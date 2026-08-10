@@ -183,6 +183,14 @@ reordered marker — or preamble, an unknown `[CHAPTER ...]` marker, or
 contradictory raw outputs — is ambiguity, and the delta path fails closed to
 a full translation (`fallback_reason="changed_window_qa_failed"`).
 
+**Occurrence-aware QA accounting.** When `SmartSegmentStage` splits an oversized
+source paragraph across sentence boundaries and packs multiple split pieces into
+a single `TranslationChunk` (all sharing the original `paragraph_id`), `TranslationQAStage`
+compares expected vs actual as ordered occurrence sequences. Expected repeated IDs
+pass QA when the output contains the exact expected occurrence count in order.
+Missing occurrences, excess occurrences (`paragraph_duplicate`), unexpected IDs,
+or order mismatches fail closed.
+
 **Multi-chunk windows (piecewise apply).** A changed window may span several
 pipeline chunks — an oversized source paragraph split by
 `split_oversized_paragraph`, or a window exceeding one chunk budget. When

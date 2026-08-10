@@ -53,24 +53,39 @@ fixed in production code.
   now removes the whole block so the `translation_too_short` ratio no longer
   counts overlap content as missing output (this also unblocked multi-chunk
   windows on the full path).
+- **Occurrence-aware QA for split paragraph IDs**: `_paragraph_diagnostics`
+  in `qa.py` is refactored to use occurrence counts (`Counter`) instead of set
+  uniqueness. When `SmartSegmentStage` splits an oversized paragraph across
+  sentence boundaries and packs multiple split pieces into ONE
+  `TranslationChunk` (all carrying the original `paragraph_id`), QA compares
+  expected vs actual as ordered occurrence sequences — permitting expected
+  repeats while rejecting missing occurrences, excess occurrences
+  (`paragraph_duplicate`), unexpected IDs (`paragraph_unexpected`), or order
+  mismatches (`paragraph_order_mismatch`).
+- **Strict structured delta maps**: `_json_map_for_expected_ids` now enforces
+  `len(actual_map) == len(expected_ids)` and exact positional `paragraph_id`
+  matching (and `chapter_id` matching when present) with zero truncation or
+  loose positional fallback, shared by both single-chunk and multi-chunk delta
+  paths.
+- **Provider model discovery exception handling**: `_available_models_for` in
+  `novel_orchestration_service.py` now raises `ProviderConfigError` when
+  `provider.available_models()` raises an exception, distinguishing exception
+  failures from `[]` (free-form allowed), failing closed before manifest creation.
+- **Audited fresh-full cache bypass scope**: `_try_delta_translate_chapter`
+  now surfaces `fresh_full_required: bool`. Unsafe window declines
+  (`changed_window_qa_failed`, `final_qa_failed`) set `fresh_full_required=True`
+  forcing `force_retranslate=True` on full fallback to bypass cache; benign
+  pre-provider declines allow normal full cache lookup.
 - Docs: `docs/HISTORY.md` records this pass; `docs/TRANSLATION.md` already
   documents the authoritative contract resolution.
 
 ### Test Evidence (all passing)
 
-- Full backend suite: 3105 passed, 26 skipped (was 3099 before the two
-  orchestrator-wiring fixes in `test_integration.py` / `test_translation_qa.py`
-  that let the new resolution-time validation see the mocked provider).
-- Backend E2E suite: 5 passed in 17.45s.
-- Focused PR-41 suite: `test_novel_orchestration_service.py` 157 passed
-  (137 stored + 11 contract + 9 real-pipeline; the oversized-paragraph
-  fail-closed test is replaced by two window-apply tests — marker and JSON
-  modes — each asserting `mode == "delta"`, all three window ids applied,
-  ≥2 provider calls with `[P p0002]` in ≥2 sources, and the merged middle
-  part preserved in window order); cache/scheduler suites
-  (`test_translation_scheduler.py`, `test_advanced_caching.py`,
-  `test_translation_cache_contract.py`, `test_translation_integration_regression.py`)
-  112 passed.
+- Full backend suite: 3114 passed, 26 skipped.
+- Backend E2E suite: 5 passed in 17.63s.
+- Focused PR-41 suite: `test_novel_orchestration_service.py` 166 passed
+  (137 stored + 11 contract + 18 real-pipeline/matrix/model/overlap tests);
+  cache/scheduler suites 191 passed.
 - Pyright: 0 errors, 0 warnings. Ruff: clean (`check` + `format --check`).
 - Frontend Typecheck / ESLint clean; Vitest 76 files passed; production build
   compiled successfully.
