@@ -6003,25 +6003,26 @@ async def test_pr41_contract_identity_identical_across_all_consumers_and_resume(
 # ---------------------------------------------------------------------------
 
 
-def _parse_marker_source(source_text: str) -> tuple[str | None, list[str], dict[str, str]]:
-    """Parse ``[CHAPTER <id>]`` / ``[P <id>]`` blocks out of a prompt source."""
+def _parse_marker_source(source_text: str) -> tuple[str | None, list[tuple[str, str]]]:
+    """Parse ``[CHAPTER <id>]`` / ``[P <id>]`` blocks out of a prompt source.
+
+    Returns ``(chapter_id, occurrences)`` where ``occurrences`` is a list of
+    ``(paragraph_id, body_text)`` preserving exact ordered occurrences.
+    """
     chapter_id: str | None = None
-    ids: list[str] = []
-    bodies: dict[str, str] = {}
+    occurrences: list[tuple[str, str]] = []
     current_id: str | None = None
     current_body: list[str] = []
     for line in (source_text or "").splitlines():
         paragraph_match = re.match(r"^\[P\s+([^\]]+)\]\s*$", line)
         if paragraph_match:
             if current_id is not None:
-                bodies[current_id] = "\n".join(current_body).strip()
+                occurrences.append((current_id, "\n".join(current_body).strip()))
             matched_paragraph_id = paragraph_match.group(1)
             if matched_paragraph_id is None:
                 continue
             current_id = matched_paragraph_id.strip()
             current_body = []
-            if current_id is not None:
-                ids.append(current_id)
             continue
         chapter_match = re.match(r"^\[CHAPTER\s+([^\]]+)\]\s*$", line)
         if chapter_match:
@@ -6033,8 +6034,8 @@ def _parse_marker_source(source_text: str) -> tuple[str | None, list[str], dict[
         if current_id is not None:
             current_body.append(line)
     if current_id is not None:
-        bodies[current_id] = "\n".join(current_body).strip()
-    return chapter_id, ids, bodies
+        occurrences.append((current_id, "\n".join(current_body).strip()))
+    return chapter_id, occurrences
 
 
 class DeterministicTranslationProvider(TranslationProvider):
@@ -6096,30 +6097,29 @@ class DeterministicTranslationProvider(TranslationProvider):
                 "source_text": source_text,
             }
         )
-        chapter_id, marker_ids, bodies = _parse_marker_source(source_text)
+        chapter_id, occurrences = _parse_marker_source(source_text)
 
-        emitted_ids: list[str] = []
-        for pid in marker_ids:
+        emitted_occurrences: list[tuple[str, str]] = []
+        for pid, body in occurrences:
             if pid in self.drop_paragraph_ids:
                 continue
-            emitted_ids.append(pid)
+            emitted_occurrences.append((pid, body))
             if pid == self.duplicate_paragraph_id:
-                emitted_ids.append(pid)
+                emitted_occurrences.append((pid, body))
         if self.reorder:
-            emitted_ids = list(reversed(emitted_ids))
+            emitted_occurrences = list(reversed(emitted_occurrences))
         extra_id = self.extra_paragraph_id
         if extra_id:
-            emitted_ids.append(extra_id)
+            emitted_occurrences.append((extra_id, extra_id))
 
-        body_for = lambda pid: f"{self.prefix}{bodies.get(pid, pid)}"  # noqa: E731 - intentional local helper
         if json_output:
             paragraph_map = [
                 {
                     "chapter_id": chapter_id or "1",
                     "paragraph_id": pid,
-                    "translated_text": body_for(pid),
+                    "translated_text": f"{self.prefix}{body or pid}",
                 }
-                for pid in emitted_ids
+                for pid, body in emitted_occurrences
             ]
             raw = json.dumps(
                 {
@@ -6135,9 +6135,9 @@ class DeterministicTranslationProvider(TranslationProvider):
         if chapter_id:
             lines.append(f"[CHAPTER {chapter_id}]")
             lines.append("")
-        for pid in emitted_ids:
+        for pid, body in emitted_occurrences:
             lines.append(f"[P {pid}]")
-            lines.append(body_for(pid))
+            lines.append(f"{self.prefix}{body or pid}")
             lines.append("")
         return {"text": "\n".join(lines).strip(), "metadata": {}}
 
@@ -6748,3 +6748,396 @@ async def test_pr41_plain_delta_preamble_falls_back_to_full(orchestration_env) -
     assert saved is not None
     assert saved["confidence_details"]["delta"]["fallback_reason"] == "changed_window_qa_failed"
     assert len(translation.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_pr41_real_pipeline_same_chunk_repeated_ids_plain_markers(orchestration_env) -> None:
+    """Section 9.1: prove oversized sentence-split paragraph producing repeated
+    paragraph_ids in ONE chunk passes QA and applies via plain markers."""
+    storage = orchestration_env["storage"]
+    sentence1 = "A" * 3000 + "。"
+    sentence2 = "B" * 3000 + "。"
+    sentence3 = "C" * 3000 + "。"
+    oversized_p2 = sentence1 + sentence2 + sentence3
+
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", oversized_p2, "C."],
+        new_paragraphs=["A.", oversized_p2 + "D。", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole same chunk",
+        structured=True,
+    )
+
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0")
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    delta_info = saved["confidence_details"]["delta"]
+    assert delta_info["mode"] == "delta"
+    assert delta_info["newly_translated_paragraph_ids"] == ["p0001", "p0002", "p0003"]
+    assert len(provider.calls) >= 2
+
+    chunk_with_repeats = False
+    for call in provider.calls:
+        src = call.get("source_text") or ""
+        if src.count("[P p0002]") >= 2:
+            chunk_with_repeats = True
+            break
+    assert chunk_with_repeats, "At least one provider call chunk must contain >= 2 occurrences of [P p0002]"
+
+    text = saved["text"]
+    assert "tr:A." in text
+    assert f"tr:{sentence1}" in text
+    assert f"tr:{sentence2}" in text
+    assert f"tr:{sentence3}" in text
+    assert text.index(f"tr:{sentence1}") < text.index(f"tr:{sentence2}") < text.index(f"tr:{sentence3}")
+
+
+@pytest.mark.asyncio
+async def test_pr41_real_pipeline_same_chunk_repeated_ids_json(orchestration_env) -> None:
+    """Section 9.2: prove oversized sentence-split paragraph producing repeated
+    paragraph_ids in ONE chunk passes QA and applies via JSON paragraph_map."""
+    storage = orchestration_env["storage"]
+    sentence1 = "A" * 3000 + "。"
+    sentence2 = "B" * 3000 + "。"
+    sentence3 = "C" * 3000 + "。"
+    oversized_p2 = sentence1 + sentence2 + sentence3
+
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", oversized_p2, "C."],
+        new_paragraphs=["A.", oversized_p2 + "D。", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole same chunk json",
+        structured=True,
+        translated_chapter_lineage_overrides={"json_output": True},
+    )
+
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0")
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+        json_output=True,
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    delta_info = saved["confidence_details"]["delta"]
+    assert delta_info["mode"] == "delta"
+    assert delta_info["newly_translated_paragraph_ids"] == ["p0001", "p0002", "p0003"]
+    assert len(provider.calls) >= 2
+
+    text = saved["text"]
+    assert f"tr:{sentence1}" in text
+    assert f"tr:{sentence2}" in text
+    assert f"tr:{sentence3}" in text
+
+
+@pytest.mark.asyncio
+async def test_pr41_real_pipeline_same_chunk_missing_occurrence_fails_closed(orchestration_env) -> None:
+    """Section 9.3: expected p0002 repeat x2 in chunk, provider drops one occurrence -> fail closed."""
+    from novelai.translation.pipeline.pipeline import PipelineStageError
+
+    storage = orchestration_env["storage"]
+    sentence1 = "A" * 3000 + "。"
+    sentence2 = "B" * 3000 + "。"
+    sentence3 = "C" * 3000 + "。"
+    oversized_p2 = sentence1 + sentence2 + sentence3
+
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", oversized_p2, "C."],
+        new_paragraphs=["A.", oversized_p2 + "D。", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole missing occ",
+        structured=True,
+    )
+
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0", drop_paragraph_ids={"p0002"})
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+
+    with pytest.raises(PipelineStageError):
+        await orchestrator.translate_chapters(
+            source_key="stub",
+            novel_id="novel-delta",
+            chapters="1",
+            provider_key="mock",
+            provider_model="mock-1.0",
+            source_language="Japanese",
+        )
+
+
+@pytest.mark.asyncio
+async def test_pr41_real_pipeline_same_chunk_excess_occurrence_fails_closed(orchestration_env) -> None:
+    """Section 9.4: provider emits an excess occurrence beyond expected count -> fail closed."""
+    from novelai.translation.pipeline.pipeline import PipelineStageError
+
+    storage = orchestration_env["storage"]
+    sentence1 = "A" * 3000 + "。"
+    sentence2 = "B" * 3000 + "。"
+    sentence3 = "C" * 3000 + "。"
+    oversized_p2 = sentence1 + sentence2 + sentence3
+
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", oversized_p2, "C."],
+        new_paragraphs=["A.", oversized_p2 + "D。", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole excess occ",
+        structured=True,
+    )
+
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0", duplicate_paragraph_id="p0002")
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+
+    with pytest.raises(PipelineStageError):
+        await orchestrator.translate_chapters(
+            source_key="stub",
+            novel_id="novel-delta",
+            chapters="1",
+            provider_key="mock",
+            provider_model="mock-1.0",
+            source_language="Japanese",
+        )
+
+
+@pytest.mark.asyncio
+async def test_pr41_real_pipeline_same_chunk_reordered_occurrences_fails_closed(orchestration_env) -> None:
+    """Section 9.5: provider reorders occurrences -> fail closed."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole reorder occ",
+        structured=True,
+    )
+
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0", reorder=True)
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "changed_window_qa_failed"
+
+
+def test_pr41_strict_structured_map_matrix() -> None:
+    """Section 11 matrix for _json_map_for_expected_ids."""
+    from novelai.services.orchestration.translation_lineage import _json_map_for_expected_ids
+
+    def _make_json(items: list[dict[str, str]]) -> str:
+        return json.dumps(
+            {"paragraph_map": items, "translated_text": "\n\n".join(i.get("translated_text", "") for i in items)}
+        )
+
+    # A. exact unique sequence -> pass
+    res_a = _json_map_for_expected_ids(
+        _make_json([{"paragraph_id": "p1", "translated_text": "T1"}, {"paragraph_id": "p2", "translated_text": "T2"}]),
+        ["p1", "p2"],
+    )
+    assert res_a == ["T1", "T2"]
+
+    # B. exact expected repeated sequence -> pass
+    res_b = _json_map_for_expected_ids(
+        _make_json(
+            [{"paragraph_id": "p2", "translated_text": "T2a"}, {"paragraph_id": "p2", "translated_text": "T2b"}]
+        ),
+        ["p2", "p2"],
+    )
+    assert res_b == ["T2a", "T2b"]
+
+    # C. missing entry -> reject
+    assert (
+        _json_map_for_expected_ids(_make_json([{"paragraph_id": "p1", "translated_text": "T1"}]), ["p1", "p2"]) is None
+    )
+
+    # D. extra entry -> reject
+    assert (
+        _json_map_for_expected_ids(
+            _make_json(
+                [
+                    {"paragraph_id": "p1", "translated_text": "T1"},
+                    {"paragraph_id": "p2", "translated_text": "T2"},
+                    {"paragraph_id": "p3", "translated_text": "T3"},
+                ]
+            ),
+            ["p1", "p2"],
+        )
+        is None
+    )
+
+    # E. reordered entry -> reject
+    assert (
+        _json_map_for_expected_ids(
+            _make_json(
+                [{"paragraph_id": "p2", "translated_text": "T2"}, {"paragraph_id": "p1", "translated_text": "T1"}]
+            ),
+            ["p1", "p2"],
+        )
+        is None
+    )
+
+    # F. wrong paragraph id with correct length -> reject
+    assert (
+        _json_map_for_expected_ids(
+            _make_json(
+                [{"paragraph_id": "p1", "translated_text": "T1"}, {"paragraph_id": "p99", "translated_text": "T99"}]
+            ),
+            ["p1", "p2"],
+        )
+        is None
+    )
+
+    # G. wrong chapter id -> reject
+    assert (
+        _json_map_for_expected_ids(
+            _make_json([{"chapter_id": "999", "paragraph_id": "p1", "translated_text": "T1"}]),
+            ["p1"],
+            expected_chapter_id="1",
+        )
+        is None
+    )
+
+    # H. repeated occurrence beyond expected count -> reject
+    assert (
+        _json_map_for_expected_ids(
+            _make_json(
+                [
+                    {"paragraph_id": "p2", "translated_text": "T2a"},
+                    {"paragraph_id": "p2", "translated_text": "T2b"},
+                    {"paragraph_id": "p2", "translated_text": "T2c"},
+                ]
+            ),
+            ["p2", "p2"],
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_pr41_provider_available_models_exception_fails_closed(orchestration_env) -> None:
+    """Section 12: provider.available_models() exception raises ProviderConfigError and does not record run manifest."""
+    from novelai.core.errors import ProviderConfigError
+
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A."],
+        new_paragraphs=["A."],
+        old_translations=["old:A."],
+        translated_chapter_text="old",
+        structured=True,
+    )
+
+    class RaisingProvider(TranslationProvider):
+        @property
+        def key(self) -> str:
+            return "raising-mock"
+
+        def available_models(self) -> list[str]:
+            raise RuntimeError("API error querying model list")
+
+        async def translate(
+            self, prompt: str, model: str | None = None, max_tokens: int | None = None, **kwargs: Any
+        ) -> dict[str, Any]:
+            raise AssertionError("translate() must never be called when available_models() raises")
+
+    provider = RaisingProvider()
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+
+    with pytest.raises(ProviderConfigError) as exc_info:
+        await orchestrator.translate_chapters(
+            source_key="stub",
+            novel_id="novel-delta",
+            chapters="1",
+            provider_key="raising-mock",
+            provider_model="some-model",
+            source_language="Japanese",
+        )
+    assert "raising-mock" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_pr41_fresh_full_required_bypasses_cache_on_unsafe_delta(orchestration_env) -> None:
+    """Section 13: unsafe delta decline (changed_window_qa_failed) sets fresh_full_required=True
+    so full fallback performs fresh provider calls bypassing cache."""
+    storage = orchestration_env["storage"]
+    _save_delta_execution_fixture(
+        storage,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+        translated_chapter_text="old whole unsafe",
+        structured=True,
+    )
+
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0", reorder=True)
+    orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "changed_window_qa_failed"
+    # Unsafe delta fallback issued fresh full translation calls (not cached)
+    assert len(provider.calls) >= 2
+
+
+def test_pr41_context_overlap_stripping_and_qa_ratio() -> None:
+    """Section 14: [CONTEXT OVERLAP]...[END CONTEXT OVERLAP] blocks are stripped from QA length ratio
+    calculations so prior-chunk context does not cause translation_too_short, while translatable
+    content outside overlap is still evaluated."""
+    from novelai.translation.pipeline.context import TranslationChunk
+    from novelai.translation.qa import evaluate_translation_quality
+
+    source_text = (
+        "[CONTEXT OVERLAP]\n"
+        + ("X" * 1000)
+        + "\n[END CONTEXT OVERLAP]\n[CHAPTER 1]\n[P p0001]\nActual source paragraph."
+    )
+    # Provider translates only the actual source paragraph (not the context overlap)
+    output_text = "[CHAPTER 1]\n[P p0001]\nActual source paragraph translated."
+
+    chunk = TranslationChunk(
+        chunk_id="c1",
+        novel_id="n1",
+        chapter_ids=["1"],
+        paragraph_ids=["p0001"],
+        source_text=source_text,
+        char_count=len(source_text),
+        paragraph_refs=[("1", "p0001")],
+    )
+
+    res = evaluate_translation_quality(source_text=source_text, translated_text=output_text, chunk=chunk)
+    assert res.passed, f"QA should pass when context overlap is stripped; errors: {res.errors}"
+    assert "translation_too_short" not in res.errors
