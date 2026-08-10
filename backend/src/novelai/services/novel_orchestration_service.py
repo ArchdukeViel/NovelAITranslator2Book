@@ -312,10 +312,11 @@ class NovelOrchestrationService:
             models = provider.available_models()
         except Exception as exc:
             pkey = getattr(provider, "key", None) or getattr(provider, "name", "unknown")
+            logger.warning("Failed to resolve available models for provider %r", pkey, exc_info=True)
             raise ProviderConfigError(
                 ProviderErrorCode.CONFIGURATION,
                 provider_key=str(pkey),
-                message=f"Failed to resolve available models for provider {pkey!r}: {exc}",
+                message=f"Failed to resolve available models for provider {pkey!r}: {type(exc).__name__}",
             ) from None
         return [str(model) for model in models] if isinstance(models, list) else []
 
@@ -343,11 +344,12 @@ class NovelOrchestrationService:
         except ProviderConfigError:
             raise
         except Exception as exc:
+            logger.warning("Translation provider %r creation failed", key, exc_info=True)
             raise ProviderConfigError(
                 ProviderErrorCode.CONFIGURATION,
                 provider_key=key,
                 provider_model=for_model,
-                message=f"Translation provider {key!r} could not be created: {exc}.",
+                message=f"Translation provider {key!r} could not be created: {type(exc).__name__}.",
             ) from exc
 
     def _assert_special_provider_guards(self, key: str, *, model: str | None = None) -> None:

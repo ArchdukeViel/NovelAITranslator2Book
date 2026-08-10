@@ -22,7 +22,7 @@ from novelai.translation.pipeline.context import TranslationChunk
 from novelai.translation.pipeline.stages.segment import SmartSegmentStage
 from novelai.translation.qa import (
     evaluate_translation_quality,
-    normalize_translation_output,
+    extract_unambiguous_json_object,
 )
 from novelai.translation.run_manifest import is_translation_valid
 
@@ -635,25 +635,36 @@ def _json_map_for_expected_ids(
 
     Validates that a raw provider output containing a JSON ``paragraph_map``
     matches the chunk/window's expected paragraph IDs exactly:
-    - ``len(paragraph_map) == len(expected_ids)``
+    - Raw ``paragraph_map`` list length must equal ``len(expected_ids)``.
+    - Every raw item must be a valid object containing a string ``translated_text``
+      (or ``translated``) and string ``paragraph_id``.
     - Each item's ``paragraph_id`` matches ``expected_ids`` positionally (preserving
       ordered repeated occurrences for split sub-paragraphs).
     - If ``chapter_id`` is supplied on an item, it must match ``expected_chapter_id``.
-    - Every item must have a valid string ``translated_text``.
     """
-    parsed = normalize_translation_output(raw)
-    if not parsed.paragraph_map or len(parsed.paragraph_map) != len(expected_ids):
+    try:
+        raw_obj = json.loads(extract_unambiguous_json_object(raw))
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(raw_obj, dict):
+        return None
+    raw_map = raw_obj.get("paragraph_map")
+    if not isinstance(raw_map, list) or len(raw_map) != len(expected_ids):
         return None
     texts: list[str] = []
-    for item, exp_pid in zip(parsed.paragraph_map, expected_ids, strict=True):
+    for item, exp_pid in zip(raw_map, expected_ids, strict=True):
+        if not isinstance(item, dict):
+            return None
         translated = item.get("translated_text")
+        if translated is None:
+            translated = item.get("translated")
         if not isinstance(translated, str):
             return None
         pid = item.get("paragraph_id")
-        if not pid or str(pid).strip() != exp_pid:
+        if pid is None or str(pid).strip() != exp_pid:
             return None
         ch_id = item.get("chapter_id")
-        if ch_id and expected_chapter_id and str(ch_id).strip() != expected_chapter_id:
+        if ch_id is not None and expected_chapter_id and str(ch_id).strip() != expected_chapter_id:
             return None
         texts.append(translated)
     return texts

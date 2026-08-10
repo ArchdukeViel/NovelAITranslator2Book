@@ -6057,6 +6057,7 @@ class DeterministicTranslationProvider(TranslationProvider):
         *,
         prefix: str = "tr:",
         drop_paragraph_ids: set[str] | None = None,
+        drop_occurrence: tuple[str, int] | None = None,
         duplicate_paragraph_id: str | None = None,
         extra_paragraph_id: str | None = None,
         reorder: bool = False,
@@ -6067,6 +6068,7 @@ class DeterministicTranslationProvider(TranslationProvider):
         self.model = model
         self.prefix = prefix
         self.drop_paragraph_ids = drop_paragraph_ids or set()
+        self.drop_occurrence = drop_occurrence
         self.duplicate_paragraph_id = duplicate_paragraph_id
         self.extra_paragraph_id = extra_paragraph_id
         self.reorder = reorder
@@ -6100,8 +6102,13 @@ class DeterministicTranslationProvider(TranslationProvider):
         chapter_id, occurrences = _parse_marker_source(source_text)
 
         emitted_occurrences: list[tuple[str, str]] = []
+        seen_counts: dict[str, int] = {}
         for pid, body in occurrences:
             if pid in self.drop_paragraph_ids:
+                continue
+            count = seen_counts.get(pid, 0) + 1
+            seen_counts[pid] = count
+            if self.drop_occurrence and self.drop_occurrence == (pid, count):
                 continue
             emitted_occurrences.append((pid, body))
             if pid == self.duplicate_paragraph_id:
@@ -6868,7 +6875,7 @@ async def test_pr41_real_pipeline_same_chunk_missing_occurrence_fails_closed(orc
         structured=True,
     )
 
-    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0", drop_paragraph_ids={"p0002"})
+    provider = DeterministicTranslationProvider(key="mock", model="mock-1.0", drop_occurrence=("p0002", 2))
     orchestrator = _real_pipeline_orchestrator(orchestration_env, provider)
 
     with pytest.raises(PipelineStageError):
@@ -7037,6 +7044,21 @@ def test_pr41_strict_structured_map_matrix() -> None:
         is None
     )
 
+    # I. raw malformed entry in paragraph_map -> dropped by normalize_translation_output, len mismatch -> reject
+    assert (
+        _json_map_for_expected_ids(
+            _make_json(
+                [
+                    {"paragraph_id": "p1", "translated_text": "T1"},
+                    {"paragraph_id": "junk"},
+                    {"paragraph_id": "p2", "translated_text": "T2"},
+                ]
+            ),
+            ["p1", "p2"],
+        )
+        is None
+    )
+
 
 @pytest.mark.asyncio
 async def test_pr41_provider_available_models_exception_fails_closed(orchestration_env) -> None:
@@ -7059,7 +7081,7 @@ async def test_pr41_provider_available_models_exception_fails_closed(orchestrati
             return "raising-mock"
 
         def available_models(self) -> list[str]:
-            raise RuntimeError("API error querying model list")
+            raise RuntimeError("API error with secret_api_key_12345 querying model list")
 
         async def translate(
             self, prompt: str, model: str | None = None, max_tokens: int | None = None, **kwargs: Any
@@ -7079,6 +7101,7 @@ async def test_pr41_provider_available_models_exception_fails_closed(orchestrati
             source_language="Japanese",
         )
     assert "raising-mock" in str(exc_info.value)
+    assert "secret_api_key_12345" not in str(exc_info.value)
 
 
 @pytest.mark.asyncio

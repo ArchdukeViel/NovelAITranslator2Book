@@ -465,16 +465,6 @@ def _ref_id(ref: tuple[str, str]) -> str:
     return f"{chapter_id}:{paragraph_id}" if chapter_id else paragraph_id
 
 
-def _duplicate_refs(refs: list[tuple[str, str]]) -> list[tuple[str, str]]:
-    seen: set[tuple[str, str]] = set()
-    duplicates: list[tuple[str, str]] = []
-    for ref in refs:
-        if ref in seen and ref not in duplicates:
-            duplicates.append(ref)
-        seen.add(ref)
-    return duplicates
-
-
 def _paragraph_diagnostics(
     *,
     expected: list[tuple[str, str]],
