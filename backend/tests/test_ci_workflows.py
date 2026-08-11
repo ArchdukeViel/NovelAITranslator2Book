@@ -87,3 +87,87 @@ def test_secret_backed_opencode_workflow_restricts_commenters() -> None:
     assert "timeout-minutes: 15" in source
     assert "npx --yes opencode-ai@1.18.11 github run" in source
     assert "anomalyco/opencode/github@" not in source
+
+
+def test_ci_e2e_filter_includes_all_required_inputs() -> None:
+    source = _workflow("ci.yml")
+    required_filter_paths = [
+        ".github/workflows/ci.yml",
+        "pyproject.toml",
+        "uv.lock",
+        "backend/src/**",
+        "backend/tests/e2e/**",
+        "backend/tests/fixtures/e2e/**",
+        "backend/tests/conftest.py",
+        "backend/alembic/**",
+        "backend/sql/**",
+    ]
+    for path in required_filter_paths:
+        assert path in source, f"Missing {path} in E2E filter"
+
+
+def test_production_monitor_contract() -> None:
+    source = _workflow("production-monitor.yml")
+    assert "vars.PRODUCTION_MONITOR_ENABLED == 'true'" in source
+    assert "vars.PRODUCTION_BASE_URL" in source
+    assert "secrets.PRODUCTION_BASE_URL" not in source
+    assert "cancel-in-progress: false" in source
+    assert "-TimeoutSeconds 10" in source
+    assert 'echo "PRODUCTION_BASE_URL is not configured; production monitor skipped."' not in source
+    assert "exit 1" in source
+
+
+def test_deploy_input_flow_and_smoke_vars() -> None:
+    source = _workflow("deploy.yml")
+    assert "$GITHUB_OUTPUT" not in source
+    assert "VERSION: ${{ inputs.version }}" in source
+    assert "DEPLOY_ENV: ${{ inputs.environment }}" in source
+    assert "environment: ${{ inputs.environment }}" in source
+    assert "vars.PRODUCTION_BASE_URL" in source
+    assert "secrets.NOVELAI_SMOKE_SESSION_COOKIE" in source
+    assert "secrets.PRODUCTION_BASE_URL" not in source
+
+
+def test_deploy_staging_eligibility_and_managed_gate() -> None:
+    source = _workflow("deploy.yml")
+    assert "needs: managed-services-check" in source
+    assert "inputs.environment != 'production'" in source
+    assert "needs.managed-services-check.result == 'success'" in source
+    assert "!cancelled()" in source
+
+
+def test_dependency_review_least_privilege() -> None:
+    source = _workflow("dependency-review.yml")
+    assert "contents: read" in source
+    assert "pull-requests: write" not in source
+    assert "pull_request_target" not in source
+    assert "comment-summary-in-pr: always" not in source
+
+
+def test_uv_locked_contract_in_ci_and_managed_verification() -> None:
+    for name in ("ci.yml", "managed-services-verification.yml"):
+        source = _workflow(name)
+        assert "--frozen" not in source, f"--frozen found in {name}"
+        assert "--locked" in source, f"--locked missing in {name}"
+
+
+def test_build_workflow_run_trust_guards_and_concurrency() -> None:
+    source = _workflow("build.yml")
+    assert "concurrency:" in source
+    assert "group: build-push-default-branch" in source
+    assert "github.event.workflow_run.event == 'push'" in source
+    assert "github.event.workflow_run.head_branch == github.event.repository.default_branch" in source
+    assert "github.event.workflow_run.head_repository.full_name == github.repository" in source
+    assert "actions/attest" in source
+    assert "subject-digest: ${{ steps.build.outputs.digest }}" in source
+    assert "artifact-metadata: write" in source
+
+
+def test_node_version_alignment() -> None:
+    nvmrc = (WORKFLOWS_DIR.parent.parent / "frontend" / ".nvmrc").read_text(encoding="utf-8").strip()
+    package_json = (WORKFLOWS_DIR.parent.parent / "frontend" / "package.json").read_text(encoding="utf-8")
+    dockerfile = (WORKFLOWS_DIR.parent.parent / "deploy" / "frontend.Dockerfile").read_text(encoding="utf-8")
+
+    assert nvmrc == "22"
+    assert '"node": ">=22 <23"' in package_json
+    assert "node:22-alpine" in dockerfile

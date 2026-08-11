@@ -8,10 +8,20 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: build-push-default-branch
+  cancel-in-progress: false
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success'
+    if: >-
+      ${{
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == github.event.repository.default_branch &&
+        github.event.workflow_run.head_repository.full_name == github.repository
+      }}
     permissions:
       contents: read
       packages: write
@@ -74,11 +84,18 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
-  # A failed/skipped publication must not leave a misleading green workflow.
+  # A failed publication must not leave a misleading green workflow.
   build-done:
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: always()
+    if: >-
+      ${{
+        !cancelled() &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == github.event.repository.default_branch &&
+        github.event.workflow_run.head_repository.full_name == github.repository
+      }}
     permissions: {}
     steps:
       - name: Require successful image publication

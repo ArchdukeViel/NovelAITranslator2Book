@@ -9,6 +9,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Cancel superseded PR runs (they only consume runner time), but never
+  # cancel branch runs on main/develop: those are the authoritative CI
+  # signals that build.yml waits on before publishing images.
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   backend-lint:
     runs-on: ubuntu-latest
@@ -20,13 +27,13 @@ jobs:
           python-version: "3.13"
 
       # Python CI dependencies come from the locked uv.lock graph (maintained
-      # by Dependabot); --frozen fails CI if the lock drifts from pyproject.
+      # by Dependabot); --locked fails CI if the lock drifts from pyproject.
       - run: pip install "uv==0.12.0"
       - run: >-
-          uv sync --frozen --extra documents --extra gemini --extra dev
+          uv sync --locked --extra documents --extra gemini --extra dev
           --extra test --extra s3 --extra auth
-      - run: uv run ruff check .
-      - run: uv run pyright
+      - run: uv run --locked ruff check .
+      - run: uv run --locked pyright
 
       - name: Router layer violation check
         run: |
@@ -72,14 +79,14 @@ jobs:
 
       - run: pip install "uv==0.12.0"
       - run: >-
-          uv sync --frozen --extra documents --extra gemini --extra dev
+          uv sync --locked --extra documents --extra gemini --extra dev
           --extra test --extra s3 --extra auth
 
       - name: Bootstrap Supabase auth signature on vanilla PostgreSQL
         env:
           DATABASE_URL: postgresql://novelai:novelai@localhost:5432/novelai
         run: |
-          uv run python - <<'PY'
+          uv run --locked python - <<'PY'
           import os
           from pathlib import Path
 
@@ -94,11 +101,11 @@ jobs:
         working-directory: backend
         env:
           DATABASE_URL: postgresql+psycopg://novelai:novelai@localhost:5432/novelai
-        run: uv run alembic -c alembic.ini upgrade head
+        run: uv run --locked alembic -c alembic.ini upgrade head
 
       - name: Run unit tests
         run: >
-          uv run pytest --basetemp=backend/tests/.tmp/pytest-core --tb=short -q -m "not e2e and not slow"
+          uv run --locked pytest --basetemp=backend/tests/.tmp/pytest-core --tb=short -q -m "not e2e and not slow"
           --ignore=backend/tests/test_admin_glossary_api.py
           --ignore=backend/tests/test_auth.py
           --ignore=backend/tests/test_checkpoint_resume.py
@@ -182,10 +189,10 @@ jobs:
 
       - run: pip install "uv==0.12.0"
       - run: >-
-          uv sync --frozen --extra documents --extra gemini --extra dev
+          uv sync --locked --extra documents --extra gemini --extra dev
           --extra test --extra s3 --extra auth
       - run: >-
-          uv run pytest --basetemp=backend/tests/.tmp/pytest-${{ matrix.shard }}
+          uv run --locked pytest --basetemp=backend/tests/.tmp/pytest-${{ matrix.shard }}
           --tb=short -q ${{ matrix.test_files }}
 
   frontend-check:
@@ -260,9 +267,15 @@ jobs:
         with:
           filters: |
             relevant:
-              - 'backend/src/novelai/services/**'
-              - 'backend/src/novelai/api/**'
+              - '.github/workflows/ci.yml'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'backend/src/**'
               - 'backend/tests/e2e/**'
+              - 'backend/tests/fixtures/e2e/**'
+              - 'backend/tests/conftest.py'
+              - 'backend/alembic/**'
+              - 'backend/sql/**'
 
       - if: steps.filter.outputs.relevant == 'true'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -274,10 +287,10 @@ jobs:
 
       - if: steps.filter.outputs.relevant == 'true'
         run: >-
-          uv sync --frozen --extra documents --extra gemini --extra dev
+          uv sync --locked --extra documents --extra gemini --extra dev
           --extra test --extra s3 --extra auth
 
       - if: steps.filter.outputs.relevant == 'true'
         run: >-
-          uv run pytest --basetemp=backend/tests/.tmp/pytest-e2e -m e2e
-          --tb=short -q
+          uv run --locked pytest --basetemp=backend/tests/.tmp/pytest-e2e
+          -m e2e --tb=short -q

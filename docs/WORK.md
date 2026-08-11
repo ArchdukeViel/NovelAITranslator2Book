@@ -89,6 +89,9 @@ Verified 2026-07-31T17:35:35Z on PR #15 (`feat/yokocho-phase1-docs`, base
 lint/tests, and frontend-check all passed; Vercel preview deployment
 completed.
 
+- 2026-08-11: Added `dependency-review` to required status checks on `main` branch protection via GitHub API (`strict: true` preserved; contexts: `docker-build`, `e2e-tests`, 3× `Analyze (...)`, `GitGuardian scan`, `dependency-review`).
+- 2026-08-11: Configured production pre-deployment gate in `deploy.yml` calling `managed-services-verification.yml` (`required: true`). Staging deployments bypass the check via an explicit `!cancelled() && (inputs.environment != 'production' || needs.managed-services-check.result == 'success')` condition.
+
 Revised 2026-07-31T17:46:50Z: `required_approving_review_count` set to `0`
 after a merge deadlock — GitHub forbids PR authors from approving their own
 pull request and the repository's only write-access user is the PR author, so
@@ -143,10 +146,7 @@ Existing tooling: `.github/workflows/managed-services-verification.yml`,
 1. Configure isolated test DB, R2 source bucket/prefix, R2 backup target, and
    separate least-privilege credentials in provider secret storage.
 2. Set `MANAGED_SERVICE_TESTS_ENABLED=true`.
-3. Run the workflow against the candidate commit. Since the workflow is also
-   `workflow_call`-able, production deployments invoke it automatically as a
-   pre-deployment gate (`required=true` runs it unconditionally, so hosted
-   verification cannot be silently skipped before a production deploy).
+3. Run the workflow against the candidate commit.
 4. Record workflow URL, commit, UTC time, sanitized counts, and any failures.
 5. Confirm source/app/backup credentials cannot perform each other's
    prohibited operations (read/write/delete scope check).

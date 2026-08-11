@@ -40,9 +40,9 @@ jobs:
           python-version: "3.13"
       - run: pip install "uv==0.12.0"
       - run: >-
-          uv sync --frozen --extra dev --extra test --extra s3 --extra auth
+          uv sync --locked --extra dev --extra test --extra s3 --extra auth
       - name: Verify hosted PostgreSQL and isolated R2 prefixes
         run: >
-          uv run pytest -q -m integration
+          uv run --locked pytest -q -m integration
           backend/tests/integration/test_managed_postgres.py
           backend/tests/integration/test_r2_snapshot_integration.py
