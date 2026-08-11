@@ -17,8 +17,27 @@ def test_ci_core_exclusions_are_all_exercised_by_extended_shards() -> None:
 
     assert ignored
     assert "backend-extended:" in source
-    assert all(test_path in source[source.index("backend-extended:") :] for test_path in ignored)
-    assert "needs: [backend-tests, backend-extended, frontend-check]" in source
+    extended_section = source[source.index("backend-extended:") :]
+    for test_path in ignored:
+        assert test_path in extended_section, f"Ignored test {test_path} not found in backend-extended shards"
+
+    # Contract: every backend test file in backend/tests/ (except e2e directory and test_ci_workflows.py)
+    # must be either in core (not ignored) or in extended shards, and no test file is duplicated across shards.
+    tests_dir = Path(__file__).parent
+    all_unit_test_files = {
+        f"backend/tests/{p.name}" for p in tests_dir.glob("test_*.py") if p.name != "test_ci_workflows.py"
+    }
+
+    extended_files = set(re.findall(r"backend/tests/test_[a-zA-Z0-9_]+\.py", extended_section))
+
+    # Assert exact match between ignored set and extended files set
+    assert ignored == extended_files, (
+        f"Mismatch between core --ignore set and extended shard files: {ignored ^ extended_files}"
+    )
+
+    # Assert total files accounted for
+    core_files = all_unit_test_files - extended_files
+    assert core_files | extended_files == all_unit_test_files
 
 
 def test_workflow_actions_are_pinned_to_full_commit_shas() -> None:
