@@ -4,13 +4,22 @@ on:
   schedule:
     - cron: "17 2 * * 1"
   workflow_dispatch:
+  workflow_call:
+    # When called as a pre-deployment gate (required=true) the job runs
+    # unconditionally so a production deploy cannot silently skip hosted
+    # verification. Scheduled/manual runs keep the variable gate.
+    inputs:
+      required:
+        description: "Run unconditionally (pre-deployment gate)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   hosted-postgres-and-r2:
-    if: ${{ vars.MANAGED_SERVICE_TESTS_ENABLED == 'true' }}
+    if: ${{ inputs.required || vars.MANAGED_SERVICE_TESTS_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -29,11 +38,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
-          cache: pip
-          cache-dependency-path: requirements-dev.lock
-      - run: pip install -e ".[dev,test,s3,auth]"
+      - run: pip install "uv==0.12.0"
+      - run: >-
+          uv sync --frozen --extra dev --extra test --extra s3 --extra auth
       - name: Verify hosted PostgreSQL and isolated R2 prefixes
         run: >
-          pytest -q -m integration
+          uv run pytest -q -m integration
           backend/tests/integration/test_managed_postgres.py
           backend/tests/integration/test_r2_snapshot_integration.py

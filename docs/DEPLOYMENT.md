@@ -126,6 +126,13 @@ Owner-operated settings should match tracked workflow expectations:
   reviewer is added.
 - Keep default `GITHUB_TOKEN` read-only; grant write only per job.
 - Pin third-party actions to immutable SHAs.
+- CI installs Python dependencies from `uv.lock` via
+  `uv sync --frozen --extra documents --extra gemini --extra dev --extra test
+  --extra s3 --extra auth` (Dependabot keeps the lock fresh; `--frozen` fails
+  CI if the lock drifts from `pyproject.toml`), and Node comes from
+  `frontend/.nvmrc` (Node 22, matching the production image).
+- GHCR publications attach signed SLSA build-provenance attestations
+  (`actions/attest`); verify with `gh attestation verify`.
 - Enable dependency graph, Dependabot security updates, CodeQL, secret scanning,
   push protection, and validity checks.
 - Keep deployment secrets in GitHub environments/provider secret stores, never files.

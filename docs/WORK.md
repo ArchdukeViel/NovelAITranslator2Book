@@ -143,7 +143,10 @@ Existing tooling: `.github/workflows/managed-services-verification.yml`,
 1. Configure isolated test DB, R2 source bucket/prefix, R2 backup target, and
    separate least-privilege credentials in provider secret storage.
 2. Set `MANAGED_SERVICE_TESTS_ENABLED=true`.
-3. Run the workflow against the candidate commit.
+3. Run the workflow against the candidate commit. Since the workflow is also
+   `workflow_call`-able, production deployments invoke it automatically as a
+   pre-deployment gate (`required=true` runs it unconditionally, so hosted
+   verification cannot be silently skipped before a production deploy).
 4. Record workflow URL, commit, UTC time, sanitized counts, and any failures.
 5. Confirm source/app/backup credentials cannot perform each other's
    prohibited operations (read/write/delete scope check).
