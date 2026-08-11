@@ -15,6 +15,9 @@ def replace_with_retry(src: Path, dst: Path, *, attempts: int = 8) -> None:
     unbounded loops. The retry budget is fixed (max ~1s total); a genuine
     permission problem still fails fast.
     """
+    if attempts < 1:
+        raise ValueError("attempts must be >= 1")
+
     for attempt in range(attempts):
         try:
             os.replace(src, dst)
