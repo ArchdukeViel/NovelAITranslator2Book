@@ -15,15 +15,18 @@ jobs:
     concurrency:
       group: production-external-monitor
       cancel-in-progress: true
-    # No domain yet: the secret is unset, so the job is skipped instead of
-    # failing red every five minutes. Set PRODUCTION_BASE_URL once a
-    # production domain exists.
-    if: ${{ secrets.PRODUCTION_BASE_URL != '' }}
     env:
       PRODUCTION_BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
+
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Production domain not configured
+        if: ${{ env.PRODUCTION_BASE_URL == '' }}
+        run: echo "PRODUCTION_BASE_URL is not configured; production monitor skipped."
+
       - name: Run external public smoke checks
+        if: ${{ env.PRODUCTION_BASE_URL != '' }}
         shell: pwsh
         run: |
           & "deploy/scripts/deploy-smoke.ps1" -BaseUrl $env:PRODUCTION_BASE_URL -ExternalMonitor
