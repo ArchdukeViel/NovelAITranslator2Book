@@ -1031,7 +1031,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.21" },
     { name = "sqlalchemy", marker = "extra == 'db'", specifier = ">=2.0.51" },
     { name = "sqlalchemy", marker = "extra == 'dev'", specifier = ">=2.0.51" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.51.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.1" },
 ]
 provides-extras = ["gemini", "test", "documents", "db", "worker", "auth", "s3", "dev"]
 
