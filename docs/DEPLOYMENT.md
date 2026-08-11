@@ -91,6 +91,35 @@ Validator output remains redacted.
    storage scope, and frontend.
 7. Record release commit, immutable tags, UTC time, and sanitized evidence.
 
+## Deploy Workflow
+
+`.github/workflows/deploy.yml` performs manual deployments via
+`workflow_dispatch` with two inputs:
+
+- `version` — published GHCR image tag, `latest` or `sha-<full commit SHA>`
+  (default `latest`).
+- `environment` — `staging` or `production`.
+
+Hardening contract:
+
+- **Production is SHA-only.** The workflow validates the version input before
+  any remote command runs: production deployments require an immutable
+  `sha-<40 lowercase hex>` tag; `latest` is accepted for staging only. The
+  validated value is passed to the remote SSH script through environment
+  variables, never through expression interpolation into the script body.
+- **One deployment per environment at a time.** `concurrency` groups by target
+  environment with `cancel-in-progress: false`; a newer deployment request
+  waits rather than cancel a deployment that is mid-migration or starting
+  containers.
+- **Post-deploy acceptance gate.** After `docker compose up`, production
+  deploys run `deploy/scripts/deploy-smoke.ps1 -Production` against
+  `PRODUCTION_BASE_URL` (validates live/ready, routing, catalog, frontend,
+  legal/SEO, and owner recovery health). The deployment is reported **failed**
+  unless the smoke gate passes (fail-closed). Required repository variable:
+  `PRODUCTION_BASE_URL`; required production-environment secret:
+  `NOVELAI_SMOKE_SESSION_COOKIE`. Staging deploys do not run the remote smoke gate
+  because no staging base URL variable is configured.
+
 ## Rollback
 
 - Redeploy previous immutable image/version.
@@ -109,6 +138,12 @@ Validator output remains redacted.
 - GitHub Actions workflow `.github/workflows/production-monitor.yml` requests a
   run every 5 minutes against `PRODUCTION_BASE_URL` via
   `deploy-smoke.ps1 -ExternalMonitor`; GitHub schedule delivery is best-effort.
+- The monitor job is gated on repository variable `PRODUCTION_MONITOR_ENABLED`
+  (`'true'` to enable). Set it only once a real production domain exists, so
+  scheduled runs do not allocate runners while monitoring is disabled.
+- Checks use a 10-second per-URL timeout (`-TimeoutSeconds 10`). Runs are
+  serialized with `cancel-in-progress: false`: an in-progress run is never
+  canceled, so a slow degraded-incident run still reaches its failure result.
 - Checks: live, ready, public catalog, frontend, robots.txt, sitemap.xml,
   privacy/terms/legal routes. No session cookie — public surface only.
 - Failure produces a failed workflow run visible in repo. Real operator
@@ -118,10 +153,12 @@ Validator output remains redacted.
 
 Owner-operated settings should match tracked workflow expectations:
 
-- Protect `main`: PR required, conversations resolved, required CI, CodeQL, and
-  GitGuardian checks, no force push/deletion, owner-only bypass. No approving-
-  review requirement: this is a single-operator repository and GitHub forbids
-  PR authors from approving their own pull request, so a review gate would
+- Protect `main`: PR required, conversations resolved, required status checks
+  (`docker-build`, `e2e-tests`, 3× CodeQL `Analyze (...)`, `GitGuardian scan`,
+  and `dependency-review`), no force push/deletion, owner-only bypass. Dependency
+  Review is a required status check running on read-only permissions (`contents: read`).
+  No approving-review requirement: this is a single-operator repository and GitHub
+  forbids PR authors from approving their own pull request, so a review gate would
   block every merge. Re-enable review requirements if a second write-access
   reviewer is added.
 - Keep default `GITHUB_TOKEN` read-only; grant write only per job.
@@ -137,9 +174,18 @@ Owner-operated settings should match tracked workflow expectations:
 - Verify actual required-check names against current `.github/workflows/`; docs
   do not override workflows.
 
-Required deployment secret categories: target host/user/key where SSH deploy is
-used, DB URL, session/bootstrap/credential-encryption secrets, explicit origins,
-public URL, provider credentials, and managed-service verification credentials.
+Required deployment configuration:
+
+- Repository variables:
+  - `PRODUCTION_BASE_URL`
+  - `PRODUCTION_MONITOR_ENABLED`
+- Production-environment secrets:
+  - `DEPLOY_HOST`
+  - `DEPLOY_USER`
+  - `DEPLOY_SSH_KEY`
+  - `NOVELAI_SMOKE_SESSION_COOKIE`
+- Managed-service verification variables and credentials use the scopes
+  documented by `managed-services-verification.yml`.
 
 ## Provider Boundaries
 

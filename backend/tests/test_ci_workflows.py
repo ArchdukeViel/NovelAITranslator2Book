@@ -26,6 +26,10 @@ def test_workflow_actions_are_pinned_to_full_commit_shas() -> None:
     for path in sorted(WORKFLOWS_DIR.glob("*.yml")):
         action_lines.extend(line.strip() for line in path.read_text(encoding="utf-8").splitlines() if "uses:" in line)
 
+    # Local reusable-workflow references (.github/workflows/...) are not
+    # third-party actions and are exempt from SHA pinning.
+    action_lines = [line for line in action_lines if not line.startswith("uses: ./.github/")]
+
     assert action_lines
     assert all(PINNED_ACTION.fullmatch(line) for line in action_lines), action_lines
 
@@ -42,7 +46,15 @@ def test_build_summary_fails_unless_publication_succeeds() -> None:
 def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     source = _workflow("deploy.yml")
 
-    assert 'export VERSION="${{ steps.version.outputs.value }}"' in source
+    # The remote SSH script must never interpolate workflow expressions: the
+    # free-form version input is validated first, then passed to the script
+    # only through the ssh-action envs mechanism.
+    script_start = source.index("script: |")
+    assert "envs: VERSION,DEPLOY_ENV" in source[:script_start]
+    script = source[script_start : source.index("- name: Smoke test production deployment")]
+    assert "${{" not in script
+    assert r"^sha-[0-9a-f]{40}$" in source
+    assert '"$DEPLOY_ENV" == "production"' in source
     assert "push:\n    tags:" not in source
     assert source.index("docker compose run --rm migrate") < source.index("docker compose up -d")
 
@@ -75,3 +87,50 @@ def test_secret_backed_opencode_workflow_restricts_commenters() -> None:
     assert "timeout-minutes: 15" in source
     assert "npx --yes opencode-ai@1.18.11 github run" in source
     assert "anomalyco/opencode/github@" not in source
+
+
+def test_ci_e2e_filter_includes_all_required_inputs() -> None:
+    source = _workflow("ci.yml")
+    required_filter_paths = [
+        ".github/workflows/ci.yml",
+        "pyproject.toml",
+        "uv.lock",
+        "backend/src/**",
+        "backend/tests/e2e/**",
+        "backend/tests/fixtures/e2e/**",
+        "backend/tests/conftest.py",
+        "backend/alembic/**",
+        "backend/sql/**",
+    ]
+    for path in required_filter_paths:
+        assert path in source, f"Missing {path} in E2E filter"
+
+
+def test_production_monitor_contract() -> None:
+    source = _workflow("production-monitor.yml")
+    assert "vars.PRODUCTION_MONITOR_ENABLED == 'true'" in source
+    assert "vars.PRODUCTION_BASE_URL" in source
+    assert "secrets.PRODUCTION_BASE_URL" not in source
+    assert "cancel-in-progress: false" in source
+    assert "-TimeoutSeconds 10" in source
+    assert 'echo "PRODUCTION_BASE_URL is not configured; production monitor skipped."' not in source
+    assert "exit 1" in source
+
+
+def test_deploy_input_flow_and_smoke_vars() -> None:
+    source = _workflow("deploy.yml")
+    assert "$GITHUB_OUTPUT" not in source
+    assert "VERSION: ${{ inputs.version }}" in source
+    assert "DEPLOY_ENV: ${{ inputs.environment }}" in source
+    assert "environment: ${{ inputs.environment }}" in source
+    assert "vars.PRODUCTION_BASE_URL" in source
+    assert "secrets.NOVELAI_SMOKE_SESSION_COOKIE" in source
+    assert "secrets.PRODUCTION_BASE_URL" not in source
+
+
+def test_dependency_review_least_privilege() -> None:
+    source = _workflow("dependency-review.yml")
+    assert "contents: read" in source
+    assert "pull-requests: write" not in source
+    assert "pull_request_target" not in source
+    assert "comment-summary-in-pr: always" not in source
