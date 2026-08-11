@@ -238,7 +238,7 @@ absent (legacy rows).
 
 - Atomic writes write new bytes to a same-directory temporary file, flush/fsync where applicable, and perform an atomic replace using the shared primitive `novelai.utils.filesystem.replace_with_retry`.
 - The shared atomic replace wraps `os.replace` in a bounded retry loop for transient `PermissionError` (8 attempts, bounded increasing backoff of 0.02 s × retry number). Persistent `PermissionError` is re-raised after the bounded retry budget. There is no delete-then-replace fallback.
-- An exhausted failure preserves the previous committed target intact and cleans the failed temporary file.
+- An exhausted replacement preserves the previous committed target intact. Atomic-write callers clean their failed temporary file.
 - Path validation rejects traversal, roots, project roots, and symlink escape.
 - Object writes use storage-prefix semantics, not directory-marker assumptions.
 - Library summary and similar caches are derived, bounded, invalidated after
