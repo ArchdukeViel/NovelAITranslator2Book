@@ -12,9 +12,15 @@ jobs:
   public-health-and-seo:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Repository variable (not secret): set PRODUCTION_MONITOR_ENABLED=true
+    # only once a real production domain exists, so the scheduled run does
+    # not allocate runners to announce a missing secret.
+    if: ${{ vars.PRODUCTION_MONITOR_ENABLED == 'true' }}
     concurrency:
       group: production-external-monitor
-      cancel-in-progress: true
+      # Never cancel an in-progress run: during an incident a slow run may be
+      # the very one about to report the red result. Newer runs queue instead.
+      cancel-in-progress: false
     env:
       PRODUCTION_BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
 
@@ -29,4 +35,4 @@ jobs:
         if: ${{ env.PRODUCTION_BASE_URL != '' }}
         shell: pwsh
         run: |
-          & "deploy/scripts/deploy-smoke.ps1" -BaseUrl $env:PRODUCTION_BASE_URL -ExternalMonitor
+          & "deploy/scripts/deploy-smoke.ps1" -BaseUrl $env:PRODUCTION_BASE_URL -ExternalMonitor -TimeoutSeconds 10

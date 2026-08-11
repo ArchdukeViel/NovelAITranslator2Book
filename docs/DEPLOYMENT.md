@@ -91,6 +91,35 @@ Validator output remains redacted.
    storage scope, and frontend.
 7. Record release commit, immutable tags, UTC time, and sanitized evidence.
 
+## Deploy Workflow
+
+`.github/workflows/deploy.yml` performs manual deployments via
+`workflow_dispatch` with two inputs:
+
+- `version` — published GHCR image tag, `latest` or `sha-<full commit SHA>`
+  (default `latest`).
+- `environment` — `staging` or `production`.
+
+Hardening contract:
+
+- **Production is SHA-only.** The workflow validates the version input before
+  any remote command runs: production deployments require an immutable
+  `sha-<40 lowercase hex>` tag; `latest` is accepted for staging only. The
+  validated value is passed to the remote SSH script through environment
+  variables, never through expression interpolation into the script body.
+- **One deployment per environment at a time.** `concurrency` groups by target
+  environment with `cancel-in-progress: false`; a newer deployment request
+  waits rather than cancel a deployment that is mid-migration or starting
+  containers.
+- **Post-deploy acceptance gate.** After `docker compose up`, production
+  deploys run `deploy/scripts/deploy-smoke.ps1 -Production` against
+  `PRODUCTION_BASE_URL` (validates live/ready, routing, catalog, frontend,
+  legal/SEO, and owner recovery health). The deployment is reported **failed**
+  unless the smoke gate passes (fail-closed). Required production-environment
+  secrets: `PRODUCTION_BASE_URL` and `NOVELAI_SMOKE_SESSION_COOKIE`. Staging
+  deploys do not run the remote smoke gate because no staging base URL secret
+  is configured.
+
 ## Rollback
 
 - Redeploy previous immutable image/version.
@@ -109,6 +138,12 @@ Validator output remains redacted.
 - GitHub Actions workflow `.github/workflows/production-monitor.yml` requests a
   run every 5 minutes against `PRODUCTION_BASE_URL` via
   `deploy-smoke.ps1 -ExternalMonitor`; GitHub schedule delivery is best-effort.
+- The monitor job is gated on repository variable `PRODUCTION_MONITOR_ENABLED`
+  (`'true'` to enable). Set it only once a real production domain exists, so
+  scheduled runs do not allocate runners while monitoring is disabled.
+- Checks use a 10-second per-URL timeout (`-TimeoutSeconds 10`). Runs are
+  serialized with `cancel-in-progress: false`: an in-progress run is never
+  canceled, so a slow degraded-incident run still reaches its failure result.
 - Checks: live, ready, public catalog, frontend, robots.txt, sitemap.xml,
   privacy/terms/legal routes. No session cookie — public surface only.
 - Failure produces a failed workflow run visible in repo. Real operator

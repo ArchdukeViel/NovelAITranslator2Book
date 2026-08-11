@@ -9,6 +9,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Cancel superseded PR runs (they only consume runner time), but never
+  # cancel branch runs on main/develop: those are the authoritative CI
+  # signals that build.yml waits on before publishing images.
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   backend-lint:
     runs-on: ubuntu-latest
@@ -251,9 +258,11 @@ jobs:
         with:
           filters: |
             relevant:
-              - 'backend/src/novelai/services/**'
-              - 'backend/src/novelai/api/**'
+              - 'backend/src/**'
               - 'backend/tests/e2e/**'
+              - 'backend/tests/conftest.py'
+              - 'backend/alembic/**'
+              - 'backend/sql/**'
 
       - if: steps.filter.outputs.relevant == 'true'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
