@@ -23,9 +23,11 @@ Rules:
   swapping `active_generation.json`: manifest status, metadata identity,
   every-index-entry-resolved (bundle or explicit
   `unavailable_chapter_ids`), image-asset resolution inside the staged
-  generation, hash reconciliation, count reconciliation. On failure the
-  stage is rolled back. Explicit recovery uses
-  `commit_generation_recovery(reason=..., evidence=...)` which requires
+  generation, hash reconciliation, count reconciliation. Normal activation requires
+  one canonical disposition per current-index chapter, exact reconciliation with
+  physical stage state, explicit unavailable/failure state, and no normal bypass
+  of disposition validation. On failure the stage is rolled back. Explicit recovery
+  uses `commit_generation_recovery(reason=..., evidence=...)` which requires
   non-empty operator consent and bypasses the strict validation gate.
 - Chapter selection resolves through `resolve_chapter_selection` against
   the complete current index. Kakuyomu ids (`kakuyomu:<episode>`) are

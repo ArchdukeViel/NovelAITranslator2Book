@@ -12,5 +12,5 @@ Local scripts that always run inside the project virtualenv
   ``.venv/Scripts/python.exe -m ruff``.
 
 Each script refuses to run if ``.venv\Scripts\python.exe`` is missing.
-The CI workflow installs ``.[documents,gemini,dev,db,worker,s3,auth]``
+The CI workflow installs ``.[documents,gemini,dev,test,s3,auth]``
 into the venv before invoking tooling.

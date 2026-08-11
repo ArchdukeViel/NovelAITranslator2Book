@@ -127,13 +127,13 @@ the target.
 - **Windows file-lock resilience**: `os.replace` (atomic rename) on Windows
   can transiently fail with `WinError 5` (`Access is denied`) when the
   destination is briefly held open (antivirus scan, reader handle, directory
-  watcher). The filesystem backend and `StorageService._write_text_atomic`
-  wrap the replace in a bounded retry loop (8 attempts, exponential backoff
-  20–160 ms, ~1 s total budget). A genuine permission error still fails
-  immediately. A focused test (`test_atomic_write_survives_transient_windows_file_lock`)
-  proves recovery from transient `PermissionError` without broad sleeps or
-  unbounded loops. A permanently held handle remains non-blocking debt
-  (documented in commit `d60d7bd`).
+  watcher). The shared filesystem primitive `novelai.utils.filesystem.replace_with_retry`
+  wraps the replace in a bounded retry loop (defaults to 8 attempts, requires
+  `attempts >= 1`, retries only `PermissionError`, uses bounded short backoff
+  0.02s * attempt, ~0.72s total budget). A genuine permission error fails fast after
+  retries. Failed atomic replacements do not delete the committed destination,
+  and callers clean temporary files so the old target remains intact on failure.
+  A permanently held handle fails gracefully with target preservation.
 
 ## Backend Boundaries
 

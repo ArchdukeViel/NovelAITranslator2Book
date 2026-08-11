@@ -46,7 +46,7 @@ backend tooling through the wrappers in `tools/`:
 - `tools/ruff.ps1` — runs ruff check / format.
 
 Each script refuses to run when `.venv\Scripts\python.exe` is missing.
-The CI workflow installs `.[documents,gemini,dev,db,worker,s3,auth]`
+The CI workflow installs `.[documents,gemini,dev,test,s3,auth]`
 into the venv before invoking tooling. Bare `python` / `pytest` /
 `ruff` / `pyright` invocations outside the wrappers fall through to
 the system interpreter and lose the venv pinning.

@@ -103,7 +103,7 @@ reviewer exists. Remaining: sanitized incident/false-positive triage exercise
 Revised 2026-08-08: `main-protection` ruleset (id `20510996`,
 `repos/.../rulesets/20510996`) updated to set `require_code_owner_review`
 and `require_last_push_approval` to `false` after the same solo-operator
-deadlock surfaced via the ruleset (no CODEOWNERS file exists, and the only
+deadlock surfaced via the ruleset (.github/CODEOWNERS exists, but the only
 write-access user cannot approve their own PR — verified on PR #41:
 `mergeable_state=blocked` with every required check passing). All other
 ruleset rules preserved: `deletion`, `pull_request`

@@ -1,3 +1,14 @@
+## 2026-08-11 PR-41 CLOSURE — Provider Exception Sanitization, Shared Atomic Replacement & Final Documentation Synchronization
+
+Final documentation synchronization pass for PR #41 on `feat/pipeline-upgrade-phases-1-8`.
+
+### Implementation Summary
+
+- **Provider Exception & Sanitization Safety**: Standardized provider exception cause-chain sanitization across Gemini and provider error paths; public API responses, error logs, and activity records never leak raw API keys, internal credentials, host details, or raw stack traces.
+- **Shared Atomic File Replacement**: Consolidated atomic write operations into `novelai.utils.filesystem.replace_with_retry` with bounded retry (8 attempts, `attempts >= 1` validation, `PermissionError` handling). Removed destructive delete-then-replace fallbacks across storage handlers, ensuring atomic target preservation and cleanup of temporary files on exhausted retries.
+- **CAS & Storage Integrity**: Verified `FilesystemBackend` save, compare-and-swap (CAS), and generation pointer activation invariants under inter-process locks, preserving atomic state and checkpoint safety.
+- **Final Remote Head Evidence**: All 94 commits on `feat/pipeline-upgrade-phases-1-8` validated; GitHub CI on remote head `ee046c0` green across backend lint/tests/shards, frontend lint/typecheck/vitest/build, E2E, Docker, CodeQL, GitGuardian, Dependency Review, and Vercel Preview.
+
 ## 2026-08-10 PR-41 FINAL — Provider-Pair Validation and Real-Pipeline Evidence Closure
 
 Final PR #41 closure pass on `feat/pipeline-upgrade-phases-1-8`: the resolver
@@ -16,11 +27,12 @@ fixed in production code.
   workflow/global models only when coherent with the resolved provider —
   a manifest is never created for an unknown provider or an unsupported
   explicit model pair.
-- **Delta fallback forces a fresh full retranslation**: the full retranslation
-  after any delta decline now runs with `force_retranslate=True`
-  (`force_retranslate=force or bool(delta_fallback_reason)`), realizing
+- **Delta fallback forces a fresh full retranslation**: when unsafe post-provider
+  delta rejection occurs, `_try_delta_translate_chapter` surfaces `fresh_full_required=True`,
+  and full fallback runs with `force_retranslate=True`, realizing
   `TRANSLATION_DELTA_FORCE_FULL_ON_UNSAFE`: the full path no longer reuses the
-  very window output the strict marker gate rejected.
+  very window output the strict marker gate rejected. Benign pre-provider declines
+  retain normal full-cache behavior.
 - **`force_retranslate` bypasses the translation cache**: `TranslateStage` skips
   the sharded `TranslationCacheService` lookup when `force_retranslate` is set
   (contract already documented by `test_translation_cache_contract.py`); a
@@ -72,8 +84,8 @@ fixed in production code.
   `provider.available_models()` raises an exception, distinguishing exception
   failures from `[]` (free-form allowed), failing closed before manifest creation.
 - **Audited fresh-full cache bypass scope**: `_try_delta_translate_chapter`
-  now surfaces `fresh_full_required: bool`. Unsafe window declines
-  (`changed_window_qa_failed`, `final_qa_failed`) set `fresh_full_required=True`
+  now surfaces `fresh_full_required: bool`. Unsafe post-provider delta rejection
+  (`changed_window_qa_failed`, `final_qa_failed`) sets `fresh_full_required=True`
   forcing `force_retranslate=True` on full fallback to bypass cache; benign
   pre-provider declines allow normal full cache lookup.
 - Docs: `docs/HISTORY.md` records this pass; `docs/TRANSLATION.md` already
@@ -117,7 +129,7 @@ translation because the window parser only accepted a structured
   to a strict `[P <id>]` marker parser (`_strict_marker_paragraph_map`):
   every marker exactly once, in source order, absolute chapter paragraph ids
   stamped into the window prompt via a new `paragraph_ids` option threaded
-  through `TranslationService.chapter()` into `SmartSegmentStage` (honored
+  through `TranslationService.translate_chapter()` into `SmartSegmentStage` (honored
   only on 1:1 segmentation match); `[CHAPTER <id>]` allowed once before the
   first paragraph when it matches; blank bodies preserved in order; any
   missing/duplicate/extra/reordered marker, preamble, or contradictory raw

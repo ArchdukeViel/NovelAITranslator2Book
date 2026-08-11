@@ -236,7 +236,9 @@ absent (legacy rows).
 
 ## Concurrency and Safety
 
-- Atomic writes use temp file plus replace and canonical inter-process lock where required.
+- Atomic writes write new bytes to a same-directory temporary file, flush/fsync where applicable, and perform an atomic replace using the shared primitive `novelai.utils.filesystem.replace_with_retry`.
+- The shared atomic replace wraps `os.replace` in a bounded retry loop for transient `PermissionError` (8 attempts, backoff 0.02s * attempt, ~0.72s budget). There is no delete-then-replace fallback.
+- An exhausted failure preserves the previous committed target intact and cleans the failed temporary file.
 - Path validation rejects traversal, roots, project roots, and symlink escape.
 - Object writes use storage-prefix semantics, not directory-marker assumptions.
 - Library summary and similar caches are derived, bounded, invalidated after

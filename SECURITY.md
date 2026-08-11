@@ -20,8 +20,7 @@
 ## Supported versions
 
 - Only the latest `main` is supported.
-- The active PR branch (`feat/pipeline-upgrade-phases-1-8`) is reviewed
-  for security findings through CodeQL and GitGuardian before merge.
+- Active pull requests are reviewed through CodeQL, GitGuardian, dependency review, and required CI before merge.
 
 ## Security features enabled
 

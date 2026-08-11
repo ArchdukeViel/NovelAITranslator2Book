@@ -173,13 +173,13 @@ When a delta changed window runs with `json_output=False`, the window parser
 (`_structured_map_from_result`) first attempts the structured `paragraph_map`,
 then falls back to a **strict `[P <id>]` marker parser**
 (`_strict_marker_paragraph_map`). The grammar mirrors the production prompt
-contract: every paragraph marker must appear exactly once, in source order,
-matching the chapter's absolute paragraph ids stamped into the window prompt
-via the `paragraph_ids` pipeline option; `[CHAPTER <id>]` may appear only once,
-before the first paragraph, and must match the window's chapter id. A blank
-body is valid — a paragraph the provider could not translate keeps its marker
-with the empty body preserved in order. Any missing, duplicate, extra, or
-reordered marker — or preamble, an unknown `[CHAPTER ...]` marker, or
+contract: actual marker occurrences must exactly match the expected ordered
+occurrence sequence matching the chapter's absolute paragraph ids stamped into
+the window prompt via the `paragraph_ids` pipeline option; `[CHAPTER <id>]` may
+appear only once, before the first paragraph, and must match the window's
+chapter id. A blank body is valid — a paragraph the provider could not translate
+keeps its marker with the empty body preserved in order. Any missing, duplicate,
+extra, or reordered marker — or preamble, an unknown `[CHAPTER ...]` marker, or
 contradictory raw outputs — is ambiguity, and the delta path fails closed to
 a full translation (`fallback_reason="changed_window_qa_failed"`).
 

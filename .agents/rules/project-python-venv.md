@@ -21,7 +21,7 @@ Rules:
   `docs/OPERATIONS.md` "Recovering the Project Venv" (or
   `readme.md`). Do not continue with a different interpreter.
 - The CI workflow installs
-  `.[documents,gemini,dev,db,worker,s3,auth]` into the venv before
+  `.[documents,gemini,dev,test,s3,auth]` into the venv before
   invoking tooling.
 - When verifying a change, use the smallest decisive check first:
   focused test file through `tools/pytest.ps1`, then type checking
