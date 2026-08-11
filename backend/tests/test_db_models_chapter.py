@@ -38,7 +38,7 @@ def novel(session):
 
 class TestChapterModel:
     def test_create_chapter(self, session, novel) -> None:
-        chapter = Chapter(novel_id=novel.id, chapter_number=1, title="Chapter 1")
+        chapter = Chapter(logical_chapter_id="lid-2", novel_id=novel.id, chapter_number=1, title="Chapter 1")
         session.add(chapter)
         session.commit()
         result = session.query(Chapter).filter_by(novel_id=novel.id, chapter_number=1).one()
@@ -46,7 +46,7 @@ class TestChapterModel:
         assert result.id is not None
 
     def test_default_statuses(self, session, novel) -> None:
-        chapter = Chapter(novel_id=novel.id, chapter_number=1)
+        chapter = Chapter(logical_chapter_id="lid-3", novel_id=novel.id, chapter_number=1)
         session.add(chapter)
         session.commit()
         result = session.query(Chapter).filter_by(novel_id=novel.id).one()
@@ -54,7 +54,7 @@ class TestChapterModel:
         assert result.translation_status == "pending"
 
     def test_optional_fields_nullable(self, session, novel) -> None:
-        chapter = Chapter(novel_id=novel.id, chapter_number=1)
+        chapter = Chapter(logical_chapter_id="lid-4", novel_id=novel.id, chapter_number=1)
         session.add(chapter)
         session.commit()
         result = session.query(Chapter).filter_by(novel_id=novel.id).one()
@@ -67,13 +67,13 @@ class TestChapterModel:
     def test_foreign_key_required(self, session) -> None:
         # SQLite requires PRAGMA foreign_keys = ON to enforce FK constraints.
         session.execute(__import__("sqlalchemy").text("PRAGMA foreign_keys = ON"))
-        chapter = Chapter(novel_id=9999, chapter_number=1)
+        chapter = Chapter(logical_chapter_id="lid-5", novel_id=9999, chapter_number=1)
         session.add(chapter)
         with pytest.raises(IntegrityError):
             session.commit()
 
     def test_cascade_delete(self, session, novel) -> None:
-        chapter = Chapter(novel_id=novel.id, chapter_number=1)
+        chapter = Chapter(logical_chapter_id="lid-6", novel_id=novel.id, chapter_number=1)
         session.add(chapter)
         session.commit()
         chapter_id = chapter.id
@@ -83,7 +83,7 @@ class TestChapterModel:
         assert result is None
 
     def test_timestamps_set_on_create(self, session, novel) -> None:
-        chapter = Chapter(novel_id=novel.id, chapter_number=1)
+        chapter = Chapter(logical_chapter_id="lid-7", novel_id=novel.id, chapter_number=1)
         session.add(chapter)
         session.commit()
         result = session.query(Chapter).filter_by(novel_id=novel.id).one()
@@ -91,7 +91,7 @@ class TestChapterModel:
         assert result.updated_at is not None
 
     def test_repr(self, session, novel) -> None:
-        chapter = Chapter(novel_id=novel.id, chapter_number=7)
+        chapter = Chapter(logical_chapter_id="lid-8", novel_id=novel.id, chapter_number=7)
         session.add(chapter)
         session.commit()
         assert str(novel.id) in repr(chapter)
@@ -100,21 +100,16 @@ class TestChapterModel:
 
 class TestNovelChaptersRelationship:
     def test_novel_chapters_backref(self, session, novel) -> None:
-        session.add(Chapter(novel_id=novel.id, chapter_number=1))
-        session.add(Chapter(novel_id=novel.id, chapter_number=2))
+        session.add(Chapter(logical_chapter_id="lid-9", novel_id=novel.id, chapter_number=1))
+        session.add(Chapter(logical_chapter_id="lid-10", novel_id=novel.id, chapter_number=2))
         session.commit()
         session.refresh(novel)
         assert len(novel.chapters) == 2
 
     def test_chapters_ordered_by_number(self, session, novel) -> None:
-        session.add(Chapter(novel_id=novel.id, chapter_number=3))
-        session.add(Chapter(novel_id=novel.id, chapter_number=1))
-        session.add(Chapter(novel_id=novel.id, chapter_number=2))
+        session.add(Chapter(logical_chapter_id="lid-11", novel_id=novel.id, chapter_number=3))
+        session.add(Chapter(logical_chapter_id="lid-12", novel_id=novel.id, chapter_number=1))
+        session.add(Chapter(logical_chapter_id="lid-13", novel_id=novel.id, chapter_number=2))
         session.commit()
-        chapters = (
-            session.query(Chapter)
-            .filter_by(novel_id=novel.id)
-            .order_by(Chapter.chapter_number)
-            .all()
-        )
+        chapters = session.query(Chapter).filter_by(novel_id=novel.id).order_by(Chapter.chapter_number).all()
         assert [c.chapter_number for c in chapters] == [1, 2, 3]

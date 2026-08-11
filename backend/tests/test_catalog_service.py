@@ -838,3 +838,92 @@ def test_storage_service_has_no_db_or_catalog_dependency() -> None:
         assert "novelai.db" not in storage_source
         assert "CatalogService" not in storage_source
         assert "safely_refresh_catalog_projection" not in storage_source
+
+
+# ---------------------------------------------------------------------------
+# S7 — Catalog projection: raw/translation ordering and native episode ID preservation
+# ---------------------------------------------------------------------------
+
+
+def test_save_raw_chapter_derives_native_episode_id_and_ordering_from_metadata(catalog, storage, db_session) -> None:
+    """save_raw_chapter derives native source_episode_id and ordering fields from
+    metadata chapter list when not explicitly provided, preserving native IDs
+    (e.g., Kakuyomu numeric episode ID) over logical prefixed keys."""
+    storage.save_metadata(
+        "kakuyomu-novel",
+        {
+            "title": "Kakuyomu Story",
+            "source_language": "Japanese",
+            "chapters": [
+                {
+                    "id": "kakuyomu:16818093075570329555",
+                    "source_episode_id": "16818093075570329555",
+                    "num": 5,
+                    "sequence_number": 5,
+                    "title": "Episode Five",
+                    "url": "https://kakuyomu.jp/works/123/episodes/16818093075570329555",
+                }
+            ],
+        },
+    )
+    catalog.get_or_create_novel("kakuyomu-novel", storage.load_metadata("kakuyomu-novel"))
+
+    catalog.save_raw_chapter(
+        "kakuyomu-novel",
+        "kakuyomu:16818093075570329555",
+        "Raw body text",
+        title="Episode Five",
+    )
+    db_session.commit()
+
+    db_ch = db_session.query(Chapter).filter_by(logical_chapter_id="kakuyomu:16818093075570329555").one()
+    assert db_ch.source_episode_id == "16818093075570329555"
+    assert db_ch.chapter_number == 5
+    assert db_ch.sequence_number == 5
+    assert db_ch.raw_status == "fetched"
+
+
+def test_save_translated_chapter_preserves_ordering_and_native_episode_id(catalog, storage, db_session) -> None:
+    """save_translated_chapter with omitted ordering parameters updates translation
+    status and storage key without resetting sequence_number, chapter_number, or
+    native source_episode_id to logical defaults."""
+    storage.save_metadata(
+        "kakuyomu-novel-2",
+        {
+            "title": "Kakuyomu Story 2",
+            "source_language": "Japanese",
+            "chapters": [
+                {
+                    "id": "kakuyomu:99999",
+                    "source_episode_id": "99999",
+                    "num": 12,
+                    "sequence_number": 12,
+                    "title": "Episode 12",
+                }
+            ],
+        },
+    )
+    catalog.get_or_create_novel("kakuyomu-novel-2", storage.load_metadata("kakuyomu-novel-2"))
+    catalog.save_raw_chapter(
+        "kakuyomu-novel-2",
+        "kakuyomu:99999",
+        "Raw content",
+        title="Episode 12",
+    )
+    db_session.commit()
+
+    # Save translation for the same chapter
+    catalog.save_translated_chapter(
+        "kakuyomu-novel-2",
+        "kakuyomu:99999",
+        "Translated content",
+        provider_key="mock",
+    )
+    db_session.commit()
+
+    db_ch = db_session.query(Chapter).filter_by(logical_chapter_id="kakuyomu:99999").one()
+    assert db_ch.source_episode_id == "99999"
+    assert db_ch.chapter_number == 12
+    assert db_ch.sequence_number == 12
+    assert db_ch.raw_status == "fetched"
+    assert db_ch.translation_status == "translated"

@@ -17,6 +17,16 @@ async def import_document(
     *,
     max_units: int | None = None,
 ) -> dict[str, Any]:
+    # Section 10/11: imports write the legacy novel-root layout directly
+    # (metadata, chapter bundles, image assets, media state). They are only
+    # allowed while no generation snapshot is active; once a crawl has
+    # activated a generation, importing must go through the staged flow so
+    # committed raw bytes are never mutated or shadowed.
+    if self.storage.get_active_generation(novel_id) is not None:
+        raise RuntimeError(
+            f"Import refused for {novel_id}: an active generation snapshot exists; "
+            "imports only support the legacy layout without a generation"
+        )
     adapter = self._input_adapter_factory(adapter_key)
     document = await adapter.import_document(source, max_units=max_units)
 
@@ -41,7 +51,9 @@ async def import_document(
         "origin_uri_or_path": document.origin_uri_or_path,
         "document_type": document.document_type,
         "input_adapter_key": document.adapter_key,
-        "context_group_id": document.metadata.get("context_group_id") if isinstance(document.metadata.get("context_group_id"), str) else novel_id,
+        "context_group_id": document.metadata.get("context_group_id")
+        if isinstance(document.metadata.get("context_group_id"), str)
+        else novel_id,
         "chapters": chapter_rows,
         **document.metadata,
     }
@@ -79,9 +91,18 @@ async def import_document(
                 entry.update(stored_asset)
             image_entries.append(entry)
 
-        joined_ocr_text = "\n".join(
-            text for text in [asset.ocr_text for asset in unit.images if isinstance(asset.ocr_text, str) and asset.ocr_text.strip()] if text
-        ) or None
+        joined_ocr_text = (
+            "\n".join(
+                text
+                for text in [
+                    asset.ocr_text
+                    for asset in unit.images
+                    if isinstance(asset.ocr_text, str) and asset.ocr_text.strip()
+                ]
+                if text
+            )
+            or None
+        )
         self.storage.save_chapter(
             novel_id,
             unit.unit_id,

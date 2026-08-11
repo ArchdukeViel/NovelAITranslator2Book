@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -197,6 +198,9 @@ def extract_unambiguous_json_object(raw_output: str) -> str:
 _CHAPTER_MARKER_RE = re.compile(r"^\[CHAPTER\s+([^\]]+)\]\s*$", re.MULTILINE)
 _PARAGRAPH_MARKER_RE = re.compile(r"^\[P\s+([^\]]+)\]\s*$", re.MULTILINE)
 _MARKER_LINE_RE = re.compile(r"^\[(?:CHAPTER\s+[^\]]+|P\s+[^\]]+)\]\s*$", re.MULTILINE)
+# Context-overlap blocks carry prior-chunk CONTEXT, not content the provider is
+# asked to translate; the block (markers and content) is stripped as a unit.
+_CONTEXT_OVERLAP_BLOCK_RE = re.compile(r"\[CONTEXT OVERLAP\].*?\[END CONTEXT OVERLAP\]", re.DOTALL)
 _IMAGE_PLACEHOLDER_RE = re.compile(
     r"(\[(?:image|img|illustration|cover)[^\]]*\]|\{\{\s*(?:image|img)[^}]*\}\}|!\[[^\]]*\]\([^)]+\))",
     re.IGNORECASE,
@@ -354,7 +358,7 @@ def _normalize_paragraph_map(value: Any) -> list[dict[str, str]]:
 
 
 def _strip_markers(text: str) -> str:
-    return _MARKER_LINE_RE.sub("", text or "").strip()
+    return _MARKER_LINE_RE.sub("", _CONTEXT_OVERLAP_BLOCK_RE.sub("", text or "")).strip()
 
 
 def _compact(text: str) -> str:
@@ -461,33 +465,43 @@ def _ref_id(ref: tuple[str, str]) -> str:
     return f"{chapter_id}:{paragraph_id}" if chapter_id else paragraph_id
 
 
-def _duplicate_refs(refs: list[tuple[str, str]]) -> list[tuple[str, str]]:
-    seen: set[tuple[str, str]] = set()
-    duplicates: list[tuple[str, str]] = []
-    for ref in refs:
-        if ref in seen and ref not in duplicates:
-            duplicates.append(ref)
-        seen.add(ref)
-    return duplicates
-
-
 def _paragraph_diagnostics(
     *,
     expected: list[tuple[str, str]],
     actual: list[tuple[str, str]],
 ) -> dict[str, Any]:
-    missing = [ref for ref in expected if ref not in actual]
-    unexpected = [ref for ref in actual if ref not in expected]
-    matching_order = [ref for ref in actual if ref in expected]
+    exp_counts = Counter(expected)
+    act_counts = Counter(actual)
+
+    missing_refs: list[tuple[str, str]] = []
+    for ref, exp_n in exp_counts.items():
+        act_n = act_counts.get(ref, 0)
+        if act_n < exp_n:
+            missing_refs.extend([ref] * (exp_n - act_n))
+
+    unexpected_refs: list[tuple[str, str]] = []
+    for ref, act_n in act_counts.items():
+        if ref not in exp_counts:
+            unexpected_refs.extend([ref] * act_n)
+
+    excess_refs: list[tuple[str, str]] = []
+    duplicate_ids: list[tuple[str, str]] = []
+    for ref, act_n in act_counts.items():
+        exp_n = exp_counts.get(ref, 0)
+        if exp_n > 0 and act_n > exp_n:
+            excess_refs.extend([ref] * (act_n - exp_n))
+            duplicate_ids.append(ref)
+
+    matching_order = [ref for ref in actual if ref in exp_counts]
     return {
         "expected_count": len(expected),
         "output_count": len(actual),
-        "missing_count": len(missing),
-        "unexpected_count": len(unexpected),
-        "duplicate_count": len(_duplicate_refs(actual)),
-        "missing_ids": [_ref_id(ref) for ref in missing],
-        "unexpected_ids": [_ref_id(ref) for ref in unexpected],
-        "duplicate_ids": [_ref_id(ref) for ref in _duplicate_refs(actual)],
+        "missing_count": len(missing_refs),
+        "unexpected_count": len(unexpected_refs),
+        "duplicate_count": len(excess_refs),
+        "missing_ids": [_ref_id(ref) for ref in missing_refs],
+        "unexpected_ids": [_ref_id(ref) for ref in unexpected_refs],
+        "duplicate_ids": [_ref_id(ref) for ref in duplicate_ids],
         "order_matches_expected": matching_order == expected,
     }
 
@@ -608,12 +622,13 @@ async def evaluate_translation_quality_with_llm(
     ``settings.LLM_QA_ENABLED``. Failures (provider error, malformed JSON,
     out-of-range number) return ``1.0`` so the deterministic QA stage
     never fails a translation on account of grader downtime — low scores
-    are surfaced as a ``needs_llm_retry`` QA status by the stage, not
+    are disposed of by the stage according to ``settings.LLM_QA_POLICY``
+    (advisory warning, bounded needs_retry, or needs_review), never
     raised here.
 
     ``provider`` may be ``None`` or the dummy provider, in which case the
-    grader is a no-op (score 1.0). The caller decides retry eligibility
-    by comparing the returned score against ``settings.LLM_QA_MIN_SCORE``.
+    grader is a no-op (score 1.0). The caller decides chunk disposition by
+    comparing the returned score against ``settings.LLM_QA_MIN_SCORE``.
     """
     if provider is None:
         return 1.0

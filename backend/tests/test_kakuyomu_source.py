@@ -153,15 +153,17 @@ def test_parse_metadata_html_collects_episode_links_in_order() -> None:
     assert metadata["updated_at"] == "2026-03-03T10:30:00+09:00"
     assert metadata["chapters"] == [
         {
-            "id": "1",
+            "id": "kakuyomu:822139845959540845",
             "num": 1,
+            "sequence_number": 1,
             "title": "第1話 はじまり",
             "url": "https://kakuyomu.jp/works/822139845959461179/episodes/822139845959540845",
             "source_episode_id": "822139845959540845",
         },
         {
-            "id": "2",
+            "id": "kakuyomu:822139845959540999",
             "num": 2,
+            "sequence_number": 2,
             "title": "第2話 続き",
             "url": "https://kakuyomu.jp/works/822139845959461179/episodes/822139845959540999",
             "source_episode_id": "822139845959540999",
@@ -208,10 +210,30 @@ def test_parse_metadata_html_prefers_grouped_next_data_toc_over_partial_links() 
                     },
                     "Chapter:part-1": {"__typename": "Chapter", "id": "part-1", "title": "Part One"},
                     "Chapter:part-2": {"__typename": "Chapter", "id": "part-2", "title": "Part Two"},
-                    "Episode:e1": {"__typename": "Episode", "id": "e1", "title": "Episode One", "publishedAt": "2026-01-01T00:00:00Z"},
-                    "Episode:e2": {"__typename": "Episode", "id": "e2", "title": "Episode Two", "publishedAt": "2026-01-02T00:00:00Z"},
-                    "Episode:e3": {"__typename": "Episode", "id": "e3", "title": "Episode Three", "publishedAt": "2026-01-03T00:00:00Z"},
-                    "Episode:e4": {"__typename": "Episode", "id": "e4", "title": "Episode Four", "publishedAt": "2026-01-04T00:00:00Z"},
+                    "Episode:e1": {
+                        "__typename": "Episode",
+                        "id": "e1",
+                        "title": "Episode One",
+                        "publishedAt": "2026-01-01T00:00:00Z",
+                    },
+                    "Episode:e2": {
+                        "__typename": "Episode",
+                        "id": "e2",
+                        "title": "Episode Two",
+                        "publishedAt": "2026-01-02T00:00:00Z",
+                    },
+                    "Episode:e3": {
+                        "__typename": "Episode",
+                        "id": "e3",
+                        "title": "Episode Three",
+                        "publishedAt": "2026-01-03T00:00:00Z",
+                    },
+                    "Episode:e4": {
+                        "__typename": "Episode",
+                        "id": "e4",
+                        "title": "Episode Four",
+                        "publishedAt": "2026-01-04T00:00:00Z",
+                    },
                 },
             },
         },
@@ -276,10 +298,7 @@ async def test_fetch_metadata_caps_kakuyomu_after_readable_episode_ordering() ->
 
     async def fake_fetch_page(url: str, on_retry=None) -> str:
         assert url == f"https://kakuyomu.jp/works/{work_id}"
-        links = "\n".join(
-            f'<a href="/works/{work_id}/episodes/e{index}">Episode {index}</a>'
-            for index in range(1, 5)
-        )
+        links = "\n".join(f'<a href="/works/{work_id}/episodes/e{index}">Episode {index}</a>' for index in range(1, 5))
         return f"""
         <html>
           <body>
@@ -319,7 +338,7 @@ def test_parse_chapter_html_preserves_structure_and_strips_furigana() -> None:
 
     assert chapter_text == (
         "霧の朝、彼女は目を覚ました。\n\n"
-        "古道具屋の前には猫がいた。\n路地は静かだ。\n\n"
+        "古道具屋《ふるどうぐや》の前には猫がいた。\n路地は静かだ。\n\n"
         "「今日は何かが起きる」\n\n"
         "------------------------------------------------------------\n\n"
         "次の場面へ。"
@@ -346,11 +365,7 @@ def test_parse_chapter_html_preserves_inline_image_placeholders() -> None:
 
     chapter_text = source._parse_chapter_html(html)
 
-    assert chapter_text == (
-        "Scene setup.\n\n"
-        "[Image: Morning alley]\n\n"
-        "Scene follow-up."
-    )
+    assert chapter_text == ("Scene setup.\n\n[Image: Morning alley]\n\nScene follow-up.")
 
 
 def test_parse_chapter_payload_extracts_image_metadata() -> None:
@@ -371,13 +386,11 @@ def test_parse_chapter_payload_extracts_image_metadata() -> None:
     </html>
     """
 
-    payload = source._parse_chapter_payload(html, "https://kakuyomu.jp/works/822139845959461179/episodes/822139845959540845")
-
-    assert payload["text"] == (
-        "Scene setup.\n\n"
-        "[Image: Morning alley]\n\n"
-        "Scene follow-up."
+    payload = source._parse_chapter_payload(
+        html, "https://kakuyomu.jp/works/822139845959461179/episodes/822139845959540845"
     )
+
+    assert payload["text"] == ("Scene setup.\n\n[Image: Morning alley]\n\nScene follow-up.")
     assert payload["images"] == [
         {
             "index": 0,
@@ -576,7 +589,5 @@ class TestKakuyomuURLCanonicalization:
 
     def test_normalize_url_handles_episode_input(self) -> None:
         source = KakuyomuSource()
-        url = source._normalize_url(
-            "https://kakuyomu.jp/works/822139845959461179/episodes/822139845959540845"
-        )
+        url = source._normalize_url("https://kakuyomu.jp/works/822139845959461179/episodes/822139845959540845")
         assert url == "https://kakuyomu.jp/works/822139845959461179"

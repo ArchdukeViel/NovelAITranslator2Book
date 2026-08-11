@@ -47,9 +47,7 @@ class RetryError(Exception):
     def __init__(self, message: str, last_exception: Exception, attempts: int):
         self.last_exception = last_exception
         self.attempts = attempts
-        super().__init__(
-            f"{message} (attempts: {attempts}, last error: {last_exception})"
-        )
+        super().__init__(f"{message} (attempts: {attempts}, last error: {last_exception})")
 
 
 class BackoffCalculator:
@@ -62,9 +60,7 @@ class BackoffCalculator:
     def _get_fibonacci(self, n: int) -> int:
         """Get nth Fibonacci number."""
         while len(self._fibonacci_cache) <= n:
-            self._fibonacci_cache.append(
-                self._fibonacci_cache[-1] + self._fibonacci_cache[-2]
-            )
+            self._fibonacci_cache.append(self._fibonacci_cache[-1] + self._fibonacci_cache[-2])
         return self._fibonacci_cache[n]
 
     def calculate(self, attempt: int) -> float:
@@ -81,10 +77,7 @@ class BackoffCalculator:
 
         # Calculate base delay
         if self.config.strategy == RetryStrategy.EXPONENTIAL:
-            base_delay = (
-                self.config.initial_delay
-                * (self.config.exponential_base ** attempt)
-            )
+            base_delay = self.config.initial_delay * (self.config.exponential_base**attempt)
         elif self.config.strategy == RetryStrategy.LINEAR:
             base_delay = self.config.initial_delay * (attempt + 1)
         elif self.config.strategy == RetryStrategy.FIBONACCI:
@@ -119,6 +112,7 @@ class Retrier:
         func: Callable[..., Awaitable[Any]],
         *args: Any,
         on_retry: Callable[[int, Exception], None] | None = None,
+        retry_delay_override: Callable[[int, Exception], float | None] | None = None,
         **kwargs: Any,
     ) -> Any:
         """Execute async function with retries.
@@ -130,6 +124,12 @@ class Retrier:
                 Called as ``on_retry(retry_number, exception)`` where retry_number
                 is 1-indexed (first retry = 1). Not called for initial attempt
                 or after final exhausted attempt.
+            retry_delay_override: Optional sync callback invoked before each
+                backoff sleep. Called as ``retry_delay_override(retry_number,
+                exception)``; when it returns a finite non-negative float that
+                value is used verbatim as the delay instead of the calculated
+                backoff (used to honor server ``Retry-After`` headers). The
+                caller is responsible for bounding the value.
             **kwargs: Keyword arguments
 
         Returns:
@@ -159,19 +159,25 @@ class Retrier:
 
                 # Check if we have more attempts
                 if attempt >= self.config.max_attempts - 1:
-                    logger.error(
-                        f"Retry exhausted after {self.config.max_attempts} attempts"
-                    )
+                    logger.error(f"Retry exhausted after {self.config.max_attempts} attempts")
                     break
 
                 # Calculate delay
                 delay = self.backoff.calculate(attempt)
-                logger.warning(
-                    f"Attempt {attempt + 1} failed: {e}, retrying in {delay:.2f}s..."
-                )
+                retry_number = attempt + 1
+                if retry_delay_override is not None:
+                    try:
+                        override = retry_delay_override(retry_number, e)
+                        if isinstance(override, (int, float)) and override >= 0:
+                            delay = float(override)
+                            logger.warning(
+                                f"Attempt {retry_number} failed: {e}, honoring server retry-after delay {delay:.2f}s..."
+                            )
+                    except Exception as callback_exc:
+                        logger.debug("Retry delay override failed: %s", callback_exc)
+                logger.warning(f"Attempt {attempt + 1} failed: {e}, retrying in {delay:.2f}s...")
 
                 # Call on_retry callback if provided
-                retry_number = attempt + 1
                 if self.config.on_retry:
                     try:
                         await self.config.on_retry(retry_number, e)
@@ -197,9 +203,7 @@ class Retrier:
 
         raise RuntimeError("Unexpected error in retry logic")
 
-    def execute_sync(
-        self, func: Callable[..., Any], *args: Any, **kwargs: Any
-    ) -> Any:
+    def execute_sync(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Execute sync function with retries.
 
         Args:
@@ -234,16 +238,12 @@ class Retrier:
 
                 # Check if we have more attempts
                 if attempt >= self.config.max_attempts - 1:
-                    logger.error(
-                        f"Retry exhausted after {self.config.max_attempts} attempts"
-                    )
+                    logger.error(f"Retry exhausted after {self.config.max_attempts} attempts")
                     break
 
                 # Calculate delay
                 delay = self.backoff.calculate(attempt)
-                logger.warning(
-                    f"Attempt {attempt + 1} failed: {e}, retrying in {delay:.2f}s..."
-                )
+                logger.warning(f"Attempt {attempt + 1} failed: {e}, retrying in {delay:.2f}s...")
 
                 # Wait before retrying
                 time.sleep(delay)
@@ -284,9 +284,7 @@ def retry_async(
             ...
     """
 
-    def decorator(
-        func: Callable[..., Awaitable[Any]]
-    ) -> Callable[..., Awaitable[Any]]:
+    def decorator(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
         retry_config = config or RetryConfig()
         retrier = Retrier(retry_config)
 

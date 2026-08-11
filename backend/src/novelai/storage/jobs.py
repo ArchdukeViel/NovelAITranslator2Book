@@ -7,10 +7,15 @@ from pathlib import Path
 from typing import Any
 
 from novelai.core.chapter_state import ChapterState, ChapterStateTransition
-from novelai.core.security import validate_storage_identifier
+from novelai.core.security import encode_physical_stem, validate_storage_identifier
 from novelai.storage.common import CheckpointInfo, _utc_now, _utc_now_iso
 
 logger = logging.getLogger(__name__)
+
+
+def _physical_stem(chapter_id: str) -> str:
+    """Return the filesystem-safe name for a logical chapter ID."""
+    return encode_physical_stem(validate_storage_identifier(str(chapter_id), "chapter_id"))
 
 
 def _get_state_dir(self: Any, novel_id: str) -> Path:
@@ -77,7 +82,7 @@ def save_chapter_state(self: Any, novel_id: str, chapter_id: str, state_data: di
         "retry_count": state_data.get("retry_count", 0),
     }
 
-    path = state_dir / f"{safe_chapter_id}.json"
+    path = state_dir / f"{_physical_stem(safe_chapter_id)}.json"
     self._write_text(path, json.dumps(payload, ensure_ascii=False, indent=2))
     return path
 
@@ -86,7 +91,7 @@ def load_chapter_state(self: Any, novel_id: str, chapter_id: str) -> dict[str, A
     """Load chapter state tracking information."""
     state_dir = self._get_state_dir(novel_id)
     safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
-    path = state_dir / f"{safe_chapter_id}.json"
+    path = state_dir / f"{_physical_stem(safe_chapter_id)}.json"
 
     if not self._path_exists(path):
         return None
@@ -210,10 +215,11 @@ def create_checkpoint(self: Any, novel_id: str, chapter_id: str, checkpoint_name
     }
 
     # Use timestamp in filename if no name provided
+    physical_stem = _physical_stem(safe_chapter_id)
     if safe_checkpoint_name == "auto":
-        filename = f"{safe_chapter_id}__{_utc_now().strftime('%Y%m%d_%H%M%S')}.json"
+        filename = f"{physical_stem}__{_utc_now().strftime('%Y%m%d_%H%M%S')}.json"
     else:
-        filename = f"{safe_chapter_id}__{safe_checkpoint_name}.json"
+        filename = f"{physical_stem}__{safe_checkpoint_name}.json"
 
     path = checkpoints_dir / filename
     self._write_text(path, json.dumps(checkpoint_data, ensure_ascii=False, indent=2))
@@ -237,7 +243,7 @@ def list_checkpoints(self: Any, novel_id: str, chapter_id: str) -> list[Checkpoi
         return []
 
     checkpoints: list[CheckpointInfo] = []
-    for checkpoint_file in sorted(self._glob(checkpoints_dir, f"{safe_chapter_id}__*.json")):
+    for checkpoint_file in sorted(self._glob(checkpoints_dir, f"{_physical_stem(safe_chapter_id)}__*.json")):
         try:
             data = json.loads(self._read_text(checkpoint_file))
             if not isinstance(data, dict):
@@ -283,7 +289,7 @@ def restore_from_checkpoint(
     safe_checkpoint_name = validate_storage_identifier(str(checkpoint_name), "checkpoint_name")
     checkpoint_file = None
 
-    for cf in self._glob(checkpoints_dir, f"{safe_chapter_id}__*.json"):
+    for cf in self._glob(checkpoints_dir, f"{_physical_stem(safe_chapter_id)}__*.json"):
         try:
             data = json.loads(self._read_text(cf))
             if data.get("checkpoint_name") == safe_checkpoint_name:
@@ -300,8 +306,23 @@ def restore_from_checkpoint(
     try:
         checkpoint_data = json.loads(self._read_text(checkpoint_file))
 
+        # Section 10/11: raw checkpoint restores are refused while a
+        # generation snapshot is active — the snapshot's ``chapters/``
+        # tree is byte-immutable and the canonical raw layout. The
+        # translated overlay and chapter state may still be restored.
+        raw_restore_refused = False
+        if checkpoint_data.get("raw_chapter") and self.get_active_generation(novel_id) is not None:
+            raw_restore_refused = True
+            logger.warning(
+                "Refusing raw restore for %s/%s from checkpoint %r: "
+                "active generation snapshot is the authoritative raw layout",
+                novel_id,
+                safe_chapter_id,
+                safe_checkpoint_name,
+            )
+
         # Restore raw chapter
-        if checkpoint_data.get("raw_chapter"):
+        if checkpoint_data.get("raw_chapter") and not raw_restore_refused:
             raw_chapter = checkpoint_data["raw_chapter"]
             self.save_chapter(
                 novel_id,
@@ -389,14 +410,19 @@ def rollback_to_state(self: Any, novel_id: str, chapter_id: str, target_state: C
 
     # Delete files for states beyond target
     if target_idx < state_order.index(ChapterState.TRANSLATED):
-        chapter_payload = self._load_chapter_bundle(novel_id, safe_chapter_id)
-        if chapter_payload and "translation_versions" in chapter_payload:
-            chapter_payload.pop("translation_versions", None)
-            chapter_payload.pop("active_translation_version_id", None)
-            chapter_payload.pop("edit_history", None)
-            self._persist_chapter_bundle(novel_id, safe_chapter_id, chapter_payload)
-            logger.debug(f"Deleted translated chapter {safe_chapter_id}")
-        translated_path = self._novel_dir(novel_id) / "translated" / f"{safe_chapter_id}.json"
+        # Section 11: the bundle-pop branch only applies to the legacy
+        # layout (no active generation). With an active generation the raw
+        # bundle is byte-immutable and translation state lives in the
+        # overlay; deleting the legacy ``translated/`` file is still safe.
+        if self.get_active_generation(novel_id) is None:
+            chapter_payload = self._load_chapter_bundle(novel_id, safe_chapter_id)
+            if chapter_payload and "translation_versions" in chapter_payload:
+                chapter_payload.pop("translation_versions", None)
+                chapter_payload.pop("active_translation_version_id", None)
+                chapter_payload.pop("edit_history", None)
+                self._persist_chapter_bundle(novel_id, safe_chapter_id, chapter_payload)
+                logger.debug(f"Deleted translated chapter {safe_chapter_id}")
+        translated_path = self._novel_dir(novel_id) / "translated" / f"{_physical_stem(safe_chapter_id)}.json"
         if self._path_exists(translated_path):
             self._unlink_path(translated_path)
 

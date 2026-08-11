@@ -440,18 +440,22 @@ def test_storage_fetch_cache_adapter_uses_storage_service(storage: StorageServic
 
 
 def test_storage_contracts_are_documented() -> None:
-    # Resolve repository root robustly regardless of current working directory
+    # Resolve repository root robustly regardless of current working directory.
     repo_root = Path(__file__).resolve().parents[2]
     doc = (repo_root / "docs" / "STORAGE.md").read_text(encoding="utf-8")
     required_fragments = [
         "metadata.json",
         "metadata_backups/",
-        "chapters/<chapter_id>.json",
-        "assets/images/<chapter_id>/",
-        "runtime/ and cache families",
+        "chapters/<encoded-chapter-stem>.json",  # raw bundle (immutable once active)
+        "translations/<encoded-chapter-stem>.json",  # mutable translation overlay
+        "active/<encoded-chapter-stem>.json",  # active-version pointer mirror
+        "active_generation.json",  # generation pointer
+        "generations/<generation_id>/",  # staged raw generation tree
+        "assets/images/<encoded-chapter-stem>/<file>",  # generation-scoped images
+        "runtime/ and cache families",  # cross-service cache root
     ]
     for fragment in required_fragments:
-        assert fragment in doc
+        assert fragment in doc, f"STORAGE.md missing documented layout fragment: {fragment!r}"
 
 
 # ── Metadata contract ───────────────────────────────────────────────────────
@@ -462,13 +466,17 @@ def test_storage_contract_document_exists() -> None:
     doc = (repo_root / "docs" / "STORAGE.md").read_text(encoding="utf-8")
     for fragment in (
         "Novel Metadata",
-        "Chapter Bundle",
-        "Assets",
+        "Raw bundle",
+        "Translation overlay",
+        "Generation activation contract",
+        "Image Asset Ownership",
         "PostgreSQL Projections",
         "Forward-Only Schemas",
         "Backup Contract",
+        "Episode Order & Removal State",
+        "Edit History",
     ):
-        assert fragment in doc
+        assert fragment in doc, f"STORAGE.md missing required section heading: {fragment!r}"
 
 
 def test_metadata_save_load_round_trip_preserves_fields(storage: StorageService) -> None:

@@ -132,6 +132,7 @@ def _trace_orchestrator(fixture: Any, provider: TranslationProvider | None = Non
         storage=fixture.storage,
         translation=TranslationService(pipeline=pipeline),
         source_factory=lambda key: fixture.mock_source,
+        provider_factory=lambda key: provider or fixture.mock_provider,
         settings_service=fixture.settings_service,
         translation_cache=fixture.cache,
         usage_service=fixture.usage_service,

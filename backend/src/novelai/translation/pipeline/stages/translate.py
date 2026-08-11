@@ -28,6 +28,7 @@ from novelai.storage.service import StorageService
 from novelai.translation.pipeline.context import PipelineState, TranslationChunk
 from novelai.translation.pipeline.stages.base import PipelineStage
 from novelai.translation.pipeline.stages.translate_cache_lookup import (
+    RETRY_MARKED_STATUSES,
     cached_translation,
     load_existing_chunk_output,
     load_persisted_chunk_states,
@@ -44,6 +45,7 @@ from novelai.translation.pipeline.stages.translate_provider_call import (
 from novelai.translation.pipeline.stages.translate_result_assembly import (
     build_prompt_request,
     glossary_prompt_options,
+    hash_text,
     infer_source_language,
     nonnegative_int,
     normalize_runtime_glossary,
@@ -52,6 +54,7 @@ from novelai.translation.pipeline.stages.translate_result_assembly import (
     record_prompt_glossary_metadata,
     safe_job_id,
     select_chunk_glossary,
+    translation_run_id,
     utc_now_iso,
 )
 from novelai.translation.pipeline.stages.translate_result_assembly import (
@@ -503,6 +506,10 @@ class TranslateStage(PipelineStage):
                     created_at=datetime.now(UTC).isoformat(),
                     ttl_seconds=settings.TRANSLATION_CACHE_TTL_SECONDS,
                     novel_id=context.novel_id,
+                    chunk_id=chunk_id,
+                    attempt_number=attempt_number,
+                    translation_run_id=translation_run_id(context),
+                    output_hash=hash_text(text),
                 )
                 logger.debug("Cache miss for chunk: key=%s, cache_hit=False", cache_key[:16])
             except Exception as exc:
@@ -512,8 +519,11 @@ class TranslateStage(PipelineStage):
             pending = context.metadata.setdefault("_pending_cache_entries", [])
             pending.append((cache_key, entry))
 
-        cache_key = request.cache_key() if request is not None else chunk
-        self._cache.set(cache_key, provider.key, provider_model, text)
+        # Accepted-output-only contract (Blocker C): the legacy
+        # TranslationCache is never written before QA. Accepted outputs are
+        # flushed to the sharded TranslationCacheService by CacheFlushStage
+        # only after TranslationQAStage passes the chunk; rejected outputs
+        # (needs_retry/needs_review/qa_failed) are never cached.
         self._storage.save_provider_request_record(
             provider_request_record(
                 context,
@@ -726,13 +736,36 @@ class TranslateStage(PipelineStage):
                         push_scheduler_decision(decision_dict)
 
                         attempted_models.add((used_provider_key, used_provider_model))
-                        cached = self._cached_translation(
-                            context,
-                            provider_key=used_provider_key,
-                            provider_model=used_provider_model,
-                            chunk=chunk_text,
-                            request=request,
-                            glossary_hash=prompt_glossary_hash,
+                        # Blocker C: a chunk marked needs_retry/needs_review/
+                        # qa_failed must bypass BOTH caches — its previous
+                        # output was rejected and must never be reused. Only a
+                        # fresh provider request is acceptable.
+                        retry_marked = context.chunk_states.get(chunk_id, {}).get("status") in RETRY_MARKED_STATUSES
+                        if retry_marked:
+                            logger.debug(
+                                "Chunk %s marked %s: bypassing both caches and issuing a fresh request",
+                                chunk_id,
+                                context.chunk_states.get(chunk_id, {}).get("status"),
+                            )
+                        # Force retranslate must also bypass the translation
+                        # cache (contract: ``force_retranslate`` means "issue a
+                        # fresh provider request", not "reuse the last cached
+                        # output"). The delta fallback after an unsafe window
+                        # (``TRANSLATION_DELTA_FORCE_FULL_ON_UNSAFE``) relies on
+                        # this: without it, the full retranslation would reuse
+                        # the very window output the strict marker gate rejected.
+                        force_retranslate = force_retranslate_h(context)
+                        cached = (
+                            None
+                            if retry_marked or force_retranslate
+                            else self._cached_translation(
+                                context,
+                                provider_key=used_provider_key,
+                                provider_model=used_provider_model,
+                                chunk=chunk_text,
+                                request=request,
+                                glossary_hash=prompt_glossary_hash,
+                            )
                         )
                         if cached is not None:
                             translated, used_provider_key, used_provider_model, _cache_hit = cached

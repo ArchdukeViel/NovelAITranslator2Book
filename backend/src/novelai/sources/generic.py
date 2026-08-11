@@ -123,17 +123,19 @@ class GenericSource(SourceAdapter):
 
     @staticmethod
     def _strip_ruby_annotations(section: Tag) -> None:
-        """Remove ruby/furigana annotations in-place, keeping base text.
-
-        Mirrors the pattern used by SyosetuNcodeSource:
-        - Remove <rt> (ruby text) and <rp> (ruby parenthesis) tags.
-        - Unwrap <ruby> so only the base kanji/text remains.
-        """
-        for tag_name in ("rt", "rp"):
-            for tag in section.find_all(tag_name):
-                tag.decompose()
+        """Preserve ruby base text and furigana reading annotations in-place."""
         for ruby in section.find_all("ruby"):
-            ruby.unwrap()
+            rt = ruby.find("rt")
+            rt_text = rt.get_text(strip=True) if rt else ""
+            for rp in ruby.find_all("rp"):
+                rp.decompose()
+            if rt:
+                rt.decompose()
+            base_text = ruby.get_text(strip=True)
+            if rt_text and base_text:
+                ruby.replace_with(f"{base_text}《{rt_text}》")
+            else:
+                ruby.unwrap()
 
     @staticmethod
     def _preflight_check(html: str, url: str) -> None:

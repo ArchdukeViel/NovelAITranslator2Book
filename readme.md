@@ -135,11 +135,11 @@ on optional cover assets.
 
 ```powershell
 # Backend lint and types
-& ".venv\Scripts\python.exe" -m ruff check .
-& ".venv\Scripts\python.exe" -m pyright
+tools/ruff.ps1 check .
+tools/pyright.ps1
 
 # Focused backend test
-& ".venv\Scripts\python.exe" -m pytest "backend/tests/test_<name>.py"
+tools/pytest.ps1 "backend/tests/test_<name>.py"
 
 # Frontend
 npm run typecheck --prefix frontend

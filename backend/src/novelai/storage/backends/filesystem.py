@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 from novelai.storage.backends.base import StorageBackend
+from novelai.utils.filesystem import replace_with_retry
 
 
 class FilesystemBackend(StorageBackend):
@@ -37,10 +38,36 @@ class FilesystemBackend(StorageBackend):
         try:
             with os.fdopen(fd, "wb") as f:
                 f.write(data)
-            os.replace(tmp, dest)
+            replace_with_retry(Path(tmp), dest)
         except BaseException:
             _try_unlink(Path(tmp))
             raise
+
+    def compare_and_swap(self, path: str | Path, expected: bytes | None, new_value: bytes) -> bool:
+        """True compare-and-swap on the local filesystem.
+
+        Reads the current content, compares against *expected* under the
+        same call, and only then replaces the file with ``os.replace`` so a
+        concurrent writer can never be silently overwritten.
+        """
+        dest = self._resolve(path)
+        current = None
+        try:
+            current = dest.read_bytes()
+        except FileNotFoundError:
+            current = None
+        if current != expected:
+            return False
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=dest.parent)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(new_value)
+            replace_with_retry(Path(tmp), dest)
+        except BaseException:
+            _try_unlink(Path(tmp))
+            raise
+        return True
 
     def load(self, path: str | Path) -> bytes:
         return self._resolve(path).read_bytes()

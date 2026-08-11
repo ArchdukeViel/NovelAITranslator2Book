@@ -94,12 +94,12 @@ class TestGenericRubyStripping:
     def test_strips_simple_ruby(self) -> None:
         soup = _soup("<div><ruby>漢字<rt>かんじ</rt></ruby></div>")
         GenericSource._strip_ruby_annotations(soup)
-        assert soup.get_text() == "漢字"
+        assert soup.get_text() == "漢字《かんじ》"
 
     def test_strips_ruby_with_rp(self) -> None:
         soup = _soup("<div><ruby>東京<rp>（</rp><rt>とうきょう</rt><rp>）</rp></ruby></div>")
         GenericSource._strip_ruby_annotations(soup)
-        assert soup.get_text() == "東京"
+        assert soup.get_text() == "東京《とうきょう》"
 
     def test_preserves_normal_text_around_ruby(self) -> None:
         soup = _soup("<p>これは<ruby>漢字<rt>かんじ</rt></ruby>のテストです</p>")
@@ -107,7 +107,7 @@ class TestGenericRubyStripping:
         assert "これは" in soup.get_text()
         assert "漢字" in soup.get_text()
         assert "のテストです" in soup.get_text()
-        assert "かんじ" not in soup.get_text()
+        assert "かんじ" in soup.get_text()
 
     def test_preserves_paragraph_boundaries(self) -> None:
         soup = _soup("<div><p>段落1</p><p><ruby>漢字<rt>かんじ</rt></ruby></p><p>段落3</p></div>")
@@ -115,17 +115,15 @@ class TestGenericRubyStripping:
         paragraphs = soup.find_all("p")
         assert len(paragraphs) == 3
         assert paragraphs[0].get_text() == "段落1"
-        assert paragraphs[1].get_text() == "漢字"
+        assert paragraphs[1].get_text() == "漢字《かんじ》"
         assert paragraphs[2].get_text() == "段落3"
 
     def test_multiple_ruby_in_same_block(self) -> None:
         soup = _soup("<p><ruby>東<rt>ひがし</rt></ruby>と<ruby>西<rt>にし</rt></ruby></p>")
         GenericSource._strip_ruby_annotations(soup)
         text = soup.get_text()
-        assert "東" in text
-        assert "西" in text
-        assert "ひがし" not in text
-        assert "にし" not in text
+        assert "東《ひがし》" in text
+        assert "西《にし》" in text
 
 
 class TestGenericPreflightChecks:

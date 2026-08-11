@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 
 from novelai.core.errors import SourceError
+from novelai.infrastructure.http.profiles import PROFILE_NOVEL18_HTML
 from novelai.sources.syosetu_ncode import SyosetuNcodeSource
 from novelai.sources.taxonomy import NOVEL18_GENRE_MAP
 
@@ -21,6 +22,10 @@ class Novel18SyosetuSource(SyosetuNcodeSource):
     AGE_GATE_PATH_PREFIX = "/redirect/ageauth/"
     AGE_CONFIRM_COOKIE_NAME = "over18"
     AGE_CONFIRM_COOKIE_VALUE = "yes"
+
+    @property
+    def _request_profile(self) -> str:
+        return PROFILE_NOVEL18_HTML
 
     @property
     def _genre_map(self) -> dict[str, str]:

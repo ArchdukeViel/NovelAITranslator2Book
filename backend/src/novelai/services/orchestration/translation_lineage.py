@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from itertools import pairwise
 from typing import Any
 
@@ -21,10 +22,63 @@ from novelai.translation.pipeline.context import TranslationChunk
 from novelai.translation.pipeline.stages.segment import SmartSegmentStage
 from novelai.translation.qa import (
     evaluate_translation_quality,
-    normalize_translation_output,
+    extract_unambiguous_json_object,
 )
+from novelai.translation.run_manifest import is_translation_valid
 
 logger = logging.getLogger(__name__)
+
+
+def _stored_output_contract_matches(
+    existing: dict[str, Any],
+    *,
+    source_text_hash: str | None = None,
+    active_glossary_hash: str | None = None,
+    prompt_template_version: str | None = None,
+    provider_key: str | None = None,
+    provider_model: str | None = None,
+    source_language: str | None = None,
+    target_language: str | None = None,
+    style_preset: str | None = None,
+    consistency_mode: bool | None = None,
+    json_output: bool | None = None,
+    honorific_policy: str | None = None,
+    active_raw_generation_id: str | None = None,
+    source_structure_hash: str | None = None,
+    source_image_manifest_hash: str | None = None,
+    qa_policy_fingerprint: str | None = None,
+) -> bool:
+    """Validate stored lineage against the COMPLETE effective contract.
+
+    Uses ``is_translation_valid`` to verify all identity dimensions (glossary,
+    prompt, QA policy, provider/model, languages, output shaping, raw
+    generation provenance, source structure, source image manifest). Any
+    mismatch or missing required field bails from delta reuse.
+
+    Source-text hash is NOT checked here: paragraph lineage handles source
+    changes within the delta path. A global contract change forces full
+    retranslation; only source-text-only changes under an unchanged global
+    contract can use paragraph-level delta reuse.
+    """
+    return is_translation_valid(
+        source_text_hash=source_text_hash or existing.get("source_hash") or "",
+        active_glossary_hash=active_glossary_hash,
+        prompt_version=prompt_template_version,
+        provider_key=provider_key,
+        provider_model=provider_model,
+        record=existing,
+        active_raw_generation_id=active_raw_generation_id,
+        source_structure_hash=source_structure_hash,
+        source_image_manifest_hash=source_image_manifest_hash,
+        qa_policy_fingerprint=qa_policy_fingerprint,
+        source_language=source_language,
+        target_language=target_language,
+        style_preset=style_preset,
+        consistency_mode=consistency_mode,
+        json_output=json_output,
+        honorific_policy=honorific_policy,
+        skip_source_hash=True,
+    )
 
 
 def _positive_padding(value: object) -> int:
@@ -429,7 +483,12 @@ def _structured_paragraphs_from_outputs(
     return translated_by_ref
 
 
-def _structured_map_from_result(result: Any, window_items: list[dict[str, Any]]) -> list[str] | None:
+def _structured_map_from_result(
+    result: Any,
+    window_items: list[dict[str, Any]],
+    *,
+    expected_chapter_id: str | None = None,
+) -> list[str] | None:
     raw_outputs: list[str] = []
     metadata = getattr(result, "metadata", None)
     if isinstance(metadata, dict):
@@ -446,18 +505,242 @@ def _structured_map_from_result(result: Any, window_items: list[dict[str, Any]])
     if isinstance(final_text, str):
         raw_outputs.append(final_text)
 
-    mapped: list[str] = []
-    for raw in raw_outputs:
-        parsed = normalize_translation_output(raw)
-        if not parsed.paragraph_map:
-            continue
-        for item in parsed.paragraph_map:
-            translated = item.get("translated_text")
-            if isinstance(translated, str):
-                mapped.append(translated)
-    if len(mapped) < len(window_items):
+    chunks = getattr(result, "translation_chunks", None)
+    multi_chunk = isinstance(chunks, list) and len(chunks) > 1
+
+    # 1) Piecewise path (Section 6 closure debt): a changed window can span
+    # several pipeline chunks when an oversized source paragraph is split
+    # (``split_oversized_paragraph`` preserves the absolute paragraph id on
+    # every piece) or when the window itself exceeds one chunk budget. Each
+    # chunk's raw provider output covers only the ids stamped in that chunk,
+    # so no single output can validate against the whole window — and
+    # accumulating partial maps would silently drop or duplicate paragraphs.
+    # Parse every chunk output strictly against its own ids and merge the
+    # pieces back in chunk order.
+    if multi_chunk:
+        piecewise = _piecewise_map_from_result(result, window_items, expected_chapter_id=expected_chapter_id)
+        if piecewise is not None:
+            return piecewise
+        # Multi-chunk windows have no valid whole-window interpretation; fail
+        # closed to a full translation rather than persist a wrong mapping.
         return None
-    return mapped[: len(window_items)]
+
+    # 2) Structured JSON ``paragraph_map`` (single-chunk windows).
+    expected_ids = [str(item.get("paragraph_id") or "") for item in window_items]
+    if expected_ids and not any(not pid for pid in expected_ids):
+        for raw in raw_outputs:
+            parsed_json = _json_map_for_expected_ids(raw, expected_ids, expected_chapter_id=expected_chapter_id)
+            if parsed_json is not None:
+                return parsed_json
+
+    # 3) Plain-output fallback (Section 6, PR 41 closure): strict ``[P ...]``
+    # marker parsing. Production prompts instruct providers to copy every
+    # ``[P pNNNN]`` marker exactly according to the expected ordered occurrence
+    # sequence, in source order, and to keep the marker with a blank body when
+    # a paragraph cannot be translated. The chapter's absolute paragraph ids
+    # (stamped into the window prompt by the delta window call) are the
+    # authoritative expected set: any missing, unexpected/excess, or reordered
+    # marker occurrence — or any preamble / unknown ``[CHAPTER ...]`` marker —
+    # is treated as ambiguity and fails closed to a full translation.
+    complete_mappings: list[list[str]] = []
+    for raw in raw_outputs:
+        parsed_markers = _strict_marker_paragraph_map(raw, window_items, expected_chapter_id=expected_chapter_id)
+        if parsed_markers is not None:
+            complete_mappings.append(parsed_markers)
+    if not complete_mappings:
+        return None
+    if len(complete_mappings) > 1 and any(mapping != complete_mappings[0] for mapping in complete_mappings[1:]):
+        # Contradictory raw outputs are ambiguous; fail closed.
+        return None
+    return complete_mappings[0]
+
+
+def _piecewise_map_from_result(
+    result: Any,
+    window_items: list[dict[str, Any]],
+    *,
+    expected_chapter_id: str | None,
+) -> list[str] | None:
+    """Map per-chunk provider outputs back onto a multi-chunk delta window.
+
+    A changed window spans several pipeline chunks in two ways:
+    - an oversized source paragraph that ``split_oversized_paragraph`` split
+      across chunks (every piece keeps the same absolute paragraph id — a
+      chunk may even hold several pieces of the same paragraph), and
+    - a window whose total size exceeds one chunk budget.
+
+    In both cases each chunk's raw provider output covers only the ids stamped
+    in that chunk, so parsing any single output against the whole window fails
+    (and accumulating partial maps would silently drop or duplicate
+    paragraphs). This path parses each chunk output strictly against its own
+    ``paragraph_ids`` (marker grammar first, then structured
+    ``paragraph_map``), then merges the pieces of each source paragraph back
+    in chunk order with the same ``"\\n\\n"`` separator the full path uses.
+    An unaligned output list, missing/duplicate/extra/reordered marker,
+    preamble, unknown ``[CHAPTER ...]`` marker, or an id outside the window
+    fails closed (``None`` → full translation).
+    """
+    chunks = getattr(result, "translation_chunks", None)
+    if not isinstance(chunks, list) or len(chunks) <= 1:
+        return None
+    metadata = getattr(result, "metadata", None)
+    raw_values = metadata.get("raw_provider_translations") if isinstance(metadata, dict) else None
+    if not isinstance(raw_values, list) or len(raw_values) != len(chunks):
+        # Per-chunk outputs must align 1:1 with the chunks; the QA stage
+        # records them before any normalization strips the markers.
+        return None
+    outputs: list[str] = []
+    for value in raw_values:
+        if not isinstance(value, str):
+            return None
+        outputs.append(value)
+
+    window_ids = [str(item.get("paragraph_id") or "") for item in window_items]
+    if not window_ids or any(not pid for pid in window_ids):
+        return None
+    window_id_set = set(window_ids)
+
+    pieces_by_id: dict[str, list[str]] = {}
+    for chunk, raw in zip(chunks, outputs, strict=True):
+        chunk_ids = [str(pid) for pid in getattr(chunk, "paragraph_ids", [])]
+        if not chunk_ids or any(not pid for pid in chunk_ids):
+            return None
+        if any(pid not in window_id_set for pid in chunk_ids):
+            return None  # chunk references an id outside the window → ambiguity
+        chunk_items = [{"paragraph_id": pid} for pid in chunk_ids]
+        parsed = _strict_marker_paragraph_map(raw, chunk_items, expected_chapter_id=expected_chapter_id)
+        if parsed is None:
+            parsed = _json_map_for_expected_ids(raw, chunk_ids, expected_chapter_id=expected_chapter_id)
+        if parsed is None:
+            return None
+        for pid, text in zip(chunk_ids, parsed, strict=True):
+            pieces_by_id.setdefault(pid, []).append(text)
+
+    merged: list[str] = []
+    for pid in window_ids:
+        pieces = pieces_by_id.get(pid)
+        if not pieces:
+            return None
+        merged.append("\n\n".join(pieces))
+    return merged
+
+
+def _json_map_for_expected_ids(
+    raw: str,
+    expected_ids: list[str],
+    *,
+    expected_chapter_id: str | None = None,
+) -> list[str] | None:
+    """Strict structured ``paragraph_map`` parser for delta windows.
+
+    Validates that a raw provider output containing a JSON ``paragraph_map``
+    matches the chunk/window's expected paragraph IDs exactly:
+    - Raw ``paragraph_map`` list length must equal ``len(expected_ids)``.
+    - Every raw item must be a valid object containing a string ``translated_text``
+      (or ``translated``) and string ``paragraph_id``.
+    - Each item's ``paragraph_id`` matches ``expected_ids`` positionally (preserving
+      ordered repeated occurrences for split sub-paragraphs).
+    - If ``chapter_id`` is supplied on an item, it must match ``expected_chapter_id``.
+    """
+    try:
+        raw_obj = json.loads(extract_unambiguous_json_object(raw))
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(raw_obj, dict):
+        return None
+    raw_map = raw_obj.get("paragraph_map")
+    if not isinstance(raw_map, list) or len(raw_map) != len(expected_ids):
+        return None
+    texts: list[str] = []
+    for item, exp_pid in zip(raw_map, expected_ids, strict=True):
+        if not isinstance(item, dict):
+            return None
+        translated = item.get("translated_text")
+        if translated is None:
+            translated = item.get("translated")
+        if not isinstance(translated, str):
+            return None
+        pid = item.get("paragraph_id")
+        if pid is None or str(pid).strip() != exp_pid:
+            return None
+        ch_id = item.get("chapter_id")
+        if ch_id is not None and expected_chapter_id and str(ch_id).strip() != expected_chapter_id:
+            return None
+        texts.append(translated)
+    return texts
+
+
+_PARAGRAPH_MARKER_RE = re.compile(r"^\[P\s+([^\]]+)\]\s*$")
+_CHAPTER_MARKER_RE = re.compile(r"^\[CHAPTER\s+([^\]]+)\]\s*$")
+
+
+def _strict_marker_paragraph_map(
+    raw: str,
+    window_items: list[dict[str, Any]],
+    expected_chapter_id: str | None,
+) -> list[str] | None:
+    """Strictly parse plain marker output into per-paragraph translated text.
+
+    Grammar (mirrors the production prompt contract):
+    - ``[P <id>]`` on its own line opens a paragraph; its body runs until the
+      next marker line or the end of the output.
+    - ``[CHAPTER <id>]`` may appear only before the first paragraph and only
+      when ``expected_chapter_id`` matches (never counted as a paragraph).
+    - Blank lines are allowed anywhere; body boundary whitespace is stripped.
+    - Any other non-blank line before the first paragraph marker, any
+      duplicate/extra/missing/reordered paragraph id, or a mismatched chapter
+      marker returns ``None`` (ambiguity → full translation).
+    - When the expected id sequence itself repeats — split sub-paragraphs of
+      one oversized paragraph packed into the same chunk all keep the source
+      paragraph id — each occurrence must appear exactly that many times, in
+      order. An occurrence beyond the expected count still fails closed.
+    """
+    expected_ids = [str(item.get("paragraph_id") or "") for item in window_items]
+    if not expected_ids or any(not pid for pid in expected_ids):
+        return None
+    expected_counts: dict[str, int] = {}
+    for pid in expected_ids:
+        expected_counts[pid] = expected_counts.get(pid, 0) + 1
+    expected_set = set(expected_ids)
+
+    ordered: list[tuple[str, list[str]]] = []
+    seen_counts: dict[str, int] = {}
+    current: list[str] | None = None
+    chapter_seen = False
+    for line in raw.splitlines():
+        paragraph_match = _PARAGRAPH_MARKER_RE.match(line)
+        chapter_match = _CHAPTER_MARKER_RE.match(line)
+        if paragraph_match:
+            paragraph_id = paragraph_match.group(1).strip()
+            seen_count = seen_counts.get(paragraph_id, 0) + 1
+            if paragraph_id not in expected_set or seen_count > expected_counts.get(paragraph_id, 0):
+                return None  # occurrence beyond expected count or unexpected id
+            seen_counts[paragraph_id] = seen_count
+            body: list[str] = []
+            ordered.append((paragraph_id, body))
+            current = body
+            continue
+        if chapter_match:
+            chapter_id = chapter_match.group(1).strip()
+            if not expected_chapter_id or chapter_id != expected_chapter_id:
+                return None  # chapter marker not valid for this window
+            if chapter_seen or ordered:
+                return None  # chapter marker must appear once, before any paragraph
+            chapter_seen = True
+            continue
+        if current is not None:
+            # Body content (blank lines included) until the next marker.
+            current.append(line)
+            continue
+        if line.strip():
+            # Non-marker, non-blank content before the first paragraph marker
+            # (preamble, context blocks, JSON remnants) → ambiguity.
+            return None
+    if len(ordered) != len(expected_ids):
+        return None
+    if [paragraph_id for paragraph_id, _ in ordered] != expected_ids:
+        return None
+    return ["\n".join(body).strip() for _, body in ordered]
 
 
 def _qa_reassembled_chapter(
@@ -495,12 +778,59 @@ async def _try_delta_translate_chapter(
     glossary: Any | None,
     style_preset: str | None,
     consistency_mode: bool,
+    translation_run_id: str | None,
     job_id: str | None,
     activity_id: str | None,
     allow_cross_provider_fallback: bool,
+    json_output: bool | None = None,
+    honorific_policy: str | None = None,
+    active_raw_generation_id: str | None = None,
+    # Global contract identity fields used by the authoritative validator. When
+    # supplied they override the glossary-derived hash (production passes the
+    # canonical hash directly).
+    glossary_hash: str | None = None,
+    prompt_template_version: str | None = None,
+    qa_policy_fingerprint: str | None = None,
+    source_structure_hash: str | None = None,
+    source_image_manifest_hash: str | None = None,
 ) -> dict[str, Any]:
     if not settings.TRANSLATION_DELTA_RETRANSLATION_ENABLED:
-        return {"applied": False, "fallback_reason": "delta_disabled"}
+        return {"applied": False, "fallback_reason": "delta_disabled", "fresh_full_required": False}
+
+    # Output-contract invalidation. The delta path runs only when delta
+    # retranslation is enabled, which is also when the resume gate skips its
+    # ``is_translation_valid`` branch. Without this check the delta path would
+    # ``whole_chapter_unchanged``-reuse a prior translation produced under a
+    # different style preset / consistency mode / JSON-output flag / honorific
+    # policy — or under a now-active generation whose raw snapshot the stored
+    # version does not descend from — and then re-stamp the new contract on the
+    # reused (stale) text. Fail closed identically to the gate so the two reuse
+    # paths cannot diverge. Load the existing translation once and reuse it for
+    # both the contract check and the ``whole_chapter_unchanged`` reuse below.
+    existing_translation = self.storage.load_translated_chapter(novel_id, chapter_id)
+    # Use the canonical glossary hash passed from translate_chapters when
+    # available; fall back to glossary.glossary_hash for older callers.
+    effective_glossary_hash = glossary_hash
+    if not effective_glossary_hash and glossary:
+        effective_glossary_hash = getattr(glossary, "glossary_hash", None)
+    if existing_translation and not _stored_output_contract_matches(
+        existing_translation,
+        active_glossary_hash=effective_glossary_hash,
+        prompt_template_version=prompt_template_version,
+        provider_key=provider_key,
+        provider_model=provider_model,
+        source_language=source_language,
+        target_language=target_language,
+        style_preset=style_preset,
+        consistency_mode=consistency_mode,
+        json_output=json_output,
+        honorific_policy=honorific_policy,
+        active_raw_generation_id=active_raw_generation_id,
+        source_structure_hash=source_structure_hash,
+        source_image_manifest_hash=source_image_manifest_hash,
+        qa_policy_fingerprint=qa_policy_fingerprint,
+    ):
+        return {"applied": False, "fallback_reason": "output_contract_changed", "fresh_full_required": False}
 
     segment = SmartSegmentStage()
     paragraphs, _, _ = segment.estimate_chapter_chunks(novel_id=novel_id, chapter_id=chapter_id, text=raw_text)
@@ -508,26 +838,38 @@ async def _try_delta_translate_chapter(
     old_by_chapter, notes = _old_lineage_by_chapter(self.storage, novel_id)
     old_lineage = old_by_chapter.get(chapter_id)
     if not old_lineage:
-        return {"applied": False, "fallback_reason": "missing_lineage", "notes": notes}
+        return {"applied": False, "fallback_reason": "missing_lineage", "notes": notes, "fresh_full_required": False}
 
     comparison = _compare_lineage(old_lineage, new_lineage)
     if comparison["ambiguous_new_indexes"]:
-        return {"applied": False, "fallback_reason": "ambiguous_or_moved_region"}
+        return {"applied": False, "fallback_reason": "ambiguous_or_moved_region", "fresh_full_required": False}
 
     windows = _changed_windows_for_chapter(
         new_items=new_lineage,
         comparison=comparison,
         padding=_positive_padding(settings.TRANSLATION_DELTA_WINDOW_PADDING_PARAGRAPHS),
     )
-    existing_translation = self.storage.load_translated_chapter(novel_id, chapter_id)
     if not windows:
         if existing_translation and isinstance(existing_translation.get("text"), str):
+            # Section 6: whole-chapter reuse is a real no-op. The caller must
+            # NOT persist a new version; it records the reuse and preserves
+            # the stored version's identity (version_id / run / provider /
+            # model / created_at) untouched.
             return {
                 "applied": True,
                 "mode": "whole_chapter_unchanged",
                 "text": existing_translation["text"],
+                # Preserve original producer provenance: the stored version's
+                # provider/model produced the reused text, NOT the current
+                # contract's provider/model. The caller uses these to record
+                # the reuse without creating a new producer version.
+                "provider_key": existing_translation.get("provider_key") or existing_translation.get("provider"),
+                "provider_model": existing_translation.get("provider_model") or existing_translation.get("model"),
                 "provider": existing_translation.get("provider"),
                 "model": existing_translation.get("model"),
+                "version_id": existing_translation.get("version_id"),
+                "translation_run_id": existing_translation.get("translation_run_id"),
+                "created_at": existing_translation.get("created_at") or existing_translation.get("translated_at"),
                 "provenance": {
                     "delta_retranslation": True,
                     "mode": "whole_chapter_unchanged",
@@ -539,11 +881,11 @@ async def _try_delta_translate_chapter(
                     "qa_result": {"passed": True, "warnings": [], "errors": []},
                 },
             }
-        return {"applied": False, "fallback_reason": "missing_previous_translation"}
+        return {"applied": False, "fallback_reason": "missing_previous_translation", "fresh_full_required": False}
 
     old_translations = _structured_paragraphs_from_outputs(self.storage, novel_id, chapter_id)
     if settings.TRANSLATION_DELTA_REQUIRE_STRUCTURED_PARAGRAPH_MAP and not old_translations:
-        return {"applied": False, "fallback_reason": "missing_structured_paragraph_map"}
+        return {"applied": False, "fallback_reason": "missing_structured_paragraph_map", "fresh_full_required": False}
 
     changed_indexes: set[int] = set()
     for window in windows:
@@ -555,7 +897,11 @@ async def _try_delta_translate_chapter(
         key = (chapter_id, str(item["paragraph_id"]))
         old = old_translations.get(key)
         if old is None or old.get("source_hash") != item.get("source_hash"):
-            return {"applied": False, "fallback_reason": "missing_structured_paragraph_map"}
+            return {
+                "applied": False,
+                "fallback_reason": "missing_structured_paragraph_map",
+                "fresh_full_required": False,
+            }
         reused[index] = old["translated_text"]
 
     newly_translated: dict[int, str] = {}
@@ -567,6 +913,7 @@ async def _try_delta_translate_chapter(
             result = await self.translation.translate_chapter(
                 source_adapter=source,
                 chapter_url=f"{chapter_url}#delta-window-{window_number}",
+                translation_run_id=translation_run_id,
                 job_id=job_id,
                 activity_id=activity_id,
                 novel_id=novel_id,
@@ -580,18 +927,29 @@ async def _try_delta_translate_chapter(
                 glossary=glossary,
                 style_preset=style_preset,
                 consistency_mode=consistency_mode,
-                json_output=True,
+                # Section 5: the changed window executes the EFFECTIVE output
+                # policy, not a hard-coded default. ``json_output`` and
+                # ``honorific_policy`` must match what the full path would
+                # have produced so a delta window never diverges from the
+                # contract the stored lineage records.
+                json_output=json_output,
+                honorific_policy=honorific_policy,
                 allow_cross_provider_fallback=allow_cross_provider_fallback,
                 force_retranslate=True,
                 raw_text=window_text,
+                # Section 6: stamp the chapter's ABSOLUTE paragraph ids onto
+                # the window prompt so the provider's ``[P ...]`` markers are
+                # the same identities the lineage records — the strict marker
+                # fallback validates against exactly this set.
+                paragraph_ids=[str(item["paragraph_id"]) for item in window_items],
             )
         except Exception:
             if settings.TRANSLATION_DELTA_FORCE_FULL_ON_UNSAFE:
-                return {"applied": False, "fallback_reason": "changed_window_qa_failed"}
+                return {"applied": False, "fallback_reason": "changed_window_qa_failed", "fresh_full_required": True}
             raise
-        mapped = _structured_map_from_result(result, window_items)
+        mapped = _structured_map_from_result(result, window_items, expected_chapter_id=chapter_id)
         if mapped is None:
-            return {"applied": False, "fallback_reason": "changed_window_qa_failed"}
+            return {"applied": False, "fallback_reason": "changed_window_qa_failed", "fresh_full_required": True}
         for offset, translated in enumerate(mapped):
             newly_translated[window["start"] + offset] = translated
         changed_windows_payload.append(
@@ -614,16 +972,21 @@ async def _try_delta_translate_chapter(
             final_parts.append(reused[index])
             reused_ids.append(str(item["paragraph_id"]))
         else:
-            return {"applied": False, "fallback_reason": "incomplete_reassembly"}
+            return {"applied": False, "fallback_reason": "incomplete_reassembly", "fresh_full_required": False}
     if len(final_parts) != len(new_lineage):
-        return {"applied": False, "fallback_reason": "incomplete_reassembly"}
+        return {"applied": False, "fallback_reason": "incomplete_reassembly", "fresh_full_required": False}
 
     final_text = "\n\n".join(final_parts)
     qa_result = _qa_reassembled_chapter(
         source_text=raw_text, translated_text=final_text, chapter_id=chapter_id, lineage=new_lineage
     )
     if not qa_result.get("passed"):
-        return {"applied": False, "fallback_reason": "final_qa_failed", "qa_result": qa_result}
+        return {
+            "applied": False,
+            "fallback_reason": "final_qa_failed",
+            "qa_result": qa_result,
+            "fresh_full_required": True,
+        }
 
     return {
         "applied": True,

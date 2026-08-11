@@ -24,9 +24,7 @@ class DomainThrottle:
         max_delay_seconds: float = 30.0,
     ) -> None:
         self.min_delay_seconds = (
-            float(settings.SCRAPE_DELAY_SECONDS)
-            if min_delay_seconds is None
-            else max(0.0, float(min_delay_seconds))
+            float(settings.SCRAPE_DELAY_SECONDS) if min_delay_seconds is None else max(0.0, float(min_delay_seconds))
         )
         self.max_delay_seconds = max(self.min_delay_seconds, float(max_delay_seconds))
         self._states: dict[str, _DomainThrottleState] = {}
@@ -34,7 +32,19 @@ class DomainThrottle:
 
     @staticmethod
     def _domain(url: str) -> str:
-        return (urlparse(url).hostname or "").lower()
+        """Host key including the effective port so services on different
+        ports of the same host are throttled independently."""
+        parsed = urlparse(url)
+        hostname = (parsed.hostname or "").lower()
+        if not hostname:
+            return ""
+        try:
+            port = parsed.port
+        except ValueError:
+            port = None
+        if port is None:
+            port = 443 if parsed.scheme == "https" else 80
+        return f"{hostname}:{port}"
 
     async def before_request(self, url: str) -> None:
         domain = self._domain(url)

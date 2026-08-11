@@ -110,6 +110,13 @@ class AppSettings(BaseSettings):
     JOB_WORKER_ENABLED: bool = False
     JOB_WORKER_POLL_SECONDS: float = 2.0
 
+    # --- Outbound fetch hardening (bounded redirects, streaming size limits)
+    HTTP_MAX_REDIRECTS: int = Field(default=5, ge=1, le=20)
+    HTTP_RETRY_AFTER_MAX_SECONDS: int = Field(default=120, ge=1, le=3600)
+    HTTP_API_RESPONSE_MAX_BYTES: int = Field(default=10 * 1024 * 1024, ge=1024)
+    HTTP_HTML_RESPONSE_MAX_BYTES: int = Field(default=20 * 1024 * 1024, ge=1024)
+    HTTP_ASSET_RESPONSE_MAX_BYTES: int = Field(default=50 * 1024 * 1024, ge=1024)
+
     # --- Production hardening (DEBT-055)
     TRUSTED_PROXY_CIDRS: Annotated[list[str], NoDecode] = Field(
         default_factory=list,
@@ -294,14 +301,31 @@ class AppSettings(BaseSettings):
     # --- LLM QA (DEBT-053): default-off; activates LLM-based translation grading.
     # When enabled and a translation provider is available, the QA stage also
     # asks the configured provider to grade each chunk that passes the
-    # deterministic checks. Chunks below LLM_QA_MIN_SCORE get a
-    # ``needs_llm_retry`` QA status so callers can re-translate.
+    # deterministic checks. Chunks below LLM_QA_MIN_SCORE are disposed of
+    # according to LLM_QA_POLICY:
+    #   advisory      - (default) deterministic QA stays green; a warning is
+    #                   recorded and no retry marker is produced.
+    #   blocking_retry- chunk status becomes needs_retry (bounded by
+    #                   LLM_QA_MAX_RETRY_ATTEMPTS); once exhausted the chunk
+    #                   moves to needs_review.
+    #   review        - chunk status becomes needs_review immediately.
+    # A retry marker is always backed by a real chunk status; a chunk is never
+    # left "translated" while claiming a retry state.
     LLM_QA_ENABLED: bool = False
     LLM_QA_PROVIDER: str = "gemini"
     LLM_QA_MODEL: str = "gemini-3.1-flash-lite"
     LLM_QA_COST_TRACKING_ENABLED: bool = True
     LLM_QA_MIN_SCORE: float = 0.75
     LLM_QA_MAX_RETRY_ATTEMPTS: int = 1
+    LLM_QA_POLICY: str = "advisory"
+
+    @field_validator("LLM_QA_POLICY", mode="after")
+    @classmethod
+    def _validate_llm_qa_policy(cls, v: str) -> str:
+        valid = {"advisory", "blocking_retry", "review"}
+        if v not in valid:
+            raise ValueError(f"Invalid LLM_QA_POLICY '{v}'. Allowed values: {sorted(valid)}")
+        return v
 
     # --- Public reader availability
     # Controls behavior when a public chapter has no active translation.

@@ -173,6 +173,115 @@ def test_translated_chapter_versions_keep_machine_history(storage):
     assert loaded["version_id"] == versions[1]["version_id"]
 
 
+def test_translated_chapter_versions_preserve_full_lineage(storage):
+    """Section 9: historical version lists keep the complete stored lineage.
+
+    ``list_translated_chapter_versions`` must surface every lineage field
+    written by ``save_translated_chapter`` so provenance consumers and
+    validity checks work against ANY version, not only the active one.
+    """
+    storage.save_translated_chapter(
+        "novel1",
+        "ch1",
+        "lineage text",
+        provider_key="gemini",
+        provider_model="gemini-3.1-flash-lite",
+        source_hash="src-hash",
+        translation_run_id="run-1",
+        raw_generation_id="gen-7",
+        source_episode_id="42",
+        source_structure_hash="struct-hash",
+        source_image_manifest_hash="image-hash",
+        qa_policy_fingerprint="qa-fp",
+        source_language="Japanese",
+        target_language="English",
+        style_preset="casual",
+        consistency_mode=True,
+        json_output=True,
+        output_hash="out-hash",
+        activation_disposition="auto_activate",
+        honorific_policy="keigo",
+        prompt_template_version="translation_request_v1",
+        glossary_hash="glossary-hash",
+        batch_id="batch-1",
+    )
+
+    versions = storage.list_translated_chapter_versions("novel1", "ch1")
+    assert len(versions) == 1
+    record = versions[0]
+    assert record["source_content_hash"] == "src-hash"
+    assert record["translation_run_id"] == "run-1"
+    assert record["raw_generation_id"] == "gen-7"
+    assert record["source_episode_id"] == "42"
+    assert record["source_structure_hash"] == "struct-hash"
+    assert record["source_image_manifest_hash"] == "image-hash"
+    assert record["qa_policy_fingerprint"] == "qa-fp"
+    assert record["source_language"] == "Japanese"
+    assert record["target_language"] == "English"
+    assert record["style_preset"] == "casual"
+    assert record["consistency_mode"] is True
+    assert record["json_output"] is True
+    assert record["output_hash"] == "out-hash"
+    assert record["activation_disposition"] == "auto_activate"
+    assert record["honorific_policy"] == "keigo"
+    assert record["prompt_template_version"] == "translation_request_v1"
+    assert record["glossary_hash"] == "glossary-hash"
+    assert record["batch_id"] == "batch-1"
+
+
+def test_load_translated_chapter_by_version_id_preserves_full_lineage(storage):
+    """Section 9: version-id reads (overlay branch) pass through full lineage."""
+    storage.save_translated_chapter(
+        "novel1",
+        "ch1",
+        "lineage text",
+        provider_key="gemini",
+        provider_model="gemini-3.1-flash-lite",
+        source_hash="src-hash",
+        translation_run_id="run-1",
+        raw_generation_id="gen-7",
+        source_episode_id="42",
+        source_structure_hash="struct-hash",
+        source_image_manifest_hash="image-hash",
+        qa_policy_fingerprint="qa-fp",
+        source_language="Japanese",
+        target_language="English",
+        style_preset="casual",
+        consistency_mode=True,
+        json_output=True,
+        output_hash="out-hash",
+        activation_disposition="auto_activate",
+        honorific_policy="keigo",
+        prompt_template_version="translation_request_v1",
+        glossary_hash="glossary-hash",
+        batch_id="batch-1",
+    )
+
+    versions = storage.list_translated_chapter_versions("novel1", "ch1")
+    loaded = storage.load_translated_chapter_by_version_id("novel1", "ch1", versions[0]["version_id"])
+    assert loaded is not None
+    assert loaded["text"] == "lineage text"
+    assert loaded["source_hash"] == "src-hash"
+    assert loaded["source_content_hash"] == "src-hash"
+    assert loaded["translation_run_id"] == "run-1"
+    assert loaded["raw_generation_id"] == "gen-7"
+    assert loaded["source_episode_id"] == "42"
+    assert loaded["source_structure_hash"] == "struct-hash"
+    assert loaded["source_image_manifest_hash"] == "image-hash"
+    assert loaded["qa_policy_fingerprint"] == "qa-fp"
+    assert loaded["source_language"] == "Japanese"
+    assert loaded["target_language"] == "English"
+    assert loaded["style_preset"] == "casual"
+    assert loaded["consistency_mode"] is True
+    assert loaded["json_output"] is True
+    assert loaded["output_hash"] == "out-hash"
+    assert loaded["activation_disposition"] == "auto_activate"
+    assert loaded["honorific_policy"] == "keigo"
+    assert loaded["prompt_template_version"] == "translation_request_v1"
+    assert loaded["glossary_hash"] == "glossary-hash"
+    assert loaded["batch_id"] == "batch-1"
+
+
 def test_save_edited_translation_creates_manual_version_and_history(storage):
     storage.save_translated_chapter(
         "novel1",
@@ -224,11 +333,15 @@ def test_activate_translated_chapter_version_rolls_back_active_output(storage):
     )
     storage.save_edited_translation("novel1", "ch1", "edited translation", editor="admin", glossary_revision=0)
 
+    versions = storage.list_translated_chapter_versions("novel1", "ch1")
+    machine_version_id = versions[0]["version_id"]
+    edited_version_id = versions[1]["version_id"]
+
     assert (
         storage.activate_translated_chapter_version(
             "novel1",
             "ch1",
-            "v1",
+            machine_version_id,
             editor="admin",
             note="restore machine output",
         )
@@ -241,15 +354,16 @@ def test_activate_translated_chapter_version_rolls_back_active_output(storage):
 
     assert loaded is not None
     assert loaded["text"] == "machine translation"
-    assert loaded["version_id"] == "v1"
+    assert loaded["version_id"] == machine_version_id
     assert versions[0]["active"] is True
     assert versions[1]["active"] is False
     assert history[-1]["action"] == "rollback"
-    assert history[-1]["version_id"] == "v1"
-    assert history[-1]["previous_version_id"] == "v2"
+    assert history[-1]["version_id"] == machine_version_id
+    assert history[-1]["previous_version_id"] == edited_version_id
 
 
-def test_list_stored_chapters_includes_raw_and_translated_entries(storage):
+def test_list_stored_chapters_includes_raw_and_overlay_entries(storage):
+    """``list_stored_chapters`` walks both raw bundles and translation overlays."""
     storage.save_chapter("novel1", "1", "raw only", title="Chapter 1")
     storage.save_translated_chapter(
         "novel1", "2", "translated only", provider_key="gemini", provider_model="gemini-3.1-flash-lite"
@@ -259,7 +373,13 @@ def test_list_stored_chapters_includes_raw_and_translated_entries(storage):
     assert storage.count_stored_chapters("novel1") == 2
 
 
-def test_chapter_storage_uses_single_merged_file(storage):
+def test_chapter_storage_separates_raw_and_overlay(storage):
+    """The raw chapter bundle is byte-immutable after the overlay split (Section 6).
+
+    Translation writes land in ``translations/<encoded-stem>.json``; the
+    raw ``chapters/<stem>.json`` file keeps ``raw`` untouched and never
+    gains a ``translation_versions`` / ``active_translation_version_id`` key.
+    """
     storage.save_chapter("novel1", "ch1", "raw text", title="Chapter 1")
     storage.save_translated_chapter("novel1", "ch1", "translated text", provider_key="dummy", provider_model="dummy")
 
@@ -268,9 +388,15 @@ def test_chapter_storage_uses_single_merged_file(storage):
 
     payload = json.loads(chapter_path.read_text(encoding="utf-8"))
     assert payload["raw"]["text"] == "raw text"
-    assert payload["active_translation_version_id"] == "v1"
-    assert payload["translation_versions"][0]["text"] == "translated text"
-    assert "translated" not in payload
+    assert "translation_versions" not in payload
+    assert "active_translation_version_id" not in payload
+
+    overlay_path = storage.base_dir / "novels" / "novel1" / "translations" / "ch1.json"
+    assert overlay_path.exists()
+    overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+    assert overlay["active_translation_version_id"] == "0000"
+    assert overlay["translation_versions"][0]["text"] == "translated text"
+    assert overlay["chapter_id"] == "ch1"
 
 
 def test_chapter_storage_media_fields_default_for_existing_chapters(storage):
@@ -314,24 +440,23 @@ def test_unversioned_chapter_bundle_is_rejected(storage):
         storage.load_translated_chapter("novel1", "legacy")
 
 
-def test_save_translated_chapter_preserves_media_fields(storage):
+def test_save_translated_chapter_preserves_media_fields_on_raw_bundle(storage):
+    """Media fields live on the raw bundle; save_translated_chapter must not
+    mutate the raw chapter bundle (overlay contract)."""
     chapter_dir = storage.base_dir / "novels" / "novel1" / "chapters"
     chapter_dir.mkdir(parents=True, exist_ok=True)
     chapter_path = chapter_dir / "ch-media-roundtrip.json"
-    chapter_path.write_text(
-        json.dumps(
-            {
-                "schema_version": storage.SCHEMA_VERSION,
-                "id": "ch-media-roundtrip",
-                "raw": {"text": "raw", "scraped_at": "2024-01-01T00:00:00Z"},
-                "ocr_required": True,
-                "ocr_text": "OCR corrected text",
-                "ocr_status": "reviewed",
-                "reembed_status": "pending",
-            }
-        ),
-        encoding="utf-8",
-    )
+    raw_payload = {
+        "schema_version": storage.SCHEMA_VERSION,
+        "id": "ch-media-roundtrip",
+        "raw": {"text": "raw", "scraped_at": "2024-01-01T00:00:00Z"},
+        "ocr_required": True,
+        "ocr_text": "OCR corrected text",
+        "ocr_status": "reviewed",
+        "reembed_status": "pending",
+    }
+    chapter_path.write_text(json.dumps(raw_payload, indent=2), encoding="utf-8")
+    before = chapter_path.read_text(encoding="utf-8")
 
     storage.save_translated_chapter(
         "novel1",
@@ -341,11 +466,14 @@ def test_save_translated_chapter_preserves_media_fields(storage):
         provider_model="gemini-3.1-flash-lite",
     )
 
-    payload = json.loads(chapter_path.read_text(encoding="utf-8"))
-    assert payload["ocr_required"] is True
-    assert payload["ocr_text"] == "OCR corrected text"
-    assert payload["ocr_status"] == "reviewed"
-    assert payload["reembed_status"] == "pending"
+    after = chapter_path.read_text(encoding="utf-8")
+    assert before == after, "save_translated_chapter must not rewrite the raw chapter bundle"
+
+    # Overlay should now contain the translation.
+    overlay_path = storage.base_dir / "novels" / "novel1" / "translations" / "ch-media-roundtrip.json"
+    overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+    assert overlay["translation_versions"][0]["text"] == "translated"
+    assert overlay["active_translation_version_id"] == "0000"
 
 
 def test_save_and_load_chapter_media_state_helpers(storage):

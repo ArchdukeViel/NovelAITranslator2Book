@@ -306,17 +306,28 @@ class CatalogService:
         *,
         title: str | None = None,
         source_key: str | None = None,
-        chapter_number: int = 0,
+        chapter_number: int | None = None,
+        source_episode_id: str | None = None,
+        sequence_number: int | None = None,
+        source_url: str | None = None,
     ) -> Chapter:
         """Save raw chapter text to file storage; persist key+checksum in DB.
 
         Args:
             novel_id: Parent novel identifier.
-            chapter_id: Chapter identifier (used as storage key suffix).
+            chapter_id: Chapter identifier (used as storage key suffix and
+                canonical logical id).
             content: Raw chapter text.
             title: Optional chapter title.
             source_key: Optional source site key.
-            chapter_number: Chapter number for ordering.
+            chapter_number: Chapter number for ordering. ``None`` (the
+                default) preserves an existing row's ordering and derives an
+                authoritative ordering from metadata for new rows — omission
+                is never conflated with an authoritative zero.
+            source_episode_id: Native source episode id when known (e.g. the
+                raw Kakuyomu episode id without the ``kakuyomu:`` prefix).
+            sequence_number: Mutable source position when known.
+            source_url: Canonical source URL when known.
 
         Returns:
             The Chapter ORM instance (added to session, not yet committed).
@@ -333,6 +344,9 @@ class CatalogService:
             chapter_id=chapter_id,
             chapter_number=chapter_number,
             title=title,
+            source_episode_id=source_episode_id,
+            sequence_number=sequence_number,
+            source_url=source_url,
         )
         chapter.raw_storage_key = f"{storage_key}:{checksum[:8]}"
         chapter.raw_status = "fetched"
@@ -376,7 +390,7 @@ class CatalogService:
         chapter = self._get_or_create_chapter(
             novel_db_id=novel_db_id,
             chapter_id=chapter_id,
-            chapter_number=0,
+            chapter_number=None,
         )
         chapter.translated_storage_key = f"{storage_key}:{checksum[:8]}"
         chapter.translation_status = "translated"
@@ -643,22 +657,93 @@ class CatalogService:
         self,
         novel_db_id: int | None,
         chapter_id: str,
-        chapter_number: int,
+        chapter_number: int | None = None,
         title: str | None = None,
+        source_episode_id: str | None = None,
+        sequence_number: int | None = None,
+        source_url: str | None = None,
     ) -> Chapter:
-        """Return existing Chapter DB row or create a new one."""
+        """Return existing Chapter DB row or create a new one.
+
+        Section 2 stable identity: rows are resolved by
+        ``novel_id + logical_chapter_id`` — never by title — so same-title
+        chapters remain distinct rows and a reorder updates
+        ``sequence_number`` in place without creating a new row.
+
+        Ordering fields (``chapter_number``, ``sequence_number``) are only
+        updated when the caller supplies authoritative values (not ``None``).
+        For a new row, if the caller does not provide ``chapter_number`` /
+        ``sequence_number`` / ``source_episode_id``, the function attempts to
+        derive authoritative values from the novel's metadata chapter list so
+        the DB projection stays consistent with the canonical index. The
+        native ``source_episode_id`` (e.g. the raw Kakuyomu episode id) is
+        never defaulted to the prefixed internal logical id when the metadata
+        carries the native id.
+        """
         chapter = None
         if novel_db_id is not None:
             chapter = (
                 self._session.query(Chapter)
-                .filter_by(novel_id=novel_db_id)
-                .filter(Chapter.title == (title or chapter_id))
+                .filter_by(novel_id=novel_db_id, logical_chapter_id=str(chapter_id))
                 .one_or_none()
             )
         if chapter is None:
+            # New row: derive authoritative metadata from the chapter index
+            # entry when the caller did not supply the value.
+            derived_chapter_number = chapter_number
+            derived_source_episode_id = source_episode_id
+            derived_sequence_number = sequence_number
+            if novel_db_id is not None:
+                try:
+                    novel = self._session.query(Novel).filter_by(id=novel_db_id).one_or_none()
+                    if novel is not None:
+                        meta = self._storage.load_metadata(novel.slug)
+                        if meta:
+                            chapters = meta.get("chapters", [])
+                            if isinstance(chapters, list):
+                                for idx, ch in enumerate(chapters):
+                                    if not isinstance(ch, dict):
+                                        continue
+                                    cid = str(ch.get("id") or ch.get("chapter_id") or "")
+                                    if cid == str(chapter_id):
+                                        if derived_chapter_number is None:
+                                            derived_chapter_number = ch.get("num") or (idx + 1)
+                                        if derived_source_episode_id is None:
+                                            entry_ep = ch.get("source_episode_id")
+                                            if isinstance(entry_ep, str) and entry_ep.strip():
+                                                derived_source_episode_id = entry_ep
+                                        if derived_sequence_number is None:
+                                            entry_seq = ch.get("sequence_number")
+                                            if isinstance(entry_seq, int):
+                                                derived_sequence_number = entry_seq
+                                            else:
+                                                derived_sequence_number = ch.get("num") or (idx + 1)
+                                        break
+                except Exception:
+                    pass
+            if derived_chapter_number is None:
+                derived_chapter_number = 0
+
             chapter = Chapter(
                 novel_id=novel_db_id,
-                chapter_number=chapter_number,
+                logical_chapter_id=str(chapter_id),
+                source_episode_id=derived_source_episode_id or str(chapter_id),
+                sequence_number=derived_sequence_number,
+                chapter_number=derived_chapter_number,
                 title=title or chapter_id,
+                source_url=source_url,
             )
+        else:
+            # Reorder: mutate the display position in place; the stable row
+            # identity (logical_chapter_id) never changes. Only authoritative
+            # values are applied — a translation save with omitted ordering
+            # never alters source ordering.
+            if sequence_number is not None:
+                chapter.sequence_number = sequence_number
+            if chapter_number is not None:
+                chapter.chapter_number = chapter_number
+            if source_episode_id:
+                chapter.source_episode_id = source_episode_id
+            if source_url:
+                chapter.source_url = source_url
         return chapter

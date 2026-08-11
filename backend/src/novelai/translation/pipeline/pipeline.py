@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
+from novelai.config.settings import settings
 from novelai.translation.pipeline.context import PipelineState
 from novelai.translation.pipeline.stages.base import PipelineStage
 
@@ -75,9 +76,7 @@ class TranslationPipeline:
         each stage. This helps make stage inputs/outputs explicit and reduces bugs.
         """
         context = (
-            initial_context
-            if isinstance(initial_context, PipelineState)
-            else PipelineState.from_dict(initial_context)
+            initial_context if isinstance(initial_context, PipelineState) else PipelineState.from_dict(initial_context)
         )
 
         for stage in self.stages:
@@ -95,6 +94,16 @@ class TranslationPipeline:
             )
             try:
                 context = await stage.run(context)
+                if stage_name == "TranslationQAStage" and settings.LLM_QA_POLICY == "blocking_retry":
+                    translate_stage = next((s for s in self.stages if s.__class__.__name__ == "TranslateStage"), None)
+                    retry_loop_count = 0
+                    while retry_loop_count < settings.LLM_QA_MAX_RETRY_ATTEMPTS and any(
+                        s.get("status") == "needs_retry" for s in context.chunk_states.values()
+                    ):
+                        retry_loop_count += 1
+                        if translate_stage is not None:
+                            context = await translate_stage.run(context)
+                        context = await stage.run(context)
             except Exception as exc:
                 error = {
                     "stage_name": stage_name,

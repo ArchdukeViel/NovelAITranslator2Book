@@ -286,6 +286,30 @@ class SmartSegmentStage(PipelineStage):
         chapter_id = self._infer_chapter_id(context)
         novel_id = self._infer_novel_id(context)
         paragraphs = self.split_paragraphs(context.normalized_text or "", chapter_id=chapter_id)
+        # Section 6 (PR 41 closure): delta changed windows pass the chapter's
+        # ABSOLUTE paragraph ids so the window prompt's ``[P ...]`` markers and
+        # the stored lineage share one identity. The override is honored only
+        # when it matches the segmentation 1:1 (same count, unique, non-empty);
+        # otherwise the segmenter's own ids win and the strict marker
+        # validation downstream fails closed to a full translation.
+        override_ids = context.metadata.get("_paragraph_ids_override")
+        if (
+            isinstance(override_ids, list)
+            and len(override_ids) == len(paragraphs)
+            and all(isinstance(pid, str) and pid.strip() for pid in override_ids)
+            and len({pid.strip() for pid in override_ids}) == len(override_ids)
+        ):
+            paragraphs = [
+                Paragraph(
+                    paragraph_id=pid.strip(),
+                    chapter_id=paragraph.chapter_id,
+                    text=paragraph.text,
+                    char_count=paragraph.char_count,
+                    paragraph_index=paragraph.paragraph_index,
+                    source_hash=paragraph.source_hash,
+                )
+                for paragraph, pid in zip(paragraphs, override_ids, strict=True)
+            ]
         return [_ChapterParagraphs(novel_id=novel_id, chapter_id=chapter_id, paragraphs=paragraphs)]
 
     @staticmethod

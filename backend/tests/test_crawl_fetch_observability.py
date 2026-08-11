@@ -1156,3 +1156,186 @@ class TestFailureRecordEnrichmentIntegration:
             assert isinstance(failure["retry_attempts"], int)
         finally:
             shutil.rmtree(data_dir, ignore_errors=True)
+
+
+class RetryingFakeSource(FakeSource):
+    """FakeSource variant that simulates retry callbacks before failing."""
+
+    def __init__(self, *, retries_before_fail: dict[str, int], **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._retries_before_fail = retries_before_fail
+        self._attempts: dict[str, int] = {}
+
+    async def fetch_chapter_payload(self, url: str, *, on_retry: Any = None) -> Mapping[str, Any]:
+        self.fetch_count += 1
+        if url in self._retries_before_fail:
+            # Simulate a fetch that exhausted N retries before failing: the
+            # crawler invokes the source once per chapter, and the real
+            # source retry loop reports each attempt through on_retry.
+            for attempt in range(1, self._retries_before_fail[url] + 1):
+                if callable(on_retry):
+                    on_retry(attempt, SourceError("transient"))
+            raise SourceError("fetch failed")
+        return await super().fetch_chapter_payload(url, on_retry=on_retry)
+
+
+# ---------------------------------------------------------------------------
+# Structured progress & terminal status contracts
+# ---------------------------------------------------------------------------
+
+
+class TestRetryAttemptsResetPerChapter:
+    """retry_attempts is per-chapter: an earlier chapter's retries must not
+    leak into a later chapter's failure record."""
+
+    @pytest.mark.asyncio
+    async def test_retry_attempts_do_not_leak_across_chapters(self, storage: StorageService) -> None:
+        _seed_metadata(storage, "novel-1", chapters=3)
+        base_url = "http://example.test/novel-1"
+        source = RetryingFakeSource(
+            retries_before_fail={
+                f"{base_url}/1": 2,  # chapter 1 retried twice before failing
+            },
+            fetch_errors={
+                f"{base_url}/1": SourceError("fetch failed"),
+                f"{base_url}/2": SourceError("fetch failed"),
+            },
+            chapter_payloads={f"{base_url}/3": {"text": "Chapter 3 content"}},
+        )
+        orchestrator = _make_orchestrator(storage, source)  # type: ignore[arg-type]
+        data_dir = _make_tmp_dir()
+        try:
+            activity_log = ActivityQueueService(data_dir)
+            activity = _make_crawl_activity(activity_log)
+            worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
+
+            await worker.run_activity(activity["activity_id"])
+
+            loaded = activity_log.get_activity(activity["activity_id"])
+            assert loaded is not None
+            failures = {f["chapter_id"]: f for f in loaded["metadata"]["crawl_result"]["failures"]}
+            # Chapter 1 retried twice; chapter 2 never retried.
+            assert failures["1"]["retry_attempts"] == 2
+            assert failures["2"]["retry_attempts"] == 0
+        finally:
+            shutil.rmtree(data_dir, ignore_errors=True)
+
+
+class TestStructuredProgressContract:
+    """progress.completed is driven only by terminal chapter processing and
+    never exceeds total."""
+
+    @pytest.mark.asyncio
+    async def test_completed_never_exceeds_total_with_failures(self, storage: StorageService) -> None:
+        _seed_metadata(storage, "novel-1", chapters=3)
+        base_url = "http://example.test/novel-1"
+        source = FakeSource(
+            fetch_errors={
+                f"{base_url}/1": SourceError("fetch failed"),
+                f"{base_url}/2": SourceError("fetch failed"),
+            },
+            chapter_payloads={f"{base_url}/3": {"text": "Chapter 3 content"}},
+        )
+        orchestrator = _make_orchestrator(storage, source)  # type: ignore[arg-type]
+        data_dir = _make_tmp_dir()
+        try:
+            activity_log = ActivityQueueService(data_dir)
+            activity = _make_crawl_activity(activity_log)
+            worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
+
+            await worker.run_activity(activity["activity_id"])
+
+            loaded = activity_log.get_activity(activity["activity_id"])
+            assert loaded is not None
+            progress = loaded["metadata"]["progress"]
+            assert progress["total"] == 3
+            assert progress["completed"] == 3
+            assert progress["completed"] <= progress["total"]
+            # Stages are recorded so the UI can distinguish phases.
+            assert progress["stage"] == "reconciliation"
+            assert progress["stage_status"] in ("completed_with_errors",)
+        finally:
+            shutil.rmtree(data_dir, ignore_errors=True)
+
+
+class TestCrawlTerminalStatus:
+    """crawl_result.terminal_status and activity current_stage reflect the
+    precise partial outcome."""
+
+    @pytest.mark.asyncio
+    async def test_all_success_is_completed(self, storage: StorageService) -> None:
+        _seed_metadata(storage, "novel-1", chapters=2)
+        base_url = "http://example.test/novel-1"
+        source = FakeSource(
+            chapter_payloads={
+                f"{base_url}/1": {"text": "Chapter 1 content"},
+                f"{base_url}/2": {"text": "Chapter 2 content"},
+            }
+        )
+        orchestrator = _make_orchestrator(storage, source)  # type: ignore[arg-type]
+        data_dir = _make_tmp_dir()
+        try:
+            activity_log = ActivityQueueService(data_dir)
+            activity = _make_crawl_activity(activity_log)
+            worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
+
+            await worker.run_activity(activity["activity_id"])
+
+            loaded = activity_log.get_activity(activity["activity_id"])
+            assert loaded is not None
+            assert loaded["metadata"]["crawl_result"]["terminal_status"] == "completed"
+            assert loaded["metadata"]["current_stage"] == "completed"
+        finally:
+            shutil.rmtree(data_dir, ignore_errors=True)
+
+    @pytest.mark.asyncio
+    async def test_partial_failure_is_completed_with_errors(self, storage: StorageService) -> None:
+        _seed_metadata(storage, "novel-1", chapters=2)
+        base_url = "http://example.test/novel-1"
+        source = FakeSource(
+            fetch_errors={f"{base_url}/1": SourceError("fetch failed")},
+            chapter_payloads={f"{base_url}/2": {"text": "Chapter 2 content"}},
+        )
+        orchestrator = _make_orchestrator(storage, source)  # type: ignore[arg-type]
+        data_dir = _make_tmp_dir()
+        try:
+            activity_log = ActivityQueueService(data_dir)
+            activity = _make_crawl_activity(activity_log)
+            worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
+
+            await worker.run_activity(activity["activity_id"])
+
+            loaded = activity_log.get_activity(activity["activity_id"])
+            assert loaded is not None
+            assert loaded["metadata"]["crawl_result"]["terminal_status"] == "completed_with_errors"
+            assert loaded["metadata"]["current_stage"] == "completed_with_errors"
+            assert loaded["status"] == "completed"
+        finally:
+            shutil.rmtree(data_dir, ignore_errors=True)
+
+    @pytest.mark.asyncio
+    async def test_image_failure_only_is_completed_with_warnings(self, storage: StorageService) -> None:
+        _seed_metadata(storage, "novel-1", chapters=1)
+        source = FakeSource(
+            chapter_payloads={
+                "http://example.test/novel-1/1": {
+                    "text": "Chapter 1",
+                    "images": [{"original_url": "http://example.test/img1.png", "index": 0}],
+                }
+            }
+        )
+        orchestrator = _make_orchestrator(storage, source)  # type: ignore[arg-type]
+        data_dir = _make_tmp_dir()
+        try:
+            activity_log = ActivityQueueService(data_dir)
+            activity = _make_crawl_activity(activity_log)
+            worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
+
+            await worker.run_activity(activity["activity_id"])
+
+            loaded = activity_log.get_activity(activity["activity_id"])
+            assert loaded is not None
+            assert loaded["metadata"]["crawl_result"]["terminal_status"] == "completed_with_warnings"
+            assert loaded["metadata"]["current_stage"] == "completed_with_warnings"
+        finally:
+            shutil.rmtree(data_dir, ignore_errors=True)

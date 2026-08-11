@@ -5,6 +5,7 @@ import pytest
 
 from novelai.core.errors import SourceError
 from novelai.sources.novel18_syosetu import Novel18SyosetuSource
+from tests.test_fetch_service import FakeFetchService
 
 
 def test_novel18_matches_and_normalizes_root_and_chapter_urls() -> None:
@@ -32,8 +33,7 @@ def test_novel18_raises_clear_error_for_age_gate_redirect() -> None:
         source._validate_fetched_page(
             "https://novel18.syosetu.com/n0813kx/",
             httpx.URL(
-                "https://nl.syosetu.com/redirect/ageauth/"
-                "?url=https%3A%2F%2Fnoc.syosetu.com%2Ftop%2Ftop%2F&hash=test"
+                "https://nl.syosetu.com/redirect/ageauth/?url=https%3A%2F%2Fnoc.syosetu.com%2Ftop%2Ftop%2F&hash=test"
             ),
             "<html><body>年齢確認 Cookie JavaScript redirect/ageauth/</body></html>",
         )
@@ -101,7 +101,7 @@ def test_novel18_parse_metadata_html_leaves_ambiguous_publication_status_unknown
 
 @pytest.mark.asyncio
 async def test_novel18_fetch_metadata_uses_novel18_domain() -> None:
-    source = Novel18SyosetuSource()
+    source = Novel18SyosetuSource(fetch_service=FakeFetchService(""))
     seen_urls: list[str] = []
     infotop_url = "https://novel18.syosetu.com/novelview/infotop/ncode/n0813kx/"
 
@@ -133,7 +133,7 @@ async def test_novel18_fetch_metadata_uses_novel18_domain() -> None:
 
 @pytest.mark.asyncio
 async def test_novel18_fetch_metadata_caps_single_page_flat_toc() -> None:
-    source = Novel18SyosetuSource()
+    source = Novel18SyosetuSource(fetch_service=FakeFetchService(""))
     root_url = "https://novel18.syosetu.com/n0813kx/"
     infotop_url = "https://novel18.syosetu.com/novelview/infotop/ncode/n0813kx/"
 
@@ -143,10 +143,7 @@ async def test_novel18_fetch_metadata_caps_single_page_flat_toc() -> None:
             <html><body><table><tr><th>掲載状態</th><td>連載中</td></tr></table></body></html>
             """
         assert url == root_url
-        links = "\n".join(
-            f'<a href="/n0813kx/{index}/">Episode {index}</a>'
-            for index in range(1, 13)
-        )
+        links = "\n".join(f'<a href="/n0813kx/{index}/">Episode {index}</a>' for index in range(1, 13))
         return f"""
         <html>
           <body>

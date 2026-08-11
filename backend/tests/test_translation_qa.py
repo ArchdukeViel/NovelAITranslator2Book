@@ -466,6 +466,7 @@ async def test_orchestration_does_not_save_final_translation_when_qa_fails():
             storage=fixture.storage,
             translation=TranslationService(pipeline=pipeline),
             source_factory=lambda key: fixture.mock_source,
+            provider_factory=lambda key: EmptyOutputProvider(),
             settings_service=fixture.settings_service,
             translation_cache=fixture.cache,
             usage_service=fixture.usage_service,
@@ -565,8 +566,10 @@ async def test_llm_qa_disabled_by_default_skips_grader(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_llm_qa_below_threshold_marks_needs_retry(monkeypatch):
-    """DEBT-053: an LLM score below the threshold marks the chunk for retry."""
+async def test_llm_qa_below_threshold_advisory_keeps_translated(monkeypatch):
+    """Advisory (default) policy: below-threshold chunks keep status
+    'translated' and only get a warning — no retry marker without a real
+    retry state."""
     from novelai.config.settings import settings
 
     grader = _StubLLMGrader(score=0.40)
@@ -575,6 +578,7 @@ async def test_llm_qa_below_threshold_marks_needs_retry(monkeypatch):
     monkeypatch.setattr(settings, "LLM_QA_MODEL", "gemini-3.1-flash-lite")
     monkeypatch.setattr(settings, "LLM_QA_MIN_SCORE", 0.75)
     monkeypatch.setattr(settings, "LLM_QA_MAX_RETRY_ATTEMPTS", 1)
+    monkeypatch.setattr(settings, "LLM_QA_POLICY", "advisory")
     # Point the registry lookup at our stub.
     import novelai.translation.pipeline.stages.translation_qa as stage_mod
 
@@ -585,12 +589,97 @@ async def test_llm_qa_below_threshold_marks_needs_retry(monkeypatch):
     await TranslationQAStage().run(context)
 
     chunk_state = context.chunk_states["c0001"]
-    assert chunk_state["qa_status"] == "needs_llm_retry"
+    assert chunk_state["status"] == "translated"
+    assert chunk_state["qa_status"] == "llm_qa_advisory_below_threshold"
     assert "llm_qa_below_threshold" in chunk_state["qa_warnings"]
     assert chunk_state["llm_qa_score"] == 0.40
     assert context.metadata["llm_qa_enabled"] is True
     assert context.metadata["llm_qa_min_score"] == 0.75
+    assert "needs_llm_retry" not in chunk_state.get("qa_status", "")
+    assert context.metadata.get("llm_qa_retry_counts", {}) == {}
+
+
+@pytest.mark.asyncio
+async def test_llm_qa_blocking_retry_marks_chunk_needs_retry(monkeypatch):
+    """blocking_retry policy: below-threshold chunks get status
+    'needs_retry' (backed by a real status) with bounded accounting."""
+    from novelai.config.settings import settings
+
+    grader = _StubLLMGrader(score=0.40)
+    monkeypatch.setattr(settings, "LLM_QA_ENABLED", True)
+    monkeypatch.setattr(settings, "LLM_QA_PROVIDER", "gemini")
+    monkeypatch.setattr(settings, "LLM_QA_MODEL", "gemini-3.1-flash-lite")
+    monkeypatch.setattr(settings, "LLM_QA_MIN_SCORE", 0.75)
+    monkeypatch.setattr(settings, "LLM_QA_MAX_RETRY_ATTEMPTS", 1)
+    monkeypatch.setattr(settings, "LLM_QA_POLICY", "blocking_retry")
+    import novelai.translation.pipeline.stages.translation_qa as stage_mod
+
+    monkeypatch.setattr(stage_mod, "get_provider", lambda key: grader)
+
+    _, context = _stage_context_with_one_passing_chunk()
+
+    await TranslationQAStage().run(context)
+
+    chunk_state = context.chunk_states["c0001"]
+    assert chunk_state["status"] == "needs_retry"
+    assert chunk_state["qa_status"] == "needs_llm_retry"
+    assert chunk_state["llm_qa_retry_count"] == 1
     assert context.metadata["llm_qa_retry_counts"]["c0001"] == 1
+
+
+@pytest.mark.asyncio
+async def test_llm_qa_blocking_retry_exhausted_moves_to_review(monkeypatch):
+    """blocking_retry policy: a chunk that already exhausted its retry
+    budget moves to needs_review instead of retrying again."""
+    from novelai.config.settings import settings
+
+    grader = _StubLLMGrader(score=0.40)
+    monkeypatch.setattr(settings, "LLM_QA_ENABLED", True)
+    monkeypatch.setattr(settings, "LLM_QA_PROVIDER", "gemini")
+    monkeypatch.setattr(settings, "LLM_QA_MODEL", "gemini-3.1-flash-lite")
+    monkeypatch.setattr(settings, "LLM_QA_MIN_SCORE", 0.75)
+    monkeypatch.setattr(settings, "LLM_QA_MAX_RETRY_ATTEMPTS", 1)
+    monkeypatch.setattr(settings, "LLM_QA_POLICY", "blocking_retry")
+    import novelai.translation.pipeline.stages.translation_qa as stage_mod
+
+    monkeypatch.setattr(stage_mod, "get_provider", lambda key: grader)
+
+    _, context = _stage_context_with_one_passing_chunk()
+    # Simulate a prior run that already used the retry budget.
+    context.chunk_states["c0001"]["llm_qa_retry_count"] = 1
+
+    await TranslationQAStage().run(context)
+
+    chunk_state = context.chunk_states["c0001"]
+    assert chunk_state["status"] == "needs_review"
+    assert chunk_state["qa_status"] == "llm_score_below_threshold_no_retry"
+    assert "llm_qa_below_threshold_no_retry" in chunk_state["qa_warnings"]
+
+
+@pytest.mark.asyncio
+async def test_llm_qa_review_policy_marks_needs_review(monkeypatch):
+    """review policy: below-threshold chunks get status 'needs_review'."""
+    from novelai.config.settings import settings
+
+    grader = _StubLLMGrader(score=0.40)
+    monkeypatch.setattr(settings, "LLM_QA_ENABLED", True)
+    monkeypatch.setattr(settings, "LLM_QA_PROVIDER", "gemini")
+    monkeypatch.setattr(settings, "LLM_QA_MODEL", "gemini-3.1-flash-lite")
+    monkeypatch.setattr(settings, "LLM_QA_MIN_SCORE", 0.75)
+    monkeypatch.setattr(settings, "LLM_QA_MAX_RETRY_ATTEMPTS", 1)
+    monkeypatch.setattr(settings, "LLM_QA_POLICY", "review")
+    import novelai.translation.pipeline.stages.translation_qa as stage_mod
+
+    monkeypatch.setattr(stage_mod, "get_provider", lambda key: grader)
+
+    _, context = _stage_context_with_one_passing_chunk()
+
+    await TranslationQAStage().run(context)
+
+    chunk_state = context.chunk_states["c0001"]
+    assert chunk_state["status"] == "needs_review"
+    assert chunk_state["qa_status"] == "needs_review"
+    assert "llm_qa_below_threshold" in chunk_state["qa_warnings"]
 
 
 @pytest.mark.asyncio

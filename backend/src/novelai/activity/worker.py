@@ -6,11 +6,12 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from novelai.activity.queue import ActivityQueueService
+from novelai.activity.queue import ActivityQueueService, normalize_crawl_result
 from novelai.core.errors import ProviderError
 from novelai.core.platform import CrawlJobKind, JobStatus, TranslationJobKind
 from novelai.services.glossary_diagnostics import aggregate_glossary_diagnostics
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
+from novelai.services.orchestration.crawler import CrawlProgressEvent
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,43 @@ class ActivityWorkerService:
     def _activity_metadata(activity: dict[str, Any]) -> dict[str, Any]:
         metadata = activity.get("metadata")
         return dict(metadata) if isinstance(metadata, dict) else {}
+
+    def _make_label_callback(self, activity_id: str) -> Callable[[str], None]:
+        """Build a label-only progress callback that never changes counters."""
+
+        def _callback(message: str) -> None:
+            try:
+                self.activity_log.update_activity_metadata(
+                    activity_id,
+                    {"progress": {"current_label": message}},
+                )
+            except Exception:
+                logger.debug("Failed to update crawl progress label", exc_info=True)
+
+        return _callback
+
+    def _update_crawl_progress(
+        self,
+        activity_id: str,
+        completed: int,
+        total: int | None,
+        label: str,
+        stage: str | None = None,
+        stage_status: str | None = None,
+    ) -> None:
+        progress: dict[str, Any] = {
+            "completed": completed,
+            "total": total,
+            "current_label": label,
+        }
+        if stage is not None:
+            progress["stage"] = stage
+        if stage_status is not None:
+            progress["stage_status"] = stage_status
+        try:
+            self.activity_log.update_activity_metadata(activity_id, {"progress": progress})
+        except Exception:
+            logger.debug("Failed to update crawl progress", exc_info=True)
 
     def _activity_subtype(self, activity: dict[str, Any]) -> str:
         metadata = self._activity_metadata(activity)
@@ -198,6 +236,7 @@ class ActivityWorkerService:
                 novel_id,
                 mode=mode,
                 max_chapter=max_chapter,
+                progress_callback=self._make_label_callback(activity_id),
             )
             self._check_cancelled(activity_id)
             return {"chapter_count": len(result.get("chapters", [])) if isinstance(result, dict) else 0}
@@ -217,20 +256,23 @@ class ActivityWorkerService:
                 return self.activity_log.is_activity_cancelled(activity_id)
 
             def _progress_callback(message: str) -> None:
-                completed[0] += 1
-                try:
-                    self.activity_log.update_activity_metadata(
-                        activity_id,
-                        {
-                            "progress": {
-                                "completed": completed[0],
-                                "total": total,
-                                "current_label": message,
-                            }
-                        },
-                    )
-                except Exception:
-                    logger.debug("Failed to update crawl progress", exc_info=True)
+                # Label-only channel: arbitrary log messages never drive
+                # numeric progress; only structured events do.
+                self._update_crawl_progress(activity_id, completed[0], total, message)
+
+            def _progress_events_callback(event: CrawlProgressEvent) -> None:
+                completed[0] = event.completed
+                label = event.label or event.status
+                if event.source_episode_id is not None:
+                    label = f"{label} [{event.source_episode_id}]"
+                self._update_crawl_progress(
+                    activity_id,
+                    event.completed,
+                    event.total,
+                    label,
+                    stage=event.stage,
+                    stage_status=event.status,
+                )
 
             self._check_cancelled(activity_id)
             result = await self.orchestrator.scrape_chapters(
@@ -240,15 +282,32 @@ class ActivityWorkerService:
                 mode=mode,
                 progress_callback=_progress_callback,
                 cancellation_check=_cancelled_check,
+                progress_events_callback=_progress_events_callback,
             )
 
             self._check_cancelled(activity_id)
+            succeeded = int(result.get("succeeded") or 0)
+            skipped = int(result.get("skipped") or 0)
+            failed = int(result.get("failed") or 0)
+            image_download_failures = int(result.get("image_download_failures") or 0)
+            terminal_status = result.get("terminal_status")
+            if not isinstance(terminal_status, str) or not terminal_status:
+                # Compute from counts when the orchestrator omits it; matches
+                # crawler.crawl_terminal_status so downstream consumers see a
+                # coherent status regardless of orchestrator implementation.
+                if failed > 0:
+                    terminal_status = "completed_with_errors"
+                elif image_download_failures > 0 or (succeeded == 0 and skipped > 0):
+                    terminal_status = "completed_with_warnings"
+                else:
+                    terminal_status = "completed"
             crawl_result = {
-                "succeeded": result.get("succeeded", 0),
-                "skipped": result.get("skipped", 0),
-                "failed": result.get("failed", 0),
+                "succeeded": succeeded,
+                "skipped": skipped,
+                "failed": failed,
                 "failures": result.get("failures", []),
-                "image_download_failures": result.get("image_download_failures", 0),
+                "image_download_failures": image_download_failures,
+                "terminal_status": terminal_status,
             }
             self.activity_log.update_activity_metadata(activity_id, {"crawl_result": crawl_result})
 
@@ -392,7 +451,26 @@ class ActivityWorkerService:
         try:
             if activity.get("type") == "crawl":
                 result_metadata = await self._run_crawl_activity(activity)
-                self.activity_log.record_source_health(str(activity.get("source_key") or ""), success=True)
+                # Section 10: accept either the nested ``crawl_result`` envelope
+                # or a direct flat dict with succeeded/failed/terminal_status.
+                # normalize_crawl_result picks the right one; missing fields
+                # fall back to a clean-success interpretation.
+                crawl_result_meta = normalize_crawl_result(
+                    result_metadata if isinstance(result_metadata, dict) else None
+                )
+                has_errors = crawl_result_meta is not None and (
+                    int(crawl_result_meta.get("failed", 0) or 0) > 0
+                    or crawl_result_meta.get("terminal_status") in ("failed", "completed_with_errors")
+                )
+                if has_errors:
+                    failed_count = int(crawl_result_meta.get("failed", 0) or 0)  # type: ignore[union-attr]
+                    self.activity_log.record_source_health(
+                        str(activity.get("source_key") or ""),
+                        success=False,
+                        error=f"Crawl completed with errors ({failed_count} failed chapters)",
+                    )
+                else:
+                    self.activity_log.record_source_health(str(activity.get("source_key") or ""), success=True)
             elif activity.get("type") == "translation":
                 result_metadata = await self._run_translation_activity(activity)
             else:
@@ -491,10 +569,34 @@ class ActivityWorkerService:
             self._notify_translation_transition(activity, status=JobStatus.FAILED, result=failed_metadata)
             return failed
 
+        completion_stage = "completed"
+        if activity.get("type") == "crawl":
+            # Precise partial terminal state for crawl activities: a crawl
+            # that saved some chapters but failed others is reported as
+            # completed_with_errors; image-download-only problems surface as
+            # completed_with_warnings. JobStatus stays COMPLETED so queue
+            # semantics are unchanged; the nuance lives in current_stage and
+            # metadata.crawl_result.terminal_status.
+            if isinstance(result_metadata, dict):
+                crawl_result = result_metadata.get("crawl_result")
+                if isinstance(crawl_result, dict):
+                    terminal_status = crawl_result.get("terminal_status")
+                    if terminal_status in ("completed_with_errors", "completed_with_warnings"):
+                        completion_stage = terminal_status
+            if completion_stage != "completed":
+                warnings = list(activity_metadata.get("warnings", []))
+                warnings.append(f"Crawl finished with a partial outcome ({completion_stage}).")
+                activity_metadata = {**activity_metadata, "warnings": warnings}
+
         completed = self.activity_log.update_activity_status(
             activity_id,
             JobStatus.COMPLETED,
-            metadata={**activity_metadata, "current_stage": "completed", "completed": 1, "result": result_metadata},
+            metadata={
+                **activity_metadata,
+                "current_stage": completion_stage,
+                "completed": 1,
+                "result": result_metadata,
+            },
         )
         self._notify_translation_transition(activity, status=JobStatus.COMPLETED, result=result_metadata)
         return completed

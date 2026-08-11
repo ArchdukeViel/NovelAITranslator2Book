@@ -115,8 +115,8 @@ def test_syosetu_fixture_preface_body_afterword_and_ruby() -> None:
             "source_order": 3,
         },
     ]
-    assert ruby == "魔導具が光った。"
-    assert "まどうぐ" not in ruby
+    assert ruby == "魔導具《まどうぐ》が光った。"
+    assert "まどうぐ" in ruby
 
 
 def test_syosetu_fixture_image_extraction_and_placeholder() -> None:
@@ -128,7 +128,13 @@ def test_syosetu_fixture_image_extraction_and_placeholder() -> None:
 
     assert payload["text"] == "Before image.\n\n[Image: Scene fixture]\n\nAfter image."
     assert payload["source_blocks"] == [
-        {"type": "line", "source_block_id": "s0001", "paragraph_id": "p0001", "text": "Before image.", "source_order": 1},
+        {
+            "type": "line",
+            "source_block_id": "s0001",
+            "paragraph_id": "p0001",
+            "text": "Before image.",
+            "source_order": 1,
+        },
         {
             "type": "line",
             "source_block_id": "s0002",
@@ -136,7 +142,13 @@ def test_syosetu_fixture_image_extraction_and_placeholder() -> None:
             "text": "[Image: Scene fixture]",
             "source_order": 2,
         },
-        {"type": "line", "source_block_id": "s0003", "paragraph_id": "p0003", "text": "After image.", "source_order": 3},
+        {
+            "type": "line",
+            "source_block_id": "s0003",
+            "paragraph_id": "p0003",
+            "text": "After image.",
+            "source_order": 3,
+        },
     ]
     assert payload["images"] == [
         {
@@ -183,9 +195,7 @@ def test_kakuyomu_fixture_url_matching_and_work_metadata() -> None:
 
     assert source.can_handle("https://kakuyomu.jp/works/16818093000000000000/")
     assert (
-        source.normalize_novel_id(
-            "https://kakuyomu.jp/works/16818093000000000000/episodes/16818093000000000001"
-        )
+        source.normalize_novel_id("https://kakuyomu.jp/works/16818093000000000000/episodes/16818093000000000001")
         == "16818093000000000000"
     )
 
@@ -206,23 +216,47 @@ def test_kakuyomu_fixture_episode_body_and_separator() -> None:
 
     episode_payload = source._parse_chapter_payload(_fixture("kakuyomu", "episode_page.html"), "https://kakuyomu.jp/")
     episode = str(episode_payload.get("text", ""))
-    with_hr_payload = source._parse_chapter_payload(_fixture("kakuyomu", "episode_with_hr.html"), "https://kakuyomu.jp/")
+    with_hr_payload = source._parse_chapter_payload(
+        _fixture("kakuyomu", "episode_with_hr.html"), "https://kakuyomu.jp/"
+    )
     with_hr = str(with_hr_payload.get("text", ""))
 
     assert episode == "Episode first paragraph.\n\nEpisode second paragraph."
     assert episode_payload["source_blocks"] == [
-        {"type": "line", "source_block_id": "s0001", "paragraph_id": "p0001", "text": "Episode first paragraph.", "source_order": 1},
-        {"type": "line", "source_block_id": "s0002", "paragraph_id": "p0002", "text": "Episode second paragraph.", "source_order": 2},
+        {
+            "type": "line",
+            "source_block_id": "s0001",
+            "paragraph_id": "p0001",
+            "text": "Episode first paragraph.",
+            "source_order": 1,
+        },
+        {
+            "type": "line",
+            "source_block_id": "s0002",
+            "paragraph_id": "p0002",
+            "text": "Episode second paragraph.",
+            "source_order": 2,
+        },
     ]
     assert with_hr == (
-        "Before separator.\n\n"
-        "------------------------------------------------------------\n\n"
-        "After separator."
+        "Before separator.\n\n------------------------------------------------------------\n\nAfter separator."
     )
     assert with_hr_payload["source_blocks"] == [
-        {"type": "line", "source_block_id": "s0001", "paragraph_id": "p0001", "text": "Before separator.", "source_order": 1},
+        {
+            "type": "line",
+            "source_block_id": "s0001",
+            "paragraph_id": "p0001",
+            "text": "Before separator.",
+            "source_order": 1,
+        },
         {"type": "break", "source_block_id": "b0001", "source_order": 2},
-        {"type": "line", "source_block_id": "s0002", "paragraph_id": "p0002", "text": "After separator.", "source_order": 3},
+        {
+            "type": "line",
+            "source_block_id": "s0002",
+            "paragraph_id": "p0002",
+            "text": "After separator.",
+            "source_order": 3,
+        },
     ]
 
 
