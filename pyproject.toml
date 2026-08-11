@@ -58,7 +58,7 @@ auth = [
   "itsdangerous>=2.2",
 ]
 s3 = [
-  "boto3>=1.43.47",
+  "boto3>=1.43.67",
 ]
 dev = [
   "aiosqlite>=0.20",
