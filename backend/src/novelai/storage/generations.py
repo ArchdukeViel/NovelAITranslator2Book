@@ -1358,9 +1358,9 @@ def commit_generation(
     from ``chapter_dispositions`` (the canonical source of truth) and
     reconciled against the physical staged state — caller-supplied summary
     counters cannot disagree with the dispositions. Modern normal commits
-    must supply the disposition map; a missing map raises instead of
-    silently bypassing disposition reconciliation (``require_dispositions``).
-    The explicit recovery path is :func:`commit_generation_recovery`.
+    must supply the canonical disposition map; missing or empty maps fail
+    closed. There is no normal bypass flag. Explicit recovery uses
+    :func:`commit_generation_recovery`.
 
     Section 5: activation is a compare-and-swap on the active pointer,
     wrapped in an inter-process file lock so two independent processes

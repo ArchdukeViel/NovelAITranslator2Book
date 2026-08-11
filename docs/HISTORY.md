@@ -7,7 +7,8 @@ Final documentation synchronization pass for PR #41 on `feat/pipeline-upgrade-ph
 - **Provider Exception & Sanitization Safety**: Standardized provider exception cause-chain sanitization across Gemini and provider error paths; public API responses, error logs, and activity records never leak raw API keys, internal credentials, host details, or raw stack traces.
 - **Shared Atomic File Replacement**: Consolidated atomic write operations into `novelai.utils.filesystem.replace_with_retry` with bounded retry (8 attempts, `attempts >= 1` validation, `PermissionError` handling). Removed destructive delete-then-replace fallbacks across storage handlers, ensuring atomic target preservation and cleanup of temporary files on exhausted retries.
 - **CAS & Storage Integrity**: Verified `FilesystemBackend` save, compare-and-swap (CAS), and generation pointer activation invariants under inter-process locks, preserving atomic state and checkpoint safety.
-- **Final Remote Head Evidence**: All 94 commits on `feat/pipeline-upgrade-phases-1-8` validated; GitHub CI on remote head `ee046c0` green across backend lint/tests/shards, frontend lint/typecheck/vitest/build, E2E, Docker, CodeQL, GitGuardian, Dependency Review, and Vercel Preview.
+- **Pre-documentation production-head evidence**: All 94 production commits on `feat/pipeline-upgrade-phases-1-8` validated; GitHub CI on production head `ee046c0` green across backend lint/tests/shards, frontend lint/typecheck/vitest/build, E2E, Docker, CodeQL, GitGuardian, Dependency Review, and Vercel Preview.
+- **Documentation synchronization head**: `9561cef` (commit 95) passed current-head CI #572, Dependency Review, GitGuardian, CodeQL/security analyses, and Vercel.
 
 ## 2026-08-10 PR-41 FINAL — Provider-Pair Validation and Real-Pipeline Evidence Closure
 

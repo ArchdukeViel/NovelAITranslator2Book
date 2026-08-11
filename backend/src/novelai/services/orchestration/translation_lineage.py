@@ -535,13 +535,13 @@ def _structured_map_from_result(
 
     # 3) Plain-output fallback (Section 6, PR 41 closure): strict ``[P ...]``
     # marker parsing. Production prompts instruct providers to copy every
-    # ``[P pNNNN]`` marker exactly once, in source order, and to keep the
-    # marker with a blank body when a paragraph cannot be translated. The
-    # chapter's absolute paragraph ids (stamped into the window prompt by the
-    # delta window call) are the authoritative expected set: any missing,
-    # duplicate, extra or reordered marker — or any preamble / unknown
-    # ``[CHAPTER ...]`` marker — is treated as ambiguity and fails closed to
-    # a full translation.
+    # ``[P pNNNN]`` marker exactly according to the expected ordered occurrence
+    # sequence, in source order, and to keep the marker with a blank body when
+    # a paragraph cannot be translated. The chapter's absolute paragraph ids
+    # (stamped into the window prompt by the delta window call) are the
+    # authoritative expected set: any missing, unexpected/excess, or reordered
+    # marker occurrence — or any preamble / unknown ``[CHAPTER ...]`` marker —
+    # is treated as ambiguity and fails closed to a full translation.
     complete_mappings: list[list[str]] = []
     for raw in raw_outputs:
         parsed_markers = _strict_marker_paragraph_map(raw, window_items, expected_chapter_id=expected_chapter_id)
@@ -693,7 +693,7 @@ def _strict_marker_paragraph_map(
     - When the expected id sequence itself repeats — split sub-paragraphs of
       one oversized paragraph packed into the same chunk all keep the source
       paragraph id — each occurrence must appear exactly that many times, in
-      order. A repeat beyond the expected count still fails closed.
+      order. An occurrence beyond the expected count still fails closed.
     """
     expected_ids = [str(item.get("paragraph_id") or "") for item in window_items]
     if not expected_ids or any(not pid for pid in expected_ids):
@@ -714,7 +714,7 @@ def _strict_marker_paragraph_map(
             paragraph_id = paragraph_match.group(1).strip()
             seen_count = seen_counts.get(paragraph_id, 0) + 1
             if paragraph_id not in expected_set or seen_count > expected_counts.get(paragraph_id, 0):
-                return None  # duplicate or extra paragraph marker
+                return None  # occurrence beyond expected count or unexpected id
             seen_counts[paragraph_id] = seen_count
             body: list[str] = []
             ordered.append((paragraph_id, body))
