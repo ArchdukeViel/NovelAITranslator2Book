@@ -177,9 +177,18 @@ Owner-operated settings should match tracked workflow expectations:
 - Verify actual required-check names against current `.github/workflows/`; docs
   do not override workflows.
 
-Required deployment secret categories: target host/user/key where SSH deploy is
-used, DB URL, session/bootstrap/credential-encryption secrets, explicit origins,
-public URL, provider credentials, and managed-service verification credentials.
+Required deployment configuration:
+
+- Repository variables:
+  - `PRODUCTION_BASE_URL`
+  - `PRODUCTION_MONITOR_ENABLED`
+- Production-environment secrets:
+  - `DEPLOY_HOST`
+  - `DEPLOY_USER`
+  - `DEPLOY_SSH_KEY`
+  - `NOVELAI_SMOKE_SESSION_COOKIE`
+- Managed-service verification variables and credentials use the scopes
+  documented by `managed-services-verification.yml`.
 
 ## Provider Boundaries
 
