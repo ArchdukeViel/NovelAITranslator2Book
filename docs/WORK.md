@@ -89,7 +89,7 @@ Verified 2026-07-31T17:35:35Z on PR #15 (`feat/yokocho-phase1-docs`, base
 lint/tests, and frontend-check all passed; Vercel preview deployment
 completed.
 
-Revised 2026-08-11: `dependency-review` added to required status checks on `main` branch protection via GitHub API (`strict: true` preserved; contexts: `docker-build`, `e2e-tests`, 3× `Analyze (...)`, `GitGuardian scan`, `dependency-review`).
+Revised 2026-08-11: `dependency-review` added to required status checks on `main` branch protection via GitHub API (`strict: true` preserved; contexts: `docker-build`, `e2e-tests`, 3× `Analyze (...)`, `GitGuardian scan`, `dependency-review`). Configured production pre-deployment gate in `deploy.yml` calling `managed-services-verification.yml` (`required: true`). Staging deployments bypass the check via an explicit `!cancelled() && (inputs.environment != 'production' || needs.managed-services-check.result == 'success')` condition.
 
 Revised 2026-07-31T17:46:50Z: `required_approving_review_count` set to `0`
 after a merge deadlock — GitHub forbids PR authors from approving their own

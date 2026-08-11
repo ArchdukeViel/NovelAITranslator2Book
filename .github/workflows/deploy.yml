@@ -24,7 +24,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Production deployments first verify hosted PostgreSQL and R2 integration
+  # against the live managed services; the deployment is blocked if the
+  # verification fails. Skipped for staging.
+  managed-services-check:
+    if: ${{ inputs.environment == 'production' }}
+    uses: ./.github/workflows/managed-services-verification.yml
+    with:
+      required: true
+    secrets: inherit
+
   deploy:
+    needs: managed-services-check
+    if: >-
+      ${{
+        !cancelled() &&
+        (
+          inputs.environment != 'production' ||
+          needs.managed-services-check.result == 'success'
+        )
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: ${{ inputs.environment }}
