@@ -26,6 +26,10 @@ def test_workflow_actions_are_pinned_to_full_commit_shas() -> None:
     for path in sorted(WORKFLOWS_DIR.glob("*.yml")):
         action_lines.extend(line.strip() for line in path.read_text(encoding="utf-8").splitlines() if "uses:" in line)
 
+    # Local reusable-workflow references (.github/workflows/...) are not
+    # third-party actions and are exempt from SHA pinning.
+    action_lines = [line for line in action_lines if not line.startswith("uses: ./.github/")]
+
     assert action_lines
     assert all(PINNED_ACTION.fullmatch(line) for line in action_lines), action_lines
 
@@ -42,7 +46,15 @@ def test_build_summary_fails_unless_publication_succeeds() -> None:
 def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     source = _workflow("deploy.yml")
 
-    assert 'export VERSION="${{ steps.version.outputs.value }}"' in source
+    # The remote SSH script must never interpolate workflow expressions: the
+    # free-form version input is validated first, then passed to the script
+    # only through the ssh-action envs mechanism.
+    script_start = source.index("script: |")
+    assert "envs: VERSION,DEPLOY_ENV" in source[:script_start]
+    script = source[script_start : source.index("- name: Smoke test production deployment")]
+    assert "${{" not in script
+    assert r"^sha-[0-9a-f]{40}$" in source
+    assert '"$DEPLOY_ENV" == "production"' in source
     assert "push:\n    tags:" not in source
     assert source.index("docker compose run --rm migrate") < source.index("docker compose up -d")
 
