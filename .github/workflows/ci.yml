@@ -258,8 +258,12 @@ jobs:
         with:
           filters: |
             relevant:
+              - '.github/workflows/ci.yml'
+              - 'pyproject.toml'
+              - 'uv.lock'
               - 'backend/src/**'
               - 'backend/tests/e2e/**'
+              - 'backend/tests/fixtures/e2e/**'
               - 'backend/tests/conftest.py'
               - 'backend/alembic/**'
               - 'backend/sql/**'

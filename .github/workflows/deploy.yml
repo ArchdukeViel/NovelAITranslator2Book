@@ -20,46 +20,31 @@ permissions: {}
 # deployment that is mid-migration or compose start (cancel-in-progress:
 # false). A newer deployment waits for the current one to finish.
 concurrency:
-  group: deploy-${{ inputs.environment || 'production' }}
+  group: deploy-${{ inputs.environment }}
   cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: >-
-      ${{
-        github.event_name == 'push' && 'production' ||
-        inputs.environment || 'production'
-      }}
+    environment: ${{ inputs.environment }}
     # Deploy credentials are environment-scoped, never repo-level, so a
     # workflow running on a fork or a lower-trust context cannot read them.
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      VERSION: ${{ inputs.version }}
+      DEPLOY_ENV: ${{ inputs.environment }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Determine version
-        id: version
-        env:
-          VERSION_INPUT: ${{ inputs.version }}
-          DEPLOY_ENV: ${{ inputs.environment || 'production' }}
-        run: |
-          echo "value=${VERSION_INPUT}" >> "$GITHUB_OUTPUT"
-          echo "environment=${DEPLOY_ENV}" >> "$GITHUB_OUTPUT"
-          echo "Manual deployment requested for image tag: ${VERSION_INPUT}"
 
       # GitHub resolves "${{ ... }}" before the shell runs, so interpolating
       # the free-form version input into a script is injection-prone. Validate
       # it first, then pass the value to the remote script only through
       # environment variables.
       - name: Validate version
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
-          DEPLOY_ENV: ${{ steps.version.outputs.environment }}
         shell: bash
         run: |
           set -euo pipefail
@@ -79,9 +64,6 @@ jobs:
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
-          DEPLOY_ENV: ${{ steps.version.outputs.environment }}
         with:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ env.DEPLOY_USER }}
@@ -91,7 +73,6 @@ jobs:
             set -euo pipefail
             cd /opt/novelai
 
-            # Write the requested version into the env file so compose picks it up
             echo "Deploying version: $VERSION to $DEPLOY_ENV"
 
             # Pull the exact image tags being deployed
@@ -113,14 +94,14 @@ jobs:
       # are not configured the deployment is reported as failed rather than
       # leaving an unverified production state.
       - name: Smoke test production deployment
-        if: steps.version.outputs.environment == 'production'
+        if: inputs.environment == 'production'
         shell: pwsh
         env:
-          PRODUCTION_BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
+          PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
           NOVELAI_SMOKE_SESSION_COOKIE: ${{ secrets.NOVELAI_SMOKE_SESSION_COOKIE }}
         run: |
           if (-not $env:PRODUCTION_BASE_URL -or -not $env:NOVELAI_SMOKE_SESSION_COOKIE) {
-            Write-Error "Production smoke gate requires PRODUCTION_BASE_URL and NOVELAI_SMOKE_SESSION_COOKIE secrets."
+            Write-Error "Production smoke gate requires PRODUCTION_BASE_URL repository variable and NOVELAI_SMOKE_SESSION_COOKIE secret."
             exit 1
           }
           & "deploy/scripts/deploy-smoke.ps1" -BaseUrl $env:PRODUCTION_BASE_URL -Production

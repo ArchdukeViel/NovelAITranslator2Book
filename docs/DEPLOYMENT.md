@@ -115,10 +115,10 @@ Hardening contract:
   deploys run `deploy/scripts/deploy-smoke.ps1 -Production` against
   `PRODUCTION_BASE_URL` (validates live/ready, routing, catalog, frontend,
   legal/SEO, and owner recovery health). The deployment is reported **failed**
-  unless the smoke gate passes (fail-closed). Required production-environment
-  secrets: `PRODUCTION_BASE_URL` and `NOVELAI_SMOKE_SESSION_COOKIE`. Staging
-  deploys do not run the remote smoke gate because no staging base URL secret
-  is configured.
+  unless the smoke gate passes (fail-closed). Required repository variable:
+  `PRODUCTION_BASE_URL`; required production-environment secret:
+  `NOVELAI_SMOKE_SESSION_COOKIE`. Staging deploys do not run the remote smoke gate
+  because no staging base URL variable is configured.
 
 ## Rollback
 
@@ -153,10 +153,12 @@ Hardening contract:
 
 Owner-operated settings should match tracked workflow expectations:
 
-- Protect `main`: PR required, conversations resolved, required CI, CodeQL, and
-  GitGuardian checks, no force push/deletion, owner-only bypass. No approving-
-  review requirement: this is a single-operator repository and GitHub forbids
-  PR authors from approving their own pull request, so a review gate would
+- Protect `main`: PR required, conversations resolved, required status checks
+  (`docker-build`, `e2e-tests`, 3× CodeQL `Analyze (...)`, `GitGuardian scan`,
+  and `dependency-review`), no force push/deletion, owner-only bypass. Dependency
+  Review is a required status check running on read-only permissions (`contents: read`).
+  No approving-review requirement: this is a single-operator repository and GitHub
+  forbids PR authors from approving their own pull request, so a review gate would
   block every merge. Re-enable review requirements if a second write-access
   reviewer is added.
 - Keep default `GITHUB_TOKEN` read-only; grant write only per job.

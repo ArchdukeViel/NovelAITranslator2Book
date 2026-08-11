@@ -87,3 +87,50 @@ def test_secret_backed_opencode_workflow_restricts_commenters() -> None:
     assert "timeout-minutes: 15" in source
     assert "npx --yes opencode-ai@1.18.11 github run" in source
     assert "anomalyco/opencode/github@" not in source
+
+
+def test_ci_e2e_filter_includes_all_required_inputs() -> None:
+    source = _workflow("ci.yml")
+    required_filter_paths = [
+        ".github/workflows/ci.yml",
+        "pyproject.toml",
+        "uv.lock",
+        "backend/src/**",
+        "backend/tests/e2e/**",
+        "backend/tests/fixtures/e2e/**",
+        "backend/tests/conftest.py",
+        "backend/alembic/**",
+        "backend/sql/**",
+    ]
+    for path in required_filter_paths:
+        assert path in source, f"Missing {path} in E2E filter"
+
+
+def test_production_monitor_contract() -> None:
+    source = _workflow("production-monitor.yml")
+    assert "vars.PRODUCTION_MONITOR_ENABLED == 'true'" in source
+    assert "vars.PRODUCTION_BASE_URL" in source
+    assert "secrets.PRODUCTION_BASE_URL" not in source
+    assert "cancel-in-progress: false" in source
+    assert "-TimeoutSeconds 10" in source
+    assert 'echo "PRODUCTION_BASE_URL is not configured; production monitor skipped."' not in source
+    assert "exit 1" in source
+
+
+def test_deploy_input_flow_and_smoke_vars() -> None:
+    source = _workflow("deploy.yml")
+    assert "$GITHUB_OUTPUT" not in source
+    assert "VERSION: ${{ inputs.version }}" in source
+    assert "DEPLOY_ENV: ${{ inputs.environment }}" in source
+    assert "environment: ${{ inputs.environment }}" in source
+    assert "vars.PRODUCTION_BASE_URL" in source
+    assert "secrets.NOVELAI_SMOKE_SESSION_COOKIE" in source
+    assert "secrets.PRODUCTION_BASE_URL" not in source
+
+
+def test_dependency_review_least_privilege() -> None:
+    source = _workflow("dependency-review.yml")
+    assert "contents: read" in source
+    assert "pull-requests: write" not in source
+    assert "pull_request_target" not in source
+    assert "comment-summary-in-pr: always" not in source

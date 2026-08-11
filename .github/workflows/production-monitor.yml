@@ -22,17 +22,19 @@ jobs:
       # the very one about to report the red result. Newer runs queue instead.
       cancel-in-progress: false
     env:
-      PRODUCTION_BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
+      PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Production domain not configured
-        if: ${{ env.PRODUCTION_BASE_URL == '' }}
-        run: echo "PRODUCTION_BASE_URL is not configured; production monitor skipped."
+      - name: Verify production domain configuration
+        run: |
+          if [ -z "$PRODUCTION_BASE_URL" ]; then
+            echo "::error::PRODUCTION_MONITOR_ENABLED is true but PRODUCTION_BASE_URL repository variable is empty."
+            exit 1
+          fi
 
       - name: Run external public smoke checks
-        if: ${{ env.PRODUCTION_BASE_URL != '' }}
         shell: pwsh
         run: |
           & "deploy/scripts/deploy-smoke.ps1" -BaseUrl $env:PRODUCTION_BASE_URL -ExternalMonitor -TimeoutSeconds 10
