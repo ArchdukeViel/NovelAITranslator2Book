@@ -48,7 +48,7 @@ documents = [
 db = [
   "sqlalchemy>=2.0.51",
   "alembic>=1.18.5",
-  "psycopg[binary]>=3.2",
+  "psycopg[binary]>=3.3.4",
 ]
 worker = [
   "rq>=2.10.0",
@@ -79,7 +79,7 @@ dev = [
   "ruff>=0.15.21",
   "sqlalchemy>=2.0.51",
   "alembic>=1.18.5",
-  "psycopg[binary]>=3.2",
+  "psycopg[binary]>=3.3.4",
   "rq>=2.10.0",
   "redis>=8.0.1",
   "fakeredis>=2.36.2",
