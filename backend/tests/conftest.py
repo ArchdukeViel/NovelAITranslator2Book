@@ -33,8 +33,9 @@ from novelai.translation.service import TranslationService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TESTS_ROOT = Path(__file__).resolve().parent
-TESTS_TMP_ROOT = TESTS_ROOT / ".tmp" / "fixtures"
-TESTS_RUNTIME_ROOT = TESTS_ROOT / ".tmp" / "runtime"
+_XDIST_WORKER_ID = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
+TESTS_TMP_ROOT = TESTS_ROOT / ".tmp" / "fixtures" / _XDIST_WORKER_ID
+TESTS_RUNTIME_ROOT = TESTS_ROOT / ".tmp" / "runtime" / _XDIST_WORKER_ID
 COLLECTION_RUNTIME_ROOT = TESTS_RUNTIME_ROOT / "collection"
 
 
@@ -130,7 +131,7 @@ def cleanup_test_artifacts(
 
     paths_to_remove = [
         project_root / ".pytest_cache",
-        tests_root / ".tmp" / "fixtures",
+        tests_root / ".tmp" / "fixtures" / _XDIST_WORKER_ID,
         project_root / "tests_tmp",
     ]
     if include_pytest_managed:

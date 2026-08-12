@@ -4,11 +4,11 @@ import shutil
 from pathlib import Path
 from uuid import uuid4
 
-from tests.conftest import TESTS_TMP_ROOT, cleanup_test_artifacts
+from tests.conftest import TESTS_ROOT, TESTS_TMP_ROOT, cleanup_test_artifacts
 
 
 def _workspace_test_root() -> Path:
-    root = TESTS_TMP_ROOT.parent / "project_layout" / uuid4().hex
+    root = TESTS_TMP_ROOT.parent.parent / "project_layout" / uuid4().hex
     root.mkdir(parents=True, exist_ok=False)
     return root
 
@@ -18,10 +18,12 @@ def test_cleanup_test_artifacts_removes_known_directories():
     try:
         project_root = root / "project"
         tests_root = project_root / "tests"
+        from tests.conftest import _XDIST_WORKER_ID
+
         for path in [
             project_root / ".pytest_cache",
             tests_root / ".pytest_cache",
-            tests_root / ".tmp" / "fixtures",
+            tests_root / ".tmp" / "fixtures" / _XDIST_WORKER_ID,
             project_root / "tests_tmp",
             project_root / "pytest-cache-files-abcd1234",
         ]:
@@ -38,12 +40,21 @@ def test_cleanup_test_artifacts_removes_known_directories():
         assert {str(path.relative_to(project_root)).replace("\\", "/") for path in removed} == {
             ".pytest_cache",
             "tests/.pytest_cache",
-            "tests/.tmp/fixtures",
+            f"tests/.tmp/fixtures/{_XDIST_WORKER_ID}",
             "tests_tmp",
             "pytest-cache-files-abcd1234",
         }
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def test_xdist_worker_temp_isolation():
+    from tests.conftest import _XDIST_WORKER_ID, TESTS_RUNTIME_ROOT, TESTS_TMP_ROOT
+
+    assert TESTS_TMP_ROOT.name == _XDIST_WORKER_ID
+    assert TESTS_RUNTIME_ROOT.name == _XDIST_WORKER_ID
+    assert TESTS_TMP_ROOT.parent == TESTS_ROOT / ".tmp" / "fixtures"
+    assert TESTS_RUNTIME_ROOT.parent == TESTS_ROOT / ".tmp" / "runtime"
 
 
 def test_deployment_files_have_one_canonical_frontend_dockerfile() -> None:
