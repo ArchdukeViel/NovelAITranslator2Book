@@ -2,7 +2,7 @@ name: novel-ai
 
 services:
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.2-alpine@sha256:19058b8686eecfb07c57eb3c5f21a48c4fa04a37ae49405d429a8a723e7ca5ab
     volumes:
       - redis_data:/data
     healthcheck:
@@ -15,10 +15,12 @@ services:
     restart: unless-stopped
 
   restore-db:
-    image: postgres:17-alpine
+    image: postgres:17.4-alpine@sha256:69b43d2c8fb9958742b78d2b96d99f6946059c3a378d38e218204689b6531eb3
+    profiles:
+      - recovery
     environment:
       POSTGRES_USER: novelai_restore
-      POSTGRES_PASSWORD: ${DATABASE_RESTORE_PASSWORD:?Set DATABASE_RESTORE_PASSWORD}
+      POSTGRES_PASSWORD: ${DATABASE_RESTORE_PASSWORD:-novelai_restore_pass}
       POSTGRES_DB: novelai_restore_verify
     volumes:
       - restore_db_data:/var/lib/postgresql/data
@@ -32,7 +34,7 @@ services:
     restart: unless-stopped
 
   caddy:
-    image: caddy:2.8-alpine
+    image: caddy:2.9.1-alpine@sha256:b1d7d06cb5561a33a3237eb5f0fbab55cfef4539ef3efd939634e06ff4903c70
     depends_on:
       - backend
       - reader
@@ -210,8 +212,6 @@ services:
       migrate:
         condition: service_completed_successfully
       redis:
-        condition: service_healthy
-      restore-db:
         condition: service_healthy
     restart: unless-stopped
 

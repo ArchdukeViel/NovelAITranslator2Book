@@ -14,7 +14,7 @@ Canonical deployment topology, release, rollback, and GitHub-control contract. F
 | `reader` | Guest public API, port 8001. |
 | `migrate` | One-shot Alembic migration before APIs. |
 | `redis` | Shared limits, queue, coordination where enabled. |
-| `restore-db` | Isolated disposable PostgreSQL 17 restore verifier. |
+| `restore-db` | Isolated disposable PostgreSQL 17 restore verifier (profile: `recovery`). |
 
 PostgreSQL is external; Compose does not provision primary DB. Never run
 migrations inside long-running backend containers.
