@@ -13,7 +13,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from novelai.config.settings import settings
@@ -635,6 +635,14 @@ def _configure_catalog_projection_db(data_dir, monkeypatch):
     database_url = f"sqlite:///{db_path.as_posix()}"
     monkeypatch.setattr(settings, "DATABASE_URL", database_url)
     engine = create_engine(database_url)
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA temp_store = MEMORY")
+        cursor.execute("PRAGMA journal_mode = OFF")
+        cursor.close()
+
     Base.metadata.create_all(engine)
     SessionLocal = sessionmaker(bind=engine)
     return SessionLocal, engine
