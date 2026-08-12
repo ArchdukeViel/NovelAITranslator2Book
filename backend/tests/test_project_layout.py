@@ -13,23 +13,21 @@ def _workspace_test_root() -> Path:
     return root
 
 
-def test_cleanup_test_artifacts_removes_known_directories():
+def test_xdist_worker_cleanup_isolation(monkeypatch):
     root = _workspace_test_root()
     try:
         project_root = root / "project"
         tests_root = project_root / "tests"
-        from tests.conftest import _XDIST_WORKER_ID
 
-        for path in [
-            project_root / ".pytest_cache",
-            tests_root / ".pytest_cache",
-            tests_root / ".tmp" / "fixtures" / _XDIST_WORKER_ID,
-            project_root / "tests_tmp",
-            project_root / "pytest-cache-files-abcd1234",
-        ]:
+        target_worker_fixture_dir = tests_root / ".tmp" / "fixtures" / "gw1"
+        other_worker_fixture_dir = tests_root / ".tmp" / "fixtures" / "gw99"
+        project_pytest_cache = project_root / ".pytest_cache"
+
+        for path in [target_worker_fixture_dir, other_worker_fixture_dir, project_pytest_cache]:
             path.mkdir(parents=True, exist_ok=True)
             (path / "marker.txt").write_text("x", encoding="utf-8")
 
+        monkeypatch.setattr("tests.conftest._XDIST_WORKER_ID", "gw1")
         removed, warnings = cleanup_test_artifacts(
             project_root=project_root,
             tests_root=tests_root,
@@ -37,13 +35,10 @@ def test_cleanup_test_artifacts_removes_known_directories():
         )
 
         assert not warnings
-        assert {str(path.relative_to(project_root)).replace("\\", "/") for path in removed} == {
-            ".pytest_cache",
-            "tests/.pytest_cache",
-            f"tests/.tmp/fixtures/{_XDIST_WORKER_ID}",
-            "tests_tmp",
-            "pytest-cache-files-abcd1234",
-        }
+        removed_rel = {str(path.relative_to(project_root)).replace("\\", "/") for path in removed}
+        assert removed_rel == {"tests/.tmp/fixtures/gw1"}
+        assert other_worker_fixture_dir.exists()
+        assert project_pytest_cache.exists()
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
