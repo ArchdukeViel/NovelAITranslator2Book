@@ -43,6 +43,36 @@ def test_xdist_worker_cleanup_isolation(monkeypatch):
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_xdist_master_cleanup_symmetric(monkeypatch):
+    root = _workspace_test_root()
+    try:
+        project_root = root / "project"
+        tests_root = project_root / "tests"
+
+        master_fixture_dir = tests_root / ".tmp" / "fixtures" / "master"
+        worker_fixture_dir = tests_root / ".tmp" / "fixtures" / "gw1"
+        project_pytest_cache = project_root / ".pytest_cache"
+
+        for path in [master_fixture_dir, worker_fixture_dir, project_pytest_cache]:
+            path.mkdir(parents=True, exist_ok=True)
+            (path / "marker.txt").write_text("x", encoding="utf-8")
+
+        monkeypatch.setattr("tests.conftest._XDIST_WORKER_ID", "master")
+        removed, warnings = cleanup_test_artifacts(
+            project_root=project_root,
+            tests_root=tests_root,
+            include_pytest_managed=True,
+        )
+
+        assert not warnings
+        removed_rel = {str(path.relative_to(project_root)).replace("\\", "/") for path in removed}
+        assert "tests/.tmp/fixtures/master" in removed_rel
+        assert ".pytest_cache" in removed_rel
+        assert worker_fixture_dir.exists()
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_xdist_worker_temp_isolation():
     from tests.conftest import _XDIST_WORKER_ID, TESTS_RUNTIME_ROOT, TESTS_TMP_ROOT
 
