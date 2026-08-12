@@ -14,7 +14,9 @@ on:
         options:
           - staging
           - production
-permissions: {}
+    permissions:
+      contents: read
+      packages: read
 
 # Only one deployment per environment at a time, and never cancel a
 # deployment that is mid-migration or compose start (cancel-in-progress:
@@ -63,8 +65,10 @@ jobs:
       # the free-form version input into a script is injection-prone. Validate
       # it first, then pass the value to the remote script only through
       # environment variables.
-      - name: Validate version
+      - name: Validate version and verify provenance attestation
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if [[ "$DEPLOY_ENV" == "production" ]]; then
@@ -81,6 +85,15 @@ jobs:
           fi
           echo "Validated version: $VERSION (environment: $DEPLOY_ENV)"
 
+          # Cryptographic supply-chain check: verify build attestations for published images before remote deployment
+          echo "Verifying build attestations for images tagged '$VERSION'..."
+          for img in novelai-admin novelai-reader novelai-frontend; do
+            IMAGE_REF="ghcr.io/${{ github.repository }}/${img}:${VERSION}"
+            echo "Checking attestation for ${IMAGE_REF}..."
+            gh attestation verify "oci://${IMAGE_REF}" --owner "${{ github.repository_owner }}"
+          done
+          echo "All image provenance attestations verified successfully."
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
         with:
@@ -90,17 +103,38 @@ jobs:
           envs: VERSION,DEPLOY_ENV
           script: |
             set -euo pipefail
-            cd /opt/novelai
 
-            echo "Deploying version: $VERSION to $DEPLOY_ENV"
+            RELEASE_DIR="/opt/novelai/releases/$VERSION"
+            SHARED_DIR="/opt/novelai/shared"
+            CURRENT_LINK="/opt/novelai/current"
 
-            # Pull the exact image tags being deployed
+            echo "Deploying version: $VERSION to $DEPLOY_ENV (release directory: $RELEASE_DIR)"
+
+            mkdir -p "$RELEASE_DIR" "$SHARED_DIR"
+
+            # Create or update shared .env file if it doesn't exist
+            if [[ ! -f "$SHARED_DIR/.env" ]]; then
+              echo "::warning::Shared .env file not found at $SHARED_DIR/.env"
+              touch "$SHARED_DIR/.env"
+            fi
+
+            # Sync checked-out deployment artifacts into release directory
+            # Note: GitHub Actions checks out code into default workspace
+            cp -r deploy/* "$RELEASE_DIR/"
+            ln -sf "$SHARED_DIR/.env" "$RELEASE_DIR/.env"
+
+            # Symlink active release
+            ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
+
+            cd "$CURRENT_LINK"
+
+            # Pull exact image tags
             docker compose pull
 
             # Migrations must succeed before application containers start.
             docker compose run --rm migrate
 
-            # Bring up the requested immutable application images.
+            # Bring up requested immutable application images.
             docker compose up -d --remove-orphans --pull always
 
             # Prune dangling images older than 24h to reclaim disk

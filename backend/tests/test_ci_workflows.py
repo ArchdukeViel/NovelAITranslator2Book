@@ -116,6 +116,12 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     assert "push:\n    tags:" not in source
     assert source.index("docker compose run --rm migrate") < source.index("docker compose up -d")
 
+    # Attestation and release directory contracts
+    assert "gh attestation verify" in source
+    assert "packages: read" in source
+    assert 'RELEASE_DIR="/opt/novelai/releases/$VERSION"' in source
+    assert 'CURRENT_LINK="/opt/novelai/current"' in source
+
 
 def test_gitguardian_workflow_contract() -> None:
     source = _workflow("gitguardian.yaml")

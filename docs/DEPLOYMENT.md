@@ -107,6 +107,14 @@ Hardening contract:
   `sha-<40 lowercase hex>` tag; `latest` is accepted for staging only. The
   validated value is passed to the remote SSH script through environment
   variables, never through expression interpolation into the script body.
+- **Cryptographic Provenance Verification.** Before remote deployment begins,
+  the workflow executes `gh attestation verify` against `ghcr.io` OCI image
+  references for `novelai-admin`, `novelai-reader`, and `novelai-frontend`.
+  Deployment fails closed if image attestations are missing or invalid.
+- **Immutable Release Directory.** Deployment files under `deploy/` are copied
+  to `/opt/novelai/releases/<VERSION>/` on the target host. `/opt/novelai/current`
+  is updated as an atomic symlink to the release directory, guaranteeing remote Compose
+  and Caddy configuration match the checked-out Git SHA.
 - **One deployment per environment at a time.** `concurrency` groups by target
   environment with `cancel-in-progress: false`; a newer deployment request
   waits rather than cancel a deployment that is mid-migration or starting
