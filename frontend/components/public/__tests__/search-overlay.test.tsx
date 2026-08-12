@@ -10,8 +10,8 @@
  *
  * Feature: PUBLIC-SEARCH-2
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor, act, within } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, act, within } from "@testing-library/react";
 
 import { SearchOverlay } from "@/components/public/search-overlay";
 import { useSearchOverlay, recordRecentSearch, loadRecentSearches } from "@/lib/search-overlay";
@@ -96,6 +96,30 @@ async function typeQuery(text: string) {
   const input = screen.getByRole("searchbox", { name: /search/i }) as HTMLInputElement;
   await act(async () => {
     fireEvent.change(input, { target: { value: text } });
+  });
+}
+
+beforeEach(() => {
+  // Fake only the timer APIs: React rendering, AbortSignal, and microtasks
+  // must stay real for the search effect's async flow to complete.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+/**
+ * Search is debounced (225ms) in production code. Advance past the debounce,
+ * then past the mock 20/50ms request timers so results settle deterministically
+ * without wall-clock waits.
+ */
+async function flushSearch() {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(350);
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(100);
   });
 }
 
@@ -244,8 +268,9 @@ describe("SearchOverlay live results", () => {
 
     // Debounce window (225ms): no request fired yet
     expect(mocks.catalog).not.toHaveBeenCalled();
-    await waitFor(() => expect(mocks.catalog).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByText("Dragon King")).toBeInTheDocument());
+    await flushSearch();
+    expect(mocks.catalog).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Dragon King")).toBeInTheDocument();
 
     expect(screen.getByText("Novels")).toBeInTheDocument();
     expect(screen.getByText("Dragon King")).toBeInTheDocument();
@@ -266,11 +291,20 @@ describe("SearchOverlay live results", () => {
     openOverlay();
     await typeQuery("dragon");
 
-    // First request fired; immediately type a longer query
-    await waitFor(() => expect(mocks.catalog).toHaveBeenCalled());
+    // Fire the debounce only: the first request starts, its 20ms mock timer
+    // is still pending, then a longer keystroke lands and aborts it.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(225);
+    });
+    expect(mocks.catalog).toHaveBeenCalledTimes(1);
+
     await typeQuery("dragon king");
 
-    await waitFor(() => expect(mocks.catalog).toHaveBeenCalledTimes(2));
+    // Second debounce fires, second request resolves and wins.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(mocks.catalog).toHaveBeenCalledTimes(2);
     // The first call must have been aborted — the second resolves with the
     // same shape; assert last call wins and no double render of stale data.
     expect(screen.getByText("Dragon King")).toBeInTheDocument();
@@ -281,14 +315,16 @@ describe("SearchOverlay live results", () => {
     render(<SearchOverlay />);
     openOverlay();
     await typeQuery("dragon");
-    await waitFor(() => expect(screen.getByText("Dragon King")).toBeInTheDocument());
+    await flushSearch();
+    expect(screen.getByText("Dragon King")).toBeInTheDocument();
 
     // Type a second query; results should remain visible (no blank/loading)
     mocks.catalog.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve(catalogResponse([])), 50)));
     mocks.searchTags.mockResolvedValue([]);
     await typeQuery("dragon king");
     expect(screen.getByText("Dragon King")).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText("Dragon King")).not.toBeInTheDocument());
+    await flushSearch();
+    expect(screen.queryByText("Dragon King")).not.toBeInTheDocument();
     expect(screen.getByText(/no matches for/i)).toBeInTheDocument();
   });
 
@@ -299,7 +335,8 @@ describe("SearchOverlay live results", () => {
     openOverlay();
     await typeQuery("dragon");
 
-    await waitFor(() => expect(screen.getByText(/search's unavailable right now/i)).toBeInTheDocument());
+    await flushSearch();
+    expect(screen.getByText(/search's unavailable right now/i)).toBeInTheDocument();
     // Never a silent empty-results list
     expect(screen.queryByText(/no matches for/i)).not.toBeInTheDocument();
   });
@@ -311,7 +348,8 @@ describe("SearchOverlay live results", () => {
     openOverlay();
     await typeQuery("dragon");
 
-    await waitFor(() => expect(screen.getByText("Dragon King")).toBeInTheDocument());
+    await flushSearch();
+    expect(screen.getByText("Dragon King")).toBeInTheDocument();
     expect(screen.queryByText(/search's unavailable right now/i)).not.toBeInTheDocument();
   });
 });
@@ -328,7 +366,8 @@ describe("SearchOverlay keyboard behavior", () => {
     render(<SearchOverlay />);
     openOverlay();
     await typeQuery("dragon");
-    await waitFor(() => expect(screen.getByText("Dragon King")).toBeInTheDocument());
+    await flushSearch();
+    expect(screen.getByText("Dragon King")).toBeInTheDocument();
 
     const input = screen.getByRole("searchbox", { name: /search/i });
     fireEvent.keyDown(input, { key: "ArrowDown" }); // highlight first novel
@@ -341,7 +380,8 @@ describe("SearchOverlay keyboard behavior", () => {
     render(<SearchOverlay />);
     openOverlay();
     await typeQuery("dragon");
-    await waitFor(() => expect(screen.getByText("Dragon King")).toBeInTheDocument());
+    await flushSearch();
+    expect(screen.getByText("Dragon King")).toBeInTheDocument();
 
     fireEvent.keyDown(screen.getByRole("searchbox", { name: /search/i }), { key: "Enter" });
     expect(mocks.pushFn).toHaveBeenCalledWith("/browse-novels?q=dragon");
@@ -351,7 +391,8 @@ describe("SearchOverlay keyboard behavior", () => {
     render(<SearchOverlay />);
     openOverlay();
     await typeQuery("dragon");
-    await waitFor(() => expect(screen.getByText("Dragon King")).toBeInTheDocument());
+    await flushSearch();
+    expect(screen.getByText("Dragon King")).toBeInTheDocument();
 
     const input = screen.getByRole("searchbox", { name: /search/i });
     // rows: Dragon King (novel), Quiet Novel (novel), Dragon Writer (author), #adventure (tag), see-all
@@ -365,14 +406,12 @@ describe("SearchOverlay keyboard behavior", () => {
     render(<SearchOverlay />);
     openOverlay();
     await typeQuery("dragon");
+    await flushSearch();
     // "Dragon Writer" appears both as the author label on the novel row and
     // as the Authors group entry — scope the query to the group list.
-    const authorsGroup = await waitFor(() => {
-      const list = screen.getByText("Authors").nextElementSibling as HTMLElement;
-      expect(within(list).getByText("Dragon Writer")).toBeInTheDocument();
-      return list;
-    });
-    expect(authorsGroup).toBeInTheDocument();
+    const authorsList = screen.getByText("Authors").nextElementSibling as HTMLElement;
+    expect(within(authorsList).getByText("Dragon Writer")).toBeInTheDocument();
+    expect(authorsList).toBeInTheDocument();
 
     const input = screen.getByRole("searchbox", { name: /search/i });
     // novels(2) then author — index 2 is "Dragon Writer"
@@ -385,7 +424,8 @@ describe("SearchOverlay keyboard behavior", () => {
     render(<SearchOverlay />);
     openOverlay();
     await typeQuery("dragon");
-    await waitFor(() => expect(screen.getByText("Dragon King")).toBeInTheDocument());
+    await flushSearch();
+    expect(screen.getByText("Dragon King")).toBeInTheDocument();
 
     const input = screen.getByRole("searchbox", { name: /search/i });
     const rows = 5; // 2 novels + 1 author + 1 tag + see-all
@@ -408,7 +448,8 @@ describe("SearchOverlay recent searches are local-only", () => {
     render(<SearchOverlay />);
     openOverlay();
     await typeQuery("dragon");
-    await waitFor(() => expect(screen.getByText("Dragon King")).toBeInTheDocument());
+    await flushSearch();
+    expect(screen.getByText("Dragon King")).toBeInTheDocument();
 
     const input = screen.getByRole("searchbox", { name: /search/i });
     fireEvent.keyDown(input, { key: "ArrowDown" });

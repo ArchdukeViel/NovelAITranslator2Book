@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, act, waitFor, fireEvent, within } from "@testing-library/react";
+import { render, screen, cleanup, act, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowsePage } from "@/components/public/browse-page";
 
@@ -80,18 +80,6 @@ function renderPage() {
 function openAdvancedSearch() {
   const btns = screen.getAllByRole("button", { name: /filters/i });
   act(() => { btns[0].click(); });
-}
-
-/** Helper: type into a tag search input and wait for debounce + query to settle. */
-async function typeTagQuery(index: 0 | 1, text: string) {
-  const inputs = screen.getAllByPlaceholderText("Type to search tags…") as HTMLInputElement[];
-  fireEvent.input(inputs[index], { target: { value: text } });
-  // Wait for debounce (300ms) + query to resolve
-  await waitFor(() => {
-    // The searchTags mock should have been called at least once
-    // (at minimum after debounce settles).
-    // We just wait for any visible change.
-  }, { timeout: 500 });
 }
 
 // ---------------------------------------------------------------------------
@@ -364,6 +352,31 @@ describe("BrowsePage genre filter UI", () => {
 // ---------------------------------------------------------------------------
 
 describe("BrowsePage tag filter UI", () => {
+  beforeEach(() => {
+    // Fake only the timer APIs: react-query and React rely on real
+    // queueMicrotask/MessageChannel to apply state updates after fetches.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /**
+   * Tag search is debounced (300ms) in production code and served through
+   * react-query. With fake timers active: first advance past the debounce so
+   * the query runs, then advance again so react-query's 0ms observer-notify
+   * timer applies the results to the UI.
+   */
+  async function flushTagDebounce() {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(350);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+  }
+
   it("shows tag search inputs inside advanced search", () => {
     renderPage();
     openAdvancedSearch();
@@ -384,7 +397,7 @@ describe("BrowsePage tag filter UI", () => {
 
     // After a short wait, searchTags should NOT have been called
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 450));
+      await vi.advanceTimersByTimeAsync(200);
     });
     expect(mocks.searchTags).not.toHaveBeenCalled();
   });
@@ -400,14 +413,11 @@ describe("BrowsePage tag filter UI", () => {
     const inputs = screen.getAllByPlaceholderText("Type to search tags…") as HTMLInputElement[];
     fireEvent.input(inputs[0], { target: { value: "is" } });
 
-    await waitFor(() => {
-      expect(mocks.searchTags).toHaveBeenCalled();
-    }, { timeout: 800 });
+    await flushTagDebounce();
 
     // Also verify "isekai" appears in dropdown
-    await waitFor(() => {
-      expect(screen.getByText("isekai")).toBeInTheDocument();
-    }, { timeout: 500 });
+    expect(mocks.searchTags).toHaveBeenCalled();
+    expect(screen.getByText("isekai")).toBeInTheDocument();
   });
 
   it("matching tags appear in typeahead", async () => {
@@ -422,9 +432,9 @@ describe("BrowsePage tag filter UI", () => {
     const inputs = screen.getAllByPlaceholderText("Type to search tags…") as HTMLInputElement[];
     fireEvent.input(inputs[0], { target: { value: "is" } });
 
-    await waitFor(() => {
-      expect(screen.getByText("isekai")).toBeInTheDocument();
-    }, { timeout: 800 });
+    await flushTagDebounce();
+
+    expect(screen.getByText("isekai")).toBeInTheDocument();
     expect(screen.getByText("magic")).toBeInTheDocument();
   });
 
@@ -439,9 +449,7 @@ describe("BrowsePage tag filter UI", () => {
     const inputs = screen.getAllByPlaceholderText("Type to search tags…") as HTMLInputElement[];
     fireEvent.input(inputs[0], { target: { value: "is" } });
 
-    await waitFor(() => {
-      expect(screen.getByText("isekai")).toBeInTheDocument();
-    }, { timeout: 800 });
+    await flushTagDebounce();
 
     act(() => { screen.getByText("isekai").click(); });
 
@@ -461,9 +469,7 @@ describe("BrowsePage tag filter UI", () => {
     const inputs = screen.getAllByPlaceholderText("Type to search tags…") as HTMLInputElement[];
     fireEvent.input(inputs[1], { target: { value: "ac" } });
 
-    await waitFor(() => {
-      expect(screen.getByText("action")).toBeInTheDocument();
-    }, { timeout: 800 });
+    await flushTagDebounce();
 
     act(() => { screen.getByText("action").click(); });
 
@@ -494,10 +500,10 @@ describe("BrowsePage tag filter UI", () => {
     const inputs = screen.getAllByPlaceholderText("Type to search tags…") as HTMLInputElement[];
     fireEvent.input(inputs[0], { target: { value: "is" } });
 
-    await waitFor(() => {
-      // "isekai-romance" should appear
-      expect(screen.getByText("isekai-romance")).toBeInTheDocument();
-    }, { timeout: 800 });
+    await flushTagDebounce();
+
+    // "isekai-romance" should appear
+    expect(screen.getByText("isekai-romance")).toBeInTheDocument();
 
     // "isekai" should appear exactly once (the chip, not the dropdown result)
     expect(screen.getAllByText("isekai").length).toBe(1);
@@ -526,9 +532,7 @@ describe("BrowsePage tag filter UI", () => {
     const inputs = screen.getAllByPlaceholderText("Type to search tags…") as HTMLInputElement[];
     fireEvent.input(inputs[0], { target: { value: "is" } });
 
-    await waitFor(() => {
-      expect(screen.getByText("isekai")).toBeInTheDocument();
-    }, { timeout: 800 });
+    await flushTagDebounce();
 
     act(() => { screen.getByText("isekai").click(); });
 
@@ -552,9 +556,9 @@ describe("BrowsePage tag filter UI", () => {
     const inputs = screen.getAllByPlaceholderText("Type to search tags…") as HTMLInputElement[];
     fireEvent.input(inputs[0], { target: { value: "xy" } });
 
-    await waitFor(() => {
-      expect(screen.getByText("No matching tags.")).toBeInTheDocument();
-    }, { timeout: 800 });
+    await flushTagDebounce();
+
+    expect(screen.getByText("No matching tags.")).toBeInTheDocument();
   });
 
   it("tag filter indicator shows in results header for included tags", () => {

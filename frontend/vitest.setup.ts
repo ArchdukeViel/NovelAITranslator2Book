@@ -1,4 +1,5 @@
 /// <reference types="vitest/globals" />
+import type { ReactNode } from "react";
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 
@@ -121,3 +122,28 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
   useParams: () => ({}),
 }));
+
+// ---------------------------------------------------------------------------
+// Mock next/link for test environments
+// The real next/link schedules an idle-callback timer (useIntersection) that
+// can setState after the current test has finished, tripping the console.error
+// guard with an act() warning and failing the whole suite nondeterministically
+// (visible once parallel forks shifted the timing on CI). A plain anchor keeps
+// href, children, and props intact for navigation-structure assertions.
+// ---------------------------------------------------------------------------
+
+vi.mock("next/link", async () => {
+  const { forwardRef, createElement } = await vi.importActual<typeof import("react")>("react");
+  const Link = forwardRef<HTMLAnchorElement, Record<string, unknown> & { href?: unknown }>(
+    (props, ref) => {
+      const { href, children, ...rest } = props;
+      return createElement(
+        "a",
+        { ...rest, ref, href: typeof href === "string" ? href : undefined },
+        children as ReactNode
+      );
+    }
+  );
+  Link.displayName = "NextLinkMock";
+  return { default: Link };
+});
