@@ -28,7 +28,14 @@ def test_ci_core_exclusions_are_all_exercised_by_extended_shards() -> None:
         f"backend/tests/{p.name}" for p in tests_dir.glob("test_*.py") if p.name != "test_ci_workflows.py"
     }
 
-    extended_files = set(re.findall(r"backend/tests/test_[a-zA-Z0-9_]+\.py", extended_section))
+    from collections import Counter
+
+    extended_occurrences = re.findall(r"backend/tests/test_[a-zA-Z0-9_]+\.py", extended_section)
+    extended_counts = Counter(extended_occurrences)
+    duplicates = {path: count for path, count in extended_counts.items() if count > 1}
+    assert not duplicates, f"Extended test files must appear exactly once: {duplicates}"
+
+    extended_files = set(extended_occurrences)
 
     # Assert exact match between ignored set and extended files set
     assert ignored == extended_files, (
