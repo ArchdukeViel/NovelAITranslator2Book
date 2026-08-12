@@ -47,6 +47,21 @@ def test_ci_core_exclusions_are_all_exercised_by_extended_shards() -> None:
     assert core_files | extended_files == all_unit_test_files
 
 
+def test_ci_setup_uv_pin_is_consistent() -> None:
+    """All setup-uv uses in ci.yml must reference the exact same commit SHA.
+
+    Catches partial replacements that leave stale pins in some jobs (e.g. a
+    corrected backend-lint pin while e2e-tests still references the old SHA).
+    """
+    source = _workflow("ci.yml")
+
+    pins = re.findall(r"astral-sh/setup-uv@([0-9a-f]{40})", source)
+
+    assert pins
+    assert len(set(pins)) == 1, f"setup-uv uses inconsistent commit pins: {sorted(set(pins))}"
+    assert set(pins) == {"1edb52594c857e2b5b13128931090f0640537287"}
+
+
 def test_workflow_actions_are_pinned_to_full_commit_shas() -> None:
     action_lines: list[str] = []
     for path in sorted(WORKFLOWS_DIR.glob("*.yml")):
