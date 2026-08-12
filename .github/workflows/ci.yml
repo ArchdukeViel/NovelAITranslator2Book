@@ -109,7 +109,7 @@ jobs:
 
       - name: Run unit tests
         run: >
-          uv run --locked pytest --basetemp=backend/tests/.tmp/pytest-core --tb=short -q -m "not e2e and not slow"
+          uv run --locked pytest -n 2 --dist loadfile --basetemp=backend/tests/.tmp/pytest-core --tb=short -q -m "not e2e and not slow"
           --ignore=backend/tests/test_admin_glossary_api.py
           --ignore=backend/tests/test_auth.py
           --ignore=backend/tests/test_checkpoint_resume.py
@@ -120,6 +120,7 @@ jobs:
           --ignore=backend/tests/test_malformed_artifact_recovery.py
           --ignore=backend/tests/test_maintenance_status_service.py
           --ignore=backend/tests/test_novel_lifecycle_integration.py
+          --ignore=backend/tests/test_novel_orchestration_contracts.py
           --ignore=backend/tests/test_novel_orchestration_service.py
           --ignore=backend/tests/test_notification_event_bus.py
           --ignore=backend/tests/test_notification_persistence_service.py
@@ -215,20 +216,16 @@ jobs:
           - shard: orchestration-and-pipeline
             test_files: >-
               backend/tests/test_novel_orchestration_service.py
+              backend/tests/test_novel_orchestration_contracts.py
               backend/tests/test_pipeline_stages.py
           - shard: web-api-and-auth
             test_files: >-
               backend/tests/test_web_api.py
               backend/tests/test_auth.py
               backend/tests/test_user_data_router.py
-          - shard: lifecycle-and-integration
-            test_files: >-
-              backend/tests/test_novel_lifecycle_integration.py
               backend/tests/test_admin_glossary_api.py
-              backend/tests/test_checkpoint_resume.py
-              backend/tests/test_document_import_orchestration.py
-              backend/tests/test_integration.py
-          - shard: components-and-providers
+              backend/tests/test_public_reader_availability.py
+          - shard: components-and-lifecycle
             test_files: >-
               backend/tests/test_glossary_prompt_injection.py
               backend/tests/test_glossary_sync_bridge.py
@@ -239,7 +236,10 @@ jobs:
               backend/tests/test_maintenance_status_service.py
               backend/tests/test_malformed_artifact_recovery.py
               backend/tests/test_project_layout.py
-              backend/tests/test_public_reader_availability.py
+              backend/tests/test_novel_lifecycle_integration.py
+              backend/tests/test_checkpoint_resume.py
+              backend/tests/test_document_import_orchestration.py
+              backend/tests/test_integration.py
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -256,7 +256,7 @@ jobs:
           uv sync --locked --extra documents --extra gemini --extra dev
           --extra test --extra s3 --extra auth
       - run: >-
-          uv run --locked pytest --basetemp=backend/tests/.tmp/pytest-${{ matrix.shard }}
+          uv run --locked pytest -n 2 --dist loadfile --basetemp=backend/tests/.tmp/pytest-${{ matrix.shard }}
           --tb=short -q ${{ matrix.test_files }}
 
   frontend-check:

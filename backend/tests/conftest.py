@@ -13,9 +13,13 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState
+from novelai.db.base import Base
 from novelai.db.model_registry import register_database_models
 from novelai.glossary.glossary import Glossary
 from novelai.providers.base import TranslationProvider
@@ -625,3 +629,51 @@ def cleanup_pytest_cache():
                 print(f"✓ Cleaned up: {cache_dir}")
             except Exception as e:
                 print(f"⚠ Could not clean {cache_dir}: {e}")
+
+
+def _configure_catalog_projection_db(data_dir, monkeypatch):
+    database_url = f"sqlite:///file:proj_{uuid4().hex}?mode=memory&cache=shared"
+    monkeypatch.setattr(settings, "DATABASE_URL", database_url)
+    engine = create_engine(
+        database_url,
+        connect_args={"check_same_thread": False, "uri": True},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine)
+    return SessionLocal, engine
+
+
+@pytest.fixture
+def orchestration_env(monkeypatch):
+    """Shared orchestration test environment.
+
+    Used by the novel_orchestration test suites (kept-and-moved parts); see
+    `tests/test_novel_orchestration_service.py` and
+    `tests/test_novel_orchestration_contracts.py`. Lives in conftest so it
+    works with pytest-xdist cross-module collection and is auto-discovered.
+    """
+    TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    data_dir = TESTS_TMP_ROOT / f"orchestrator_{uuid4().hex}"
+    data_dir.mkdir(parents=True, exist_ok=False)
+
+    storage = StorageService(data_dir)
+    settings_svc = PreferencesService(data_dir)
+    settings_svc.set_preferred_provider("mock")
+    settings_svc.set_preferred_model("mock-1.0")
+    cache = TranslationCache(data_dir)
+    usage = UsageService(data_dir)
+    catalog_sessionmaker, catalog_engine = _configure_catalog_projection_db(data_dir, monkeypatch)
+
+    try:
+        yield {
+            "data_dir": data_dir,
+            "storage": storage,
+            "settings": settings_svc,
+            "cache": cache,
+            "usage": usage,
+            "catalog_sessionmaker": catalog_sessionmaker,
+        }
+    finally:
+        catalog_engine.dispose()
+        shutil.rmtree(data_dir, ignore_errors=True)
