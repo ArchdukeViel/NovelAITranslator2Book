@@ -16,8 +16,13 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     include: ["**/*.{test,spec}.{ts,tsx}"],
     pool: "forks",
-    // Two forks: parallel test files on multi-core CI runners while keeping
-    // per-file determinism (jsdom isolation) and staying light on memory.
-    maxWorkers: 2,
+    // Single fork: measured on the 2-core GitHub runner, maxWorkers: 2 made
+    // frontend-check SLOWER (89s vs 62s) — duplicated module transform and
+    // jsdom environment setup per fork outweigh the 2-core parallelism.
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
   },
 });
