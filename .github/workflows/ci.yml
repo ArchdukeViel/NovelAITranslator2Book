@@ -26,9 +26,11 @@ jobs:
         with:
           python-version: "3.13"
 
-      # Python CI dependencies come from the locked uv.lock graph (maintained
-      # by Dependabot); --locked fails CI if the lock drifts from pyproject.
-      - run: pip install "uv==0.12.0"
+      - uses: astral-sh/setup-uv@1edb52594c857e2b5b13128931090f0640537287 # v5.3.0
+        with:
+          version: "0.12.0"
+          enable-cache: true
+
       - run: >-
           uv sync --locked --extra documents --extra gemini --extra dev
           --extra test --extra s3 --extra auth
@@ -50,7 +52,52 @@ jobs:
 
   backend-tests:
     runs-on: ubuntu-latest
-    needs: backend-lint
+    env:
+      ENV: test
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@1edb52594c857e2b5b13128931090f0640537287 # v5.3.0
+        with:
+          version: "0.12.0"
+          enable-cache: true
+
+      - run: >-
+          uv sync --locked --extra documents --extra gemini --extra dev
+          --extra test --extra s3 --extra auth
+
+      - name: Run unit tests
+        run: >
+          uv run --locked pytest --basetemp=backend/tests/.tmp/pytest-core --tb=short -q -m "not e2e and not slow"
+          --ignore=backend/tests/test_admin_glossary_api.py
+          --ignore=backend/tests/test_auth.py
+          --ignore=backend/tests/test_checkpoint_resume.py
+          --ignore=backend/tests/test_document_import_orchestration.py
+          --ignore=backend/tests/test_glossary_prompt_injection.py
+          --ignore=backend/tests/test_glossary_sync_bridge.py
+          --ignore=backend/tests/test_integration.py
+          --ignore=backend/tests/test_malformed_artifact_recovery.py
+          --ignore=backend/tests/test_maintenance_status_service.py
+          --ignore=backend/tests/test_novel_lifecycle_integration.py
+          --ignore=backend/tests/test_novel_orchestration_service.py
+          --ignore=backend/tests/test_notification_event_bus.py
+          --ignore=backend/tests/test_notification_persistence_service.py
+          --ignore=backend/tests/test_pipeline_stages.py
+          --ignore=backend/tests/test_project_layout.py
+          --ignore=backend/tests/test_provider_registry.py
+          --ignore=backend/tests/test_public_reader_availability.py
+          --ignore=backend/tests/test_translation_qa.py
+          --ignore=backend/tests/test_user_data_router.py
+          --ignore=backend/tests/test_web_api.py
+
+  migration-smoke:
+    name: Migration smoke test
+    runs-on: ubuntu-latest
 
     services:
       postgres:
@@ -77,7 +124,11 @@ jobs:
         with:
           python-version: "3.13"
 
-      - run: pip install "uv==0.12.0"
+      - uses: astral-sh/setup-uv@1edb52594c857e2b5b13128931090f0640537287 # v5.3.0
+        with:
+          version: "0.12.0"
+          enable-cache: true
+
       - run: >-
           uv sync --locked --extra documents --extra gemini --extra dev
           --extra test --extra s3 --extra auth
@@ -103,83 +154,42 @@ jobs:
           DATABASE_URL: postgresql+psycopg://novelai:novelai@localhost:5432/novelai
         run: uv run --locked alembic -c alembic.ini upgrade head
 
-      - name: Run unit tests
-        run: >
-          uv run --locked pytest --basetemp=backend/tests/.tmp/pytest-core --tb=short -q -m "not e2e and not slow"
-          --ignore=backend/tests/test_admin_glossary_api.py
-          --ignore=backend/tests/test_auth.py
-          --ignore=backend/tests/test_checkpoint_resume.py
-          --ignore=backend/tests/test_document_import_orchestration.py
-          --ignore=backend/tests/test_glossary_prompt_injection.py
-          --ignore=backend/tests/test_glossary_sync_bridge.py
-          --ignore=backend/tests/test_integration.py
-          --ignore=backend/tests/test_malformed_artifact_recovery.py
-          --ignore=backend/tests/test_maintenance_status_service.py
-          --ignore=backend/tests/test_novel_lifecycle_integration.py
-          --ignore=backend/tests/test_novel_orchestration_service.py
-          --ignore=backend/tests/test_notification_event_bus.py
-          --ignore=backend/tests/test_notification_persistence_service.py
-          --ignore=backend/tests/test_project_layout.py
-          --ignore=backend/tests/test_provider_registry.py
-          --ignore=backend/tests/test_public_reader_availability.py
-          --ignore=backend/tests/test_translation_qa.py
-          --ignore=backend/tests/test_user_data_router.py
-          --ignore=backend/tests/test_web_api.py
-
   backend-extended:
     name: Backend extended tests (${{ matrix.shard }})
     runs-on: ubuntu-latest
-    needs: backend-lint
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      max-parallel: 4
       matrix:
         include:
-          - shard: admin-glossary
+          - shard: orchestration-and-pipeline
             test_files: >-
-              backend/tests/test_admin_glossary_api.py
-          - shard: auth
-            test_files: >-
-              backend/tests/test_auth.py
-          - shard: user-data
-            test_files: >-
-              backend/tests/test_user_data_router.py
-          - shard: notifications
-            test_files: >-
-              backend/tests/test_notification_event_bus.py
-              backend/tests/test_notification_persistence_service.py
-          - shard: maintenance-status
-            test_files: >-
-              backend/tests/test_maintenance_status_service.py
-          - shard: web-api
+              backend/tests/test_novel_orchestration_service.py
+              backend/tests/test_pipeline_stages.py
+          - shard: web-api-and-auth
             test_files: >-
               backend/tests/test_web_api.py
-          - shard: checkpoint-import-integration
+              backend/tests/test_auth.py
+              backend/tests/test_user_data_router.py
+          - shard: lifecycle-and-integration
             test_files: >-
+              backend/tests/test_novel_lifecycle_integration.py
+              backend/tests/test_admin_glossary_api.py
               backend/tests/test_checkpoint_resume.py
               backend/tests/test_document_import_orchestration.py
               backend/tests/test_integration.py
-          - shard: novel-lifecycle
-            test_files: >-
-              backend/tests/test_novel_lifecycle_integration.py
-          - shard: novel-orchestration
-            test_files: >-
-              backend/tests/test_novel_orchestration_service.py
-          - shard: glossary-provider-qa
+          - shard: components-and-providers
             test_files: >-
               backend/tests/test_glossary_prompt_injection.py
               backend/tests/test_glossary_sync_bridge.py
               backend/tests/test_provider_registry.py
               backend/tests/test_translation_qa.py
-          - shard: recovery-layout-reader
-            test_files: >-
+              backend/tests/test_notification_event_bus.py
+              backend/tests/test_notification_persistence_service.py
+              backend/tests/test_maintenance_status_service.py
               backend/tests/test_malformed_artifact_recovery.py
               backend/tests/test_project_layout.py
               backend/tests/test_public_reader_availability.py
-          - shard: pipeline-stages
-            test_files: >-
-              backend/tests/test_pipeline_stages.py
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -187,7 +197,11 @@ jobs:
         with:
           python-version: "3.13"
 
-      - run: pip install "uv==0.12.0"
+      - uses: astral-sh/setup-uv@1edb52594c857e2b5b13128931090f0640537287 # v5.3.0
+        with:
+          version: "0.12.0"
+          enable-cache: true
+
       - run: >-
           uv sync --locked --extra documents --extra gemini --extra dev
           --extra test --extra s3 --extra auth
@@ -220,7 +234,7 @@ jobs:
     # built authoritatively by the Build and Push workflow (build.yml) after
     # CI succeeds, so the non-push duplicate build is skipped there.
     if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/develop' }}
-    needs: [backend-tests, backend-extended, frontend-check]
+    needs: [backend-lint, backend-tests, migration-smoke, backend-extended, frontend-check, e2e-tests]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -258,7 +272,6 @@ jobs:
 
   e2e-tests:
     runs-on: ubuntu-latest
-    needs: [backend-tests, backend-extended]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -283,7 +296,10 @@ jobs:
           python-version: "3.13"
 
       - if: steps.filter.outputs.relevant == 'true'
-        run: pip install "uv==0.12.0"
+        uses: astral-sh/setup-uv@1edb52594c857e2b5b13128931090f0640537287 # v5.3.0
+        with:
+          version: "0.12.0"
+          enable-cache: true
 
       - if: steps.filter.outputs.relevant == 'true'
         run: >-

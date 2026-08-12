@@ -17,8 +17,49 @@ def test_ci_core_exclusions_are_all_exercised_by_extended_shards() -> None:
 
     assert ignored
     assert "backend-extended:" in source
-    assert all(test_path in source[source.index("backend-extended:") :] for test_path in ignored)
-    assert "needs: [backend-tests, backend-extended, frontend-check]" in source
+    extended_section = source[source.index("backend-extended:") :]
+    for test_path in ignored:
+        assert test_path in extended_section, f"Ignored test {test_path} not found in backend-extended shards"
+
+    # Contract: every backend test file in backend/tests/ (except e2e directory and test_ci_workflows.py)
+    # must be either in core (not ignored) or in extended shards, and no test file is duplicated across shards.
+    tests_dir = Path(__file__).parent
+    all_unit_test_files = {
+        f"backend/tests/{p.name}" for p in tests_dir.glob("test_*.py") if p.name != "test_ci_workflows.py"
+    }
+
+    from collections import Counter
+
+    extended_occurrences = re.findall(r"backend/tests/test_[a-zA-Z0-9_]+\.py", extended_section)
+    extended_counts = Counter(extended_occurrences)
+    duplicates = {path: count for path, count in extended_counts.items() if count > 1}
+    assert not duplicates, f"Extended test files must appear exactly once: {duplicates}"
+
+    extended_files = set(extended_occurrences)
+
+    # Assert exact match between ignored set and extended files set
+    assert ignored == extended_files, (
+        f"Mismatch between core --ignore set and extended shard files: {ignored ^ extended_files}"
+    )
+
+    # Assert total files accounted for
+    core_files = all_unit_test_files - extended_files
+    assert core_files | extended_files == all_unit_test_files
+
+
+def test_ci_setup_uv_pin_is_consistent() -> None:
+    """All setup-uv uses in ci.yml must reference the exact same commit SHA.
+
+    Catches partial replacements that leave stale pins in some jobs (e.g. a
+    corrected backend-lint pin while e2e-tests still references the old SHA).
+    """
+    source = _workflow("ci.yml")
+
+    pins = re.findall(r"astral-sh/setup-uv@([0-9a-f]{40})", source)
+
+    assert pins
+    assert len(set(pins)) == 1, f"setup-uv uses inconsistent commit pins: {sorted(set(pins))}"
+    assert set(pins) == {"1edb52594c857e2b5b13128931090f0640537287"}
 
 
 def test_workflow_actions_are_pinned_to_full_commit_shas() -> None:

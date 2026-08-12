@@ -8,6 +8,28 @@ afterEach(() => {
   cleanup();
 });
 
+// Fail tests on console.warn and console.error (e.g. React DOM validation errors)
+const originalWarn = console.warn;
+const originalError = console.error;
+
+beforeAll(() => {
+  console.warn = (...args: unknown[]) => {
+    originalWarn(...args);
+    const msg = args.map(a => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+    throw new Error(`Unexpected console.warn during test: ${msg}`);
+  };
+  console.error = (...args: unknown[]) => {
+    originalError(...args);
+    const msg = args.map(a => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+    throw new Error(`Unexpected console.error during test: ${msg}`);
+  };
+});
+
+afterAll(() => {
+  console.warn = originalWarn;
+  console.error = originalError;
+});
+
 /**
  * In-memory Storage shim for localStorage/sessionStorage in tests.
  * Used by storage-policy property tests to verify no session tokens

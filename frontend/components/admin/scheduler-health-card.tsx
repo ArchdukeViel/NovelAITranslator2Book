@@ -85,7 +85,11 @@ export function SchedulerHealthCard() {
         )}
 
         {health.isLoading ? (
-          <LoadingRows colSpan={1} />
+          <table className="w-full table-auto text-sm">
+            <tbody>
+              <LoadingRows colSpan={5} label="Loading scheduler health..." />
+            </tbody>
+          </table>
         ) : states.length === 0 ? (
           <EmptyState
             title="No persisted scheduler scopes"
