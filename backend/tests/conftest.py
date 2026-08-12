@@ -13,8 +13,9 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState
@@ -631,17 +632,13 @@ def cleanup_pytest_cache():
 
 
 def _configure_catalog_projection_db(data_dir, monkeypatch):
-    db_path = data_dir / "catalog_projection.sqlite"
-    database_url = f"sqlite:///{db_path.as_posix()}"
+    database_url = f"sqlite:///file:proj_{uuid4().hex}?mode=memory&cache=shared"
     monkeypatch.setattr(settings, "DATABASE_URL", database_url)
-    engine = create_engine(database_url)
-
-    @event.listens_for(engine, "connect")
-    def _set_sqlite_pragmas(dbapi_connection, connection_record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA temp_store = MEMORY")
-        cursor.close()
-
+    engine = create_engine(
+        database_url,
+        connect_args={"check_same_thread": False, "uri": True},
+        poolclass=StaticPool,
+    )
     Base.metadata.create_all(engine)
     SessionLocal = sessionmaker(bind=engine)
     return SessionLocal, engine
