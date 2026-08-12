@@ -16,6 +16,7 @@ concurrency:
 jobs:
   minio-s3-integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       minio:

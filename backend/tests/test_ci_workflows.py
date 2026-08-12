@@ -164,6 +164,17 @@ def test_ci_e2e_filter_includes_all_required_inputs() -> None:
         assert path in source, f"Missing {path} in E2E filter"
 
 
+def test_ci_docker_filter_includes_all_required_inputs() -> None:
+    source = _workflow("ci.yml")
+    required_docker_paths = [
+        "deploy/**",
+        ".dockerignore",
+        "readme.md",
+    ]
+    for path in required_docker_paths:
+        assert path in source, f"Missing {path} in Docker filter"
+
+
 def test_production_monitor_contract() -> None:
     source = _workflow("production-monitor.yml")
     assert "vars.PRODUCTION_MONITOR_ENABLED == 'true'" in source
