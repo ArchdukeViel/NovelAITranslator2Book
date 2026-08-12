@@ -26,10 +26,7 @@ def test_vercel_services_contract_routes_frontend_and_monolith_backend() -> None
     assert backend["framework"] == "fastapi"
     assert backend["entrypoint"] == "vercel_app:app"
     assert backend["functions"]["vercel_app.py"]["maxDuration"] == 300
-    assert (
-        backend["installCommand"]
-        == "pip install uv && uv pip install --system --locked --requirement requirements.lock"
-    )
+    assert backend["installCommand"] == "pip install --requirement requirements.lock"
 
     routes = {rewrite["source"]: rewrite["destination"]["service"] for rewrite in config["rewrites"]}
     assert routes["/api/(.*)"] == "backend"
