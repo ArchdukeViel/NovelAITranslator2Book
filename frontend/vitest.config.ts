@@ -16,10 +16,8 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     include: ["**/*.{test,spec}.{ts,tsx}"],
     pool: "forks",
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
-    },
+    // Two forks: parallel test files on multi-core CI runners while keeping
+    // per-file determinism (jsdom isolation) and staying light on memory.
+    maxWorkers: 2,
   },
 });
