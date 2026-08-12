@@ -62,6 +62,23 @@ def test_ci_setup_uv_pin_is_consistent() -> None:
     assert set(pins) == {"1edb52594c857e2b5b13128931090f0640537287"}
 
 
+def test_s3_integration_has_execution_policy() -> None:
+    """The real S3 integration suite must have an automated execution policy.
+
+    The file is marked ``slow``/``integration`` and therefore intentionally
+    excluded from the normal core/extended runs; this contract keeps it wired
+    to the scheduled MinIO workflow so it cannot silently become manual-only.
+    """
+    source = _workflow("s3-integration.yml")
+
+    assert "test_s3_integration.py" in source
+    assert "schedule" in source
+    assert "workflow_dispatch" in source
+    assert "TEST_S3_ENDPOINT" in source
+    assert "TEST_S3_BUCKET" in source
+    assert "minio" in source
+
+
 def test_workflow_actions_are_pinned_to_full_commit_shas() -> None:
     action_lines: list[str] = []
     for path in sorted(WORKFLOWS_DIR.glob("*.yml")):
