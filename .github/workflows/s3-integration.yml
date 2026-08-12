@@ -26,8 +26,6 @@ jobs:
           MINIO_ROOT_PASSWORD: minioadmin
         ports:
           - 9000:9000
-        options: >-
-          server /data
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -58,7 +56,7 @@ jobs:
           deadline = time.monotonic() + 120
           while time.monotonic() < deadline:
               try:
-                  with urllib.request.urlopen(f"{endpoint}/minio/health/ready", timeout=5) as response:
+                  with urllib.request.urlopen(f"{endpoint}/minio/health/live", timeout=5) as response:
                       if response.status == 200:
                           print("MinIO is ready.")
                           raise SystemExit(0)
