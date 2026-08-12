@@ -39,9 +39,8 @@ and recovery backups remain supported.
 ## Install
 
 ```powershell
-py -3.13 -m venv .venv
-& ".venv\Scripts\python.exe" -m pip install --upgrade pip
-& ".venv\Scripts\python.exe" -m pip install -e ".[documents,gemini,dev,db,worker,s3,auth]"
+uv venv .venv --python 3.13
+uv sync --locked --extra documents --extra gemini --extra dev --extra db --extra worker --extra s3 --extra auth
 npm install --prefix frontend
 Copy-Item ".env.example" ".env"
 ```

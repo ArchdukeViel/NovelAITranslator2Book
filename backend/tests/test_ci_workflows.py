@@ -116,6 +116,12 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     assert "push:\n    tags:" not in source
     assert source.index("docker compose run --rm migrate") < source.index("docker compose up -d")
 
+    # Attestation and release directory contracts
+    assert "gh attestation verify" in source
+    assert "packages: read" in source
+    assert 'RELEASE_DIR="/opt/novelai/releases/$VERSION"' in source
+    assert 'CURRENT_LINK="/opt/novelai/current"' in source
+
 
 def test_gitguardian_workflow_contract() -> None:
     source = _workflow("gitguardian.yaml")
@@ -227,6 +233,7 @@ def test_build_workflow_run_trust_guards_and_concurrency() -> None:
     assert "github.event.workflow_run.event == 'push'" in source
     assert "github.event.workflow_run.head_branch == github.event.repository.default_branch" in source
     assert "github.event.workflow_run.head_repository.full_name == github.repository" in source
+    assert "aquasecurity/trivy-action" in source
     assert "actions/attest" in source
     assert "subject-digest: ${{ steps.build.outputs.digest }}" in source
     assert "artifact-metadata: write" in source
