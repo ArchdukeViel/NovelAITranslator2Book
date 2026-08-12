@@ -59,7 +59,7 @@ def test_ci_setup_uv_pin_is_consistent() -> None:
 
     assert pins
     assert len(set(pins)) == 1, f"setup-uv uses inconsistent commit pins: {sorted(set(pins))}"
-    assert set(pins) == {"1edb52594c857e2b5b13128931090f0640537287"}
+    assert set(pins) == {"c771a70e6277c0a99b617c7a806ffedaca235ff9"}
 
 
 def test_s3_integration_has_execution_policy() -> None:
