@@ -74,6 +74,17 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
+      # Run vulnerability scan on the built image digest before attestation
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@18f2510ee396bbf400402947b394d2dd8c87dbb0 # v0.29.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          format: table
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
       # Signed SLSA build provenance for the published image; the registry
       # digest returned by build-push-action already includes the sha256:
       # prefix.
