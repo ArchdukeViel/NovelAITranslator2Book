@@ -640,7 +640,6 @@ def _configure_catalog_projection_db(data_dir, monkeypatch):
     def _set_sqlite_pragmas(dbapi_connection, connection_record):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA temp_store = MEMORY")
-        cursor.execute("PRAGMA journal_mode = OFF")
         cursor.close()
 
     Base.metadata.create_all(engine)
