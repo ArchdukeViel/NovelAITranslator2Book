@@ -22,7 +22,11 @@ ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 
 COPY --from=deps /app/frontend/node_modules ./node_modules
 COPY frontend ./
+# The .next/cache mount keeps the Next.js webpack/compiled cache across
+# rebuilds of the same BuildKit daemon (local compose dev/CI retries),
+# so unchanged modules do not recompile from scratch.
 RUN --mount=type=cache,target=/root/.npm \
+    --mount=type=cache,target=/app/frontend/.next/cache \
     npm run build
 
 # =============================================================================

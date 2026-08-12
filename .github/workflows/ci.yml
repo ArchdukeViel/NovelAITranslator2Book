@@ -233,6 +233,10 @@ jobs:
     # PRs and develop pushes validate image builds; on main the images are
     # built authoritatively by the Build and Push workflow (build.yml) after
     # CI succeeds, so the non-push duplicate build is skipped there.
+    # Validation builds only READ the gha cache (cache-from): exporting
+    # cache-to on every PR run re-uploads ~50s of layers and competes with
+    # build.yml as a cache producer. build.yml (mode=max) is the single
+    # authoritative producer.
     if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/develop' }}
     needs: [backend-lint, backend-tests, migration-smoke, backend-extended, frontend-check, e2e-tests]
     steps:
@@ -248,7 +252,6 @@ jobs:
           push: false
           tags: novelai/admin:ci
           cache-from: type=gha,scope=admin
-          cache-to: type=gha,mode=max,scope=admin
 
       - name: Build reader image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -258,7 +261,6 @@ jobs:
           push: false
           tags: novelai/reader:ci
           cache-from: type=gha,scope=reader
-          cache-to: type=gha,mode=max,scope=reader
 
       - name: Build frontend image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -268,7 +270,6 @@ jobs:
           push: false
           tags: novelai/frontend:ci
           cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
 
   e2e-tests:
     runs-on: ubuntu-latest
