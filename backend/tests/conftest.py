@@ -33,7 +33,7 @@ from novelai.translation.service import TranslationService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TESTS_ROOT = Path(__file__).resolve().parent
-_XDIST_WORKER_ID = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
+_XDIST_WORKER_ID = os.environ.get("PYTEST_XDIST_WORKER", "master")
 TESTS_TMP_ROOT = TESTS_ROOT / ".tmp" / "fixtures" / _XDIST_WORKER_ID
 TESTS_RUNTIME_ROOT = TESTS_ROOT / ".tmp" / "runtime" / _XDIST_WORKER_ID
 COLLECTION_RUNTIME_ROOT = TESTS_RUNTIME_ROOT / "collection"
@@ -130,16 +130,17 @@ def cleanup_test_artifacts(
     )
 
     paths_to_remove = [
-        project_root / ".pytest_cache",
         tests_root / ".tmp" / "fixtures" / _XDIST_WORKER_ID,
-        project_root / "tests_tmp",
     ]
-    if include_pytest_managed:
+    if _XDIST_WORKER_ID == "master":
         paths_to_remove.extend(
             [
-                tests_root / ".pytest_cache",
+                project_root / ".pytest_cache",
+                project_root / "tests_tmp",
             ]
         )
+        if include_pytest_managed:
+            paths_to_remove.append(tests_root / ".pytest_cache")
 
     for path in paths_to_remove:
         if not path.exists():
@@ -150,23 +151,24 @@ def cleanup_test_artifacts(
         except Exception as exc:
             warnings.append(f"{path}: {exc}")
 
-    for path in project_root.glob("pytest-cache-files-*"):
-        if not path.is_dir():
-            continue
-        try:
-            _force_remove_tree(path)
-            removed.append(path)
-        except Exception as exc:
-            warnings.append(f"{path}: {exc}")
+    if _XDIST_WORKER_ID == "master":
+        for path in project_root.glob("pytest-cache-files-*"):
+            if not path.is_dir():
+                continue
+            try:
+                _force_remove_tree(path)
+                removed.append(path)
+            except Exception as exc:
+                warnings.append(f"{path}: {exc}")
 
-    for path in extra_test_output_roots:
-        if not path.exists():
-            continue
-        try:
-            _force_remove_tree(path)
-            removed.append(path)
-        except Exception as exc:
-            warnings.append(f"{path}: {exc}")
+        for path in extra_test_output_roots:
+            if not path.exists():
+                continue
+            try:
+                _force_remove_tree(path)
+                removed.append(path)
+            except Exception as exc:
+                warnings.append(f"{path}: {exc}")
 
     return removed, warnings
 
