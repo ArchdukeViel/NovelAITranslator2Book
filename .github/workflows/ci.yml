@@ -17,6 +17,35 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Path-aware gating for pull requests: each dependent job only runs when
+  # its inputs actually changed. Push runs on main/develop stay authoritative
+  # and always execute the full matrix.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      docker: ${{ steps.filter.outputs.docker }}
+      workflow: ${{ steps.filter.outputs.workflow }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'requirements*.lock'
+            frontend:
+              - 'frontend/**'
+            docker:
+              - 'deploy/**'
+            workflow:
+              - '.github/workflows/**'
+
   backend-lint:
     runs-on: ubuntu-latest
     steps:
@@ -52,6 +81,13 @@ jobs:
 
   backend-tests:
     runs-on: ubuntu-latest
+    needs: changes
+    if: >-
+      ${{
+        github.event_name == 'push' ||
+        needs.changes.outputs.backend == 'true' ||
+        needs.changes.outputs.workflow == 'true'
+      }}
     env:
       ENV: test
 
@@ -73,7 +109,7 @@ jobs:
 
       - name: Run unit tests
         run: >
-          uv run --locked pytest --basetemp=backend/tests/.tmp/pytest-core --tb=short -q -m "not e2e and not slow"
+          uv run --locked pytest -n 2 --dist loadfile --basetemp=backend/tests/.tmp/pytest-core --tb=short -q -m "not e2e and not slow"
           --ignore=backend/tests/test_admin_glossary_api.py
           --ignore=backend/tests/test_auth.py
           --ignore=backend/tests/test_checkpoint_resume.py
@@ -84,6 +120,7 @@ jobs:
           --ignore=backend/tests/test_malformed_artifact_recovery.py
           --ignore=backend/tests/test_maintenance_status_service.py
           --ignore=backend/tests/test_novel_lifecycle_integration.py
+          --ignore=backend/tests/test_novel_orchestration_contracts.py
           --ignore=backend/tests/test_novel_orchestration_service.py
           --ignore=backend/tests/test_notification_event_bus.py
           --ignore=backend/tests/test_notification_persistence_service.py
@@ -98,6 +135,13 @@ jobs:
   migration-smoke:
     name: Migration smoke test
     runs-on: ubuntu-latest
+    needs: changes
+    if: >-
+      ${{
+        github.event_name == 'push' ||
+        needs.changes.outputs.backend == 'true' ||
+        needs.changes.outputs.workflow == 'true'
+      }}
 
     services:
       postgres:
@@ -157,6 +201,13 @@ jobs:
   backend-extended:
     name: Backend extended tests (${{ matrix.shard }})
     runs-on: ubuntu-latest
+    needs: changes
+    if: >-
+      ${{
+        github.event_name == 'push' ||
+        needs.changes.outputs.backend == 'true' ||
+        needs.changes.outputs.workflow == 'true'
+      }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -165,20 +216,16 @@ jobs:
           - shard: orchestration-and-pipeline
             test_files: >-
               backend/tests/test_novel_orchestration_service.py
+              backend/tests/test_novel_orchestration_contracts.py
               backend/tests/test_pipeline_stages.py
           - shard: web-api-and-auth
             test_files: >-
               backend/tests/test_web_api.py
               backend/tests/test_auth.py
               backend/tests/test_user_data_router.py
-          - shard: lifecycle-and-integration
-            test_files: >-
-              backend/tests/test_novel_lifecycle_integration.py
               backend/tests/test_admin_glossary_api.py
-              backend/tests/test_checkpoint_resume.py
-              backend/tests/test_document_import_orchestration.py
-              backend/tests/test_integration.py
-          - shard: components-and-providers
+              backend/tests/test_public_reader_availability.py
+          - shard: components-and-lifecycle
             test_files: >-
               backend/tests/test_glossary_prompt_injection.py
               backend/tests/test_glossary_sync_bridge.py
@@ -189,7 +236,10 @@ jobs:
               backend/tests/test_maintenance_status_service.py
               backend/tests/test_malformed_artifact_recovery.py
               backend/tests/test_project_layout.py
-              backend/tests/test_public_reader_availability.py
+              backend/tests/test_novel_lifecycle_integration.py
+              backend/tests/test_checkpoint_resume.py
+              backend/tests/test_document_import_orchestration.py
+              backend/tests/test_integration.py
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -206,11 +256,18 @@ jobs:
           uv sync --locked --extra documents --extra gemini --extra dev
           --extra test --extra s3 --extra auth
       - run: >-
-          uv run --locked pytest --basetemp=backend/tests/.tmp/pytest-${{ matrix.shard }}
+          uv run --locked pytest -n 2 --dist loadfile --basetemp=backend/tests/.tmp/pytest-${{ matrix.shard }}
           --tb=short -q ${{ matrix.test_files }}
 
   frontend-check:
     runs-on: ubuntu-latest
+    needs: changes
+    if: >-
+      ${{
+        github.event_name == 'push' ||
+        needs.changes.outputs.frontend == 'true' ||
+        needs.changes.outputs.workflow == 'true'
+      }}
     defaults:
       run:
         working-directory: frontend
@@ -233,8 +290,29 @@ jobs:
     # PRs and develop pushes validate image builds; on main the images are
     # built authoritatively by the Build and Push workflow (build.yml) after
     # CI succeeds, so the non-push duplicate build is skipped there.
-    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/develop' }}
-    needs: [backend-lint, backend-tests, migration-smoke, backend-extended, frontend-check, e2e-tests]
+    # Validation builds only READ the gha cache (cache-from): exporting
+    # cache-to on every PR run re-uploads ~50s of layers and competes with
+    # build.yml as a cache producer. build.yml (mode=max) is the single
+    # authoritative producer.
+    # Path-aware on PRs: only build when an image input changed, but still
+    # only after every relevant test job has not failed.
+    if: >-
+      ${{
+        (github.event_name == 'pull_request' || github.ref == 'refs/heads/develop') &&
+        !cancelled() &&
+        (github.event_name == 'push' ||
+         needs.changes.outputs.docker == 'true' ||
+         needs.changes.outputs.backend == 'true' ||
+         needs.changes.outputs.frontend == 'true' ||
+         needs.changes.outputs.workflow == 'true') &&
+        needs.backend-lint.result != 'failure' &&
+        needs.backend-tests.result != 'failure' &&
+        needs.migration-smoke.result != 'failure' &&
+        needs.backend-extended.result != 'failure' &&
+        needs.frontend-check.result != 'failure' &&
+        needs.e2e-tests.result != 'failure'
+      }}
+    needs: [changes, backend-lint, backend-tests, migration-smoke, backend-extended, frontend-check, e2e-tests]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -248,7 +326,6 @@ jobs:
           push: false
           tags: novelai/admin:ci
           cache-from: type=gha,scope=admin
-          cache-to: type=gha,mode=max,scope=admin
 
       - name: Build reader image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -258,7 +335,6 @@ jobs:
           push: false
           tags: novelai/reader:ci
           cache-from: type=gha,scope=reader
-          cache-to: type=gha,mode=max,scope=reader
 
       - name: Build frontend image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -268,7 +344,6 @@ jobs:
           push: false
           tags: novelai/frontend:ci
           cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
 
   e2e-tests:
     runs-on: ubuntu-latest
