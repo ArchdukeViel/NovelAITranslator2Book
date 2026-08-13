@@ -294,6 +294,16 @@ def test_production_compose_contract() -> None:
     assert "POSTGRES_PASSWORD: ${DATABASE_RESTORE_PASSWORD}" in source
     assert ":?Set DATABASE_RESTORE_PASSWORD" not in source
     assert "build:" not in source
+    # Every third-party image must be digest-pinned with a well-formed
+    # sha256 digest. Wrong digests fail `docker compose pull` on any host;
+    # the deploy workflow is the only place that exercises the pins.
+    pinned = re.findall(r"image: ([a-z0-9.-]+:[a-z0-9._-]+@sha256:[0-9a-f]{64})\s*$", source, re.M)
+    assert {"redis:7.4.2-alpine", "postgres:17.4-alpine", "caddy:2.9.1-alpine"} == {ref.split("@")[0] for ref in pinned}
+    assert len(pinned) == 3
+    # Public-service images use ${VAR:-ghcr.io/...} interpolation and must
+    # never be digest-pinned by CI: their digests change on every build, so
+    # a pin would hard-fail the deploy.
+    assert not re.search(r"image: \$\{[^}]*\}@sha256:[0-9a-f]{64}", source)
 
 
 def test_deploy_restore_password_preflight() -> None:

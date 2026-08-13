@@ -2,7 +2,7 @@ name: novel-ai
 
 services:
   redis:
-    image: redis:7.4.2-alpine@sha256:19058b8686eecfb07c57eb3c5f21a48c4fa04a37ae49405d429a8a723e7ca5ab
+    image: redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952
     volumes:
       - redis_data:/data
     healthcheck:
@@ -15,7 +15,7 @@ services:
     restart: unless-stopped
 
   restore-db:
-    image: postgres:17.4-alpine@sha256:69b43d2c8fb9958742b78d2b96d99f6946059c3a378d38e218204689b6531eb3
+    image: postgres:17.4-alpine@sha256:7062a2109c4b51f3c792c7ea01e83ed12ef9a980886e3b3d380a7d2e5f6ce3f5
     profiles:
       - recovery
     environment:
@@ -34,7 +34,7 @@ services:
     restart: unless-stopped
 
   caddy:
-    image: caddy:2.9.1-alpine@sha256:b1d7d06cb5561a33a3237eb5f0fbab55cfef4539ef3efd939634e06ff4903c70
+    image: caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0
     depends_on:
       - backend
       - reader
