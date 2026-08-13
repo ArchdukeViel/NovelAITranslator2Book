@@ -121,9 +121,14 @@ jobs:
 
           # Cryptographic supply-chain check: resolve exact digests and verify build attestations for published images before remote deployment
           echo "Verifying build attestations for images tagged '$VERSION'..."
-          ADMIN_REF="ghcr.io/${{ github.repository }}/novelai-admin:${VERSION}"
-          READER_REF="ghcr.io/${{ github.repository }}/novelai-reader:${VERSION}"
-          FRONTEND_REF="ghcr.io/${{ github.repository }}/novelai-frontend:${VERSION}"
+          # OCI registry references must be lowercase; buildx pushes the GHCR
+          # repository path in lowercase even when the GitHub owner/repo names
+          # contain uppercase characters.
+          GHCR_BASE="ghcr.io/${{ github.repository }}"
+          GHCR_BASE="${GHCR_BASE,,}"
+          ADMIN_REF="${GHCR_BASE}/novelai-admin:${VERSION}"
+          READER_REF="${GHCR_BASE}/novelai-reader:${VERSION}"
+          FRONTEND_REF="${GHCR_BASE}/novelai-frontend:${VERSION}"
 
           ADMIN_DIGEST=$(docker manifest inspect "${ADMIN_REF}" -v | jq -r '.Descriptor.digest // .[0].Descriptor.digest // empty' 2>/dev/null || true)
           READER_DIGEST=$(docker manifest inspect "${READER_REF}" -v | jq -r '.Descriptor.digest // .[0].Descriptor.digest // empty' 2>/dev/null || true)
@@ -134,13 +139,13 @@ jobs:
             exit 1
           fi
 
-          gh attestation verify "oci://ghcr.io/${{ github.repository }}/novelai-admin@${ADMIN_DIGEST}" --owner "${{ github.repository_owner }}"
-          gh attestation verify "oci://ghcr.io/${{ github.repository }}/novelai-reader@${READER_DIGEST}" --owner "${{ github.repository_owner }}"
-          gh attestation verify "oci://ghcr.io/${{ github.repository }}/novelai-frontend@${FRONTEND_DIGEST}" --owner "${{ github.repository_owner }}"
+          gh attestation verify "oci://${GHCR_BASE}/novelai-admin@${ADMIN_DIGEST}" --owner "${{ github.repository_owner }}"
+          gh attestation verify "oci://${GHCR_BASE}/novelai-reader@${READER_DIGEST}" --owner "${{ github.repository_owner }}"
+          gh attestation verify "oci://${GHCR_BASE}/novelai-frontend@${FRONTEND_DIGEST}" --owner "${{ github.repository_owner }}"
 
-          echo "ADMIN_IMAGE=ghcr.io/${{ github.repository }}/novelai-admin@${ADMIN_DIGEST}" >> $GITHUB_ENV
-          echo "READER_IMAGE=ghcr.io/${{ github.repository }}/novelai-reader@${READER_DIGEST}" >> $GITHUB_ENV
-          echo "FRONTEND_IMAGE=ghcr.io/${{ github.repository }}/novelai-frontend@${FRONTEND_DIGEST}" >> $GITHUB_ENV
+          echo "ADMIN_IMAGE=${GHCR_BASE}/novelai-admin@${ADMIN_DIGEST}" >> $GITHUB_ENV
+          echo "READER_IMAGE=${GHCR_BASE}/novelai-reader@${READER_DIGEST}" >> $GITHUB_ENV
+          echo "FRONTEND_IMAGE=${GHCR_BASE}/novelai-frontend@${FRONTEND_DIGEST}" >> $GITHUB_ENV
 
           echo "All image provenance attestations verified successfully."
 

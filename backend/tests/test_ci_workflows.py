@@ -131,6 +131,11 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     assert "READER_IMAGE=" in source
     assert "FRONTEND_IMAGE=" in source
     assert "gh attestation verify" in source
+    # OCI references must be lowercase: buildx pushes the GHCR repository path
+    # lowercased, so the deploy step must normalize before digest resolution.
+    assert 'GHCR_BASE="ghcr.io/${{ github.repository }}"' in source
+    assert "${GHCR_BASE,,}" in source
+    assert 'docker manifest inspect "${ADMIN_REF}"' in source
     assert "packages: read" in source
     assert 'RELEASE_DIR="/opt/novelai/releases/$VERSION"' in source
     assert 'CURRENT_LINK="/opt/novelai/current"' in source
