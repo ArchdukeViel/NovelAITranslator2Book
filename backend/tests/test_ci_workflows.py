@@ -135,7 +135,11 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     # lowercased, so the deploy step must normalize before digest resolution.
     assert 'GHCR_BASE="ghcr.io/${{ github.repository }}"' in source
     assert "${GHCR_BASE,,}" in source
-    assert 'docker manifest inspect "${ADMIN_REF}"' in source
+    # Multi-platform images are OCI indexes; the top-level digest is absent
+    # from the index payload, so it must be read via imagetools --format.
+    assert 'docker buildx imagetools inspect "${ADMIN_REF}" --format' in source
+    assert "{{.Manifest.Digest}}" in source
+    assert "$(docker manifest inspect" not in source
     assert "packages: read" in source
     assert 'RELEASE_DIR="/opt/novelai/releases/$VERSION"' in source
     assert 'CURRENT_LINK="/opt/novelai/current"' in source

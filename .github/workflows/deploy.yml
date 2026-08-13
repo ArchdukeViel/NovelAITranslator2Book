@@ -130,9 +130,14 @@ jobs:
           READER_REF="${GHCR_BASE}/novelai-reader:${VERSION}"
           FRONTEND_REF="${GHCR_BASE}/novelai-frontend:${VERSION}"
 
-          ADMIN_DIGEST=$(docker manifest inspect "${ADMIN_REF}" -v | jq -r '.Descriptor.digest // .[0].Descriptor.digest // empty' 2>/dev/null || true)
-          READER_DIGEST=$(docker manifest inspect "${READER_REF}" -v | jq -r '.Descriptor.digest // .[0].Descriptor.digest // empty' 2>/dev/null || true)
-          FRONTEND_DIGEST=$(docker manifest inspect "${FRONTEND_REF}" -v | jq -r '.Descriptor.digest // .[0].Descriptor.digest // empty' 2>/dev/null || true)
+          # Images are multi-platform OCI indexes: the top-level manifest digest
+          # is not part of the index payload, so it cannot be parsed from
+          # `docker manifest inspect` output. `imagetools inspect --format`
+          # prints exactly that digest, which is what attestations are recorded
+          # against. A failed lookup keeps stderr visible for diagnosis.
+          ADMIN_DIGEST=$(docker buildx imagetools inspect "${ADMIN_REF}" --format '{{.Manifest.Digest}}' || true)
+          READER_DIGEST=$(docker buildx imagetools inspect "${READER_REF}" --format '{{.Manifest.Digest}}' || true)
+          FRONTEND_DIGEST=$(docker buildx imagetools inspect "${FRONTEND_REF}" --format '{{.Manifest.Digest}}' || true)
 
           if [[ -z "$ADMIN_DIGEST" || -z "$READER_DIGEST" || -z "$FRONTEND_DIGEST" ]]; then
             echo "::error::Failed to resolve manifest digest for one or more images."
