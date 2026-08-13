@@ -306,6 +306,20 @@ def test_production_compose_contract() -> None:
     assert not re.search(r"image: \$\{[^}]*\}@sha256:[0-9a-f]{64}", source)
 
 
+def test_deploy_actions_consume_deploy_port() -> None:
+    deploy = _workflow("deploy.yml")
+    # The target SSH port must be configurable per environment; production
+    # keeps the default 22 unless overridden, staging sets DEPLOY_PORT=2222.
+    assert "DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}" in deploy
+    # Both remote actions (SCP and SSH) must pass the configured port; a
+    # missing port input silently falls back to 22 and hits the wrong port.
+    assert deploy.count("port: ${{ env.DEPLOY_PORT }}") == 2
+    scp_index = deploy.index("appleboy/scp-action")
+    ssh_index = deploy.index("appleboy/ssh-action")
+    assert deploy[scp_index : scp_index + 500].count("port: ${{ env.DEPLOY_PORT }}") == 1
+    assert deploy[ssh_index : ssh_index + 500].count("port: ${{ env.DEPLOY_PORT }}") == 1
+
+
 def test_deploy_restore_password_preflight() -> None:
     deploy = _workflow("deploy.yml")
     script_start = deploy.index("script: |")
