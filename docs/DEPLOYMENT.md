@@ -102,11 +102,20 @@ Validator output remains redacted.
 
 Hardening contract:
 
-- **Production is SHA-only.** The workflow validates the version input before
-  any remote command runs: production deployments require an immutable
-  `sha-<40 lowercase hex>` tag; `latest` is accepted for staging only. The
-  validated value is passed to the remote SSH script through environment
-  variables, never through expression interpolation into the script body.
+- **Production is SHA-only.** The workflow derives the exact checkout ref in a
+  validated Bash step (`Resolve deployment ref`) because GitHub Actions
+  expressions have no `replace()` function; the free-form version input is
+  validated **before** it is used as a checkout ref or an image tag. Production
+  deployments require an immutable `sha-<40 lowercase hex>` tag; `latest` is
+  accepted for staging only. The validated value is passed to the remote SSH
+  script through environment variables, never through expression interpolation
+  into the script body.
+- **Restore password preflight (scanner-safe).** Compose references
+  `DATABASE_RESTORE_PASSWORD` with plain interpolation (no required-variable
+  error text, which GitGuardian can mistake for a hard-coded credential); the
+  remote deploy script fails closed unless the shared `.env` on the host
+  contains a non-empty `DATABASE_RESTORE_PASSWORD` required by the
+  `restore-db` (recovery) profile.
 - **Cryptographic Provenance Verification.** Before remote deployment begins,
   the workflow executes `gh attestation verify` against `ghcr.io` OCI image
   references for `novelai-admin`, `novelai-reader`, and `novelai-frontend`.

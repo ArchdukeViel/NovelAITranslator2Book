@@ -14,9 +14,11 @@ on:
         options:
           - staging
           - production
-    permissions:
-      contents: read
-      packages: read
+
+permissions:
+  contents: read
+  packages: read
+  attestations: read
 
 # Only one deployment per environment at a time, and never cancel a
 # deployment that is mid-migration or compose start (cancel-in-progress:
@@ -59,18 +61,20 @@ jobs:
       DEPLOY_ENV: ${{ inputs.environment }}
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # GitHub resolves "${{ ... }}" before the shell runs, so interpolating
-      # the free-form version input into a script is injection-prone. Validate
-      # it first, then pass the value to the remote script only through
-      # environment variables.
-      - name: Validate version and verify provenance attestation
+      # GitHub Actions expressions have no replace() function, and the free-form
+      # version input is untrusted manual input, so the exact checkout ref is
+      # derived in Bash here — validating the input BEFORE it is used as a
+      # checkout ref or an image tag. Production is SHA-only; anything that is
+      # not 'latest' must be a full sha-<40 hex> commit tag.
+      - name: Resolve deployment ref
+        id: deploy-ref
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          DEPLOY_ENV: ${{ inputs.environment }}
         run: |
           set -euo pipefail
+
           if [[ "$DEPLOY_ENV" == "production" ]]; then
             # Production deploys immutable image tags: full-SHA only.
             if [[ ! "$VERSION" =~ ^sha-[0-9a-f]{40}$ ]]; then
@@ -83,16 +87,72 @@ jobs:
               exit 1
             fi
           fi
-          echo "Validated version: $VERSION (environment: $DEPLOY_ENV)"
 
-          # Cryptographic supply-chain check: verify build attestations for published images before remote deployment
+          # Check out exactly the commit being deployed: for sha- inputs the
+          # tag suffix is the commit SHA; for 'latest' the dispatched ref head.
+          if [[ "$VERSION" == sha-* ]]; then
+            echo "ref=${VERSION#sha-}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.deploy-ref.outputs.ref }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4.5.2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Cryptographic supply-chain check: resolve exact digests and verify build
+      # attestations for published images before remote deployment. The version
+      # input was already validated by the "Resolve deployment ref" step and is
+      # passed only through environment variables, never expression
+      # interpolation into a script body.
+      - name: Verify provenance attestation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Cryptographic supply-chain check: resolve exact digests and verify build attestations for published images before remote deployment
           echo "Verifying build attestations for images tagged '$VERSION'..."
-          for img in novelai-admin novelai-reader novelai-frontend; do
-            IMAGE_REF="ghcr.io/${{ github.repository }}/${img}:${VERSION}"
-            echo "Checking attestation for ${IMAGE_REF}..."
-            gh attestation verify "oci://${IMAGE_REF}" --owner "${{ github.repository_owner }}"
-          done
+          ADMIN_REF="ghcr.io/${{ github.repository }}/novelai-admin:${VERSION}"
+          READER_REF="ghcr.io/${{ github.repository }}/novelai-reader:${VERSION}"
+          FRONTEND_REF="ghcr.io/${{ github.repository }}/novelai-frontend:${VERSION}"
+
+          ADMIN_DIGEST=$(docker manifest inspect "${ADMIN_REF}" -v | jq -r '.Descriptor.digest // .[0].Descriptor.digest // empty' 2>/dev/null || true)
+          READER_DIGEST=$(docker manifest inspect "${READER_REF}" -v | jq -r '.Descriptor.digest // .[0].Descriptor.digest // empty' 2>/dev/null || true)
+          FRONTEND_DIGEST=$(docker manifest inspect "${FRONTEND_REF}" -v | jq -r '.Descriptor.digest // .[0].Descriptor.digest // empty' 2>/dev/null || true)
+
+          if [[ -z "$ADMIN_DIGEST" || -z "$READER_DIGEST" || -z "$FRONTEND_DIGEST" ]]; then
+            echo "::error::Failed to resolve manifest digest for one or more images."
+            exit 1
+          fi
+
+          gh attestation verify "oci://ghcr.io/${{ github.repository }}/novelai-admin@${ADMIN_DIGEST}" --owner "${{ github.repository_owner }}"
+          gh attestation verify "oci://ghcr.io/${{ github.repository }}/novelai-reader@${READER_DIGEST}" --owner "${{ github.repository_owner }}"
+          gh attestation verify "oci://ghcr.io/${{ github.repository }}/novelai-frontend@${FRONTEND_DIGEST}" --owner "${{ github.repository_owner }}"
+
+          echo "ADMIN_IMAGE=ghcr.io/${{ github.repository }}/novelai-admin@${ADMIN_DIGEST}" >> $GITHUB_ENV
+          echo "READER_IMAGE=ghcr.io/${{ github.repository }}/novelai-reader@${READER_DIGEST}" >> $GITHUB_ENV
+          echo "FRONTEND_IMAGE=ghcr.io/${{ github.repository }}/novelai-frontend@${FRONTEND_DIGEST}" >> $GITHUB_ENV
+
           echo "All image provenance attestations verified successfully."
+
+      - name: Copy deploy directory to remote host
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          source: "deploy/*"
+          target: "/opt/novelai/releases/${{ env.VERSION }}/"
+          strip_components: 1
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
@@ -100,7 +160,7 @@ jobs:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ env.DEPLOY_USER }}
           key: ${{ env.DEPLOY_SSH_KEY }}
-          envs: VERSION,DEPLOY_ENV
+          envs: VERSION,DEPLOY_ENV,ADMIN_IMAGE,READER_IMAGE,FRONTEND_IMAGE
           script: |
             set -euo pipefail
 
@@ -110,29 +170,40 @@ jobs:
 
             echo "Deploying version: $VERSION to $DEPLOY_ENV (release directory: $RELEASE_DIR)"
 
-            mkdir -p "$RELEASE_DIR" "$SHARED_DIR"
-
-            # Create or update shared .env file if it doesn't exist
-            if [[ ! -f "$SHARED_DIR/.env" ]]; then
-              echo "::warning::Shared .env file not found at $SHARED_DIR/.env"
-              touch "$SHARED_DIR/.env"
+            if [[ ! -d "$RELEASE_DIR" ]]; then
+              echo "::error::Release directory $RELEASE_DIR does not exist."
+              exit 1
             fi
 
-            # Sync checked-out deployment artifacts into release directory
-            # Note: GitHub Actions checks out code into default workspace
-            cp -r deploy/* "$RELEASE_DIR/"
+            # Shared .env must exist in production/staging; fail-closed if missing
+            if [[ ! -f "$SHARED_DIR/.env" ]]; then
+              echo "::error::Shared .env file not found at $SHARED_DIR/.env! Deployment failed-closed."
+              exit 1
+            fi
+
+            # restore-db (recovery) preflight: DATABASE_RESTORE_PASSWORD must be a
+            # non-empty value. Compose intentionally uses scanner-safe plain
+            # interpolation (no required-variable error text) so GitGuardian does
+            # not mistake the human-readable error text for a hard-coded
+            # credential; presence is enforced here, fail-closed, instead.
+            if ! grep -Eq '^DATABASE_RESTORE_PASSWORD=.+$' "$SHARED_DIR/.env"; then
+              echo "::error::DATABASE_RESTORE_PASSWORD is missing or empty in $SHARED_DIR/.env; required by the restore-db (recovery) profile."
+              exit 1
+            fi
+
             ln -sf "$SHARED_DIR/.env" "$RELEASE_DIR/.env"
 
-            # Symlink active release
-            ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
+            cd "$RELEASE_DIR"
 
-            cd "$CURRENT_LINK"
-
-            # Pull exact image tags
+            # Pull exact image tags & validate compose config before switching active symlink
+            docker compose config > /dev/null
             docker compose pull
 
             # Migrations must succeed before application containers start.
             docker compose run --rm migrate
+
+            # Atomically switch active release symlink ONLY AFTER staging, pull, and migration success
+            ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
 
             # Bring up requested immutable application images.
             docker compose up -d --remove-orphans --pull always

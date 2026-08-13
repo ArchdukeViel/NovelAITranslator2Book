@@ -9,7 +9,7 @@
       "root": ".",
       "framework": "fastapi",
       "entrypoint": "vercel_app:app",
-      "installCommand": "pip install --requirement requirements.lock",
+      "installCommand": "pip install --requirement requirements-vercel.lock && pip install --no-deps .",
       "functions": {
         "vercel_app.py": {
           "maxDuration": 300,

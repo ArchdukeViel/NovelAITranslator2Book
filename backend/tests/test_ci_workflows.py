@@ -108,7 +108,7 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     # free-form version input is validated first, then passed to the script
     # only through the ssh-action envs mechanism.
     script_start = source.index("script: |")
-    assert "envs: VERSION,DEPLOY_ENV" in source[:script_start]
+    assert "envs: VERSION,DEPLOY_ENV,ADMIN_IMAGE,READER_IMAGE,FRONTEND_IMAGE" in source[:script_start]
     script = source[script_start : source.index("- name: Smoke test production deployment")]
     assert "${{" not in script
     assert r"^sha-[0-9a-f]{40}$" in source
@@ -116,7 +116,20 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     assert "push:\n    tags:" not in source
     assert source.index("docker compose run --rm migrate") < source.index("docker compose up -d")
 
-    # Attestation and release directory contracts
+    # Exact SCP action pin and checkout contracts
+    assert "appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634" in source
+    # replace() is not a GitHub Actions expression function: the checkout ref
+    # must be derived by the validated "Resolve deployment ref" shell step.
+    assert "replace(inputs.version" not in source
+    assert "ref: ${{ steps.deploy-ref.outputs.ref }}" in source
+    assert "- name: Resolve deployment ref" in source
+    assert "id: deploy-ref" in source
+
+    # Attestation, registry login, digest resolution, and release directory contracts
+    assert "docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c" in source
+    assert "ADMIN_IMAGE=" in source
+    assert "READER_IMAGE=" in source
+    assert "FRONTEND_IMAGE=" in source
     assert "gh attestation verify" in source
     assert "packages: read" in source
     assert 'RELEASE_DIR="/opt/novelai/releases/$VERSION"' in source
@@ -194,13 +207,20 @@ def test_production_monitor_contract() -> None:
 
 def test_deploy_input_flow_and_smoke_vars() -> None:
     source = _workflow("deploy.yml")
-    assert "$GITHUB_OUTPUT" not in source
     assert "VERSION: ${{ inputs.version }}" in source
     assert "DEPLOY_ENV: ${{ inputs.environment }}" in source
     assert "environment: ${{ inputs.environment }}" in source
     assert "vars.PRODUCTION_BASE_URL" in source
     assert "secrets.NOVELAI_SMOKE_SESSION_COOKIE" in source
     assert "secrets.PRODUCTION_BASE_URL" not in source
+
+    # The "Resolve deployment ref" step writes only a regex-validated checkout
+    # ref to GITHUB_OUTPUT (two writes: sha- tag suffix and 'latest' head); the
+    # free-form version input itself is never emitted.
+    assert source.count("$GITHUB_OUTPUT") == 2
+    resolve_section = source[source.index("- name: Resolve deployment ref") : source.index("- uses: actions/checkout")]
+    assert 'echo "ref=${VERSION#sha-}" >> "$GITHUB_OUTPUT"' in resolve_section
+    assert 'echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"' in resolve_section
 
 
 def test_deploy_staging_eligibility_and_managed_gate() -> None:
@@ -233,7 +253,7 @@ def test_build_workflow_run_trust_guards_and_concurrency() -> None:
     assert "github.event.workflow_run.event == 'push'" in source
     assert "github.event.workflow_run.head_branch == github.event.repository.default_branch" in source
     assert "github.event.workflow_run.head_repository.full_name == github.repository" in source
-    assert "aquasecurity/trivy-action" in source
+    assert "aquasecurity/trivy-action@18f2510ee396bbf400402947b394f2dd8c87dbb0" in source
     assert "actions/attest" in source
     assert "subject-digest: ${{ steps.build.outputs.digest }}" in source
     assert "artifact-metadata: write" in source
@@ -247,3 +267,30 @@ def test_node_version_alignment() -> None:
     assert nvmrc == "22"
     assert '"node": ">=22 <23"' in package_json
     assert "node:22-alpine" in dockerfile
+
+
+def test_dependabot_python_ignore_policy() -> None:
+    dependabot_file = WORKFLOWS_DIR.parent / "dependabot.yml"
+    source = dependabot_file.read_text(encoding="utf-8")
+    assert 'dependency-name: "python"' in source
+    assert 'update-types: ["version-update:semver-minor", "version-update:semver-major"]' in source
+
+
+def test_production_compose_contract() -> None:
+    compose_file = WORKFLOWS_DIR.parent.parent / "deploy" / "compose.yml"
+    source = compose_file.read_text(encoding="utf-8")
+    # Scanner-safe interpolation: no required-variable error text that
+    # GitGuardian could mistake for a hard-coded credential. Presence of
+    # DATABASE_RESTORE_PASSWORD is enforced by the deploy.yml preflight.
+    assert "POSTGRES_PASSWORD: ${DATABASE_RESTORE_PASSWORD}" in source
+    assert ":?Set DATABASE_RESTORE_PASSWORD" not in source
+    assert "build:" not in source
+
+
+def test_deploy_restore_password_preflight() -> None:
+    deploy = _workflow("deploy.yml")
+    script_start = deploy.index("script: |")
+    script = deploy[script_start : deploy.index("- name: Smoke test production deployment")]
+    assert "${{" not in script
+    assert "grep -Eq '^DATABASE_RESTORE_PASSWORD=.+$'" in script
+    assert "restore-db (recovery) profile" in script

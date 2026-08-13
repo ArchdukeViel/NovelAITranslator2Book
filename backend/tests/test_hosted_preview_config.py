@@ -26,7 +26,9 @@ def test_vercel_services_contract_routes_frontend_and_monolith_backend() -> None
     assert backend["framework"] == "fastapi"
     assert backend["entrypoint"] == "vercel_app:app"
     assert backend["functions"]["vercel_app.py"]["maxDuration"] == 300
-    assert backend["installCommand"] == "pip install --requirement requirements.lock"
+    assert backend["installCommand"] == (
+        "pip install --requirement requirements-vercel.lock && pip install --no-deps ."
+    )
 
     routes = {rewrite["source"]: rewrite["destination"]["service"] for rewrite in config["rewrites"]}
     assert routes["/api/(.*)"] == "backend"
@@ -39,6 +41,12 @@ def test_vercel_backend_entrypoint_exports_monolith_app() -> None:
     source = (PROJECT_ROOT / "vercel_app.py").read_text(encoding="utf-8")
 
     assert "from novelai.api.app import app" in source
+
+    # Verify requirements-vercel.lock exists and contains required extras (boto3, itsdangerous, psycopg)
+    vercel_lock = (PROJECT_ROOT / "requirements-vercel.lock").read_text(encoding="utf-8")
+    assert "boto3" in vercel_lock
+    assert "itsdangerous" in vercel_lock
+    assert "psycopg" in vercel_lock
 
 
 def test_vercel_upload_excludes_local_and_non_runtime_trees() -> None:
@@ -53,6 +61,10 @@ def test_architecture_records_vercel_runtime_boundaries() -> None:
     assert "NOVEL_LIBRARY_DIR=/tmp/novelai-preview" in architecture
     assert "ALLOWED_HOSTS=*.vercel.app" in architecture
     assert "comma-separated environment format, not JSON array text" in architecture
+    # The preview lockfile does not install redis and the rate limiter is
+    # constructed at import time, so the preview environment must pin the
+    # in-memory backend or the function cold-start fails.
+    assert "WEB_RATE_LIMITER_BACKEND=memory" in architecture
 
 
 def test_environment_templates_keep_session_cookie_setting_in_the_same_position() -> None:

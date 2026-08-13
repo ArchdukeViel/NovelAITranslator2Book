@@ -20,7 +20,7 @@ services:
       - recovery
     environment:
       POSTGRES_USER: novelai_restore
-      POSTGRES_PASSWORD: ${DATABASE_RESTORE_PASSWORD:-novelai_restore_pass}
+      POSTGRES_PASSWORD: ${DATABASE_RESTORE_PASSWORD}
       POSTGRES_DB: novelai_restore_verify
     volumes:
       - restore_db_data:/var/lib/postgresql/data
@@ -51,12 +51,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: ${FRONTEND_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-frontend}:${VERSION:-latest}
-    build:
-      context: ..
-      dockerfile: deploy/frontend.Dockerfile
-      args:
-        NEXT_PUBLIC_API_BASE_URL: /api
+    image: ${FRONTEND_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-frontend:${VERSION:-latest}}
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_BASE_URL: /api
@@ -66,10 +61,7 @@ services:
     restart: unless-stopped
 
   migrate:
-    image: ${ADMIN_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-admin}:${VERSION:-latest}
-    build:
-      context: ..
-      dockerfile: deploy/admin.Dockerfile
+    image: ${ADMIN_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-admin:${VERSION:-latest}}
     user: root
     working_dir: /app/backend
     entrypoint: ["alembic", "-c", "/app/backend/alembic.ini", "upgrade", "head"]
@@ -92,7 +84,7 @@ services:
     restart: "no"
 
   backend:
-    image: ${ADMIN_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-admin}:${VERSION:-latest}
+    image: ${ADMIN_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-admin:${VERSION:-latest}}
     networks:
       - novelai-net
     healthcheck:
@@ -101,9 +93,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-    build:
-      context: ..
-      dockerfile: deploy/admin.Dockerfile
     env_file:
       - ./.env
     environment:
@@ -207,7 +196,7 @@ services:
       - MAINTENANCE_FETCH_CACHE_MAX_AGE_HOURS=${MAINTENANCE_FETCH_CACHE_MAX_AGE_HOURS:-24}
       - MAINTENANCE_PIPELINE_EVENTS_MAX_AGE_DAYS=${MAINTENANCE_PIPELINE_EVENTS_MAX_AGE_DAYS:-30}
     volumes:
-      - ../storage/novel_library:/app/storage/novel_library
+      - ${NOVEL_LIBRARY_HOST_DIR:-/opt/novelai/shared/storage/novel_library}:/app/storage/novel_library
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -216,10 +205,7 @@ services:
     restart: unless-stopped
 
   reader:
-    image: ${READER_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-reader}:${VERSION:-latest}
-    build:
-      context: ..
-      dockerfile: deploy/reader.Dockerfile
+    image: ${READER_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-reader:${VERSION:-latest}}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health/live').read()"]
       interval: 30s
@@ -257,7 +243,7 @@ services:
       - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY:-}
       - S3_STORAGE_LIMIT_GB=${S3_STORAGE_LIMIT_GB:-9.5}
     volumes:
-      - ../storage/novel_library:/app/storage/novel_library
+      - ${NOVEL_LIBRARY_HOST_DIR:-/opt/novelai/shared/storage/novel_library}:/app/storage/novel_library
     depends_on:
       migrate:
         condition: service_completed_successfully
