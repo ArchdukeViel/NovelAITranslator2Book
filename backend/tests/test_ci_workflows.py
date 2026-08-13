@@ -320,6 +320,22 @@ def test_deploy_actions_consume_deploy_port() -> None:
     assert deploy[ssh_index : ssh_index + 500].count("port: ${{ env.DEPLOY_PORT }}") == 1
 
 
+def test_deploy_tailscale_private_network_step() -> None:
+    deploy = _workflow("deploy.yml")
+    # The deploy job reaches the staging host over the private tailnet; the
+    # GitHub-hosted runner joins as an ephemeral node before any transfer.
+    tailscale_index = deploy.index("tailscale/github-action@")
+    assert "authkey: ${{ env.TS_AUTHKEY }}" in deploy
+    assert "ping: ${{ env.DEPLOY_HOST }}" in deploy
+    assert deploy.count("TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}") == 1
+    # The step must run before both remote actions.
+    assert tailscale_index < deploy.index("appleboy/scp-action")
+    assert tailscale_index < deploy.index("appleboy/ssh-action")
+    # No untagged public-tunnel remnant may exist.
+    assert "ngrok" not in deploy
+    assert "pinggy" not in deploy
+
+
 def test_deploy_restore_password_preflight() -> None:
     deploy = _workflow("deploy.yml")
     script_start = deploy.index("script: |")
