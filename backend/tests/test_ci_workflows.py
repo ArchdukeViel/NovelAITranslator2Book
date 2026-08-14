@@ -278,6 +278,9 @@ def test_build_workflow_run_trust_guards_and_concurrency() -> None:
     assert "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25" in source
     assert "exit-code: '1'" in source
     assert "zizmor: ignore[dangerous-triggers]" in source
+    assert 'IMAGE_NAME="ghcr.io/${REPOSITORY,,}/${IMAGE}"' in source
+    assert "image-ref: ${{ steps.image-ref.outputs.ref }}" in source
+    assert "subject-name: ${{ steps.image-ref.outputs.name }}" in source
     assert "actions/attest" in source
     assert "subject-digest: ${{ steps.build.outputs.digest }}" in source
     assert "artifact-metadata: write" in source
