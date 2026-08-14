@@ -108,16 +108,43 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     # free-form version input is validated first, then passed to the script
     # only through the ssh-action envs mechanism.
     script_start = source.index("script: |")
-    assert "envs: VERSION,DEPLOY_ENV" in source[:script_start]
+    assert "envs: VERSION,DEPLOY_ENV,ADMIN_IMAGE,READER_IMAGE,FRONTEND_IMAGE" in source[:script_start]
     script = source[script_start : source.index("- name: Smoke test production deployment")]
     assert "${{" not in script
     assert r"^sha-[0-9a-f]{40}$" in source
-    assert '"$DEPLOY_ENV" == "production"' in source
+    assert "DEPLOY_ENV" in source
     assert "push:\n    tags:" not in source
-    assert source.index("docker compose run --rm migrate") < source.index("docker compose up -d")
+    assert source.index("COMPOSE_PROFILES=migration") < source.index('"${COMPOSE[@]}" up -d')
+    assert "--wait --wait-timeout 180" in source
+    assert "--pull never" in source
+    assert "release.env" in source
+    assert "PREVIOUS_RELEASE" in source
+    assert "docker image prune" not in source
 
-    # Attestation and release directory contracts
+    # Exact SCP action pin and checkout contracts
+    assert "appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634" in source
+    # replace() is not a GitHub Actions expression function: the checkout ref
+    # must be derived by the validated "Resolve deployment ref" shell step.
+    assert "replace(inputs.version" not in source
+    assert "ref: ${{ steps.deploy-ref.outputs.ref }}" in source
+    assert "- name: Resolve deployment ref" in source
+    assert "id: deploy-ref" in source
+
+    # Attestation, registry login, digest resolution, and release directory contracts
+    assert "docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c" in source
+    assert "ADMIN_IMAGE=" in source
+    assert "READER_IMAGE=" in source
+    assert "FRONTEND_IMAGE=" in source
     assert "gh attestation verify" in source
+    # OCI references must be lowercase: buildx pushes the GHCR repository path
+    # lowercased, so the deploy step must normalize before digest resolution.
+    assert 'GHCR_BASE="ghcr.io/${{ github.repository }}"' in source
+    assert "${GHCR_BASE,,}" in source
+    # Multi-platform images are OCI indexes; the top-level digest is absent
+    # from the index payload, so it must be read via imagetools --format.
+    assert 'docker buildx imagetools inspect "${ADMIN_REF}" --format' in source
+    assert "{{.Manifest.Digest}}" in source
+    assert "$(docker manifest inspect" not in source
     assert "packages: read" in source
     assert 'RELEASE_DIR="/opt/novelai/releases/$VERSION"' in source
     assert 'CURRENT_LINK="/opt/novelai/current"' in source
@@ -194,13 +221,22 @@ def test_production_monitor_contract() -> None:
 
 def test_deploy_input_flow_and_smoke_vars() -> None:
     source = _workflow("deploy.yml")
-    assert "$GITHUB_OUTPUT" not in source
     assert "VERSION: ${{ inputs.version }}" in source
     assert "DEPLOY_ENV: ${{ inputs.environment }}" in source
     assert "environment: ${{ inputs.environment }}" in source
     assert "vars.PRODUCTION_BASE_URL" in source
     assert "secrets.NOVELAI_SMOKE_SESSION_COOKIE" in source
     assert "secrets.PRODUCTION_BASE_URL" not in source
+
+    # The "Resolve deployment ref" step writes only a regex-validated checkout
+    # ref to GITHUB_OUTPUT (two writes: sha- tag suffix and 'latest' head); the
+    # free-form version input itself is never emitted.
+    assert source.count("$GITHUB_OUTPUT") == 1
+    resolve_section = source[source.index("- name: Resolve deployment ref") : source.index("- uses: actions/checkout")]
+    assert 'echo "ref=${VERSION#sha-}" >> "$GITHUB_OUTPUT"' in resolve_section
+    assert 'echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"' not in resolve_section
+    assert 'default: "latest"' not in source
+    assert "latest or sha-" not in source
 
 
 def test_deploy_staging_eligibility_and_managed_gate() -> None:
@@ -217,6 +253,12 @@ def test_dependency_review_least_privilege() -> None:
     assert "pull-requests: write" not in source
     assert "pull_request_target" not in source
     assert "comment-summary-in-pr: always" not in source
+    assert "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25" in source
+    assert "scan-type: fs" in source
+    assert "scanners: vuln,misconfig" in source
+    assert "severity: HIGH,CRITICAL" in source
+    assert 'TRIVY_INCLUDE_DEV_DEPS: "true"' in source
+    assert 'exit-code: "1"' in source
 
 
 def test_uv_locked_contract_in_ci_and_managed_verification() -> None:
@@ -233,7 +275,9 @@ def test_build_workflow_run_trust_guards_and_concurrency() -> None:
     assert "github.event.workflow_run.event == 'push'" in source
     assert "github.event.workflow_run.head_branch == github.event.repository.default_branch" in source
     assert "github.event.workflow_run.head_repository.full_name == github.repository" in source
-    assert "aquasecurity/trivy-action" in source
+    assert "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25" in source
+    assert "exit-code: '1'" in source
+    assert "zizmor: ignore[dangerous-triggers]" in source
     assert "actions/attest" in source
     assert "subject-digest: ${{ steps.build.outputs.digest }}" in source
     assert "artifact-metadata: write" in source
@@ -247,3 +291,118 @@ def test_node_version_alignment() -> None:
     assert nvmrc == "22"
     assert '"node": ">=22 <23"' in package_json
     assert "node:22-alpine" in dockerfile
+
+
+def test_dependabot_python_ignore_policy() -> None:
+    dependabot_file = WORKFLOWS_DIR.parent / "dependabot.yml"
+    source = dependabot_file.read_text(encoding="utf-8")
+    assert 'dependency-name: "python"' in source
+    assert 'update-types: ["version-update:semver-minor", "version-update:semver-major"]' in source
+
+
+def test_production_compose_contract() -> None:
+    compose_file = WORKFLOWS_DIR.parent.parent / "deploy" / "compose.yml"
+    source = compose_file.read_text(encoding="utf-8")
+    # Scanner-safe interpolation: no required-variable error text that
+    # GitGuardian could mistake for a hard-coded credential. Presence of
+    # DATABASE_RESTORE_PASSWORD is enforced by the deploy.yml preflight.
+    assert "POSTGRES_PASSWORD: ${DATABASE_RESTORE_PASSWORD}" in source
+    assert ":?Set DATABASE_RESTORE_PASSWORD" not in source
+    assert "build:" not in source
+    # Every third-party image must be digest-pinned with a well-formed
+    # sha256 digest. Wrong digests fail `docker compose pull` on any host;
+    # the deploy workflow is the only place that exercises the pins.
+    pinned = re.findall(r"image: ([a-z0-9.-]+:[a-z0-9._-]+@sha256:[0-9a-f]{64})\s*$", source, re.M)
+    assert {"redis:7.4.2-alpine", "postgres:17.4-alpine", "caddy:2.9.1-alpine"} == {ref.split("@")[0] for ref in pinned}
+    assert len(pinned) == 3
+    # Public-service images use ${VAR:-ghcr.io/...} interpolation and must
+    # never be digest-pinned by CI: their digests change on every build, so
+    # a pin would hard-fail the deploy.
+    assert not re.search(r"image: \$\{[^}]*\}@sha256:[0-9a-f]{64}", source)
+
+
+def test_caddy_staging_http_contract() -> None:
+    repo_root = WORKFLOWS_DIR.parent.parent
+    compose_source = (repo_root / "deploy" / "compose.yml").read_text(encoding="utf-8")
+    caddy_start = compose_source.index("  caddy:")
+    caddy_end = compose_source.index("\n  frontend:", caddy_start) + 1
+    caddy_service = compose_source[caddy_start:caddy_end]
+    assert "SITE_DOMAIN: ${SITE_DOMAIN:-localhost}" in caddy_service
+    assert "env_file:" not in caddy_service
+
+    caddyfile = (repo_root / "deploy" / "Caddyfile").read_text(encoding="utf-8")
+    assert caddyfile.splitlines()[0] == "http://{$SITE_DOMAIN:localhost} {"
+    assert "Strict-Transport-Security" not in caddyfile
+
+
+def test_ci_and_static_analysis_security_contracts() -> None:
+    ci = _workflow("ci.yml")
+    assert "contents: read\n  pull-requests: read" in ci
+    assert ci.count("dorny/paths-filter@") == 2
+    assert ci.count("persist-credentials: false") >= 7
+
+    static = _workflow("static-analysis.yml")
+    for job_name in ("Analyze (actions)", "Analyze (python)", "Analyze (javascript-typescript)"):
+        assert f"name: {job_name}" in static
+    assert "zizmor==1.29.0" in static
+    assert "--offline" in static
+    assert "--format=github" in static
+    assert "--min-severity=medium" in static
+    assert "S102,S307,S324,S501,S506,S602,S605,S608,S609" in static
+    assert "node-version: 22" in static
+    assert "npm ci" in static
+
+
+def test_compose_private_http_health_and_migration_contract() -> None:
+    compose = (WORKFLOWS_DIR.parent.parent / "deploy" / "compose.yml").read_text(encoding="utf-8")
+    caddy_start = compose.index("  caddy:")
+    frontend_start = compose.index("\n  frontend:") + 1
+    caddy = compose[caddy_start:frontend_start]
+    assert '"${PUBLIC_BIND_ADDRESS:-127.0.0.1}:${PUBLIC_HTTP_PORT:-80}:80"' in caddy
+    assert "443:443" not in caddy
+    assert "condition: service_healthy" in caddy
+    assert "healthcheck:" in caddy
+    assert "stop_grace_period" in caddy
+    assert "profiles:\n      - migration" in compose
+    assert "condition: service_completed_successfully" not in compose
+    assert "healthcheck:" in compose[frontend_start:]
+    assert "stop_grace_period" in compose[frontend_start:]
+
+
+def test_deploy_actions_consume_deploy_port() -> None:
+    deploy = _workflow("deploy.yml")
+    # The target SSH port must be configurable per environment; production
+    # keeps the default 22 unless overridden, staging sets DEPLOY_PORT=2222.
+    assert "DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}" in deploy
+    # Both remote actions (SCP and SSH) must pass the configured port; a
+    # missing port input silently falls back to 22 and hits the wrong port.
+    assert deploy.count("port: ${{ env.DEPLOY_PORT }}") == 2
+    scp_index = deploy.index("appleboy/scp-action")
+    ssh_index = deploy.index("appleboy/ssh-action")
+    assert deploy[scp_index : scp_index + 500].count("port: ${{ env.DEPLOY_PORT }}") == 1
+    assert deploy[ssh_index : ssh_index + 500].count("port: ${{ env.DEPLOY_PORT }}") == 1
+
+
+def test_deploy_tailscale_private_network_step() -> None:
+    deploy = _workflow("deploy.yml")
+    # The deploy job reaches the staging host over the private tailnet; the
+    # GitHub-hosted runner joins as an ephemeral node before any transfer.
+    tailscale_index = deploy.index("tailscale/github-action@")
+    assert "authkey: ${{ env.TS_AUTHKEY }}" in deploy
+    assert "ping: ${{ env.DEPLOY_HOST }}" in deploy
+    assert deploy.count("TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}") == 1
+    # The step must run before both remote actions.
+    assert tailscale_index < deploy.index("appleboy/scp-action")
+    assert tailscale_index < deploy.index("appleboy/ssh-action")
+    # No untagged public-tunnel remnant may exist.
+    assert "ngrok" not in deploy
+    assert "pinggy" not in deploy
+
+
+def test_deploy_restore_password_preflight() -> None:
+    deploy = _workflow("deploy.yml")
+    script_start = deploy.index("script: |")
+    script = deploy[script_start : deploy.index("- name: Smoke test production deployment")]
+    assert "${{" not in script
+    assert "grep -Eq '^DATABASE_RESTORE_PASSWORD=.+$'" in script
+    assert "restore-db (recovery) profile" in script

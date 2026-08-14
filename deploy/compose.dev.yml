@@ -2,11 +2,29 @@
 # Usage: docker compose -f compose.yml -f compose.dev.yml up -d
 services:
   backend:
+    build:
+      context: ..
+      dockerfile: deploy/admin.Dockerfile
     volumes:
       - ../backend/src:/app/backend/src
     command: ["novelai", "web", "--reload", "--host", "0.0.0.0", "--port", "8000"]
 
+  migrate:
+    build:
+      context: ..
+      dockerfile: deploy/admin.Dockerfile
+
+  reader:
+    build:
+      context: ..
+      dockerfile: deploy/reader.Dockerfile
+
   frontend:
+    build:
+      context: ..
+      dockerfile: deploy/frontend.Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: /api
     volumes:
       - ../frontend:/app/frontend
     environment:

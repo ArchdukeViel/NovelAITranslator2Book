@@ -8,11 +8,11 @@ Canonical deployment topology, release, rollback, and GitHub-control contract. F
 
 | Service | Purpose |
 |---|---|
-| `caddy` | TLS, compression, security headers, ordered routing. |
+| `caddy` | Private HTTP entry point, compression, security headers, ordered routing. |
 | `frontend` | Next.js public/admin UI, port 3000. |
 | `backend` | Admin/auth/user API, worker/scheduler, port 8000. |
 | `reader` | Guest public API, port 8001. |
-| `migrate` | One-shot Alembic migration before APIs. |
+| `migrate` | One-shot Alembic migration profile before APIs. |
 | `redis` | Shared limits, queue, coordination where enabled. |
 | `restore-db` | Isolated disposable PostgreSQL 17 restore verifier (profile: `recovery`). |
 
@@ -38,6 +38,20 @@ everything else -> frontend:3000
 
 `DEPLOY_MODE=monolith` serves all routers in one process. `split` uses admin and
 reader entry points and requires shared Redis for distributed behavior.
+
+### Tailscale staging access
+
+Staging is reachable only on the private Tailscale network. The current host
+address detected on 2026-08-14 is `100.93.40.30`; set both
+`SITE_DOMAIN=100.93.40.30` and `PUBLIC_BIND_ADDRESS=100.93.40.30` in the
+shared host environment, then browse to `http://100.93.40.30/`. The Caddy site
+address is explicitly prefixed with `http://`, so the private IP remains plain
+HTTP rather than enabling automatic HTTPS. This release publishes only port
+80 and binds it to the configured Tailnet address; backend, reader, Redis, and
+PostgreSQL have no host-published ports. Only `SITE_DOMAIN` is passed to Caddy;
+never inject the shared `.env` into the proxy container because it contains
+unrelated database and runtime secrets. TLS remains deferred until a trusted,
+renewable Tailscale certificate path exists.
 
 ## Profiles
 
@@ -80,7 +94,9 @@ Validator output remains redacted.
 1. Run lint, type checks, focused tests, frontend build, GitGuardian scan, and router guard.
 2. Build immutable images tagged by commit SHA.
 3. Run one-shot migration against target DB.
-4. Start backend/reader/frontend; require migration success before APIs.
+4. Start backend/reader/frontend with `docker compose up --wait`; require
+   container health and `/health/ready` through Caddy before advancing the
+   current-release symlink.
 5. Run authenticated production smoke:
    - `deploy/scripts/deploy-smoke.ps1 -Production` requires `NOVELAI_SMOKE_SESSION_COOKIE`;
      validates recovery probes (object snapshot, DB backup, restore) all healthy.
@@ -96,25 +112,43 @@ Validator output remains redacted.
 `.github/workflows/deploy.yml` performs manual deployments via
 `workflow_dispatch` with two inputs:
 
-- `version` — published GHCR image tag, `latest` or `sha-<full commit SHA>`
-  (default `latest`).
+- `version` — published immutable GHCR image tag `sha-<full commit SHA>`.
 - `environment` — `staging` or `production`.
 
 Hardening contract:
 
-- **Production is SHA-only.** The workflow validates the version input before
-  any remote command runs: production deployments require an immutable
-  `sha-<40 lowercase hex>` tag; `latest` is accepted for staging only. The
-  validated value is passed to the remote SSH script through environment
-  variables, never through expression interpolation into the script body.
+- **All environments are SHA-only.** The workflow derives the exact checkout ref in a
+  validated Bash step (`Resolve deployment ref`) because GitHub Actions
+  expressions have no `replace()` function; the free-form version input is
+  validated **before** it is used as a checkout ref or an image tag. Production
+  deployments require an immutable `sha-<40 lowercase hex>` tag; `latest` is
+  rejected. The validated value is passed to the remote SSH script through
+  environment variables, never through expression interpolation into the
+  script body.
+- **Restore password preflight (scanner-safe).** Compose references
+  `DATABASE_RESTORE_PASSWORD` with plain interpolation (no required-variable
+  error text, which GitGuardian can mistake for a hard-coded credential); the
+  remote deploy script fails closed unless the shared `.env` on the host
+  contains a non-empty `DATABASE_RESTORE_PASSWORD` required by the
+  `restore-db` (recovery) profile.
 - **Cryptographic Provenance Verification.** Before remote deployment begins,
   the workflow executes `gh attestation verify` against `ghcr.io` OCI image
   references for `novelai-admin`, `novelai-reader`, and `novelai-frontend`.
   Deployment fails closed if image attestations are missing or invalid.
+- **Migration-head parity.** Before SSH, the workflow compares the checked-out
+  migration head with the exact admin image digest and requires
+  `c7d9e1f3a5b2`.
 - **Immutable Release Directory.** Deployment files under `deploy/` are copied
   to `/opt/novelai/releases/<VERSION>/` on the target host. `/opt/novelai/current`
   is updated as an atomic symlink to the release directory, guaranteeing remote Compose
   and Caddy configuration match the checked-out Git SHA.
+- **Separate environment files.** Each release records non-secret `release.env`
+  metadata containing the full Git SHA and all three image digest references;
+  Compose receives it separately from the shared secret `.env`.
+- **Migration and readiness gate.** The `migration` profile is run exactly once,
+  then Compose starts with `--wait --wait-timeout 180`; `/health/ready` must pass
+  through Caddy before `/opt/novelai/current` advances. Automatic image pruning
+  is disabled so previous release evidence remains recoverable.
 - **One deployment per environment at a time.** `concurrency` groups by target
   environment with `cancel-in-progress: false`; a newer deployment request
   waits rather than cancel a deployment that is mid-migration or starting
@@ -130,7 +164,16 @@ Hardening contract:
 
 ## Rollback
 
-- Redeploy previous immutable image/version.
+- Inspect the previous release's `release.env` and require image/current-schema
+  compatibility before switching traffic. The exact two-env-file restart form is:
+  `docker compose --env-file /opt/novelai/shared/.env --env-file
+  /opt/novelai/releases/<VERSION>/release.env -f
+  /opt/novelai/releases/<VERSION>/compose.yml up -d --pull never --wait`.
+- Redeploy the previous immutable image/version only after that compatibility
+  check. The old `sha-071f6829f572b431f9583ff0988560cd795c9b56` image is retained
+  as an identifiable **schema-incompatible rollback candidate** and must not be
+  executed against the current schema. Use a forward fix when compatibility is
+  not proven.
 - Prefer forward-fix for migrations. Take DB snapshot and test any downgrade on
   isolated staging before production.
 - **Rollback blocking gate**: Prior image must pass production smoke against
@@ -162,9 +205,13 @@ Hardening contract:
 Owner-operated settings should match tracked workflow expectations:
 
 - Protect `main`: PR required, conversations resolved, required status checks
-  (`docker-build`, `e2e-tests`, 3× CodeQL `Analyze (...)`, `GitGuardian scan`,
-  and `dependency-review`), no force push/deletion, owner-only bypass. Dependency
-  Review is a required status check running on read-only permissions (`contents: read`).
+  (`docker-build`, `e2e-tests`, `Analyze (actions)`,
+  `Analyze (javascript-typescript)`, `Analyze (python)`, `GitGuardian scan`,
+  and `dependency-review`), no force push/deletion, owner-only bypass. The
+  replacement `Analyze (...)` jobs use Zizmor, locked Ruff security rules, and
+  Node/ESLint/TypeScript checks. `dependency-review` uses read-only Trivy
+  lockfile and misconfiguration scanning because GitHub Dependency Review and
+  CodeQL are unavailable without GitHub Code Security on this private repo.
   No approving-review requirement: this is a single-operator repository and GitHub
   forbids PR authors from approving their own pull request, so a review gate would
   block every merge. Re-enable review requirements if a second write-access
@@ -174,8 +221,10 @@ Owner-operated settings should match tracked workflow expectations:
 - Node major version is pinned to 22 in `frontend/.nvmrc`, `package.json` (`>=22 <23`), and production `frontend.Dockerfile`.
 - Container image provenance attestations are generated by `build.yml` via `actions/attest` for default-branch GHCR publications. Verify runtime attestations post-merge with `gh attestation verify`.
 - Pin third-party actions to immutable SHAs.
-- Enable dependency graph, Dependabot security updates, CodeQL, secret scanning,
-  push protection, and validity checks.
+- Enable dependency graph, Dependabot security updates, secret scanning, push
+  protection, and validity checks. If GitHub Code Security is later enabled,
+  add CodeQL only through a separate protected change; it is not assumed by
+  this private-repository release.
 - Keep deployment secrets in GitHub environments/provider secret stores, never files.
 - Run `.github/workflows/gitguardian.yaml` (ggshield v1.52.2 pinned) on push and
   same-repository PR; `GITGUARDIAN_API_KEY` repo secret, read-only token, no
@@ -205,6 +254,15 @@ Required deployment configuration:
 - R2 application and backup scopes remain private and separate.
 - Supabase remains PostgreSQL behind SQLAlchemy/Alembic; dashboard changes do
   not replace repository migrations.
+
+## Staging Host Limits and Scaling
+
+This release is a single WSL/Docker host, not HA. Frontend and reader processes
+are stateless and can be replicated later while Supabase and S3 remain external.
+Redis and Caddy remain single-host components. Backend replicas must respect the
+database connection budget and the worker/scheduler lease model; do not scale
+backend replicas without reviewing `DB_CONNECTION_BUDGET`, Redis coordination,
+and scheduler lease ownership.
 
 ## Acceptance
 

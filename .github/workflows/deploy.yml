@@ -4,9 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Published image tag to deploy (latest or sha-<full commit SHA>)"
+        description: "Published immutable image tag (sha-<full commit SHA>)"
         required: true
-        default: "latest"
       environment:
         description: "Target environment"
         required: true
@@ -14,9 +13,11 @@ on:
         options:
           - staging
           - production
-    permissions:
-      contents: read
-      packages: read
+
+permissions:
+  contents: read
+  packages: read
+  attestations: read
 
 # Only one deployment per environment at a time, and never cancel a
 # deployment that is mid-migration or compose start (cancel-in-progress:
@@ -53,54 +54,147 @@ jobs:
     # workflow running on a fork or a lower-trust context cannot read them.
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
       VERSION: ${{ inputs.version }}
       DEPLOY_ENV: ${{ inputs.environment }}
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # GitHub Actions expressions have no replace() function, and the free-form
+      # version input is untrusted manual input, so the exact checkout ref is
+      # derived in Bash here — validating the input BEFORE it is used as a
+      # checkout ref or an image tag. Every environment is SHA-only.
+      - name: Resolve deployment ref
+        id: deploy-ref
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          DEPLOY_ENV: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
 
-      # GitHub resolves "${{ ... }}" before the shell runs, so interpolating
-      # the free-form version input into a script is injection-prone. Validate
-      # it first, then pass the value to the remote script only through
-      # environment variables.
-      - name: Validate version and verify provenance attestation
+          if [[ ! "$VERSION" =~ ^sha-[0-9a-f]{40}$ ]]; then
+            echo "::error::Version must be sha-<40 lowercase hex>; got '$VERSION'"
+            exit 1
+          fi
+
+          # Check out exactly the commit being deployed.
+          echo "ref=${VERSION#sha-}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.deploy-ref.outputs.ref }}
+          persist-credentials: false
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4.5.2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Cryptographic supply-chain check: resolve exact digests and verify build
+      # attestations for published images before remote deployment. The version
+      # input was already validated by the "Resolve deployment ref" step and is
+      # passed only through environment variables, never expression
+      # interpolation into a script body.
+      - name: Verify provenance attestation
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [[ "$DEPLOY_ENV" == "production" ]]; then
-            # Production deploys immutable image tags: full-SHA only.
-            if [[ ! "$VERSION" =~ ^sha-[0-9a-f]{40}$ ]]; then
-              echo "::error::Production requires version=sha-<40 lowercase hex>; got '$VERSION'"
-              exit 1
-            fi
-          else
-            if [[ "$VERSION" != "latest" && ! "$VERSION" =~ ^sha-[0-9a-f]{40}$ ]]; then
-              echo "::error::Version must be 'latest' or sha-<40 lowercase hex>; got '$VERSION'"
-              exit 1
-            fi
-          fi
-          echo "Validated version: $VERSION (environment: $DEPLOY_ENV)"
 
-          # Cryptographic supply-chain check: verify build attestations for published images before remote deployment
+          # Cryptographic supply-chain check: resolve exact digests and verify build attestations for published images before remote deployment
           echo "Verifying build attestations for images tagged '$VERSION'..."
-          for img in novelai-admin novelai-reader novelai-frontend; do
-            IMAGE_REF="ghcr.io/${{ github.repository }}/${img}:${VERSION}"
-            echo "Checking attestation for ${IMAGE_REF}..."
-            gh attestation verify "oci://${IMAGE_REF}" --owner "${{ github.repository_owner }}"
-          done
+          # OCI registry references must be lowercase; buildx pushes the GHCR
+          # repository path in lowercase even when the GitHub owner/repo names
+          # contain uppercase characters.
+          GHCR_BASE="ghcr.io/${{ github.repository }}"
+          GHCR_BASE="${GHCR_BASE,,}"
+          ADMIN_REF="${GHCR_BASE}/novelai-admin:${VERSION}"
+          READER_REF="${GHCR_BASE}/novelai-reader:${VERSION}"
+          FRONTEND_REF="${GHCR_BASE}/novelai-frontend:${VERSION}"
+
+          # Images are multi-platform OCI indexes: the top-level manifest digest
+          # is not part of the index payload, so it cannot be parsed from
+          # `docker manifest inspect` output. `imagetools inspect --format`
+          # prints exactly that digest, which is what attestations are recorded
+          # against. A failed lookup keeps stderr visible for diagnosis.
+          ADMIN_DIGEST=$(docker buildx imagetools inspect "${ADMIN_REF}" --format '{{.Manifest.Digest}}' || true)
+          READER_DIGEST=$(docker buildx imagetools inspect "${READER_REF}" --format '{{.Manifest.Digest}}' || true)
+          FRONTEND_DIGEST=$(docker buildx imagetools inspect "${FRONTEND_REF}" --format '{{.Manifest.Digest}}' || true)
+
+          if [[ -z "$ADMIN_DIGEST" || -z "$READER_DIGEST" || -z "$FRONTEND_DIGEST" ]]; then
+            echo "::error::Failed to resolve manifest digest for one or more images."
+            exit 1
+          fi
+
+          gh attestation verify "oci://${GHCR_BASE}/novelai-admin@${ADMIN_DIGEST}" --owner "${{ github.repository_owner }}"
+          gh attestation verify "oci://${GHCR_BASE}/novelai-reader@${READER_DIGEST}" --owner "${{ github.repository_owner }}"
+          gh attestation verify "oci://${GHCR_BASE}/novelai-frontend@${FRONTEND_DIGEST}" --owner "${{ github.repository_owner }}"
+
+          echo "ADMIN_IMAGE=${GHCR_BASE}/novelai-admin@${ADMIN_DIGEST}" >> $GITHUB_ENV
+          echo "READER_IMAGE=${GHCR_BASE}/novelai-reader@${READER_DIGEST}" >> $GITHUB_ENV
+          echo "FRONTEND_IMAGE=${GHCR_BASE}/novelai-frontend@${FRONTEND_DIGEST}" >> $GITHUB_ENV
+
           echo "All image provenance attestations verified successfully."
+
+      - name: Compare source and admin image migration heads
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Use the exact published admin digest for Alembic inspection. The
+          # source checkout is mounted into the same image so both commands
+          # use the image's locked Alembic runtime and different migration
+          # trees cannot pass this gate accidentally.
+          docker pull "$ADMIN_IMAGE" >/dev/null
+          SOURCE_HEAD=$(docker run --rm --entrypoint alembic -w /app/backend \
+            -v "$GITHUB_WORKSPACE/backend:/app/backend:ro" \
+            "$ADMIN_IMAGE" -c alembic.ini heads | awk '/\(head\)/ { print $1 }')
+          IMAGE_HEAD=$(docker run --rm --entrypoint alembic -w /app/backend \
+            "$ADMIN_IMAGE" -c alembic.ini heads | awk '/\(head\)/ { print $1 }')
+
+          if [[ "$SOURCE_HEAD" != "$IMAGE_HEAD" || "$SOURCE_HEAD" != "c7d9e1f3a5b2" ]]; then
+            echo "::error::Source and admin image Alembic heads do not match the expected release head."
+            exit 1
+          fi
+          echo "Source and admin image Alembic heads match the expected release head."
+
+      # Private-network bridge: the GitHub-hosted runner joins the tailnet as
+      # an ephemeral node so SCP/SSH below reach the staging host without any
+      # public port exposure or inbound firewall config. The action's post step
+      # logs the runner node out again; `ping` verifies the staging node is
+      # reachable before any transfer is attempted.
+      - name: Connect to Tailscale private network
+        uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
+        with:
+          authkey: ${{ env.TS_AUTHKEY }}
+          hostname: novelai-ci
+          ping: ${{ env.DEPLOY_HOST }}
+
+      - name: Copy deploy directory to remote host
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          port: ${{ env.DEPLOY_PORT }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          source: "deploy/*"
+          target: "/opt/novelai/releases/${{ env.VERSION }}/"
+          strip_components: 1
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
         with:
           host: ${{ env.DEPLOY_HOST }}
+          port: ${{ env.DEPLOY_PORT }}
           username: ${{ env.DEPLOY_USER }}
           key: ${{ env.DEPLOY_SSH_KEY }}
-          envs: VERSION,DEPLOY_ENV
+          envs: VERSION,DEPLOY_ENV,ADMIN_IMAGE,READER_IMAGE,FRONTEND_IMAGE
           script: |
             set -euo pipefail
 
@@ -110,37 +204,89 @@ jobs:
 
             echo "Deploying version: $VERSION to $DEPLOY_ENV (release directory: $RELEASE_DIR)"
 
-            mkdir -p "$RELEASE_DIR" "$SHARED_DIR"
-
-            # Create or update shared .env file if it doesn't exist
-            if [[ ! -f "$SHARED_DIR/.env" ]]; then
-              echo "::warning::Shared .env file not found at $SHARED_DIR/.env"
-              touch "$SHARED_DIR/.env"
+            if [[ ! -d "$RELEASE_DIR" ]]; then
+              echo "::error::Release directory $RELEASE_DIR does not exist."
+              exit 1
             fi
 
-            # Sync checked-out deployment artifacts into release directory
-            # Note: GitHub Actions checks out code into default workspace
-            cp -r deploy/* "$RELEASE_DIR/"
-            ln -sf "$SHARED_DIR/.env" "$RELEASE_DIR/.env"
+            # Shared .env must exist in production/staging; fail-closed if missing
+            if [[ ! -f "$SHARED_DIR/.env" ]]; then
+              echo "::error::Shared .env file not found at $SHARED_DIR/.env! Deployment failed-closed."
+              exit 1
+            fi
 
-            # Symlink active release
-            ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
+            # restore-db (recovery) preflight: DATABASE_RESTORE_PASSWORD must be a
+            # non-empty value. Compose intentionally uses scanner-safe plain
+            # interpolation (no required-variable error text) so GitGuardian does
+            # not mistake the human-readable error text for a hard-coded
+            # credential; presence is enforced here, fail-closed, instead.
+            if ! grep -Eq '^DATABASE_RESTORE_PASSWORD=.+$' "$SHARED_DIR/.env"; then
+              echo "::error::DATABASE_RESTORE_PASSWORD is missing or empty in $SHARED_DIR/.env; required by the restore-db (recovery) profile."
+              exit 1
+            fi
 
-            cd "$CURRENT_LINK"
+            # Keep the shared secret environment separate from the release's
+            # non-secret immutable metadata. The metadata is useful for
+            # restart/rollback evidence and contains no credentials.
+            GIT_SHA="${VERSION#sha-}"
+            PREVIOUS_RELEASE=""
+            if [[ -L "$CURRENT_LINK" ]]; then
+              PREVIOUS_RELEASE=$(readlink -f "$CURRENT_LINK" || true)
+            fi
+            for image in "$ADMIN_IMAGE" "$READER_IMAGE" "$FRONTEND_IMAGE"; do
+              if [[ ! "$image" =~ ^ghcr\.io/.+@sha256:[0-9a-f]{64}$ ]]; then
+                echo "::error::Deployment image reference is not an immutable GHCR digest."
+                exit 1
+              fi
+            done
+            RELEASE_ENV_TMP=$(mktemp "$RELEASE_DIR/.release.env.XXXXXX")
+            {
+              printf 'VERSION=%s\n' "$VERSION"
+              printf 'GIT_SHA=%s\n' "$GIT_SHA"
+              printf 'ADMIN_IMAGE=%s\n' "$ADMIN_IMAGE"
+              printf 'READER_IMAGE=%s\n' "$READER_IMAGE"
+              printf 'FRONTEND_IMAGE=%s\n' "$FRONTEND_IMAGE"
+              printf 'DEPLOY_ENV=%s\n' "$DEPLOY_ENV"
+              printf 'DEPLOYED_AT_UTC=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              printf 'PREVIOUS_RELEASE=%s\n' "$PREVIOUS_RELEASE"
+            } > "$RELEASE_ENV_TMP"
+            chmod 0644 "$RELEASE_ENV_TMP"
+            mv -f "$RELEASE_ENV_TMP" "$RELEASE_DIR/release.env"
 
-            # Pull exact image tags
-            docker compose pull
+            ln -sfn "$SHARED_DIR/.env" "$RELEASE_DIR/.env"
 
-            # Migrations must succeed before application containers start.
-            docker compose run --rm migrate
+            cd "$RELEASE_DIR"
+            COMPOSE=(docker compose --env-file "$SHARED_DIR/.env" --env-file "$RELEASE_DIR/release.env" -f compose.yml)
 
-            # Bring up requested immutable application images.
-            docker compose up -d --remove-orphans --pull always
+            # Validate and pull the exact release without printing resolved
+            # configuration or secrets.
+            COMPOSE_PROFILES=migration "${COMPOSE[@]}" config --quiet
+            COMPOSE_PROFILES=migration "${COMPOSE[@]}" pull
 
-            # Prune dangling images older than 24h to reclaim disk
-            docker image prune -f --filter "until=24h"
+            # Migrations run exactly once from the explicit migration profile;
+            # the normal long-running startup graph does not include migrate.
+            COMPOSE_PROFILES=migration "${COMPOSE[@]}" run --rm migrate
 
-            echo "Deploy complete."
+            # Wait for container health before exposing the release through the
+            # current symlink. Caddy's readiness check is the final routing gate.
+            "${COMPOSE[@]}" up -d --remove-orphans --pull never --wait --wait-timeout 180
+            SITE_DOMAIN=$(awk -F= '$1 == "SITE_DOMAIN" { print $2; exit }' "$SHARED_DIR/.env" | tr -d '\r')
+            if [[ -z "$SITE_DOMAIN" ]]; then
+              echo "::error::SITE_DOMAIN is missing from shared environment."
+              exit 1
+            fi
+            READY_URL="http://${SITE_DOMAIN}/health/ready"
+            for attempt in {1..12}; do
+              if curl --fail --silent --show-error --max-time 10 --output /dev/null "$READY_URL"; then
+                ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
+                echo "Deploy complete; readiness gate passed."
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "::error::Caddy readiness gate failed: $READY_URL"
+            exit 1
+
 
       # Deployment reports success only after the post-deploy smoke gate
       # passes. Production smoke is fail-closed: if the acceptance secrets
