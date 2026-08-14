@@ -42,6 +42,18 @@ ENV NODE_ENV=production \
 
 RUN addgroup --system nodejs && adduser --system --ingroup nodejs nextjs
 
+# The standalone server has no runtime package-manager dependency. Removing
+# npm, npx, Corepack, and their package trees keeps the production image
+# limited to the Node runtime and the compiled application.
+RUN rm -rf \
+    /usr/local/lib/node_modules/npm \
+    /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm \
+    /usr/local/bin/npx \
+    /usr/local/bin/corepack \
+    /usr/local/bin/yarn \
+    /usr/local/bin/yarnpkg
+
 COPY --from=builder --chown=nextjs:nodejs /app/frontend/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/frontend/.next/static ./frontend/.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/frontend/public ./frontend/public
