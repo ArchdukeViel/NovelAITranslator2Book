@@ -4,9 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Published image tag to deploy (latest or sha-<full commit SHA>)"
+        description: "Published immutable image tag (sha-<full commit SHA>)"
         required: true
-        default: "latest"
       environment:
         description: "Target environment"
         required: true
@@ -66,8 +65,7 @@ jobs:
       # GitHub Actions expressions have no replace() function, and the free-form
       # version input is untrusted manual input, so the exact checkout ref is
       # derived in Bash here — validating the input BEFORE it is used as a
-      # checkout ref or an image tag. Production is SHA-only; anything that is
-      # not 'latest' must be a full sha-<40 hex> commit tag.
+      # checkout ref or an image tag. Every environment is SHA-only.
       - name: Resolve deployment ref
         id: deploy-ref
         shell: bash
@@ -77,30 +75,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ "$DEPLOY_ENV" == "production" ]]; then
-            # Production deploys immutable image tags: full-SHA only.
-            if [[ ! "$VERSION" =~ ^sha-[0-9a-f]{40}$ ]]; then
-              echo "::error::Production requires version=sha-<40 lowercase hex>; got '$VERSION'"
-              exit 1
-            fi
-          else
-            if [[ "$VERSION" != "latest" && ! "$VERSION" =~ ^sha-[0-9a-f]{40}$ ]]; then
-              echo "::error::Version must be 'latest' or sha-<40 lowercase hex>; got '$VERSION'"
-              exit 1
-            fi
+          if [[ ! "$VERSION" =~ ^sha-[0-9a-f]{40}$ ]]; then
+            echo "::error::Version must be sha-<40 lowercase hex>; got '$VERSION'"
+            exit 1
           fi
 
-          # Check out exactly the commit being deployed: for sha- inputs the
-          # tag suffix is the commit SHA; for 'latest' the dispatched ref head.
-          if [[ "$VERSION" == sha-* ]]; then
-            echo "ref=${VERSION#sha-}" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-          fi
+          # Check out exactly the commit being deployed.
+          echo "ref=${VERSION#sha-}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.deploy-ref.outputs.ref }}
+          persist-credentials: false
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4.5.2
@@ -155,6 +141,28 @@ jobs:
           echo "FRONTEND_IMAGE=${GHCR_BASE}/novelai-frontend@${FRONTEND_DIGEST}" >> $GITHUB_ENV
 
           echo "All image provenance attestations verified successfully."
+
+      - name: Compare source and admin image migration heads
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Use the exact published admin digest for Alembic inspection. The
+          # source checkout is mounted into the same image so both commands
+          # use the image's locked Alembic runtime and different migration
+          # trees cannot pass this gate accidentally.
+          docker pull "$ADMIN_IMAGE" >/dev/null
+          SOURCE_HEAD=$(docker run --rm --entrypoint alembic -w /app/backend \
+            -v "$GITHUB_WORKSPACE/backend:/app/backend:ro" \
+            "$ADMIN_IMAGE" -c alembic.ini heads | awk '/\(head\)/ { print $1 }')
+          IMAGE_HEAD=$(docker run --rm --entrypoint alembic -w /app/backend \
+            "$ADMIN_IMAGE" -c alembic.ini heads | awk '/\(head\)/ { print $1 }')
+
+          if [[ "$SOURCE_HEAD" != "$IMAGE_HEAD" || "$SOURCE_HEAD" != "c7d9e1f3a5b2" ]]; then
+            echo "::error::Source and admin image Alembic heads do not match the expected release head."
+            exit 1
+          fi
+          echo "Source and admin image Alembic heads match the expected release head."
 
       # Private-network bridge: the GitHub-hosted runner joins the tailnet as
       # an ephemeral node so SCP/SSH below reach the staging host without any
@@ -217,27 +225,68 @@ jobs:
               exit 1
             fi
 
-            ln -sf "$SHARED_DIR/.env" "$RELEASE_DIR/.env"
+            # Keep the shared secret environment separate from the release's
+            # non-secret immutable metadata. The metadata is useful for
+            # restart/rollback evidence and contains no credentials.
+            GIT_SHA="${VERSION#sha-}"
+            PREVIOUS_RELEASE=""
+            if [[ -L "$CURRENT_LINK" ]]; then
+              PREVIOUS_RELEASE=$(readlink -f "$CURRENT_LINK" || true)
+            fi
+            for image in "$ADMIN_IMAGE" "$READER_IMAGE" "$FRONTEND_IMAGE"; do
+              if [[ ! "$image" =~ ^ghcr\.io/.+@sha256:[0-9a-f]{64}$ ]]; then
+                echo "::error::Deployment image reference is not an immutable GHCR digest."
+                exit 1
+              fi
+            done
+            RELEASE_ENV_TMP=$(mktemp "$RELEASE_DIR/.release.env.XXXXXX")
+            {
+              printf 'VERSION=%s\n' "$VERSION"
+              printf 'GIT_SHA=%s\n' "$GIT_SHA"
+              printf 'ADMIN_IMAGE=%s\n' "$ADMIN_IMAGE"
+              printf 'READER_IMAGE=%s\n' "$READER_IMAGE"
+              printf 'FRONTEND_IMAGE=%s\n' "$FRONTEND_IMAGE"
+              printf 'DEPLOY_ENV=%s\n' "$DEPLOY_ENV"
+              printf 'DEPLOYED_AT_UTC=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              printf 'PREVIOUS_RELEASE=%s\n' "$PREVIOUS_RELEASE"
+            } > "$RELEASE_ENV_TMP"
+            chmod 0644 "$RELEASE_ENV_TMP"
+            mv -f "$RELEASE_ENV_TMP" "$RELEASE_DIR/release.env"
+
+            ln -sfn "$SHARED_DIR/.env" "$RELEASE_DIR/.env"
 
             cd "$RELEASE_DIR"
+            COMPOSE=(docker compose --env-file "$SHARED_DIR/.env" --env-file "$RELEASE_DIR/release.env" -f compose.yml)
 
-            # Pull exact image tags & validate compose config before switching active symlink
-            docker compose config > /dev/null
-            docker compose pull
+            # Validate and pull the exact release without printing resolved
+            # configuration or secrets.
+            COMPOSE_PROFILES=migration "${COMPOSE[@]}" config --quiet
+            COMPOSE_PROFILES=migration "${COMPOSE[@]}" pull
 
-            # Migrations must succeed before application containers start.
-            docker compose run --rm migrate
+            # Migrations run exactly once from the explicit migration profile;
+            # the normal long-running startup graph does not include migrate.
+            COMPOSE_PROFILES=migration "${COMPOSE[@]}" run --rm migrate
 
-            # Atomically switch active release symlink ONLY AFTER staging, pull, and migration success
-            ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
+            # Wait for container health before exposing the release through the
+            # current symlink. Caddy's readiness check is the final routing gate.
+            "${COMPOSE[@]}" up -d --remove-orphans --pull never --wait --wait-timeout 180
+            SITE_DOMAIN=$(awk -F= '$1 == "SITE_DOMAIN" { print $2; exit }' "$SHARED_DIR/.env" | tr -d '\r')
+            if [[ -z "$SITE_DOMAIN" ]]; then
+              echo "::error::SITE_DOMAIN is missing from shared environment."
+              exit 1
+            fi
+            READY_URL="http://${SITE_DOMAIN}/health/ready"
+            for attempt in {1..12}; do
+              if curl --fail --silent --show-error --max-time 10 --output /dev/null "$READY_URL"; then
+                ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
+                echo "Deploy complete; readiness gate passed."
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "::error::Caddy readiness gate failed: $READY_URL"
+            exit 1
 
-            # Bring up requested immutable application images.
-            docker compose up -d --remove-orphans --pull always
-
-            # Prune dangling images older than 24h to reclaim disk
-            docker image prune -f --filter "until=24h"
-
-            echo "Deploy complete."
 
       # Deployment reports success only after the post-deploy smoke gate
       # passes. Production smoke is fail-closed: if the acceptance secrets

@@ -13,6 +13,7 @@ services:
     networks:
       - novelai-net
     restart: unless-stopped
+    stop_grace_period: 30s
 
   restore-db:
     image: postgres:17.4-alpine@sha256:7062a2109c4b51f3c792c7ea01e83ed12ef9a980886e3b3d380a7d2e5f6ce3f5
@@ -36,12 +37,22 @@ services:
   caddy:
     image: caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0
     depends_on:
-      - backend
-      - reader
-      - frontend
+      backend:
+        condition: service_healthy
+      reader:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     ports:
-      - "${PUBLIC_HTTP_PORT:-80}:80"
-      - "${PUBLIC_HTTPS_PORT:-443}:443"
+      - "${PUBLIC_BIND_ADDRESS:-127.0.0.1}:${PUBLIC_HTTP_PORT:-80}:80"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-localhost}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider --header='Host: ${SITE_DOMAIN:-localhost}' http://127.0.0.1/health/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -49,6 +60,7 @@ services:
     networks:
       - novelai-net
     restart: unless-stopped
+    stop_grace_period: 30s
 
   frontend:
     image: ${FRONTEND_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-frontend:${VERSION:-latest}}
@@ -56,12 +68,21 @@ services:
       NODE_ENV: production
       NEXT_PUBLIC_API_BASE_URL: /api
       BACKEND_API_URL: http://backend:8000
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     networks:
       - novelai-net
     restart: unless-stopped
+    stop_grace_period: 30s
 
   migrate:
     image: ${ADMIN_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-admin:${VERSION:-latest}}
+    profiles:
+      - migration
     user: root
     working_dir: /app/backend
     entrypoint: ["alembic", "-c", "/app/backend/alembic.ini", "upgrade", "head"]
@@ -198,11 +219,10 @@ services:
     volumes:
       - ${NOVEL_LIBRARY_HOST_DIR:-/opt/novelai/shared/storage/novel_library}:/app/storage/novel_library
     depends_on:
-      migrate:
-        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 60s
 
   reader:
     image: ${READER_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-reader:${VERSION:-latest}}
@@ -245,13 +265,12 @@ services:
     volumes:
       - ${NOVEL_LIBRARY_HOST_DIR:-/opt/novelai/shared/storage/novel_library}:/app/storage/novel_library
     depends_on:
-      migrate:
-        condition: service_completed_successfully
       redis:
         condition: service_healthy
     networks:
       - novelai-net
     restart: unless-stopped
+    stop_grace_period: 30s
 
 volumes:
   caddy_data:
