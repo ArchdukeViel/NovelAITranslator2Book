@@ -305,6 +305,7 @@ def test_node_version_alignment() -> None:
     assert nvmrc == "22"
     assert '"node": ">=22 <23"' in package_json
     assert "node:22-alpine" in dockerfile
+    assert "sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32" in dockerfile
 
 
 def test_dependabot_python_ignore_policy() -> None:
