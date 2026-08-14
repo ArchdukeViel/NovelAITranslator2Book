@@ -112,9 +112,14 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     script = source[script_start : source.index("- name: Smoke test production deployment")]
     assert "${{" not in script
     assert r"^sha-[0-9a-f]{40}$" in source
-    assert '"$DEPLOY_ENV" == "production"' in source
+    assert "DEPLOY_ENV" in source
     assert "push:\n    tags:" not in source
-    assert source.index("docker compose run --rm migrate") < source.index("docker compose up -d")
+    assert source.index("COMPOSE_PROFILES=migration") < source.index('"${COMPOSE[@]}" up -d')
+    assert "--wait --wait-timeout 180" in source
+    assert "--pull never" in source
+    assert "release.env" in source
+    assert "PREVIOUS_RELEASE" in source
+    assert "docker image prune" not in source
 
     # Exact SCP action pin and checkout contracts
     assert "appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634" in source
@@ -226,10 +231,12 @@ def test_deploy_input_flow_and_smoke_vars() -> None:
     # The "Resolve deployment ref" step writes only a regex-validated checkout
     # ref to GITHUB_OUTPUT (two writes: sha- tag suffix and 'latest' head); the
     # free-form version input itself is never emitted.
-    assert source.count("$GITHUB_OUTPUT") == 2
+    assert source.count("$GITHUB_OUTPUT") == 1
     resolve_section = source[source.index("- name: Resolve deployment ref") : source.index("- uses: actions/checkout")]
     assert 'echo "ref=${VERSION#sha-}" >> "$GITHUB_OUTPUT"' in resolve_section
-    assert 'echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"' in resolve_section
+    assert 'echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"' not in resolve_section
+    assert 'default: "latest"' not in source
+    assert "latest or sha-" not in source
 
 
 def test_deploy_staging_eligibility_and_managed_gate() -> None:
@@ -246,6 +253,12 @@ def test_dependency_review_least_privilege() -> None:
     assert "pull-requests: write" not in source
     assert "pull_request_target" not in source
     assert "comment-summary-in-pr: always" not in source
+    assert "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25" in source
+    assert "scan-type: fs" in source
+    assert "scanners: vuln,misconfig" in source
+    assert "severity: HIGH,CRITICAL" in source
+    assert 'TRIVY_INCLUDE_DEV_DEPS: "true"' in source
+    assert 'exit-code: "1"' in source
 
 
 def test_uv_locked_contract_in_ci_and_managed_verification() -> None:
@@ -262,7 +275,9 @@ def test_build_workflow_run_trust_guards_and_concurrency() -> None:
     assert "github.event.workflow_run.event == 'push'" in source
     assert "github.event.workflow_run.head_branch == github.event.repository.default_branch" in source
     assert "github.event.workflow_run.head_repository.full_name == github.repository" in source
-    assert "aquasecurity/trivy-action@18f2510ee396bbf400402947b394f2dd8c87dbb0" in source
+    assert "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25" in source
+    assert "exit-code: '1'" in source
+    assert "zizmor: ignore[dangerous-triggers]" in source
     assert "actions/attest" in source
     assert "subject-digest: ${{ steps.build.outputs.digest }}" in source
     assert "artifact-metadata: write" in source
@@ -304,6 +319,54 @@ def test_production_compose_contract() -> None:
     # never be digest-pinned by CI: their digests change on every build, so
     # a pin would hard-fail the deploy.
     assert not re.search(r"image: \$\{[^}]*\}@sha256:[0-9a-f]{64}", source)
+
+
+def test_caddy_staging_http_contract() -> None:
+    repo_root = WORKFLOWS_DIR.parent.parent
+    compose_source = (repo_root / "deploy" / "compose.yml").read_text(encoding="utf-8")
+    caddy_start = compose_source.index("  caddy:")
+    caddy_end = compose_source.index("\n  frontend:", caddy_start) + 1
+    caddy_service = compose_source[caddy_start:caddy_end]
+    assert "SITE_DOMAIN: ${SITE_DOMAIN:-localhost}" in caddy_service
+    assert "env_file:" not in caddy_service
+
+    caddyfile = (repo_root / "deploy" / "Caddyfile").read_text(encoding="utf-8")
+    assert caddyfile.splitlines()[0] == "http://{$SITE_DOMAIN:localhost} {"
+    assert "Strict-Transport-Security" not in caddyfile
+
+
+def test_ci_and_static_analysis_security_contracts() -> None:
+    ci = _workflow("ci.yml")
+    assert "contents: read\n  pull-requests: read" in ci
+    assert ci.count("dorny/paths-filter@") == 2
+    assert ci.count("persist-credentials: false") >= 7
+
+    static = _workflow("static-analysis.yml")
+    for job_name in ("Analyze (actions)", "Analyze (python)", "Analyze (javascript-typescript)"):
+        assert f"name: {job_name}" in static
+    assert "zizmor==1.29.0" in static
+    assert "--offline" in static
+    assert "--format=github" in static
+    assert "--min-severity=medium" in static
+    assert "S102,S307,S324,S501,S506,S602,S605,S608,S609" in static
+    assert "node-version: 22" in static
+    assert "npm ci" in static
+
+
+def test_compose_private_http_health_and_migration_contract() -> None:
+    compose = (WORKFLOWS_DIR.parent.parent / "deploy" / "compose.yml").read_text(encoding="utf-8")
+    caddy_start = compose.index("  caddy:")
+    frontend_start = compose.index("\n  frontend:") + 1
+    caddy = compose[caddy_start:frontend_start]
+    assert '"${PUBLIC_BIND_ADDRESS:-127.0.0.1}:${PUBLIC_HTTP_PORT:-80}:80"' in caddy
+    assert "443:443" not in caddy
+    assert "condition: service_healthy" in caddy
+    assert "healthcheck:" in caddy
+    assert "stop_grace_period" in caddy
+    assert "profiles:\n      - migration" in compose
+    assert "condition: service_completed_successfully" not in compose
+    assert "healthcheck:" in compose[frontend_start:]
+    assert "stop_grace_period" in compose[frontend_start:]
 
 
 def test_deploy_actions_consume_deploy_port() -> None:

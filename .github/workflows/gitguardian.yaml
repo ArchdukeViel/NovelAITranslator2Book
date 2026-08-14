@@ -14,6 +14,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0 # fetch all history so multiple commits can be scanned
       - name: GitGuardian scan
         uses: GitGuardian/ggshield/actions/secret@aaada885532b9451e5774d063d968e74a238ff44 # v1.52.2
