@@ -39,6 +39,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Keep the runtime client above the CVE-2026-6473 fix level. The exact
+# PGDG version is available for the Debian 13 image used by this release.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libffi8 curl ca-certificates gnupg \
     && install -d /usr/share/postgresql-common/pgdg \
@@ -48,7 +50,7 @@ RUN apt-get update \
     && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
        > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends postgresql-client-17 \
+    && apt-get install -y --no-install-recommends postgresql-client-17=17.11-1.pgdg13+2 \
     && rm -rf /var/lib/apt/lists/* \
     && addgroup --system novelai \
     && adduser --system --ingroup novelai --no-create-home novelai

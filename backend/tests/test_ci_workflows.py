@@ -286,6 +286,13 @@ def test_build_workflow_run_trust_guards_and_concurrency() -> None:
     assert "artifact-metadata: write" in source
 
 
+def test_admin_image_pins_fixed_postgresql_client() -> None:
+    dockerfile = (WORKFLOWS_DIR.parent.parent / "deploy" / "admin.Dockerfile").read_text(encoding="utf-8")
+
+    assert "CVE-2026-6473" in dockerfile
+    assert "postgresql-client-17=17.11-1.pgdg13+2" in dockerfile
+
+
 def test_node_version_alignment() -> None:
     nvmrc = (WORKFLOWS_DIR.parent.parent / "frontend" / ".nvmrc").read_text(encoding="utf-8").strip()
     package_json = (WORKFLOWS_DIR.parent.parent / "frontend" / "package.json").read_text(encoding="utf-8")
