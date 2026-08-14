@@ -130,12 +130,15 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     assert "- name: Resolve deployment ref" in source
     assert "id: deploy-ref" in source
 
-    # Attestation, registry login, digest resolution, and release directory contracts
+    # Sigstore provenance, registry login, digest resolution, and release directory contracts
     assert "docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c" in source
     assert "ADMIN_IMAGE=" in source
     assert "READER_IMAGE=" in source
     assert "FRONTEND_IMAGE=" in source
-    assert "gh attestation verify" in source
+    assert "sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6" in source
+    assert "cosign verify-attestation" in source
+    assert "https://slsa.dev/provenance/v1" in source
+    assert "gh attestation verify" not in source
     # OCI references must be lowercase: buildx pushes the GHCR repository path
     # lowercased, so the deploy step must normalize before digest resolution.
     assert 'GHCR_BASE="ghcr.io/${{ github.repository }}"' in source
@@ -280,10 +283,11 @@ def test_build_workflow_run_trust_guards_and_concurrency() -> None:
     assert "zizmor: ignore[dangerous-triggers]" in source
     assert 'IMAGE_NAME="ghcr.io/${REPOSITORY,,}/${IMAGE}"' in source
     assert "image-ref: ${{ steps.image-ref.outputs.ref }}" in source
-    assert "subject-name: ${{ steps.image-ref.outputs.name }}" in source
-    assert "actions/attest" in source
-    assert "subject-digest: ${{ steps.build.outputs.digest }}" in source
-    assert "artifact-metadata: write" in source
+    assert "sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6" in source
+    assert "cosign attest" in source
+    assert "cosign verify-attestation" in source
+    assert "actions/attest" not in source
+    assert "attestations: write" not in source
 
 
 def test_admin_image_pins_fixed_postgresql_client() -> None:
