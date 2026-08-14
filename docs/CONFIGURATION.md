@@ -11,6 +11,8 @@ Configuration contract. Exact fields/defaults live in
 - Compose reads `deploy/.env` and requires external `DATABASE_URL`.
 - `MIGRATION_DATABASE_URL` optionally gives the one-shot Alembic service a
   separate elevated role; long-running processes continue using `DATABASE_URL`.
+- Immutable remote releases combine the shared secret `.env` with a non-secret
+  per-release `release.env` containing the full SHA and image digests.
 - Real `.env*` files are untracked; only example templates are committed.
 - Settings are read through `novelai.config.settings.settings`; no direct
   `os.environ` outside settings module.
@@ -51,6 +53,18 @@ Generate secrets with `python -c "import secrets; print(secrets.token_hex(32))"`
 | Credentials | `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` before storing provider keys. |
 | Storage | `STORAGE_BACKEND=filesystem|s3`; complete S3/R2 endpoint/bucket/credentials for `s3`. |
 | Distributed runtime | Redis URL and Redis rate limiter for split/multi-instance mode. |
+
+## Private HTTP Staging
+
+The single-host staging release uses `ENV=staging`, `DB_CONNECTION_MODE=session`,
+and `DB_SSL_MODE=require` with Supabase session-pooler URLs on port 5432. Set
+`PUBLIC_FRONTEND_URL`, `WEB_CORS_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, and
+`ALLOWED_HOSTS` to the same `http://<tailscale-ip>` origin. Set
+`SITE_DOMAIN` and `PUBLIC_BIND_ADDRESS` to that Tailnet IPv4, and set
+`SESSION_COOKIE_SECURE=false` because this private release is explicitly HTTP.
+Only Caddy publishes port 80; internal APIs and data services remain unbound on
+the host. TLS is deferred until a trusted renewable private certificate path is
+available.
 
 ## Storage and Recovery Groups
 
