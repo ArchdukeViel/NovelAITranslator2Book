@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
@@ -14,6 +14,10 @@ import {
   Shuffle,
   X,
 } from "lucide-react";
+
+const subscribeToNothing = () => () => {};
+const getClientMounted = () => true;
+const getServerMounted = () => false;
 
 import { PublicThemeToggle } from "@/components/public/public-theme-toggle";
 import { usePublicAuth } from "@/hooks/public/use-auth";
@@ -40,17 +44,9 @@ const SECONDARY_ITEMS = [
 export function PublicSidebar() {
   const pathname = usePathname();
   const { isAuthenticated } = usePublicAuth();
-  const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // Close on route change.
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
+  const [openPathname, setOpenPathname] = useState<string | null>(null);
+  const mounted = useSyncExternalStore(subscribeToNothing, getClientMounted, getServerMounted);
+  const open = openPathname === pathname;
 
   // Lock body scroll while open and support Escape.
   useEffect(() => {
@@ -58,7 +54,7 @@ export function PublicSidebar() {
     const original = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") setOpenPathname(null);
     }
     document.addEventListener("keydown", onKeyDown);
     return () => {
@@ -84,7 +80,7 @@ export function PublicSidebar() {
       {/* Backdrop */}
       <div
         aria-hidden="true"
-        onClick={() => setOpen(false)}
+        onClick={() => setOpenPathname(null)}
         className={cn(
           "fixed inset-0 z-50 bg-foreground/40 transition-opacity duration-300",
           open ? "opacity-100" : "pointer-events-none opacity-0"
@@ -103,7 +99,7 @@ export function PublicSidebar() {
           <span className="font-literary text-sm font-semibold text-foreground">Menu</span>
           <button
             type="button"
-            onClick={() => setOpen(false)}
+            onClick={() => setOpenPathname(null)}
             aria-label="Close navigation menu"
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
@@ -171,7 +167,7 @@ export function PublicSidebar() {
     <>
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => setOpenPathname((current) => (current === pathname ? null : pathname))}
         aria-label="Open navigation menu"
         aria-expanded={open}
         aria-controls="public-sidebar"

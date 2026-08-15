@@ -3,10 +3,9 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 
 // ---------------------------------------------------------------------------
-// Regression: the three @tailwind directives must be present in globals.css
-// before the :root token block, in order base → components → utilities.
-// Without them, Tailwind 3 produces no utility classes and the site renders
-// as mostly unstyled HTML.
+// Regression: Tailwind 4's import and legacy configuration/plugin bridges must
+// be present in globals.css before the :root token block. Without them, the
+// site renders as mostly unstyled HTML.
 // ---------------------------------------------------------------------------
 
 const cssPath = resolve(__dirname, "..", "globals.css");
@@ -19,7 +18,7 @@ function nonBlankTrimmed(src: string): string[] {
     .filter((line) => line.length > 0 && !line.startsWith("//"));
 }
 
-describe("@tailwind directive regression guard", () => {
+describe("Tailwind import regression guard", () => {
   const raw = readFileSync(cssPath, "utf-8");
   const lines = nonBlankTrimmed(raw);
 
@@ -27,28 +26,28 @@ describe("@tailwind directive regression guard", () => {
     expect(raw.length).toBeGreaterThan(0);
   });
 
-  it("contains @tailwind base;", () => {
-    expect(lines).toContain("@tailwind base;");
+  it("contains the Tailwind 4 import", () => {
+    expect(lines).toContain('@import "tailwindcss";');
   });
 
-  it("contains @tailwind components;", () => {
-    expect(lines).toContain("@tailwind components;");
+  it("loads the preserved legacy theme configuration", () => {
+    expect(lines).toContain('@config "../tailwind.config.ts";');
   });
 
-  it("contains @tailwind utilities;", () => {
-    expect(lines).toContain("@tailwind utilities;");
+  it("loads the animation plugin", () => {
+    expect(lines).toContain('@plugin "tailwindcss-animate";');
   });
 
-  it("directives precede :root in correct order", () => {
+  it("Tailwind setup precedes :root", () => {
     const rootIdx = lines.indexOf(":root {");
     expect(rootIdx).not.toBe(-1);
 
-    const baseIdx = lines.indexOf("@tailwind base;");
-    const compIdx = lines.indexOf("@tailwind components;");
-    const utilIdx = lines.indexOf("@tailwind utilities;");
+    const importIdx = lines.indexOf('@import "tailwindcss";');
+    const configIdx = lines.indexOf('@config "../tailwind.config.ts";');
+    const pluginIdx = lines.indexOf('@plugin "tailwindcss-animate";');
 
-    expect(baseIdx).toBeLessThan(compIdx);
-    expect(compIdx).toBeLessThan(utilIdx);
-    expect(utilIdx).toBeLessThan(rootIdx);
+    expect(importIdx).toBeLessThan(configIdx);
+    expect(configIdx).toBeLessThan(pluginIdx);
+    expect(pluginIdx).toBeLessThan(rootIdx);
   });
 });

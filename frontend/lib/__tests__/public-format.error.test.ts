@@ -21,7 +21,7 @@ function makeApiError(message: string): InstanceType<typeof ApiError> {
  * Arbitrary: generates a random Bearer token (base64-ish string of 20-80 chars).
  */
 const bearerTokenArb = fc
-  .stringOf(fc.constantFrom(..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~+/"), { minLength: 20, maxLength: 80 })
+  .string({ unit: fc.constantFrom(..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~+/"), minLength: 20, maxLength: 80 })
   .map((token) => `Bearer ${token}`);
 
 /**
@@ -30,7 +30,7 @@ const bearerTokenArb = fc
 const authHeaderArb = fc
   .tuple(
     fc.constantFrom("Bearer", "Basic", "Token", "ApiKey"),
-    fc.stringOf(fc.constantFrom(..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~+/="), { minLength: 10, maxLength: 60 })
+    fc.string({ unit: fc.constantFrom(..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~+/="), minLength: 10, maxLength: 60 })
   )
   .map(([scheme, value]) => `Authorization: ${scheme} ${value}`);
 
@@ -40,7 +40,7 @@ const authHeaderArb = fc
 const sessionValueArb = fc
   .tuple(
     fc.constantFrom("session_id:", "session-id=", "session_id=", "session:", "session ="),
-    fc.stringOf(fc.constantFrom(..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~+/"), { minLength: 16, maxLength: 50 })
+    fc.string({ unit: fc.constantFrom(..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~+/"), minLength: 16, maxLength: 50 })
   )
   .map(([prefix, value]) => `${prefix}${value}`);
 
@@ -63,7 +63,7 @@ const stackTraceArb = fc.constantFrom(
 const credentialArb = fc
   .tuple(
     fc.constantFrom("AIza", "sk-", "key-"),
-    fc.stringOf(fc.constantFrom(..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"), { minLength: 30, maxLength: 60 })
+    fc.string({ unit: fc.constantFrom(..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"), minLength: 30, maxLength: 60 })
   )
   .map(([prefix, rest]) => `${prefix}${rest}`);
 
@@ -71,8 +71,8 @@ const credentialArb = fc
  * Arbitrary: prefix and suffix text to wrap around the sensitive value.
  */
 const contextArb = fc.tuple(
-  fc.stringOf(fc.constantFrom(..."abcdefghijklmnopqrstuvwxyz "), { minLength: 0, maxLength: 30 }),
-  fc.stringOf(fc.constantFrom(..."abcdefghijklmnopqrstuvwxyz "), { minLength: 0, maxLength: 30 })
+  fc.string({ unit: fc.constantFrom(..."abcdefghijklmnopqrstuvwxyz "), minLength: 0, maxLength: 30 }),
+  fc.string({ unit: fc.constantFrom(..."abcdefghijklmnopqrstuvwxyz "), minLength: 0, maxLength: 30 })
 );
 
 describe("Property 10: Error messages redact secrets and stack traces", () => {

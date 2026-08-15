@@ -1,8 +1,7 @@
 import type { Config } from "tailwindcss";
-import tailwindcssAnimate from "tailwindcss-animate";
 
 const config: Config = {
-  darkMode: ["class"],
+  darkMode: "class",
   content: [
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
@@ -168,8 +167,7 @@ const config: Config = {
         raised: "0 12px 28px -8px rgb(28 28 24 / 0.18)"
       }
     }
-  },
-  plugins: [tailwindcssAnimate]
+  }
 };
 
 export default config;

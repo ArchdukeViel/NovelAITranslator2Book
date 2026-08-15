@@ -68,8 +68,10 @@ export function LoginView({
   const emailPending = passwordLogin.isPending || register.isPending;
 
   useEffect(() => {
-    setMode(initialMode);
-    setError(null);
+    queueMicrotask(() => {
+      setMode(initialMode);
+      setError(null);
+    });
   }, [initialMode]);
 
   function switchMode(nextMode: EmailMode) {

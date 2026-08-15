@@ -60,20 +60,26 @@ export default function EditorPage() {
   });
 
   React.useEffect(() => {
-    if (translated.data?.text) {
-      setDraftText(translated.data.text);
-      return;
-    }
-    if (rawChapter.data?.text) {
-      setDraftText(rawChapter.data.text);
-    }
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (translated.data?.text) {
+        setDraftText(translated.data.text);
+        return;
+      }
+      if (rawChapter.data?.text) {
+        setDraftText(rawChapter.data.text);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [chapterId, novelId, rawChapter.data?.text, translated.data?.text, translated.data?.version_id]);
 
   React.useEffect(() => {
     const first = chapters.data?.[0]?.id;
-    if (first && !chapterId) {
-      setChapterId(first);
-    }
+    if (!first || chapterId) return;
+    queueMicrotask(() => setChapterId(first));
   }, [chapterId, chapters.data]);
 
   const invalidateEditor = () => {

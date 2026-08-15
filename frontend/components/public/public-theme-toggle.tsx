@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { Moon, Sun } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 type PublicTheme = "light" | "dark";
 
 const STORAGE_KEY = "dokushodo-theme";
+const THEME_EVENT = "dokushodo-theme-change";
 
 function getInitialTheme(): PublicTheme {
   if (typeof window === "undefined") {
@@ -30,21 +31,22 @@ function applyTheme(theme: PublicTheme) {
   window.localStorage?.setItem(STORAGE_KEY, theme);
 }
 
-export function PublicThemeToggle() {
-  const [theme, setTheme] = useState<PublicTheme>("dark");
+function subscribeToTheme(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(THEME_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(THEME_EVENT, onChange);
+  };
+}
 
-  useEffect(() => {
-    const initialTheme = getInitialTheme();
-    setTheme(initialTheme);
-    applyTheme(initialTheme);
-  }, []);
+export function PublicThemeToggle() {
+  const theme = useSyncExternalStore(subscribeToTheme, getInitialTheme, () => "dark");
 
   function toggleTheme() {
-    setTheme((current) => {
-      const next = current === "dark" ? "light" : "dark";
-      applyTheme(next);
-      return next;
-    });
+    const next = theme === "dark" ? "light" : "dark";
+    applyTheme(next);
+    window.dispatchEvent(new Event(THEME_EVENT));
   }
 
   const isDark = theme === "dark";

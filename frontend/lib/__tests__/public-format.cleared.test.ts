@@ -44,7 +44,7 @@ describe("Property 21: Clearing filters restores the unfiltered baseline", () =>
     fc.assert(
       fc.property(
         fc.record({
-          q: fc.option(fc.stringOf(fc.char(), { minLength: 1, maxLength: 80 }), { nil: undefined }),
+          q: fc.option(fc.string({ minLength: 1, maxLength: 80 }), { nil: undefined }),
           publication_status: fc.option(fc.constantFrom("ongoing", "completed", "hiatus"), { nil: undefined }),
           sort_by: fc.option(fc.constantFrom("added_at", "title", "chapter_count"), { nil: undefined }),
           order: fc.option(fc.constantFrom("asc", "desc"), { nil: undefined }),

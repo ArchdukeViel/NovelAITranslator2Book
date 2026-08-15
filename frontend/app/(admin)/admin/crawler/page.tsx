@@ -139,7 +139,18 @@ export default function CrawlerPage() {
         mode: "update"
       });
     },
-    onSuccess: invalidateCrawler
+    onMutate: () => {
+      setCrawlProgress(8);
+    },
+    onSuccess: (data) => {
+      invalidateCrawler();
+      setCrawlProgress(0);
+      setSelectedChapterIds(new Set(preliminaryChapterIds(data)));
+      setResultModalOpen(true);
+    },
+    onError: () => {
+      setCrawlProgress(0);
+    }
   });
 
   const resultChapterIds = React.useMemo(
@@ -257,7 +268,6 @@ export default function CrawlerPage() {
       return;
     }
 
-    setCrawlProgress(8);
     const timer = window.setInterval(() => {
       setCrawlProgress((current) => {
         if (current >= 92) {
@@ -275,7 +285,6 @@ export default function CrawlerPage() {
       return;
     }
 
-    setAddNovelRunProgress((current) => Math.max(current, 8));
     const timer = window.setInterval(() => {
       setAddNovelRunProgress((current) => {
         if (current >= 95) {
@@ -287,24 +296,6 @@ export default function CrawlerPage() {
 
     return () => window.clearInterval(timer);
   }, [addNovelRunState, queueSelectedChapters.isPending]);
-
-  React.useEffect(() => {
-    if (addNovel.isSuccess) {
-      setCrawlProgress(0);
-    }
-    if (addNovel.isError) {
-      setCrawlProgress(0);
-    }
-  }, [addNovel.isError, addNovel.isSuccess]);
-
-  React.useEffect(() => {
-    if (!addNovel.isSuccess || !addNovel.data) {
-      return;
-    }
-    const ids = preliminaryChapterIds(addNovel.data);
-    setSelectedChapterIds(new Set(ids));
-    setResultModalOpen(true);
-  }, [addNovel.data, addNovel.isSuccess]);
 
   const canAddNovel = cleanNovelInput(novelInput).length > 0 && detectedSource !== "none" && !addNovel.isPending;
 
@@ -487,7 +478,7 @@ export default function CrawlerPage() {
           footer={
             <div className="flex items-center justify-end gap-3">
               {(activeErrorKey.includes("SCRAPE_ACTIVITY_STILL_RUNNING") || activeErrorKey.includes("SCRAPE_ACTIVITY_FAILED")) && (
-                <Button variant="outline" onClick={() => window.location.href = "/admin/activity"}>
+                <Button variant="outline" onClick={() => router.push("/admin/activity")}>
                   View Activity Log
                 </Button>
               )}

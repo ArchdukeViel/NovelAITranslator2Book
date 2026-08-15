@@ -111,20 +111,27 @@ function parseDateFromInput(value: string): string | undefined {
   return normalized;
 }
 
+function stringifyJson(value: unknown): string | undefined {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return undefined;
+  }
+}
+
 function JsonPreview({ value }: { value: unknown }): React.ReactElement {
   if (value === null || value === undefined) {
     return <span className="text-muted-foreground">—</span>;
   }
-  try {
-    const str = JSON.stringify(value, null, 2);
-    return (
-      <pre className="max-h-64 overflow-auto rounded bg-muted p-2 text-xs font-mono whitespace-pre-wrap break-all">
-        {str}
-      </pre>
-    );
-  } catch {
+  const str = stringifyJson(value);
+  if (str === undefined) {
     return <span className="text-destructive">[Unserializable]</span>;
   }
+  return (
+    <pre className="max-h-64 overflow-auto rounded bg-muted p-2 text-xs font-mono whitespace-pre-wrap break-all">
+      {str}
+    </pre>
+  );
 }
 
 function MetadataSection({ metadata }: { metadata: Record<string, unknown> | null | undefined }): React.ReactElement {
