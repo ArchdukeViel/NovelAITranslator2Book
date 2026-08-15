@@ -21,6 +21,7 @@ pip-wheel-metadata/
 
 # Virtual environments
 .venv/
+.venv313-backup/
 venv/
 env/
 ENV/
@@ -30,6 +31,7 @@ ENV/
 .mypy_cache/
 .ruff_cache/
 .pyright/
+.playwright-cli/
 
 # Graphify generated knowledge graph
 graphify-out/

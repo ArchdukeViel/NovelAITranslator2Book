@@ -18,7 +18,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 # Passed in from compose build args; falls back to the rewrite proxy path
 ARG NEXT_PUBLIC_API_BASE_URL=/api
-ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+ARG NEXT_PUBLIC_API_URL=
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL} \
+    NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 COPY --from=deps /app/frontend/node_modules ./node_modules
 COPY frontend ./
