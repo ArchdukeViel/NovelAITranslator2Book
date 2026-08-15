@@ -141,7 +141,10 @@ Hardening contract:
   invalid.
 - **Migration-head parity.** Before SSH, the workflow compares the checked-out
   migration head with the exact admin image digest and requires
-  `c7d9e1f3a5b2`.
+  `c7a8b9d0e1f2`, the current release head. The role migration
+  `c7d9e1f3a5b2` is an earlier migration in that chain, not the final head;
+  a staging database at that earlier head is advanced by the one-shot
+  migration profile before readiness is accepted.
 - **Immutable Release Directory.** Deployment files under `deploy/` are copied
   to `/opt/novelai/releases/<VERSION>/` on the target host. `/opt/novelai/current`
   is updated as an atomic symlink to the release directory, guaranteeing remote Compose

@@ -120,6 +120,7 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     assert "release.env" in source
     assert "PREVIOUS_RELEASE" in source
     assert "docker image prune" not in source
+    assert '"c7a8b9d0e1f2"' in source
 
     # Exact SCP action pin and checkout contracts
     assert "appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634" in source
@@ -232,7 +233,7 @@ def test_deploy_input_flow_and_smoke_vars() -> None:
     assert "secrets.PRODUCTION_BASE_URL" not in source
 
     # The "Resolve deployment ref" step writes only a regex-validated checkout
-    # ref to GITHUB_OUTPUT (two writes: sha- tag suffix and 'latest' head); the
+    # ref to GITHUB_OUTPUT (one write: the sha- tag suffix); the
     # free-form version input itself is never emitted.
     assert source.count("$GITHUB_OUTPUT") == 1
     resolve_section = source[source.index("- name: Resolve deployment ref") : source.index("- uses: actions/checkout")]
