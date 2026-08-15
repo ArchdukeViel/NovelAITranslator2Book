@@ -161,7 +161,7 @@ procedure.
 1. Trigger a fresh object snapshot and encrypted PostgreSQL dump.
 2. Verify manifest, last commit, lengths, SHA-256, and backup freshness.
 3. Restore storage into an isolated prefix.
-4. Restore the DB into a disposable PostgreSQL 17 database whose name contains
+4. Restore the DB into a disposable PostgreSQL 18 database whose name contains
    `restore`; never point verification at production.
 5. Verify Alembic head, tables, constraints, row counts, representative
    queries, and content.

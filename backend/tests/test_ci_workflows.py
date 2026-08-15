@@ -59,7 +59,7 @@ def test_ci_setup_uv_pin_is_consistent() -> None:
 
     assert pins
     assert len(set(pins)) == 1, f"setup-uv uses inconsistent commit pins: {sorted(set(pins))}"
-    assert set(pins) == {"c771a70e6277c0a99b617c7a806ffedaca235ff9"}
+    assert set(pins) == {"20cfd1bf945f4377ade1205e4dbc17946fc9a30d"}
 
 
 def test_s3_integration_has_execution_policy() -> None:
@@ -128,7 +128,7 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     assert 'READY_CURL_ARGS=(--header "Host: ${SITE_DOMAIN}")' in source
 
     # Exact SCP action pin and checkout contracts
-    assert "appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634" in source
+    assert "appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345" in source
     # replace() is not a GitHub Actions expression function: the checkout ref
     # must be derived by the validated "Resolve deployment ref" shell step.
     assert "replace(inputs.version" not in source
@@ -137,7 +137,7 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     assert "id: deploy-ref" in source
 
     # Sigstore provenance, registry login, digest resolution, and release directory contracts
-    assert "docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c" in source
+    assert "docker/login-action@dbcb813823bdd20940b903addbd779551569679f" in source
     assert "ADMIN_IMAGE=" in source
     assert "READER_IMAGE=" in source
     assert "FRONTEND_IMAGE=" in source
@@ -185,7 +185,7 @@ def test_secret_backed_opencode_workflow_restricts_commenters() -> None:
     assert 'fromJSON(\'["OWNER", "MEMBER", "COLLABORATOR"]\')' in source
     assert "github.event.comment.author_association" in source
     assert "timeout-minutes: 15" in source
-    assert "npx --yes opencode-ai@1.18.11 github run" in source
+    assert "npx --yes opencode-ai@1.18.18 github run" in source
     assert "anomalyco/opencode/github@" not in source
 
 
@@ -300,7 +300,7 @@ def test_admin_image_pins_fixed_postgresql_client() -> None:
     dockerfile = (WORKFLOWS_DIR.parent.parent / "deploy" / "admin.Dockerfile").read_text(encoding="utf-8")
 
     assert "CVE-2026-6473" in dockerfile
-    assert "postgresql-client-17=17.11-1.pgdg13+2" in dockerfile
+    assert "postgresql-client-18=18.6-1.pgdg13+2" in dockerfile
 
 
 def test_node_version_alignment() -> None:
@@ -308,10 +308,10 @@ def test_node_version_alignment() -> None:
     package_json = (WORKFLOWS_DIR.parent.parent / "frontend" / "package.json").read_text(encoding="utf-8")
     dockerfile = (WORKFLOWS_DIR.parent.parent / "deploy" / "frontend.Dockerfile").read_text(encoding="utf-8")
 
-    assert nvmrc == "22"
-    assert '"node": ">=22 <23"' in package_json
-    assert "node:22-alpine" in dockerfile
-    assert "sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32" in dockerfile
+    assert nvmrc == "26.7.0"
+    assert '"node": ">=26 <27"' in package_json
+    assert "node:26.7.0-alpine" in dockerfile
+    assert "sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019" in dockerfile
     assert "/usr/local/lib/node_modules/npm" in dockerfile
     assert "/usr/local/bin/npm" in dockerfile
 
@@ -336,7 +336,9 @@ def test_production_compose_contract() -> None:
     # sha256 digest. Wrong digests fail `docker compose pull` on any host;
     # the deploy workflow is the only place that exercises the pins.
     pinned = re.findall(r"image: ([a-z0-9.-]+:[a-z0-9._-]+@sha256:[0-9a-f]{64})\s*$", source, re.M)
-    assert {"redis:7.4.2-alpine", "postgres:17.4-alpine", "caddy:2.9.1-alpine"} == {ref.split("@")[0] for ref in pinned}
+    assert {"redis:8.8.0-alpine", "postgres:18.6-alpine", "caddy:2.11.4-alpine"} == {
+        ref.split("@")[0] for ref in pinned
+    }
     assert len(pinned) == 3
     # Public-service images use ${VAR:-ghcr.io/...} interpolation and must
     # never be digest-pinned by CI: their digests change on every build, so
@@ -372,7 +374,7 @@ def test_ci_and_static_analysis_security_contracts() -> None:
     assert "--format=github" in static
     assert "--min-severity=medium" in static
     assert "S102,S307,S324,S501,S506,S602,S605,S608,S609" in static
-    assert "node-version: 22" in static
+    assert "node-version: 26.7.0" in static
     assert "npm ci" in static
 
 
