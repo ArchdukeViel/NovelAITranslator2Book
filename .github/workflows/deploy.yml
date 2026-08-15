@@ -257,6 +257,16 @@ jobs:
                 exit 1
               fi
             done
+            # Docker Desktop's WSL backend cannot bind a container directly to
+            # the Windows Tailnet address. Keep staging private by publishing
+            # Caddy only on the WSL loopback port; Windows forwards Tailnet
+            # port 80 to this port through the narrowly scoped host rule.
+            STAGING_HTTP_BIND=""
+            STAGING_HTTP_PORT=""
+            if [[ "$DEPLOY_ENV" == "staging" ]]; then
+              STAGING_HTTP_BIND="127.0.0.1"
+              STAGING_HTTP_PORT="8080"
+            fi
             RELEASE_ENV_TMP=$(mktemp "$RELEASE_DIR/.release.env.XXXXXX")
             {
               printf 'VERSION=%s\n' "$VERSION"
@@ -267,6 +277,10 @@ jobs:
               printf 'DEPLOY_ENV=%s\n' "$DEPLOY_ENV"
               printf 'DEPLOYED_AT_UTC=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
               printf 'PREVIOUS_RELEASE=%s\n' "$PREVIOUS_RELEASE"
+              if [[ -n "$STAGING_HTTP_BIND" ]]; then
+                printf 'PUBLIC_BIND_ADDRESS=%s\n' "$STAGING_HTTP_BIND"
+                printf 'PUBLIC_HTTP_PORT=%s\n' "$STAGING_HTTP_PORT"
+              fi
             } > "$RELEASE_ENV_TMP"
             chmod 0644 "$RELEASE_ENV_TMP"
             mv -f "$RELEASE_ENV_TMP" "$RELEASE_DIR/release.env"
@@ -294,8 +308,13 @@ jobs:
               exit 1
             fi
             READY_URL="http://${SITE_DOMAIN}/health/ready"
+            READY_CURL_ARGS=()
+            if [[ "$DEPLOY_ENV" == "staging" ]]; then
+              READY_URL="http://127.0.0.1:8080/health/ready"
+              READY_CURL_ARGS=(--header "Host: ${SITE_DOMAIN}")
+            fi
             for attempt in {1..12}; do
-              if curl --fail --silent --show-error --max-time 10 --output /dev/null "$READY_URL"; then
+              if curl --fail --silent --show-error --max-time 10 --output /dev/null "${READY_CURL_ARGS[@]}" "$READY_URL"; then
                 ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
                 echo "Deploy complete; readiness gate passed."
                 exit 0

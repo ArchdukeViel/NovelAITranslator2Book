@@ -44,10 +44,14 @@ reader entry points and requires shared Redis for distributed behavior.
 Staging is reachable only on the private Tailscale network. The current host
 address detected on 2026-08-14 is `100.93.40.30`; set both
 `SITE_DOMAIN=100.93.40.30` and `PUBLIC_BIND_ADDRESS=100.93.40.30` in the
-shared host environment, then browse to `http://100.93.40.30/`. The Caddy site
+shared host environment, then browse to `http://100.93.40.30/`. Because Docker
+Desktop's WSL backend cannot bind directly to the Windows Tailnet address, the
+staging workflow overrides only the release's Caddy publish to
+`127.0.0.1:8080`; the Windows host forwards Tailnet `:80` to that loopback port.
+The Caddy site
 address is explicitly prefixed with `http://`, so the private IP remains plain
 HTTP rather than enabling automatic HTTPS. This release publishes only port
-80 and binds it to the configured Tailnet address; backend, reader, Redis, and
+80 on the Tailnet address through that host proxy; backend, reader, Redis, and
 PostgreSQL have no host-published ports. Only `SITE_DOMAIN` is passed to Caddy;
 backend and reader healthchecks send the same configured host header so strict
 `ALLOWED_HOSTS` validation remains enabled for the private IP.
