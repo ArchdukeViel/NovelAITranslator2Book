@@ -277,6 +277,45 @@ database connection budget and the worker/scheduler lease model; do not scale
 backend replicas without reviewing `DB_CONNECTION_BUDGET`, Redis coordination,
 and scheduler lease ownership.
 
+## Staging Deployment Evidence
+
+The following sanitized record captures the first successful private staging
+cutover for PR #88. It is operational evidence for this WSL/Docker host and does
+not change the production `NO-GO` decision above.
+
+- **UTC deployment window:** `2026-08-15 13:46:20Z` through `2026-08-15 13:47:50Z`
+  (Deploy run `31888063044`).
+- **Source:** `main` at full SHA
+  `5856df87eff3a0f957e5310834b6fb30182ffa8f`; the staging loopback proxy
+  adjustment was delivered by PR #105 in the PR #88 deployment series.
+- **Published images:** Build and Push run `31887840108`; provenance was
+  verified before SSH deployment.
+  - admin: `sha256:565949d850c191d124e771930c9b1ed4d8a3730c67ee82c41fcac2453dadb407`
+  - reader: `sha256:258bf087d3fbb113111d69b5dd6cdf5538c9886f2140e4982e27cfc34ad4ff66`
+  - frontend: `sha256:3d1738c750a12e5b9dd811d5cb14dc26cad5f09f05d1a58044772673d5482207`
+- **Database:** The container-run migration completed successfully; Supabase
+  read-only verification reported Alembic head `c7a8b9d0e1f2`, with
+  `novelai_app` present as `NOLOGIN` and `novelai_runtime` present as the
+  application `LOGIN` role.
+- **Private URL:** `http://100.93.40.30/` through Tailscale. Windows forwards
+  Tailnet port 80 to WSL loopback port 8080; only Caddy is host-published.
+  Backend, reader, Redis, and PostgreSQL have no host-published ports.
+- **Routing evidence:** Through the Tailnet address, `/`, `/health/live`,
+  `/health/ready`, `/api/auth/me`, and `/api/public/catalog?page_size=1`
+  returned `200`; `/api/admin/health` returned the expected unauthenticated
+  `401`.
+- **Restart evidence:** Backend and Caddy were restarted independently; both
+  returned to `healthy`, and `/health/ready` returned `200` afterward.
+- **Previous release:** `PREVIOUS_RELEASE` was empty at the successful cutover
+  because earlier failed attempts never advanced `/opt/novelai/current`. The
+  old `sha-071f6829f572b431f9583ff0988560cd795c9b56` image remains an
+  identifiable schema-incompatible rollback candidate and was not executed.
+- **Limitations:** This is one WSL/Docker host, not HA; the laptop, Docker
+  Desktop, Ubuntu/WSL, network, and Tailscale must remain available. Access is
+  private HTTP only; TLS, production hosted monitoring, recovery acceptance,
+  and the full end-user flow remain outstanding. This documentation-only
+  follow-up is not redeployed.
+
 ## Acceptance
 
 No deployment is launch-ready until hosted auth/security, monitoring/alerts,
