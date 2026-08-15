@@ -385,6 +385,9 @@ def test_compose_private_http_health_and_migration_contract() -> None:
     assert "condition: service_completed_successfully" not in compose
     assert "healthcheck:" in compose[frontend_start:]
     assert "stop_grace_period" in compose[frontend_start:]
+    assert "headers={'Host': '${SITE_DOMAIN:-localhost}'}" in compose
+    assert "localhost:8000/health/live" in compose
+    assert "localhost:8001/health/live" in compose
 
 
 def test_deploy_actions_consume_deploy_port() -> None:
