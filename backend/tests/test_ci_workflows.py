@@ -121,6 +121,11 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     assert "PREVIOUS_RELEASE" in source
     assert "docker image prune" not in source
     assert '"c7a8b9d0e1f2"' in source
+    assert 'STAGING_HTTP_BIND="127.0.0.1"' in source
+    assert 'STAGING_HTTP_PORT="8080"' in source
+    assert "PUBLIC_BIND_ADDRESS=%s\\n" in source
+    assert 'READY_URL="http://127.0.0.1:8080/health/ready"' in source
+    assert 'READY_CURL_ARGS=(--header "Host: ${SITE_DOMAIN}")' in source
 
     # Exact SCP action pin and checkout contracts
     assert "appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634" in source
