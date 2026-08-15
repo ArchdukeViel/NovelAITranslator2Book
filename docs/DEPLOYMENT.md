@@ -49,6 +49,8 @@ address is explicitly prefixed with `http://`, so the private IP remains plain
 HTTP rather than enabling automatic HTTPS. This release publishes only port
 80 and binds it to the configured Tailnet address; backend, reader, Redis, and
 PostgreSQL have no host-published ports. Only `SITE_DOMAIN` is passed to Caddy;
+backend and reader healthchecks send the same configured host header so strict
+`ALLOWED_HOSTS` validation remains enabled for the private IP.
 never inject the shared `.env` into the proxy container because it contains
 unrelated database and runtime secrets. TLS remains deferred until a trusted,
 renewable Tailscale certificate path exists.
