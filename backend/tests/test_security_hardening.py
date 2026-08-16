@@ -211,6 +211,9 @@ def test_redaction_helpers_scrub_nested_secret_values() -> None:
 
     assert "SECRET_VALUE" not in str(payload)
     assert redact_secret_text("Authorization: Bearer SECRET_VALUE") == "Authorization: [REDACTED]"
+    assert redact_secret_text("https://example.test/callback?token=SECRET_VALUE&ok=1") == (
+        "https://example.test/callback?token=[REDACTED]&ok=1"
+    )
 
 
 def test_log_formatters_redact_secret_values() -> None:

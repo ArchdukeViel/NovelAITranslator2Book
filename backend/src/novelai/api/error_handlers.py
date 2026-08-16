@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import errno
 import logging
-import os
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -17,6 +16,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from novelai.config.settings import settings
 from novelai.core.errors import (
     ConfigError,
     NovelAIError,
@@ -32,7 +32,11 @@ from novelai.core.errors import (
 from novelai.core.security import redact_secret_text, redact_sensitive
 
 logger = logging.getLogger(__name__)
-DEBUG_ERRORS = os.getenv("DEBUG_ERRORS", "false").lower() == "true"
+
+
+def _is_debug_errors() -> bool:
+    return bool(settings.DEBUG_ERRORS)
+
 
 DEFAULT_INTERNAL_STATUS = status.HTTP_500_INTERNAL_SERVER_ERROR
 DEFAULT_INTERNAL_CODE = "INTERNAL_ERROR"
@@ -617,7 +621,14 @@ def add_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(request: Request, exc: RequestValidationError):
         """Pydantic/FastAPI request validation errors."""
-        logger.warning("Request validation error: %s", exc)
+        safe_fields = [
+            {
+                "field": " -> ".join(str(p) for p in e.get("loc", [])),
+                "type": e.get("type", ""),
+            }
+            for e in exc.errors()
+        ]
+        logger.warning("Request validation failed fields=%s", safe_fields)
         return _json_error(
             status_code=422,
             code="VALIDATION_ERROR",
@@ -636,11 +647,11 @@ def add_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ProviderConfigError)
     async def provider_config_error_handler(request: Request, exc: ProviderConfigError):
         """Provider configuration missing or invalid."""
-        logger.warning("Provider config error: %s", exc)
+        logger.warning("Provider config error: %s", redact_secret_text(str(exc)))
         return _json_error(
             status_code=status.HTTP_400_BAD_REQUEST,
             code="PROVIDER_CONFIG_ERROR",
-            message=str(exc),
+            message="The selected provider is not configured.",
             category="provider",
             trace_id=_request_trace_id(request),
         )
@@ -684,14 +695,11 @@ def add_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(SourceFetchError)
     async def source_fetch_error_handler(request: Request, exc: SourceFetchError):
         """Failed to fetch from source."""
-        logger.error("Source fetch error: %s", exc)
-        details: dict[str, Any] = {"source_error": redact_secret_text(str(exc))}
+        logger.error("Source fetch error: %s", redact_secret_text(str(exc)))
         source_status = getattr(exc, "status_code", None)
-        source_url = getattr(exc, "url", None)
+        details: dict[str, Any] = {}
         if source_status is not None:
             details["http_status"] = source_status
-        if source_url is not None:
-            details["url"] = source_url
         return _json_error(
             status_code=status.HTTP_502_BAD_GATEWAY,
             code="SOURCE_FETCH_ERROR",
@@ -704,11 +712,11 @@ def add_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(SourceError)
     async def source_error_handler(request: Request, exc: SourceError):
         """Generic source error."""
-        logger.error("Source error: %s", exc)
+        logger.error("Source error: %s", redact_secret_text(str(exc)))
         return _json_error(
             status_code=status.HTTP_400_BAD_REQUEST,
             code="SOURCE_ERROR",
-            message=str(exc),
+            message="The source adapter could not parse or use the supplied source.",
             category="crawler",
             trace_id=_request_trace_id(request),
         )
@@ -716,8 +724,8 @@ def add_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(PipelineError)
     async def pipeline_error_handler(request: Request, exc: PipelineError):
         """Pipeline execution error."""
-        logger.error("Pipeline error: %s", exc)
-        details: dict[str, Any] = {"pipeline_error": str(exc)}
+        logger.error("Pipeline error: %s", redact_secret_text(str(exc)))
+        details: dict[str, Any] = {"error_type": exc.__class__.__name__}
         stage = getattr(exc, "stage", None)
         novel_code = getattr(exc, "novel_code", None)
         if stage is not None:
@@ -736,7 +744,7 @@ def add_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(StorageError)
     async def storage_error_handler(request: Request, exc: StorageError):
         """Storage layer error."""
-        logger.error("Storage error: %s", exc)
+        logger.error("Storage error: %s", redact_secret_text(str(exc)))
         status_code = DEFAULT_INTERNAL_STATUS
         code = "STORAGE_ERROR"
         message = "Storage service error. Please try again."
@@ -775,12 +783,12 @@ def add_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ConfigError)
     async def config_error_handler(request: Request, exc: ConfigError):
         """Configuration error."""
-        logger.critical("Config error: %s", exc)
+        logger.critical("Config error: %s", redact_secret_text(str(exc)))
         return _json_error(
             status_code=DEFAULT_INTERNAL_STATUS,
             code="CONFIGURATION_ERROR",
             message="Server configuration error. Contact administrator.",
-            details={"config_error": str(exc)},
+            details={"error_type": exc.__class__.__name__},
             category="config",
             trace_id=_request_trace_id(request),
         )
@@ -788,20 +796,28 @@ def add_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(NovelAIError)
     async def novel_ai_error_handler(request: Request, exc: NovelAIError):
         """Catch-all for Novel AI errors."""
-        logger.error("Novel AI error: %s", exc)
-        details = getattr(exc, "details", None)
-        if details is None:
-            details = {"application_error": str(exc)}
-        message = (
-            _as_non_empty_string(getattr(exc, "message", None))
-            or _as_non_empty_string(str(exc))
-            or "An application error occurred."
+        logger.error("Novel AI error: %s", redact_secret_text(str(exc)))
+        has_public_metadata = any(
+            getattr(exc, field, None) is not None
+            for field in ("status_code", "code", "category", "explanation", "details")
         )
+        if has_public_metadata:
+            details = redact_sensitive(getattr(exc, "details", None))
+            message = redact_secret_text(
+                _as_non_empty_string(getattr(exc, "message", None))
+                or _as_non_empty_string(str(exc))
+                or "An application error occurred."
+            )
+            explanation = redact_secret_text(_as_non_empty_string(getattr(exc, "explanation", None)) or "") or None
+        else:
+            details = {"error_type": exc.__class__.__name__}
+            message = "The backend application could not complete the request."
+            explanation = None
         return _json_error(
             status_code=_as_status_code(getattr(exc, "status_code", DEFAULT_INTERNAL_STATUS)),
             code=_as_non_empty_string(getattr(exc, "code", None)) or "APPLICATION_ERROR",
             message=message,
-            explanation=_as_non_empty_string(getattr(exc, "explanation", None)),
+            explanation=explanation,
             details=details,
             category=_as_non_empty_string(getattr(exc, "category", None)) or "application",
             trace_id=_request_trace_id(request),
@@ -811,12 +827,18 @@ def add_error_handlers(app: FastAPI) -> None:
     async def unhandled_error_handler(request: Request, exc: Exception):
         """Last-resort handler for unexpected backend errors."""
         classified = _classify_unhandled_error(request, exc)
-        logger.exception("Unhandled API error classified as %s: %s", classified.code, exc)
+        logger.error(
+            "Unhandled API error classified as %s exception_type=%s error=%s",
+            classified.code,
+            exc.__class__.__name__,
+            redact_secret_text(str(exc)),
+        )
         is_server_error = classified.status_code == DEFAULT_INTERNAL_STATUS
-        public_message = classified.message if DEBUG_ERRORS or not is_server_error else DEFAULT_INTERNAL_MESSAGE
+        debug_enabled = _is_debug_errors()
+        public_message = classified.message if debug_enabled or not is_server_error else DEFAULT_INTERNAL_MESSAGE
         public_details = (
             classified.details
-            if DEBUG_ERRORS or not is_server_error
+            if debug_enabled or not is_server_error
             else {
                 "operation": classified.details.get("operation"),
             }

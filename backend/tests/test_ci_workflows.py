@@ -120,7 +120,7 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     assert "release.env" in source
     assert "PREVIOUS_RELEASE" in source
     assert "docker image prune" not in source
-    assert '"4f7c2a9d1e6b"' in source
+    assert '"d7e4f9a1c2b3"' in source
     assert 'STAGING_HTTP_BIND="127.0.0.1"' in source
     assert 'STAGING_HTTP_PORT="8080"' in source
     assert "PUBLIC_BIND_ADDRESS=%s\\n" in source
@@ -401,6 +401,8 @@ def test_compose_internal_proxy_health_and_migration_contract() -> None:
     assert "headers={'Host': '${SITE_DOMAIN:-localhost}'}" in compose
     assert "localhost:8000/health/live" in compose
     assert "localhost:8001/health/live" in compose
+    assert "novelai-frontend:local" in compose
+    assert "MIGRATION_DATABASE_URL:-${DATABASE_URL:?Set DATABASE_URL}" in compose
 
 
 def test_deploy_actions_consume_deploy_port() -> None:

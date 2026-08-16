@@ -7,6 +7,9 @@ from urllib.parse import urlparse
 
 from novelai.config.settings import settings
 
+_MAX_TRACKED_DOMAINS = 1000
+_STALE_DOMAIN_SECONDS = 3600.0
+
 
 @dataclass
 class _DomainThrottleState:
@@ -76,6 +79,23 @@ class DomainThrottle:
                 )
             elif 200 <= status_code < 400:
                 state.penalty_seconds = max(0.0, state.penalty_seconds * 0.5)
+
+            # Evict stale records first, then oldest records if an attacker
+            # keeps creating fresh domains faster than they become stale.
+            now = time.monotonic()
+            if len(self._states) > _MAX_TRACKED_DOMAINS:
+                stale_keys = [k for k, v in self._states.items() if now - v.last_request_at > _STALE_DOMAIN_SECONDS]
+                for k in stale_keys:
+                    self._states.pop(k, None)
+
+                overflow = len(self._states) - _MAX_TRACKED_DOMAINS
+                if overflow > 0:
+                    oldest = sorted(
+                        ((state.last_request_at, key) for key, state in self._states.items() if key != domain),
+                        key=lambda item: item[0],
+                    )
+                    for _last_request_at, key in oldest[:overflow]:
+                        self._states.pop(key, None)
 
     def snapshot(self) -> dict[str, dict[str, float]]:
         return {

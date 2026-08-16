@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
@@ -63,11 +63,11 @@ class NovelSummary(BaseModel):
 
 
 class NovelCreateRequest(BaseModel):
-    novel_id: str
-    title: str
-    source_url: str | None = None
-    source_key: str | None = None
-    language: str = "ja"
+    novel_id: str = Field(min_length=1, max_length=255)
+    title: str = Field(min_length=1, max_length=500)
+    source_url: str | None = Field(default=None, max_length=2048)
+    source_key: str | None = Field(default=None, max_length=100)
+    language: str = Field(default="ja", min_length=2, max_length=20)
 
 
 class NovelCreateResponse(BaseModel):

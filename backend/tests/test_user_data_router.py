@@ -451,7 +451,7 @@ class TestRequestContract:
         )
         assert resp.status_code == 201
         assert resp.json()["slug"] == "test-novel"
-        assert resp.json()["chapter_id"] is None
+        assert resp.json()["chapter_id"] == chapter_id
 
         assert client.post("/api/user/requests", json={"request_type": "bad"}, headers=headers).status_code == 422
         assert client.post("/api/user/requests", json={"request_type": "novel"}, headers=headers).status_code == 422

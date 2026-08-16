@@ -207,6 +207,19 @@ def test_users_disabled_by_index_migration() -> None:
     )
 
 
+def test_request_review_invariants_migration_contract() -> None:
+    filename = "2026-08-17_d7e4f9a1c2b3_add_request_review_auth_invariants.py"
+    migration = _load_migration(filename, "request_review_invariants")
+    source = (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+
+    assert migration.revision == "d7e4f9a1c2b3"
+    assert migration.down_revision == "4f7c2a9d1e6b"
+    assert "chapter_id" in source
+    assert "uq_reviews_user_novel" in source
+    assert "ix_users_email_lower" in source
+    assert "HAVING COUNT(*) > 1" in source
+
+
 def test_runtime_role_migration_is_least_privilege() -> None:
     source = (MIGRATIONS_DIR / "2026-07-30_c7d9e1f3a5b2_add_novelai_app_runtime_role.py").read_text(encoding="utf-8")
 

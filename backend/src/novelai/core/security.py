@@ -25,6 +25,9 @@ _JSON_SECRET_RE = re.compile(
     r'(?i)("(?:api[_-]?key|apikey|authorization|cookie|secret|token|password|admin[_-]?token)"\s*:\s*")([^"]*)(")'
 )
 _BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+_URL_SECRET_QUERY_RE = re.compile(
+    r"(?i)([?&](?:sig|signature|token|key|api[_-]?key|apikey|secret|password|AWSAccessKeyId|X-Amz-Signature|X-Amz-Credential)=)([^&#\s]+)"
+)
 _WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:")
 _SAFE_PHYSICAL_STEM_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -80,6 +83,7 @@ def redact_secret_text(text: Any) -> str:
     value = _JSON_SECRET_RE.sub(lambda match: f"{match.group(1)}{_REDACTED}{match.group(3)}", value)
     value = _HEADER_SECRET_RE.sub(lambda match: f"{match.group(1)}: {_REDACTED}", value)
     value = _KEY_VALUE_SECRET_RE.sub(lambda match: f"{match.group(1)}={_REDACTED}", value)
+    value = _URL_SECRET_QUERY_RE.sub(lambda match: f"{match.group(1)}{_REDACTED}", value)
     return _BEARER_RE.sub(f"Bearer {_REDACTED}", value)
 
 

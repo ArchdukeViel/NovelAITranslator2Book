@@ -101,7 +101,7 @@ async def test_partial_failure_crawl_records_source_health_failure(activity_env)
     activity_id = activity["activity_id"]
     source_key = activity["source_key"]
 
-    async def _stub_run_crawl_activity(self, activity: dict[str, Any]) -> dict[str, Any]:
+    async def _stub_run_crawl_activity(self, activity: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {
             "chapters": activity.get("chapters"),
             "crawl_result": {
@@ -147,7 +147,7 @@ async def test_clean_crawl_records_source_health_success(activity_env) -> None:
     activity_id = activity["activity_id"]
     source_key = activity["source_key"]
 
-    async def _stub_run_crawl_activity(self, activity: dict[str, Any]) -> dict[str, Any]:
+    async def _stub_run_crawl_activity(self, activity: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {
             "chapters": activity.get("chapters"),
             "crawl_result": {
@@ -179,7 +179,7 @@ def _stub_for_orchestrator(crawl_result: dict[str, Any]):
     """Build an _run_crawl_activity stub returning the given inner dict
     using the nested ``crawl_result`` envelope."""
 
-    async def _stub(self, activity: dict[str, Any]) -> dict[str, Any]:
+    async def _stub(self, activity: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {"chapters": activity.get("chapters"), "crawl_result": crawl_result}
 
     return _stub
@@ -189,7 +189,7 @@ def _stub_direct(crawl_result: dict[str, Any]):
     """Build an _run_crawl_activity stub returning a direct flat dict (no
     nested ``crawl_result`` envelope) — Section 10 alternative format."""
 
-    async def _stub(self, activity: dict[str, Any]) -> dict[str, Any]:
+    async def _stub(self, activity: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {
             "chapters": activity.get("chapters"),
             **crawl_result,

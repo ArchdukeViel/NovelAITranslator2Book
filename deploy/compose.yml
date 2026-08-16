@@ -63,7 +63,8 @@ services:
     stop_grace_period: 30s
 
   frontend:
-    image: ${FRONTEND_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-frontend:${VERSION:-latest}}
+    # Local-only fallback; release.env overrides this with a digest-pinned image.
+    image: ${FRONTEND_IMAGE:-novelai-frontend:local}
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_BASE_URL: /api
@@ -80,7 +81,7 @@ services:
     stop_grace_period: 30s
 
   migrate:
-    image: ${ADMIN_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-admin:${VERSION:-latest}}
+    image: ${ADMIN_IMAGE:-novelai-admin:local}
     profiles:
       - migration
     user: root
@@ -105,7 +106,8 @@ services:
     restart: "no"
 
   backend:
-    image: ${ADMIN_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-admin:${VERSION:-latest}}
+    # Local-only fallback; release.env overrides this with a digest-pinned image.
+    image: ${ADMIN_IMAGE:-novelai-admin:local}
     networks:
       - novelai-net
     healthcheck:
@@ -225,7 +227,8 @@ services:
     stop_grace_period: 60s
 
   reader:
-    image: ${READER_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-reader:${VERSION:-latest}}
+    # Local-only fallback; release.env overrides this with a digest-pinned image.
+    image: ${READER_IMAGE:-novelai-reader:local}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen(urllib.request.Request('http://localhost:8001/health/live', headers={'Host': '${SITE_DOMAIN:-localhost}'})).read()"]
       interval: 30s

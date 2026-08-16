@@ -144,7 +144,7 @@ Hardening contract:
   invalid.
 - **Migration-head parity.** Before SSH, the workflow compares the checked-out
   migration head with the exact admin image digest and requires
-  `4f7c2a9d1e6b`, the current release head. The role migration
+  `d7e4f9a1c2b3`, the current release head. The role migration
   `c7d9e1f3a5b2` is an earlier migration in that chain, not the final head;
   a staging database at that earlier head is advanced by the one-shot
   migration profile before readiness is accepted.
@@ -155,6 +155,9 @@ Hardening contract:
 - **Separate environment files.** Each release records non-secret `release.env`
   metadata containing the full Git SHA and all three image digest references;
   Compose receives it separately from the shared secret `.env`.
+- **Local Compose fallback.** The base Compose file uses local-only image names
+  for development builds. Release deployment still requires the workflow to
+  override all three names with immutable GHCR digests in `release.env`.
 - **Migration and readiness gate.** The `migration` profile is run exactly once,
   then Compose starts with `--wait --wait-timeout 180`; `/health/ready` must pass
   through Caddy before `/opt/novelai/current` advances. Automatic image pruning
