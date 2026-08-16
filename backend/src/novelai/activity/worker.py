@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
+from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any
 
@@ -315,7 +316,7 @@ class ActivityWorkerService:
 
         raise ValueError(f"Unsupported crawl activity kind: {kind}")
 
-    async def _run_translation_activity(self, activity: dict[str, Any]) -> dict[str, Any]:
+    async def _run_translation_activity(self, activity: dict[str, Any], lease_id: str) -> dict[str, Any]:
         kind = str(activity.get("kind") or "")
         if kind not in {item.value for item in TranslationJobKind}:
             raise ValueError(f"Unsupported translation activity kind: {kind}")
@@ -361,6 +362,7 @@ class ActivityWorkerService:
                         str(activity["activity_id"]),
                         "cancelled",
                         error=f"Stale glossary: revision {scheduled_revision} -> {current_revision}",
+                        lease_id=lease_id,
                     )
                     return {
                         "chapters": activity.get("chapters") or "all",
@@ -422,13 +424,37 @@ class ActivityWorkerService:
                 result["glossary_diagnostics_summary"] = aggregate_glossary_diagnostics(chapter_diagnostics)
         return result
 
-    async def run_activity(self, activity_id: str) -> dict[str, Any] | None:
-        activity = self.activity_log.get_activity(activity_id)
+    async def run_activity(self, activity_id: str, *, lease_id: str | None = None) -> dict[str, Any] | None:
+        activity = (
+            self.activity_log.claim_activity(activity_id)
+            if lease_id is None
+            else self.activity_log.get_activity(activity_id)
+        )
         if activity is None:
             return None
-
-        if activity.get("status") != JobStatus.PENDING.value:
+        if activity.get("status") != JobStatus.RUNNING.value:
             raise ValueError(f"Activity cannot be run from status: {activity.get('status')}")
+        resolved_lease_id = lease_id or str(activity.get("lease_id") or "")
+        if not resolved_lease_id or activity.get("lease_id") != resolved_lease_id:
+            raise ValueError("Activity lease is missing or no longer valid")
+
+        heartbeat = asyncio.create_task(self._lease_heartbeat(activity_id, resolved_lease_id))
+        try:
+            return await self._run_claimed_activity(activity, resolved_lease_id)
+        finally:
+            heartbeat.cancel()
+            with suppress(asyncio.CancelledError):
+                await heartbeat
+
+    async def _lease_heartbeat(self, activity_id: str, lease_id: str) -> None:
+        interval = max(1.0, self.activity_log.LEASE_SECONDS / 3)
+        while True:
+            await asyncio.sleep(interval)
+            if not self.activity_log.renew_activity_lease(activity_id, lease_id):
+                return
+
+    async def _run_claimed_activity(self, activity: dict[str, Any], lease_id: str) -> dict[str, Any] | None:
+        activity_id = str(activity["activity_id"])
 
         activity_metadata = {
             "activity_subtype": self._activity_subtype(activity),
@@ -447,6 +473,7 @@ class ActivityWorkerService:
             activity_id,
             JobStatus.RUNNING,
             metadata={**activity_metadata, "current_stage": "running"},
+            lease_id=lease_id,
         )
         try:
             if activity.get("type") == "crawl":
@@ -472,9 +499,32 @@ class ActivityWorkerService:
                 else:
                     self.activity_log.record_source_health(str(activity.get("source_key") or ""), success=True)
             elif activity.get("type") == "translation":
-                result_metadata = await self._run_translation_activity(activity)
+                result_metadata = await self._run_translation_activity(activity, lease_id)
             else:
                 raise ValueError(f"Unsupported activity type: {activity.get('type')}")
+
+            if isinstance(result_metadata, dict) and result_metadata.get("stale_before_run"):
+                cancelled = self.activity_log.get_activity(activity_id)
+                if cancelled is None or cancelled.get("status") != JobStatus.CANCELLED.value:
+                    raise RuntimeError("Stale activity was not cancelled safely")
+                return cancelled
+        except asyncio.CancelledError as exc:
+            cancelled_metadata: dict[str, Any] = {
+                **activity_metadata,
+                "current_stage": "cancelled",
+                "cancelled_by": "owner",
+                "errors": [{"message": str(exc), "error_code": "CANCELLED"}],
+            }
+            cancelled = self.activity_log.update_activity_status(
+                activity_id,
+                JobStatus.CANCELLED,
+                error=str(exc),
+                metadata=cancelled_metadata,
+                lease_id=lease_id,
+            )
+            if cancelled is None:
+                raise
+            return cancelled
         except Exception as exc:
             if (
                 activity.get("type") == "crawl"
@@ -492,23 +542,6 @@ class ActivityWorkerService:
             chapter_summary = getattr(exc, "chapter_summary", None)
             if not isinstance(chapter_summary, dict):
                 chapter_summary = None
-            if isinstance(exc, asyncio.CancelledError):
-                cancelled_metadata: dict[str, Any] = {
-                    **activity_metadata,
-                    "current_stage": "cancelled",
-                    "cancelled_by": "owner",
-                    "errors": [{"message": str(exc), "error_code": "CANCELLED"}],
-                }
-                cancelled = self.activity_log.update_activity_status(
-                    activity_id,
-                    JobStatus.CANCELLED,
-                    error=str(exc),
-                    metadata=cancelled_metadata,
-                )
-                if cancelled is None:
-                    raise
-                return cancelled
-
             paused_status = self._pause_status(exc)
             if paused_status is not None:
                 paused_metadata: dict[str, Any] = {
@@ -534,6 +567,7 @@ class ActivityWorkerService:
                     paused_status,
                     error=str(exc),
                     metadata=paused_metadata,
+                    lease_id=lease_id,
                 )
                 if paused is None:
                     raise
@@ -563,6 +597,7 @@ class ActivityWorkerService:
                 JobStatus.FAILED,
                 error=str(exc),
                 metadata=failed_metadata,
+                lease_id=lease_id,
             )
             if failed is None:
                 raise
@@ -597,7 +632,10 @@ class ActivityWorkerService:
                 "completed": 1,
                 "result": result_metadata,
             },
+            lease_id=lease_id,
         )
+        if completed is None:
+            raise RuntimeError("Activity lease was lost before completion")
         self._notify_translation_transition(activity, status=JobStatus.COMPLETED, result=result_metadata)
         return completed
 
@@ -695,10 +733,13 @@ class ActivityWorkerService:
             return NotificationService(db_session=db_session).persistence().create(**payload)  # type: ignore[arg-type]
 
     async def run_next(self, *, activity_type: str | None = None) -> dict[str, Any] | None:
-        activity = self.activity_log.next_pending_activity(activity_type=activity_type)
+        activity = self.activity_log.claim_next_activity(activity_type=activity_type)
         if activity is None:
             return None
-        return await self.run_activity(str(activity["activity_id"]))
+        return await self.run_activity(
+            str(activity["activity_id"]),
+            lease_id=str(activity["lease_id"]),
+        )
 
     async def retry_activity(self, activity_id: str) -> dict[str, Any] | None:
         return self.activity_log.retry_activity(activity_id)

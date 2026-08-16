@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Callable, Mapping
 
@@ -37,22 +38,33 @@ class InMemoryRateLimiter(RateLimiter):
         self.window = float(window_seconds)
         self.limits = dict(limits or {})
         self._hits: dict[str, list[float]] = hits_storage if hits_storage is not None else {}
+        self._last_prune = 0.0
+        self._lock = threading.Lock()
 
     def hit(self, client_id: str, action: str, *, key_transform: Callable[[str], str] | None = None) -> bool:
-        if key_transform is not None:
-            client_id = key_transform(client_id)
-        key = f"{client_id}:{action}"
-        now = time.monotonic()
-        window_start = now - self.window
-        hits = [t for t in self._hits.get(key, []) if t > window_start]
-        limit = int(self.limits.get(action, 0))
-        if limit > 0 and len(hits) >= limit:
-            # do not append the new hit if limit exceeded
+        with self._lock:
+            if key_transform is not None:
+                client_id = key_transform(client_id)
+            key = f"{client_id}:{action}"
+            now = time.monotonic()
+            window_start = now - self.window
+            if now - self._last_prune >= self.window:
+                for stored_key, stored_hits in list(self._hits.items()):
+                    retained = [t for t in stored_hits if t > window_start]
+                    if retained:
+                        self._hits[stored_key] = retained
+                    else:
+                        self._hits.pop(stored_key, None)
+                self._last_prune = now
+            hits = [t for t in self._hits.get(key, []) if t > window_start]
+            limit = int(self.limits.get(action, 0))
+            if limit > 0 and len(hits) >= limit:
+                # do not append the new hit if limit exceeded
+                self._hits[key] = hits
+                return False
+            hits.append(now)
             self._hits[key] = hits
-            return False
-        hits.append(now)
-        self._hits[key] = hits
-        return True
+            return True
 
 
 class DisabledRateLimiter(RateLimiter):

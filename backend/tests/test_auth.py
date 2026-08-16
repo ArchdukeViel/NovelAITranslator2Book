@@ -236,6 +236,32 @@ class TestGetCurrentUser:
         assert data["role"] == "owner"
         assert data["auth"] is True
 
+    def test_bootstrap_login_uses_the_database_owner_identity(self, client, db_session, monkeypatch):
+        from novelai.config.settings import settings
+
+        db_session.delete(db_session.get(User, 1))
+        db_session.flush()
+        db_session.add(User(id=42, email="actual-owner@example.com", role="owner", is_active=True))
+        db_session.commit()
+        monkeypatch.setattr(settings, "OWNER_BOOTSTRAP_SECRET", "test-owner-secret")
+
+        response = client.post("/api/auth/login", json={"secret": "test-owner-secret"})
+
+        assert response.status_code == 200
+        assert response.json()["user_id"] == 42
+        assert client.get("/test/me").json()["user_id"] == 42
+
+    def test_session_role_is_reloaded_from_database(self, owner_client, db_session):
+        owner = db_session.query(User).filter_by(role="owner").one()
+        owner.role = "user"
+        db_session.commit()
+
+        response = owner_client.get("/test/me")
+
+        assert response.status_code == 200
+        assert response.json()["role"] == "user"
+        assert owner_client.get("/test/owner-only").status_code == 403
+
 
 # ---------------------------------------------------------------------------
 # Session revocation: DB-backed get_current_user validation
@@ -706,6 +732,46 @@ class TestPublicPasswordLogin:
 
 
 class TestPublicPasswordReset:
+    def test_reset_confirm_revokes_the_existing_session(self, oauth_client, db_session, auth_email_outbox):
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("old-password-long"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        assert (
+            oauth_client.post(
+                "/api/auth/password/login",
+                json={"email": "reader@example.com", "password": "old-password-long"},
+            ).status_code
+            == 200
+        )
+        assert oauth_client.get("/api/auth/me").json()["is_authenticated"] is True
+
+        assert (
+            oauth_client.post(
+                "/api/auth/password/reset/request",
+                json={"email": "reader@example.com"},
+            ).status_code
+            == 200
+        )
+        token = auth_email_outbox.outbox[0].token
+
+        assert (
+            oauth_client.post(
+                "/api/auth/password/reset/confirm",
+                json={"token": token, "new_password": "new-password-long"},
+            ).status_code
+            == 200
+        )
+        db_session.refresh(user)
+        assert user.session_revoked_at is not None
+        assert oauth_client.get("/api/auth/me").json()["is_authenticated"] is False
+
     def test_reset_request_sends_fake_email_and_confirm_uses_captured_token(
         self, oauth_client, db_session, auth_email_outbox
     ):

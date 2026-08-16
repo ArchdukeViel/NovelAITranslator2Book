@@ -214,6 +214,7 @@ class AuthService:
 
         now = datetime.now(UTC)
         user.password_hash = hash_password(new_password)
+        user.session_revoked_at = now
         reset_token.used_at = now
         self.db_session.query(PasswordResetToken).filter(
             PasswordResetToken.user_id == user.id,
@@ -385,6 +386,8 @@ class AuthService:
         return self.db_session.get(User, user_id)
 
     def set_role(self, user_id: int, target_role: str) -> User:
+        if target_role not in {"guest", "user"}:
+            raise ValueError("target_role must be 'guest' or 'user'")
         user = self.get_user(user_id)
         if user is None:
             raise LookupError("user_not_found")
@@ -430,8 +433,6 @@ class AuthService:
         if user is None:
             raise LookupError("user_not_found")
         if self.is_owner_user(user):
-            raise PermissionError("owner_session_protected")
-        if user_id == 1:
             raise PermissionError("owner_session_protected")
         user.session_revoked_at = _utcnow()
         return user

@@ -602,12 +602,12 @@ class TestSessionEnforcement:
     def test_owner_sessions_cannot_be_revoked(self, db_session: sessionmaker) -> None:
         s = db_session()
         try:
-            s.add(User(id=1, email="owner@test", role="owner", is_active=True))
+            s.add(User(id=42, email="owner@test", role="owner", is_active=True))
             s.commit()
 
             svc = AuthService(db_session=s)
             with pytest.raises(PermissionError, match="owner_session_protected"):
-                svc.revoke_sessions(1)
+                svc.revoke_sessions(42)
         finally:
             s.close()
 

@@ -8,7 +8,7 @@ Canonical deployment topology, release, rollback, and GitHub-control contract. F
 
 | Service | Purpose |
 |---|---|
-| `caddy` | Private HTTP entry point, compression, security headers, ordered routing. |
+| `caddy` | Internal HTTP proxy behind the browser-facing HTTPS entry point, compression, security headers, ordered routing. |
 | `frontend` | Next.js public/admin UI, port 3000. |
 | `backend` | Admin/auth/user API, worker/scheduler, port 8000. |
 | `reader` | Guest public API, port 8001. |
@@ -41,23 +41,19 @@ reader entry points and requires shared Redis for distributed behavior.
 
 ### Tailscale staging access
 
-Staging is reachable only on the private Tailscale network. The current host
-address detected on 2026-08-14 is `100.93.40.30`; set both
-`SITE_DOMAIN=100.93.40.30` and `PUBLIC_BIND_ADDRESS=100.93.40.30` in the
-shared host environment, then browse to `http://100.93.40.30/`. Because Docker
-Desktop's WSL backend cannot bind directly to the Windows Tailnet address, the
-staging workflow overrides only the release's Caddy publish to
-`127.0.0.1:8080`; the Windows host forwards Tailnet `:80` to that loopback port.
-The Caddy site
-address is explicitly prefixed with `http://`, so the private IP remains plain
-HTTP rather than enabling automatic HTTPS. This release publishes only port
-80 on the Tailnet address through that host proxy; backend, reader, Redis, and
-PostgreSQL have no host-published ports. Only `SITE_DOMAIN` is passed to Caddy;
-backend and reader healthchecks send the same configured host header so strict
-`ALLOWED_HOSTS` validation remains enabled for the private IP.
-never inject the shared `.env` into the proxy container because it contains
-unrelated database and runtime secrets. TLS remains deferred until a trusted,
-renewable Tailscale certificate path exists.
+Staging is reachable only on the private Tailscale network. Set `SITE_DOMAIN` to
+the host's stable Tailscale DNS name (not a changing Tailnet IP), keep
+`PUBLIC_BIND_ADDRESS=127.0.0.1`, and configure Tailscale Serve on the Windows
+host to terminate HTTPS and forward the private hostname to the WSL loopback
+listener on `127.0.0.1:8080`. Browse only to `https://<tailscale-hostname>/`.
+The checked-in Caddyfile is the internal HTTP hop; it must not be exposed
+directly to the Tailnet. Set `PUBLIC_FRONTEND_URL`, `WEB_CORS_ORIGINS`,
+`CSRF_TRUSTED_ORIGINS`, and `ALLOWED_HOSTS` to the HTTPS hostname and keep
+`SESSION_COOKIE_SECURE=true`. Backend, reader, Redis, and PostgreSQL have no
+host-published ports. Only `SITE_DOMAIN` is passed to Caddy; backend and reader
+healthchecks send the same configured host header. Never inject the shared
+`.env` into the proxy container because it contains unrelated database and
+runtime secrets.
 
 ## Profiles
 
@@ -148,7 +144,7 @@ Hardening contract:
   invalid.
 - **Migration-head parity.** Before SSH, the workflow compares the checked-out
   migration head with the exact admin image digest and requires
-  `c7a8b9d0e1f2`, the current release head. The role migration
+  `4f7c2a9d1e6b`, the current release head. The role migration
   `c7d9e1f3a5b2` is an earlier migration in that chain, not the final head;
   a staging database at that earlier head is advanced by the one-shot
   migration profile before readiness is accepted.
@@ -282,8 +278,9 @@ and scheduler lease ownership.
 ## Staging Deployment Evidence
 
 The following sanitized record captures the first successful private staging
-cutover for PR #88. It is operational evidence for this WSL/Docker host and does
-not change the production `NO-GO` decision above.
+cutover for PR #88 before the HTTPS session-cookie hardening in this review. It
+is historical evidence for this WSL/Docker host, not the current staging access
+contract, and does not change the production `NO-GO` decision above.
 
 - **UTC deployment window:** `2026-08-15 13:46:20Z` through `2026-08-15 13:47:50Z`
   (Deploy run `31888063044`).

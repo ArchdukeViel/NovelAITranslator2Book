@@ -13,6 +13,8 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import MultipleResultsFound
+from sqlalchemy.orm import Session
 from starlette.responses import RedirectResponse
 
 from novelai.api.auth.google_oauth import get_google_oauth_client
@@ -24,8 +26,9 @@ from novelai.api.auth.security import (
     require_public_rate_limit,
 )
 from novelai.api.auth.session import SessionUser, get_current_user
-from novelai.api.routers.dependencies import get_auth_service
+from novelai.api.routers.dependencies import get_auth_service, get_db_session
 from novelai.config.settings import settings
+from novelai.db.models.users import User
 from novelai.services.auth_service import AuthService
 
 logger = logging.getLogger(__name__)
@@ -157,7 +160,11 @@ def _clear_google_oauth_session(request: Request) -> None:
 
 
 @router.post("/login")
-async def login(payload: LoginRequest, request: Request) -> UserResponse:
+async def login(
+    payload: LoginRequest,
+    request: Request,
+    db_session: Session = Depends(get_db_session),
+) -> UserResponse:
     """Owner bootstrap login using OWNER_BOOTSTRAP_SECRET."""
     require_public_rate_limit(request, "auth_login")
     bootstrap_secret = settings.OWNER_BOOTSTRAP_SECRET
@@ -173,12 +180,24 @@ async def login(payload: LoginRequest, request: Request) -> UserResponse:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials.",
         )
-    request.session["user_id"] = 1
-    request.session["email"] = "owner@local"
-    request.session["role"] = "owner"
-    request.session["issued_at"] = datetime.now(UTC).isoformat()
+    try:
+        owner = (
+            db_session.query(User)
+            .filter(User.role == "owner", User.is_active.is_(True), User.disabled_at.is_(None))
+            .one_or_none()
+        )
+    except MultipleResultsFound:
+        owner = None
+        logger.error("Owner bootstrap login rejected because multiple owner accounts exist.")
+    if owner is None:
+        logger.error("Owner bootstrap login rejected because the owner account is not ready.")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Owner account is not ready.",
+        )
+    _set_session_user(request, {"user_id": owner.id, "email": owner.email, "role": owner.role})
     logger.info("Owner bootstrap login succeeded.")
-    return _user_response(SessionUser(user_id=1, email="owner@local", role="owner"))
+    return _user_response(SessionUser(user_id=owner.id, email=owner.email, role=owner.role))
 
 
 @router.post("/register")

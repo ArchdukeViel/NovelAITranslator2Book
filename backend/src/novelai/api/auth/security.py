@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import secrets
-import time
-from collections import defaultdict
 
 from fastapi import Depends, HTTPException, Request, status
 
 from novelai.api.auth.session import SessionUser, get_current_user
+from novelai.api.middleware.security import get_client_ip
 from novelai.config.settings import settings
+from novelai.infrastructure.http.rate_limiter import RateLimiter, create_rate_limiter
 
 CSRF_HEADER_NAME = "X-CSRF-Token"
 _CSRF_SESSION_KEY = "csrf_token"
@@ -30,7 +30,9 @@ _PUBLIC_RATE_LIMITS = {
     "review_mutation": 20,
     "request_create": 10,
 }
-_rate_hits: dict[str, list[float]] = defaultdict(list)
+_rate_hits: dict[str, list[float]] = {}
+_public_rate_limiter: RateLimiter | None = None
+_public_rate_limiter_signature: tuple[str, tuple[tuple[str, int], ...], int] | None = None
 
 
 def get_or_create_csrf_token(request: Request) -> str:
@@ -56,11 +58,7 @@ def require_csrf_token(request: Request) -> None:
             )
     expected = request.session.get(_CSRF_SESSION_KEY)
     supplied = request.headers.get(CSRF_HEADER_NAME)
-    if (
-        not isinstance(expected, str)
-        or not supplied
-        or not secrets.compare_digest(supplied, expected)
-    ):
+    if not isinstance(expected, str) or not supplied or not secrets.compare_digest(supplied, expected):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid CSRF token.",
@@ -85,7 +83,7 @@ def require_csrf_for_unsafe_methods(
 
 def _client_ip(request: Request) -> str:
     try:
-        return request.client.host if request.client else "unknown"
+        return get_client_ip(request)
     except Exception:
         return "unknown"
 
@@ -102,22 +100,35 @@ def public_rate_limit_key(request: Request, *, user_id: int | None = None) -> st
 
 
 def require_public_rate_limit(request: Request, action: str, *, user_id: int | None = None) -> None:
+    global _public_rate_limiter, _public_rate_limiter_signature
     limit = _PUBLIC_RATE_LIMITS.get(action, 0)
     if limit <= 0:
         return
-    key = f"{public_rate_limit_key(request, user_id=user_id)}:{action}"
-    now = time.monotonic()
-    window_start = now - _PUBLIC_RATE_WINDOW_SECONDS
-    hits = [hit for hit in _rate_hits.get(key, []) if hit > window_start]
-    if len(hits) >= limit:
-        _rate_hits[key] = hits
+
+    signature = (
+        settings.WEB_RATE_LIMITER_BACKEND.strip().lower(),
+        tuple(sorted(_PUBLIC_RATE_LIMITS.items())),
+        _PUBLIC_RATE_WINDOW_SECONDS,
+    )
+    if _public_rate_limiter is None or signature != _public_rate_limiter_signature:
+        _public_rate_limiter = create_rate_limiter(
+            settings.WEB_RATE_LIMITER_BACKEND,
+            limits=_PUBLIC_RATE_LIMITS,
+            window_seconds=_PUBLIC_RATE_WINDOW_SECONDS,
+            hits_storage=_rate_hits,
+        )
+        _public_rate_limiter_signature = signature
+
+    key = public_rate_limit_key(request, user_id=user_id)
+    if not _public_rate_limiter.hit(key, action):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Rate limit exceeded.",
         )
-    hits.append(now)
-    _rate_hits[key] = hits
 
 
 def reset_public_rate_limits() -> None:
+    global _public_rate_limiter, _public_rate_limiter_signature
     _rate_hits.clear()
+    _public_rate_limiter = None
+    _public_rate_limiter_signature = None

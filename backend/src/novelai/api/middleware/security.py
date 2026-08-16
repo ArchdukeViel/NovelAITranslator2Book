@@ -85,7 +85,10 @@ def get_client_ip(request: Request) -> str:
     if forwarded_for:
         first_ip = forwarded_for.split(",")[0].strip()
         if first_ip:
-            return first_ip
+            try:
+                return str(ipaddress.ip_address(first_ip))
+            except ValueError:
+                return direct_ip
 
     return direct_ip
 

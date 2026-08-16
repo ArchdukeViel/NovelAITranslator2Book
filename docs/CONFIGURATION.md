@@ -54,17 +54,17 @@ Generate secrets with `python -c "import secrets; print(secrets.token_hex(32))"`
 | Storage | `STORAGE_BACKEND=filesystem|s3`; complete S3/R2 endpoint/bucket/credentials for `s3`. |
 | Distributed runtime | Redis URL and Redis rate limiter for split/multi-instance mode. |
 
-## Private HTTP Staging
+## Private HTTPS Staging
 
 The single-host staging release uses `ENV=staging`, `DB_CONNECTION_MODE=session`,
 and `DB_SSL_MODE=require` with Supabase session-pooler URLs on port 5432. Set
 `PUBLIC_FRONTEND_URL`, `WEB_CORS_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, and
-`ALLOWED_HOSTS` to the same `http://<tailscale-ip>` origin. Set
-`SITE_DOMAIN` and `PUBLIC_BIND_ADDRESS` to that Tailnet IPv4, and set
-`SESSION_COOKIE_SECURE=false` because this private release is explicitly HTTP.
-Only Caddy publishes port 80; internal APIs and data services remain unbound on
-the host. TLS is deferred until a trusted renewable private certificate path is
-available.
+`ALLOWED_HOSTS` to the same `https://<tailscale-hostname>` origin. Set
+`SITE_DOMAIN` to that hostname, keep `PUBLIC_BIND_ADDRESS=127.0.0.1`, and set
+`SESSION_COOKIE_SECURE=true`. Tailscale Serve terminates HTTPS for the browser
+and forwards to the loopback-only internal Caddy listener. Staging and
+production always force secure session cookies, even when an old environment
+file contains an explicit false override.
 
 ## Storage and Recovery Groups
 
@@ -87,6 +87,9 @@ duration and renewal; do not tune lease below realistic job duration without tes
 - `JOB_WORKER_ENABLED`: in-process activity worker.
 - `WEB_RATE_LIMITER_BACKEND=memory|redis`: memory only for single instance.
 - `REDIS_URL`: shared rate limiting and distributed queue where enabled.
+- `TRUSTED_PROXY_CIDRS`: exact reverse-proxy CIDRs allowed to supply
+  `X-Forwarded-For`; leave empty when clients connect directly. Do not trust
+  forwarded headers from arbitrary public clients.
 - `TRANSLATION_*`: chunking, concurrency, attempts, scheduler/model policy.
 - `PROVIDER_GEMINI_*`: key, default model, fallback models.
 - `TRANSLATION_CACHE_*`: exact cache enablement, TTL, size.

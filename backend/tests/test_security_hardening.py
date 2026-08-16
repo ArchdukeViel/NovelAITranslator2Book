@@ -3,9 +3,11 @@ from __future__ import annotations
 import hashlib
 import logging
 import shutil
+import socket
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
@@ -13,7 +15,11 @@ from fastapi.testclient import TestClient
 from novelai.api.error_handlers import add_error_handlers
 from novelai.core.errors import ProviderError, ProviderErrorCode, SourceError
 from novelai.core.security import redact_secret_text, redact_sensitive
-from novelai.infrastructure.http.client import validate_safe_url
+from novelai.infrastructure.http.client import (
+    _PinnedAsyncNetworkBackend,
+    create_async_client,
+    validate_safe_url,
+)
 from novelai.logging_config import SimpleFormatter, StructuredFormatter
 from novelai.services.admin_service import AdminService
 from novelai.services.preferences_service import PreferencesService
@@ -66,6 +72,57 @@ def test_validate_safe_url_allows_http_public_hostname_when_resolution_is_unavai
     monkeypatch.setattr(socket, "getaddrinfo", raise_gaierror)
 
     assert validate_safe_url("https://example.invalid/novel") == "https://example.invalid/novel"
+
+
+@pytest.mark.asyncio
+async def test_pinned_transport_dials_only_the_validated_public_address(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, int]] = []
+
+    def resolve_public(*_args: Any, **_kwargs: Any) -> list[tuple[Any, ...]]:
+        return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("93.184.216.34", 0))]
+
+    class Delegate:
+        async def connect_tcp(self, host: str, port: int, **_kwargs: Any) -> str:
+            calls.append((host, port))
+            return "stream"
+
+    monkeypatch.setattr(socket, "getaddrinfo", resolve_public)
+
+    stream = await _PinnedAsyncNetworkBackend(Delegate()).connect_tcp("example.com", 443)
+
+    assert stream == "stream"
+    assert calls == [("93.184.216.34", 443)]
+
+
+@pytest.mark.asyncio
+async def test_pinned_transport_rejects_private_resolution_before_connect(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    def resolve_private(*_args: Any, **_kwargs: Any) -> list[tuple[Any, ...]]:
+        return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", 0))]
+
+    class Delegate:
+        async def connect_tcp(self, host: str, port: int, **_kwargs: Any) -> str:
+            calls.append(host)
+            return "stream"
+
+    monkeypatch.setattr(socket, "getaddrinfo", resolve_private)
+
+    with pytest.raises(SourceError, match="private/reserved"):
+        await _PinnedAsyncNetworkBackend(Delegate()).connect_tcp("example.com", 443)
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_default_async_client_uses_pinned_transport() -> None:
+    client = create_async_client()
+    try:
+        assert isinstance(client._transport, httpx.AsyncHTTPTransport)
+        pool = client._transport._pool
+        assert isinstance(pool._network_backend, _PinnedAsyncNetworkBackend)
+    finally:
+        await client.aclose()
 
 
 @pytest.mark.parametrize("novel_id", ["../escape", "..%2Fescape", r"C:\secret", r"\\server\share"])

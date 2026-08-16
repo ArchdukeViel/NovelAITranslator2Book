@@ -258,8 +258,8 @@ class AppSettings(BaseSettings):
     OWNER_BOOTSTRAP_SECRET: str | None = None
     # Session cookie max age in seconds (default: 8 hours).
     SESSION_MAX_AGE: int = 28_800
-    # Override cookie transport security for HTTPS preview deployments. When
-    # unset, production remains secure and local development remains usable.
+    # Development-only override. Staging and production are always secure even
+    # if an old environment file still contains SESSION_COOKIE_SECURE=false.
     SESSION_COOKIE_SECURE: bool | None = None
     # Google OAuth for public user login. Missing values disable OAuth endpoints
     # without breaking app startup.
@@ -593,3 +593,11 @@ class AppSettings(BaseSettings):
 
 
 settings = AppSettings()
+
+
+def session_cookie_secure() -> bool:
+    """Return the fail-closed session-cookie transport policy."""
+
+    if settings.ENV.strip().lower() in {"staging", "production"}:
+        return True
+    return settings.SESSION_COOKIE_SECURE is True

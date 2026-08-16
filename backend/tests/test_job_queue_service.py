@@ -138,6 +138,28 @@ def test_next_pending_activity_returns_oldest_pending_by_type(activity_log: Acti
     assert pending["activity_id"] == first["activity_id"]
 
 
+def test_claim_is_atomic_and_expired_leases_are_recovered(activity_log: ActivityQueueService) -> None:
+    activity_log.create_translation_activity(novel_id="novel-1")
+
+    claimed = activity_log.claim_next_activity(activity_type="translation")
+    assert claimed is not None
+    assert claimed["status"] == "running"
+    assert claimed["lease_id"]
+    assert activity_log.claim_next_activity(activity_type="translation") is None
+
+    stale = dict(claimed)
+    stale["lease_expires_at"] = "2020-01-01T00:00:00Z"
+    activity_log._persist_activity([stale])
+
+    recovered = activity_log.claim_next_activity(activity_type="translation")
+    assert recovered is not None
+    assert recovered["status"] == "running"
+    assert recovered["lease_id"] != claimed["lease_id"]
+    assert recovered["metadata"]["lease_recovered_at"]
+    assert activity_log.renew_activity_lease(recovered["activity_id"], "wrong-lease") is False
+    assert activity_log.renew_activity_lease(recovered["activity_id"], recovered["lease_id"]) is True
+
+
 def test_record_source_health_tracks_success_and_failure(activity_log: ActivityQueueService) -> None:
     activity_log.record_source_health("syosetu_ncode", success=True)
     failed = activity_log.record_source_health("syosetu_ncode", success=False, error="timeout")

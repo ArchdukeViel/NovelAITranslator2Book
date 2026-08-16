@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from novelai.db.base import Base
@@ -23,6 +23,7 @@ class User(Base):
     """A registered user. Role: guest | user | owner."""
 
     __tablename__ = "users"
+    __table_args__ = (CheckConstraint("role IN ('guest', 'user', 'owner')", name="ck_users_role_valid"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
@@ -176,6 +177,12 @@ class NovelRequest(Base):
     """
 
     __tablename__ = "novel_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'released')",
+            name="ck_novel_requests_status_valid",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
