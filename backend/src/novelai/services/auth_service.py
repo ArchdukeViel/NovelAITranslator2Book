@@ -59,6 +59,15 @@ class AuthService:
         if len(password) > _MAX_PASSWORD_LENGTH:
             raise ValueError(f"Password must be at most {_MAX_PASSWORD_LENGTH} characters.")
 
+    def get_bootstrap_owner(self) -> User | None:
+        """Return the single active owner used by bootstrap login."""
+
+        return (
+            self.db_session.query(User)
+            .filter(User.role == "owner", User.is_active.is_(True), User.disabled_at.is_(None))
+            .one_or_none()
+        )
+
     @staticmethod
     def new_password_reset_token() -> str:
         return secrets.token_urlsafe(_PASSWORD_RESET_TOKEN_BYTES)
