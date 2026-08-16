@@ -45,9 +45,7 @@ frontend/.next/
 frontend/.next-dev/
 frontend/out/
 frontend/coverage/
-frontend/.vercel/
 frontend/*.tsbuildinfo
-.vercel/
 *.tsbuildinfo
 frontend/.env.local
 frontend/.env.*.local

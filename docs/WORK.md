@@ -86,8 +86,8 @@ Verified 2026-07-31T17:35:35Z on PR #15 (`feat/yokocho-phase1-docs`, base
 `main`): `GitGuardian scan` passed for both push and pull_request runs;
 `docker-build`, `e2e-tests`, `Analyze (actions)`,
 `Analyze (javascript-typescript)`, `Analyze (python)`, CodeQL, backend
-lint/tests, and frontend-check all passed; Vercel preview deployment
-completed.
+lint/tests, and frontend-check all passed; the hosted preview status was green
+at that historical commit.
 
 Revised 2026-08-11: `dependency-review` added to required status checks on `main` branch protection via GitHub API (`strict: true` preserved; contexts: `docker-build`, `e2e-tests`, 3× `Analyze (...)`, `GitGuardian scan`, `dependency-review`). Configured production pre-deployment gate in `deploy.yml` calling `managed-services-verification.yml` (`required: true`). Staging deployments bypass the check via an explicit `!cancelled() && (inputs.environment != 'production' || needs.managed-services-check.result == 'success')` condition.
 

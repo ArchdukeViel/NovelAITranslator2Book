@@ -201,7 +201,6 @@ def test_gitignore_excludes_secret_backups_and_runtime_state() -> None:
         "*.bak",
         "*.zip",
         "*.tar.gz",
-        "frontend/.vercel/",
         "frontend/*.tsbuildinfo",
     ):
         assert pattern in gitignore
