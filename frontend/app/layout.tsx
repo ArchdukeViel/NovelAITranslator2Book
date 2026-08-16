@@ -7,19 +7,19 @@ import "./globals.css";
 import { QueryProvider } from "@/lib/query-client";
 
 const notoSerifJp = localFont({
-  src: "../public/fonts/Noto_Serif_JP.ttf",
+  src: "../public/fonts/Noto_Serif_JP.woff2",
   variable: "--font-noto-serif-jp",
 });
 
 const dmSans = localFont({
-  src: "../public/fonts/DM_Sans.ttf",
+  src: "../public/fonts/DM_Sans.woff2",
   variable: "--font-dm-sans",
 });
 
 const dmMono = localFont({
   src: [
-    { path: "../public/fonts/DM_Mono_400.ttf", weight: "400" },
-    { path: "../public/fonts/DM_Mono_500.ttf", weight: "500" },
+    { path: "../public/fonts/DM_Mono_400.woff2", weight: "400" },
+    { path: "../public/fonts/DM_Mono_500.woff2", weight: "500" },
   ],
   variable: "--font-dm-mono",
 });
