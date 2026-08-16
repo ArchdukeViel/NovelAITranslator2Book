@@ -1,7 +1,8 @@
 """Session helpers: SessionUser model and get_current_user dependency.
 
-Session data is stored server-side in a signed HTTP-only cookie via
-Starlette's SessionMiddleware.  The session dict holds:
+Session data is held in a client-side, signed HTTP-only cookie via Starlette's
+SessionMiddleware. The database remains authoritative for account state and
+authorization. The session dict holds:
   {
     "user_id": int,
     "email": str,
@@ -83,7 +84,9 @@ def get_current_user(
         return GUEST
 
     issued_raw = session.get("issued_at")
-    if isinstance(issued_raw, str) and user.session_revoked_at is not None:
+    if user.session_revoked_at is not None:
+        if not isinstance(issued_raw, str):
+            return GUEST
         try:
             issued_at = datetime.fromisoformat(issued_raw)
             if issued_at.tzinfo is None:
@@ -93,13 +96,13 @@ def get_current_user(
                 revoked_at = revoked_at.replace(tzinfo=UTC)
             if issued_at < revoked_at:
                 return GUEST
-        except (ValueError, TypeError):
-            pass
+        except ValueError, TypeError:
+            return GUEST
 
-    email = session.get("email")
-    role = session.get("role", "user")
+    if user.role not in ("guest", "user", "owner"):
+        return GUEST
     return SessionUser(
-        user_id=user_id,
-        email=email if isinstance(email, str) else None,
-        role=role if role in ("guest", "user", "owner") else "user",
+        user_id=user.id,
+        email=user.email,
+        role=user.role,
     )

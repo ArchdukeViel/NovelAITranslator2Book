@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import MultipleResultsFound
 from starlette.responses import RedirectResponse
 
 from novelai.api.auth.google_oauth import get_google_oauth_client
@@ -157,7 +158,11 @@ def _clear_google_oauth_session(request: Request) -> None:
 
 
 @router.post("/login")
-async def login(payload: LoginRequest, request: Request) -> UserResponse:
+async def login(
+    payload: LoginRequest,
+    request: Request,
+    svc: AuthService = Depends(get_auth_service),
+) -> UserResponse:
     """Owner bootstrap login using OWNER_BOOTSTRAP_SECRET."""
     require_public_rate_limit(request, "auth_login")
     bootstrap_secret = settings.OWNER_BOOTSTRAP_SECRET
@@ -173,12 +178,20 @@ async def login(payload: LoginRequest, request: Request) -> UserResponse:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials.",
         )
-    request.session["user_id"] = 1
-    request.session["email"] = "owner@local"
-    request.session["role"] = "owner"
-    request.session["issued_at"] = datetime.now(UTC).isoformat()
+    try:
+        owner = svc.get_bootstrap_owner()
+    except MultipleResultsFound:
+        owner = None
+        logger.error("Owner bootstrap login rejected because multiple owner accounts exist.")
+    if owner is None:
+        logger.error("Owner bootstrap login rejected because the owner account is not ready.")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Owner account is not ready.",
+        )
+    _set_session_user(request, {"user_id": owner.id, "email": owner.email, "role": owner.role})
     logger.info("Owner bootstrap login succeeded.")
-    return _user_response(SessionUser(user_id=1, email="owner@local", role="owner"))
+    return _user_response(SessionUser(user_id=owner.id, email=owner.email, role=owner.role))
 
 
 @router.post("/register")

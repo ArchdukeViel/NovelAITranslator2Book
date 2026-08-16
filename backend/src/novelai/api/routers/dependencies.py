@@ -10,8 +10,9 @@ from sqlalchemy.orm import Session
 from novelai.activity.queue import ActivityQueueService
 from novelai.activity.runner import BackgroundActivityRunner
 from novelai.activity.worker import ActivityWorkerService
+from novelai.api.middleware.security import get_client_ip
 from novelai.config.settings import settings
-from novelai.infrastructure.http.rate_limiter import get_default_rate_limiter
+from novelai.infrastructure.http.rate_limiter import RateLimiter, create_rate_limiter
 from novelai.runtime.container import container
 from novelai.services.admin_service import AdminService
 from novelai.services.editor_service import EditorService
@@ -49,12 +50,26 @@ _RATE_LIMITS: dict[str, int] = {
 
 _hits: dict[str, list[float]] = defaultdict(list)
 
-_DEFAULT_LIMITER = get_default_rate_limiter(
-    backend=settings.WEB_RATE_LIMITER_BACKEND,
-    limits=_RATE_LIMITS,
-    window_seconds=_RATE_WINDOW,
-    hits_storage=_hits,
-)
+_DEFAULT_LIMITER: RateLimiter | None = None
+_DEFAULT_LIMITER_SIGNATURE: tuple[str, tuple[tuple[str, int], ...], int] | None = None
+
+
+def _get_rate_limiter() -> RateLimiter:
+    global _DEFAULT_LIMITER, _DEFAULT_LIMITER_SIGNATURE
+    signature = (
+        settings.WEB_RATE_LIMITER_BACKEND.strip().lower(),
+        tuple(sorted(_RATE_LIMITS.items())),
+        _RATE_WINDOW,
+    )
+    if _DEFAULT_LIMITER is None or signature != _DEFAULT_LIMITER_SIGNATURE:
+        _DEFAULT_LIMITER = create_rate_limiter(
+            settings.WEB_RATE_LIMITER_BACKEND,
+            limits=_RATE_LIMITS,
+            window_seconds=_RATE_WINDOW,
+            hits_storage=_hits,
+        )
+        _DEFAULT_LIMITER_SIGNATURE = signature
+    return _DEFAULT_LIMITER
 
 
 def _rate_limit(
@@ -65,11 +80,11 @@ def _rate_limit(
     key_transform: Callable[[str], str] | None = None,
 ) -> None:
     try:
-        client = client_id if client_id is not None else (request.client.host if request.client else "unknown")
+        client = client_id if client_id is not None else get_client_ip(request)
     except Exception:
         client = "unknown"
 
-    if not _DEFAULT_LIMITER.hit(client, action, key_transform=key_transform):
+    if not _get_rate_limiter().hit(client, action, key_transform=key_transform):
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
 

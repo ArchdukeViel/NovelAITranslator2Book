@@ -41,7 +41,7 @@ from novelai.api.routers.metrics import router as metrics_router
 from novelai.api.routers.notifications import router as notifications_router
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.config.production_validator import assert_production_config
-from novelai.config.settings import settings
+from novelai.config.settings import session_cookie_secure, settings
 from novelai.runtime.bootstrap import bootstrap
 from novelai.runtime.container import container
 
@@ -80,9 +80,7 @@ app.add_middleware(
     session_cookie="novelai_session",
     max_age=settings.SESSION_MAX_AGE,
     same_site="lax",
-    https_only=(
-        settings.SESSION_COOKIE_SECURE if settings.SESSION_COOKIE_SECURE is not None else settings.ENV == "production"
-    ),
+    https_only=session_cookie_secure(),
 )
 
 # RequestBody enforcement must be registered before CORS so CORS sits outer,

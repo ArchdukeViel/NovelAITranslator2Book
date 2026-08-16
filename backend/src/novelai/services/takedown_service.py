@@ -56,7 +56,7 @@ class TakedownService:
         )
         self.db.add(req)
         self.db.flush()
-        logger.info("TakedownRequest #%s submitted for %s", req.id, infringing_url)
+        logger.info("TakedownRequest #%s submitted", req.id)
         return req
 
     # ------------------------------------------------------------------

@@ -176,7 +176,7 @@ jobs:
           IMAGE_HEAD=$(docker run --rm --entrypoint alembic -w /app/backend \
             "$ADMIN_IMAGE" -c alembic.ini heads | awk '/\(head\)/ { print $1 }')
 
-          if [[ "$SOURCE_HEAD" != "$IMAGE_HEAD" || "$SOURCE_HEAD" != "c7a8b9d0e1f2" ]]; then
+          if [[ "$SOURCE_HEAD" != "$IMAGE_HEAD" || "$SOURCE_HEAD" != "4f7c2a9d1e6b" ]]; then
             echo "::error::Source and admin image Alembic heads do not match the expected release head."
             exit 1
           fi

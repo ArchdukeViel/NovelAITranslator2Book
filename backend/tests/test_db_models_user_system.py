@@ -86,6 +86,12 @@ class TestUser:
         session.commit()
         assert owner.role == "owner"
 
+    def test_invalid_role_is_rejected_by_database_constraint(self, session) -> None:
+        session.add(User(email="invalid-role@example.com", role="administrator"))
+        with pytest.raises(IntegrityError):
+            session.commit()
+        session.rollback()
+
     def test_oauth_fields(self, session) -> None:
         u = User(
             email="oauth@example.com",
@@ -250,6 +256,11 @@ class TestNovelRequest:
         cols = {c.name for c in NovelRequest.__table__.columns}
         forbidden = {"auto_translate", "job_trigger", "trigger_job"}
         assert not cols & forbidden
+
+    def test_invalid_status_is_rejected_by_database_constraint(self, session, user) -> None:
+        session.add(NovelRequest(user_id=user.id, request_type="new_novel", status="running"))
+        with pytest.raises(IntegrityError):
+            session.commit()
 
 
 class TestAuditLog:

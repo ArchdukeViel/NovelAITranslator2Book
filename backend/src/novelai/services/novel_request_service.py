@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from novelai.core.platform import NovelRequestStatus
 from novelai.db.models.chapter import Chapter as ChapterModel
@@ -65,7 +65,12 @@ class NovelRequestService:
             raise ValueError("Approved novel not found")
         return novel
 
-    def _request_response(self, item: NovelRequest) -> dict[str, Any]:
+    @staticmethod
+    def _request_response_with_slugs(
+        item: NovelRequest,
+        novel_slug: str | None,
+        approved_slug: str | None,
+    ) -> dict[str, Any]:
         request_id = str(item.id)
         return {
             "id": request_id,
@@ -75,15 +80,22 @@ class NovelRequestService:
             "request_type": item.request_type,
             "status": item.status,
             "source_url": item.source_url,
-            "slug": self._novel_slug(item.novel_id),
+            "slug": novel_slug,
             "chapter_id": None,
             "created_at": item.created_at,
             "updated_at": item.updated_at,
             "resolved_at": item.resolved_at,
             "rejection_reason": item.rejection_reason,
             "approved_novel_id": item.approved_novel_id,
-            "approved_slug": self._novel_slug(item.approved_novel_id),
+            "approved_slug": approved_slug,
         }
+
+    def _request_response(self, item: NovelRequest) -> dict[str, Any]:
+        return self._request_response_with_slugs(
+            item,
+            self._novel_slug(item.novel_id),
+            self._novel_slug(item.approved_novel_id),
+        )
 
     def _get_request(self, request_id: str) -> NovelRequest:
         item = self.db_session.get(NovelRequest, self._request_pk(request_id))
@@ -95,11 +107,17 @@ class NovelRequestService:
 
     def list_requests(self, *, status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
         normalized_status = self._normalize_status(status)
-        query = self.db_session.query(NovelRequest)
+        approved_novel = aliased(Novel)
+        query = self.db_session.query(NovelRequest, Novel.slug, approved_novel.slug)
+        query = query.outerjoin(Novel, NovelRequest.novel_id == Novel.id)
+        query = query.outerjoin(approved_novel, NovelRequest.approved_novel_id == approved_novel.id)
         if normalized_status is not None:
             query = query.filter(NovelRequest.status == normalized_status)
-        items = query.order_by(NovelRequest.created_at.desc()).limit(limit).all()
-        return [self._request_response(item) for item in items]
+        rows = query.order_by(NovelRequest.created_at.desc()).limit(max(1, int(limit))).all()
+        return [
+            self._request_response_with_slugs(item, novel_slug, approved_slug)
+            for item, novel_slug, approved_slug in rows
+        ]
 
     def get_request(self, request_id: str) -> dict[str, Any]:
         return self._request_response(self._get_request(request_id))
@@ -111,14 +129,16 @@ class NovelRequestService:
         rejection_reason: str | None = None,
         approved_novel_id: int | None = None,
     ) -> dict[str, Any]:
-        normalized_status = status.strip().lower()
+        normalized_status = self._normalize_status(status)
+        if normalized_status is None:
+            raise ValueError("Invalid request status")
         item = self._get_request(request_id)
-        item.status = status
-        if status == NovelRequestStatus.PENDING.value:
+        item.status = normalized_status
+        if normalized_status == NovelRequestStatus.PENDING.value:
             item.resolved_at = None
             item.rejection_reason = None
             item.approved_novel_id = None
-        elif status in self._RESOLVED_STATUSES:
+        elif normalized_status in self._RESOLVED_STATUSES:
             item.resolved_at = item.resolved_at or self._utcnow()
             if normalized_status == NovelRequestStatus.REJECTED.value:
                 item.rejection_reason = rejection_reason.strip() if rejection_reason else None
@@ -168,13 +188,17 @@ class NovelRequestService:
             if ch is None:
                 raise ValueError("Chapter not found")
 
-        existing = self.db_session.query(NovelRequest).filter_by(
-            user_id=user_id,
-            request_type=request_type,
-            novel_id=novel_id,
-            source_url=source_url,
-            status="pending",
-        ).one_or_none()
+        existing = (
+            self.db_session.query(NovelRequest)
+            .filter_by(
+                user_id=user_id,
+                request_type=request_type,
+                novel_id=novel_id,
+                source_url=source_url,
+                status="pending",
+            )
+            .one_or_none()
+        )
         if existing is not None:
             return self._request_response(existing)
 
@@ -190,11 +214,17 @@ class NovelRequestService:
         return self._request_response(req)
 
     def list_user_requests(self, user_id: int, limit: int = 50) -> list[dict[str, Any]]:
-        reqs = (
-            self.db_session.query(NovelRequest)
-            .filter_by(user_id=user_id)
+        approved_novel = aliased(Novel)
+        rows = (
+            self.db_session.query(NovelRequest, Novel.slug, approved_novel.slug)
+            .outerjoin(Novel, NovelRequest.novel_id == Novel.id)
+            .outerjoin(approved_novel, NovelRequest.approved_novel_id == approved_novel.id)
+            .filter(NovelRequest.user_id == user_id)
             .order_by(NovelRequest.created_at.desc())
-            .limit(limit)
+            .limit(max(1, int(limit)))
             .all()
         )
-        return [self._request_response(req) for req in reqs]
+        return [
+            self._request_response_with_slugs(item, novel_slug, approved_slug)
+            for item, novel_slug, approved_slug in rows
+        ]

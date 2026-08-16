@@ -38,6 +38,15 @@ class TestInMemoryRateLimiter:
         assert limiter.hit("127.0.0.1", "analytics", key_transform=lambda _: "anonymous:digest") is True
         assert set(limiter._hits) == {"anonymous:digest:analytics"}
 
+    def test_prunes_expired_client_keys(self):
+        limiter = InMemoryRateLimiter(limits={"test_action": 1}, window_seconds=60)
+        with patch("novelai.infrastructure.http.rate_limiter.time.monotonic", side_effect=[0.0, 61.0]):
+            assert limiter.hit("old-client", "test_action") is True
+            assert limiter.hit("new-client", "test_action") is True
+
+        assert "old-client:test_action" not in limiter._hits
+        assert "new-client:test_action" in limiter._hits
+
 
 class TestDisabledRateLimiter:
     def test_always_allows(self):

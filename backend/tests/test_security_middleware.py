@@ -366,6 +366,11 @@ class TestGetClientIp:
         req = _make_request(client_addr="10.0.0.1")
         assert get_client_ip(req) == "10.0.0.1"
 
+    def test_invalid_forwarded_ip_falls_back_to_proxy(self, monkeypatch):
+        monkeypatch.setattr(settings, "TRUSTED_PROXY_CIDRS", ["10.0.0.0/8"])
+        req = _make_request(client_addr="10.0.0.1", xff="not-an-ip")
+        assert get_client_ip(req) == "10.0.0.1"
+
 
 # ── is_allowed_host ──────────────────────────────────────────────────
 

@@ -37,6 +37,9 @@ def _progress_dict(metadata: dict[str, Any]) -> dict[str, Any]:
 
 def activity_record_response(item: dict[str, Any]) -> ActivityRecordResponse:
     normalized = dict(item)
+    # Lease credentials are internal worker-coordination state, not API fields.
+    normalized.pop("lease_id", None)
+    normalized.pop("lease_expires_at", None)
     metadata = _metadata_dict(normalized)
     progress = _progress_dict(metadata)
     normalized["provider_key"] = normalized.get("provider_key") or metadata.get("provider_key")

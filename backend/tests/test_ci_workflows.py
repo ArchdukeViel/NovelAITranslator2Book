@@ -120,7 +120,7 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     assert "release.env" in source
     assert "PREVIOUS_RELEASE" in source
     assert "docker image prune" not in source
-    assert '"c7a8b9d0e1f2"' in source
+    assert '"4f7c2a9d1e6b"' in source
     assert 'STAGING_HTTP_BIND="127.0.0.1"' in source
     assert 'STAGING_HTTP_PORT="8080"' in source
     assert "PUBLIC_BIND_ADDRESS=%s\\n" in source
@@ -346,7 +346,7 @@ def test_production_compose_contract() -> None:
     assert not re.search(r"image: \$\{[^}]*\}@sha256:[0-9a-f]{64}", source)
 
 
-def test_caddy_staging_http_contract() -> None:
+def test_caddy_internal_proxy_and_staging_cookie_contract() -> None:
     repo_root = WORKFLOWS_DIR.parent.parent
     compose_source = (repo_root / "deploy" / "compose.yml").read_text(encoding="utf-8")
     caddy_start = compose_source.index("  caddy:")
@@ -356,8 +356,14 @@ def test_caddy_staging_http_contract() -> None:
     assert "env_file:" not in caddy_service
 
     caddyfile = (repo_root / "deploy" / "Caddyfile").read_text(encoding="utf-8")
-    assert caddyfile.splitlines()[0] == "http://{$SITE_DOMAIN:localhost} {"
+    # Caddy is an internal HTTP hop; staging's browser-facing Tailscale Serve
+    # endpoint terminates HTTPS before forwarding to this loopback listener.
+    caddy_site = next(line for line in caddyfile.splitlines() if line and not line.startswith("#"))
+    assert caddy_site == "http://{$SITE_DOMAIN:localhost} {"
     assert "Strict-Transport-Security" not in caddyfile
+
+    settings = (repo_root / "backend" / "src" / "novelai" / "config" / "settings.py").read_text(encoding="utf-8")
+    assert 'in {"staging", "production"}' in settings
 
 
 def test_ci_and_static_analysis_security_contracts() -> None:
@@ -378,7 +384,7 @@ def test_ci_and_static_analysis_security_contracts() -> None:
     assert "npm ci" in static
 
 
-def test_compose_private_http_health_and_migration_contract() -> None:
+def test_compose_internal_proxy_health_and_migration_contract() -> None:
     compose = (WORKFLOWS_DIR.parent.parent / "deploy" / "compose.yml").read_text(encoding="utf-8")
     caddy_start = compose.index("  caddy:")
     frontend_start = compose.index("\n  frontend:") + 1

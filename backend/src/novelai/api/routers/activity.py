@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -50,7 +50,7 @@ async def list_activity(
     status: str | None = None,
     activity_type: str | None = None,
     novel_id: str | None = None,
-    limit: int | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
     activity_log: ActivityQueueService = Depends(get_activity_log),
     _owner=Depends(require_role("owner")),
 ) -> ActivityListResponse:
@@ -115,14 +115,16 @@ async def create_crawl_activity(
     _owner=Depends(require_role("owner")),
 ) -> ActivityRecordResponse:
     try:
-        return activity_record_response(activity_log.create_crawl_activity(
-            novel_id=body.novel_id,
-            source_key=body.source_key,
-            kind=body.kind,
-            chapters=body.chapters,
-            source_url=body.source_url,
-            metadata=body.metadata,
-        ))
+        return activity_record_response(
+            activity_log.create_crawl_activity(
+                novel_id=body.novel_id,
+                source_key=body.source_key,
+                kind=body.kind,
+                chapters=body.chapters,
+                source_url=body.source_url,
+                metadata=body.metadata,
+            )
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -146,6 +148,7 @@ async def create_translation_activity(
         # execution to detect stale scheduled jobs.
         if "scheduled_glossary_revision" not in metadata:
             from novelai.services.novel_query_service import get_glossary_revision
+
             try:
                 revision = get_glossary_revision(db, body.novel_id)
                 if revision is not None:
@@ -153,15 +156,17 @@ async def create_translation_activity(
             except Exception:
                 pass
 
-        return activity_record_response(activity_log.create_translation_activity(
-            novel_id=body.novel_id,
-            source_key=body.source_key,
-            kind=body.kind,
-            chapters=body.chapters,
-            provider_key=body.provider_key,
-            provider_model=body.provider_model,
-            metadata=metadata,
-        ))
+        return activity_record_response(
+            activity_log.create_translation_activity(
+                novel_id=body.novel_id,
+                source_key=body.source_key,
+                kind=body.kind,
+                chapters=body.chapters,
+                provider_key=body.provider_key,
+                provider_model=body.provider_model,
+                metadata=metadata,
+            )
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
