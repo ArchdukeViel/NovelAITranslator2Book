@@ -119,7 +119,7 @@ def _valid_schedule(expression: str, timezone_name: str) -> bool:
         from croniter import croniter
 
         croniter(expression, datetime.now(ZoneInfo(timezone_name))).get_next(datetime)
-    except (ImportError, KeyError, TypeError, ValueError, ZoneInfoNotFoundError):
+    except ImportError, KeyError, TypeError, ValueError, ZoneInfoNotFoundError:
         return False
     return True
 
@@ -191,9 +191,9 @@ def validate_production_config(settings: AppSettings) -> ValidationResult:
     # --- CORS
     if not settings.WEB_CORS_ORIGINS:
         result.add(
-            Severity.WARNING,
+            Severity.FATAL,
             "cors",
-            "WEB_CORS_ORIGINS is empty; production should set explicit allowed origins.",
+            "WEB_CORS_ORIGINS is required in production.",
         )
     elif _is_wildcard_cors(settings.WEB_CORS_ORIGINS):
         result.add(
@@ -277,20 +277,28 @@ def validate_production_config(settings: AppSettings) -> ValidationResult:
             "TRUSTED_PROXY_CIDRS is empty; forwarded headers will be ignored.",
         )
 
+    # --- Debug Errors
+    if settings.DEBUG_ERRORS:
+        result.add(
+            Severity.FATAL,
+            "debug",
+            "DEBUG_ERRORS must be false in production.",
+        )
+
     # --- Allowed hosts
     if not settings.ALLOWED_HOSTS:
         result.add(
-            Severity.WARNING,
+            Severity.FATAL,
             "hosts",
-            "ALLOWED_HOSTS is empty; host header validation is disabled.",
+            "ALLOWED_HOSTS is required in production.",
         )
 
     # --- CSRF
-    if not settings.CSRF_TRUSTED_ORIGINS and settings.WEB_CORS_ORIGINS:
+    if not settings.CSRF_TRUSTED_ORIGINS:
         result.add(
-            Severity.WARNING,
+            Severity.FATAL,
             "csrf",
-            "CSRF_TRUSTED_ORIGINS is empty; consider setting it to match WEB_CORS_ORIGINS.",
+            "CSRF_TRUSTED_ORIGINS is required in production.",
         )
 
     # --- Backup

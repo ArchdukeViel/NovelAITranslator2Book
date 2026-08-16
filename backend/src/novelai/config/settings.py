@@ -107,6 +107,10 @@ class AppSettings(BaseSettings):
     WEB_CORS_ORIGINS: Annotated[list[str], NoDecode] = Field(default_factory=list)
     WEB_REQUEST_TIMEOUT_SECONDS: int = 600
     WEB_RATE_LIMITER_BACKEND: str = "memory"
+    DEBUG_ERRORS: bool = Field(
+        default=False,
+        description="Include internal error traces in HTTP 500 error responses (development only).",
+    )
     JOB_WORKER_ENABLED: bool = False
     JOB_WORKER_POLL_SECONDS: float = 2.0
 

@@ -464,7 +464,13 @@ class ActivityQueueService:
                 return dict(updated)
         return None
 
-    def update_activity_metadata(self, activity_id: str, patch: dict[str, Any]) -> bool:
+    def update_activity_metadata(
+        self,
+        activity_id: str,
+        patch: dict[str, Any],
+        *,
+        lease_id: str | None = None,
+    ) -> bool:
         with self._lock, InterProcessFileLock(self.activity_lock_file):
             activity_log = self._load_activity()
             for _index, act in enumerate(activity_log):
@@ -472,6 +478,10 @@ class ActivityQueueService:
                     break
             else:
                 return False
+
+            if lease_id is not None and act.get("status") == JobStatus.RUNNING.value:
+                if act.get("lease_id") != lease_id:
+                    return False
 
             activity = dict(act)
             metadata = dict(activity.get("metadata") or {})

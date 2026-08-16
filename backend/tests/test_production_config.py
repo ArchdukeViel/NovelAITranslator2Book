@@ -194,14 +194,12 @@ class TestProductionConfigValidator:
         result = validate_production_config(
             _make_prod_settings(
                 TRUSTED_PROXY_CIDRS=[],
-                ALLOWED_HOSTS=[],
                 BACKUP_ENABLED=False,
             )
         )
         # Should not have fatals but should have warnings
         assert not result.has_fatal
         warnings = result.warnings
-        assert any("ALLOWED_HOSTS" in i.message for i in warnings)
         assert any("backup" in i.message.lower() for i in warnings)
 
     def test_assert_raises_on_fatal(self):
@@ -225,4 +223,18 @@ class TestProductionConfigValidator:
 
     def test_empty_cors_warning(self):
         result = validate_production_config(_make_prod_settings(WEB_CORS_ORIGINS=[]))
+        assert result.has_fatal
         assert any("WEB_CORS_ORIGINS" in i.message for i in result.issues)
+
+    @pytest.mark.parametrize(
+        ("overrides", "category"),
+        [
+            ({"WEB_CORS_ORIGINS": []}, "cors"),
+            ({"ALLOWED_HOSTS": []}, "hosts"),
+            ({"CSRF_TRUSTED_ORIGINS": []}, "csrf"),
+            ({"DEBUG_ERRORS": True}, "debug"),
+        ],
+    )
+    def test_required_production_security_settings_are_fatal(self, overrides: dict[str, Any], category: str) -> None:
+        result = validate_production_config(_make_prod_settings(**overrides))
+        assert any(issue.severity.value == "fatal" and issue.category == category for issue in result.issues)

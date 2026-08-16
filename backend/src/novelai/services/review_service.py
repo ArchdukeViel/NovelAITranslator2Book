@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import asc, desc
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from novelai.db.models.novel import Novel
@@ -49,8 +50,17 @@ class ReviewService:
         novel = self._get_novel(slug)
         review = self.db_session.query(Review).filter_by(user_id=user_id, novel_id=novel.id).one_or_none()
         if review is None:
-            review = Review(user_id=user_id, novel_id=novel.id)
-            self.db_session.add(review)
+            try:
+                # Fence the concurrent insert with a savepoint. A full session
+                # rollback would discard unrelated work in the request.
+                with self.db_session.begin_nested():
+                    review = Review(user_id=user_id, novel_id=novel.id)
+                    self.db_session.add(review)
+                    self.db_session.flush()
+            except IntegrityError:
+                # The unique constraint won a concurrent insert race.
+                review = self.db_session.query(Review).filter_by(user_id=user_id, novel_id=novel.id).one()
+
         review.rating = rating
         review.body = review_text
         # Content change resets moderation state.
@@ -216,5 +226,5 @@ def _parse_cursor(cursor: str) -> tuple[datetime | None, int | None]:
     try:
         ts_str, id_str = cursor.rsplit("|", 1)
         return datetime.fromisoformat(ts_str), int(id_str)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None, None

@@ -301,10 +301,10 @@ class RequestCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     request_type: str
-    source_url: str | None = None
-    slug: str | None = None
-    chapter_id: str | None = None
-    details: str | None = None
+    source_url: str | None = Field(default=None, max_length=2048)
+    slug: str | None = Field(default=None, max_length=255)
+    chapter_id: str | None = Field(default=None, max_length=128)
+    details: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
     def validate_type(self) -> RequestCreate:

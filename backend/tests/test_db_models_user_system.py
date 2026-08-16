@@ -80,6 +80,11 @@ class TestUser:
         with pytest.raises(IntegrityError):
             session.commit()
 
+    def test_email_unique_case_insensitively(self, session, user) -> None:
+        session.add(User(email="TEST@example.com", role="user"))
+        with pytest.raises(IntegrityError):
+            session.commit()
+
     def test_owner_role(self, session) -> None:
         owner = User(email="owner@example.com", role="owner")
         session.add(owner)
@@ -237,6 +242,13 @@ class TestReview:
         session.commit()
         assert review.rating is None
 
+    def test_one_review_per_user_and_novel(self, session, user, novel) -> None:
+        session.add(Review(user_id=user.id, novel_id=novel.id, rating=5))
+        session.commit()
+        session.add(Review(user_id=user.id, novel_id=novel.id, rating=4))
+        with pytest.raises(IntegrityError):
+            session.commit()
+
 
 class TestNovelRequest:
     def test_create_request(self, session, user) -> None:
@@ -250,6 +262,18 @@ class TestNovelRequest:
         result = session.query(NovelRequest).filter_by(user_id=user.id).one()
         assert result.status == "pending"
         assert result.request_type == "new_novel"
+
+    def test_chapter_request_persists_chapter_id(self, session, user, novel, chapter) -> None:
+        req = NovelRequest(
+            user_id=user.id,
+            request_type="chapter",
+            novel_id=novel.id,
+            chapter_id=chapter.id,
+            source_url="https://example.com/chapter",
+        )
+        session.add(req)
+        session.commit()
+        assert session.query(NovelRequest).one().chapter_id == chapter.id
 
     def test_requests_never_auto_trigger_jobs(self) -> None:
         """NovelRequest has no job_trigger or auto_translate column."""

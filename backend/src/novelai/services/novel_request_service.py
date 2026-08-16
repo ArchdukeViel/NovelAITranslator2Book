@@ -81,13 +81,13 @@ class NovelRequestService:
             "status": item.status,
             "source_url": item.source_url,
             "slug": novel_slug,
-            "chapter_id": None,
+            "approved_slug": approved_slug,
+            "chapter_id": str(item.chapter_id) if item.chapter_id is not None else None,
             "created_at": item.created_at,
             "updated_at": item.updated_at,
             "resolved_at": item.resolved_at,
             "rejection_reason": item.rejection_reason,
             "approved_novel_id": item.approved_novel_id,
-            "approved_slug": approved_slug,
         }
 
     def _request_response(self, item: NovelRequest) -> dict[str, Any]:
@@ -179,12 +179,13 @@ class NovelRequestService:
             novel_id = novel.id
 
         # Validate chapter_id belongs to the novel
+        db_chapter_id: int | None = None
         if chapter_id is not None:
             try:
-                _cid = int(chapter_id)
+                db_chapter_id = int(chapter_id)
             except ValueError:
                 raise ValueError("Chapter not found") from None
-            ch = self.db_session.query(ChapterModel).filter_by(id=_cid, novel_id=novel_id).one_or_none()
+            ch = self.db_session.query(ChapterModel).filter_by(id=db_chapter_id, novel_id=novel_id).one_or_none()
             if ch is None:
                 raise ValueError("Chapter not found")
 
@@ -194,6 +195,7 @@ class NovelRequestService:
                 user_id=user_id,
                 request_type=request_type,
                 novel_id=novel_id,
+                chapter_id=db_chapter_id,
                 source_url=source_url,
                 status="pending",
             )
@@ -206,6 +208,7 @@ class NovelRequestService:
             user_id=user_id,
             request_type=request_type,
             novel_id=novel_id,
+            chapter_id=db_chapter_id,
             source_url=source_url,
             status="pending",
         )

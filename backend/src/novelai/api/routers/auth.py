@@ -195,7 +195,7 @@ async def login(
 
 
 @router.post("/register")
-async def register(
+def register(
     payload: RegisterRequest,
     request: Request,
     svc: AuthService = Depends(get_auth_service),
@@ -223,7 +223,7 @@ async def register(
 
 
 @router.post("/password/login")
-async def password_login(
+def password_login(
     payload: PasswordLoginRequest,
     request: Request,
     svc: AuthService = Depends(get_auth_service),
@@ -254,7 +254,7 @@ async def password_reset_request(
 
 
 @router.post("/password/reset/confirm")
-async def password_reset_confirm(
+def password_reset_confirm(
     payload: PasswordResetConfirmRequest,
     request: Request,
     svc: AuthService = Depends(get_auth_service),

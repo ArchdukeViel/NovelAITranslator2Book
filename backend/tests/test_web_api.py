@@ -414,7 +414,7 @@ def test_unhandled_runtime_error_message_respects_debug_errors(
 
     c = TestClient(app, raise_server_exceptions=False)
 
-    monkeypatch.setattr(error_handler_module, "DEBUG_ERRORS", False)
+    monkeypatch.setattr(settings, "DEBUG_ERRORS", False)
     production_resp = c.get("/debug/runtime")
     production_payload = production_resp.json()
     assert production_resp.status_code == 500
@@ -423,7 +423,7 @@ def test_unhandled_runtime_error_message_respects_debug_errors(
     assert production_payload["code"] == "RUNTIME_ERROR"
     assert "error" not in production_payload["details"]
 
-    monkeypatch.setattr(error_handler_module, "DEBUG_ERRORS", True)
+    monkeypatch.setattr(settings, "DEBUG_ERRORS", True)
     debug_resp = c.get("/debug/runtime")
     debug_payload = debug_resp.json()
     assert debug_resp.status_code == 500
@@ -443,7 +443,7 @@ def test_unhandled_generic_exception_hides_message_in_production(
     async def debug_generic_exception() -> None:
         raise Exception("secret generic internal message")
 
-    monkeypatch.setattr(error_handler_module, "DEBUG_ERRORS", False)
+    monkeypatch.setattr(settings, "DEBUG_ERRORS", False)
     c = TestClient(app, raise_server_exceptions=False)
 
     resp = c.get("/debug/generic-exception")
@@ -467,7 +467,7 @@ def test_unhandled_value_error_keeps_validation_message_in_production(
     async def debug_jobs_value_error() -> None:
         raise ValueError("Activity payload is missing source_key.")
 
-    monkeypatch.setattr(error_handler_module, "DEBUG_ERRORS", False)
+    monkeypatch.setattr(settings, "DEBUG_ERRORS", False)
     c = TestClient(app, raise_server_exceptions=False)
 
     resp = c.get("/debug/jobs/value-error")
@@ -495,7 +495,7 @@ def test_unhandled_job_and_request_runtime_errors_use_failed_dependency(
     async def debug_requests_runtime() -> None:
         raise RuntimeError("request queue stopped")
 
-    monkeypatch.setattr(error_handler_module, "DEBUG_ERRORS", True)
+    monkeypatch.setattr(settings, "DEBUG_ERRORS", True)
     c = TestClient(app, raise_server_exceptions=False)
 
     jobs_resp = c.get("/debug/jobs/runtime")
@@ -522,7 +522,7 @@ def test_unhandled_error_details_include_novel_code_for_novel_route(
     async def debug_novel_runtime() -> None:
         raise RuntimeError("debug novel activity")
 
-    monkeypatch.setattr(error_handler_module, "DEBUG_ERRORS", True)
+    monkeypatch.setattr(settings, "DEBUG_ERRORS", True)
     c = TestClient(app, raise_server_exceptions=False)
 
     resp = c.get("/api/admin/novels/n0813kx/debug-runtime")
@@ -582,7 +582,7 @@ def test_unhandled_translation_runtime_error_keeps_message_in_production(
     async def debug_translation_runtime() -> None:
         raise RuntimeError("Translation provider returned malformed output.")
 
-    monkeypatch.setattr(error_handler_module, "DEBUG_ERRORS", False)
+    monkeypatch.setattr(settings, "DEBUG_ERRORS", False)
     c = TestClient(app, raise_server_exceptions=False)
     resp = c.get("/debug/translation/runtime")
     payload = resp.json()

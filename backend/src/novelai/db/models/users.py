@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from novelai.db.base import Base
@@ -23,7 +23,10 @@ class User(Base):
     """A registered user. Role: guest | user | owner."""
 
     __tablename__ = "users"
-    __table_args__ = (CheckConstraint("role IN ('guest', 'user', 'owner')", name="ck_users_role_valid"),)
+    __table_args__ = (
+        CheckConstraint("role IN ('guest', 'user', 'owner')", name="ck_users_role_valid"),
+        Index("ix_users_email_lower", text("lower(email)"), unique=True),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
@@ -148,6 +151,7 @@ class Review(Base):
     """
 
     __tablename__ = "reviews"
+    __table_args__ = (UniqueConstraint("user_id", "novel_id", name="uq_reviews_user_novel"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -188,6 +192,7 @@ class NovelRequest(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     request_type: Mapped[str] = mapped_column(String(64), nullable=False)
     novel_id: Mapped[int | None] = mapped_column(ForeignKey("novels.id", ondelete="SET NULL"), nullable=True)
+    chapter_id: Mapped[int | None] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(64), nullable=False, default="pending", index=True)
     created_at: Mapped[datetime] = mapped_column(

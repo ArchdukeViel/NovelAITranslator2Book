@@ -51,7 +51,7 @@ class ActivityWorkerService:
         metadata = activity.get("metadata")
         return dict(metadata) if isinstance(metadata, dict) else {}
 
-    def _make_label_callback(self, activity_id: str) -> Callable[[str], None]:
+    def _make_label_callback(self, activity_id: str, lease_id: str | None = None) -> Callable[[str], None]:
         """Build a label-only progress callback that never changes counters."""
 
         def _callback(message: str) -> None:
@@ -59,6 +59,7 @@ class ActivityWorkerService:
                 self.activity_log.update_activity_metadata(
                     activity_id,
                     {"progress": {"current_label": message}},
+                    lease_id=lease_id,
                 )
             except Exception:
                 logger.debug("Failed to update crawl progress label", exc_info=True)
@@ -73,6 +74,7 @@ class ActivityWorkerService:
         label: str,
         stage: str | None = None,
         stage_status: str | None = None,
+        lease_id: str | None = None,
     ) -> None:
         progress: dict[str, Any] = {
             "completed": completed,
@@ -84,7 +86,11 @@ class ActivityWorkerService:
         if stage_status is not None:
             progress["stage_status"] = stage_status
         try:
-            self.activity_log.update_activity_metadata(activity_id, {"progress": progress})
+            self.activity_log.update_activity_metadata(
+                activity_id,
+                {"progress": progress},
+                lease_id=lease_id,
+            )
         except Exception:
             logger.debug("Failed to update crawl progress", exc_info=True)
 
@@ -213,7 +219,7 @@ class ActivityWorkerService:
         if self.activity_log.is_activity_cancelled(activity_id):
             raise asyncio.CancelledError(f"Activity {activity_id} was cancelled by user")
 
-    async def _run_crawl_activity(self, activity: dict[str, Any]) -> dict[str, Any]:
+    async def _run_crawl_activity(self, activity: dict[str, Any], lease_id: str | None = None) -> dict[str, Any]:
         kind = str(activity.get("kind") or "")
         metadata = self._activity_metadata(activity)
         novel_id = str(activity.get("novel_id") or "")
@@ -237,7 +243,7 @@ class ActivityWorkerService:
                 novel_id,
                 mode=mode,
                 max_chapter=max_chapter,
-                progress_callback=self._make_label_callback(activity_id),
+                progress_callback=self._make_label_callback(activity_id, lease_id=lease_id),
             )
             self._check_cancelled(activity_id)
             return {"chapter_count": len(result.get("chapters", [])) if isinstance(result, dict) else 0}
@@ -259,7 +265,7 @@ class ActivityWorkerService:
             def _progress_callback(message: str) -> None:
                 # Label-only channel: arbitrary log messages never drive
                 # numeric progress; only structured events do.
-                self._update_crawl_progress(activity_id, completed[0], total, message)
+                self._update_crawl_progress(activity_id, completed[0], total, message, lease_id=lease_id)
 
             def _progress_events_callback(event: CrawlProgressEvent) -> None:
                 completed[0] = event.completed
@@ -273,6 +279,7 @@ class ActivityWorkerService:
                     label,
                     stage=event.stage,
                     stage_status=event.status,
+                    lease_id=lease_id,
                 )
 
             self._check_cancelled(activity_id)
@@ -310,7 +317,11 @@ class ActivityWorkerService:
                 "image_download_failures": image_download_failures,
                 "terminal_status": terminal_status,
             }
-            self.activity_log.update_activity_metadata(activity_id, {"crawl_result": crawl_result})
+            self.activity_log.update_activity_metadata(
+                activity_id,
+                {"crawl_result": crawl_result},
+                lease_id=lease_id,
+            )
 
             return {"chapters": chapters, "crawl_result": crawl_result}
 
@@ -481,7 +492,7 @@ class ActivityWorkerService:
         )
         try:
             if activity.get("type") == "crawl":
-                result_metadata = await self._run_crawl_activity(activity)
+                result_metadata = await self._run_crawl_activity(activity, lease_id=lease_id)
                 # Section 10: accept either the nested ``crawl_result`` envelope
                 # or a direct flat dict with succeeded/failed/terminal_status.
                 # normalize_crawl_result picks the right one; missing fields
