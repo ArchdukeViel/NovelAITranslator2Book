@@ -31,7 +31,7 @@ and recovery backups remain supported.
 ## Requirements
 
 - Python 3.14+
-- Node.js 26.7.x and npm
+- Node.js 26.7.x and npm for local, CI, and Docker development (Vercel preview uses Node.js 24.x)
 - PostgreSQL 18 or compatible managed PostgreSQL
 - Gemini API key for real translation
 - Docker Desktop when using Redis/Compose
