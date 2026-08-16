@@ -2,17 +2,20 @@
 
 import { Bell, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import { useUnreadCount, usePublicAuth } from "@/hooks/public";
+
+const subscribeToNothing = () => () => {};
+const getClientMounted = () => true;
+const getServerMounted = () => false;
 
 export function NotificationIndicator() {
   const { isAuthenticated, isPending } = usePublicAuth();
   const { data: unreadCount = 0, isLoading, refetch } = useUnreadCount();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(subscribeToNothing, getClientMounted, getServerMounted);
 
   useEffect(() => {
-    setMounted(true);
     if (isAuthenticated && !isPending) {
       refetch();
     }

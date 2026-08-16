@@ -56,15 +56,22 @@ export function TaxonomyDialog({ open, novel, onClose }: TaxonomyDialogProps) {
 
   // Reset selection when taxonomy data arrives or dialog re-opens
   React.useEffect(() => {
-    if (!open) {
-      setTagInput("");
-      setSaveError(null);
-      return;
-    }
-    if (taxonomy.data) {
-      setSelectedSlugs(new Set(taxonomy.data.genres));
-      setSelectedTags([...taxonomy.data.tags]);
-    }
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (!open) {
+        setTagInput("");
+        setSaveError(null);
+        return;
+      }
+      if (taxonomy.data) {
+        setSelectedSlugs(new Set(taxonomy.data.genres));
+        setSelectedTags([...taxonomy.data.tags]);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [open, taxonomy.data]);
 
   const isLoading = taxonomy.isLoading || genresQuery.isLoading;

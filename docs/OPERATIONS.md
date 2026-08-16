@@ -80,11 +80,11 @@ POST /api/admin/backups
 
 ### Database
 
-- `DATABASE_BACKUP_ENABLED=true` creates PostgreSQL 17 custom-format dumps of
+- `DATABASE_BACKUP_ENABLED=true` creates PostgreSQL 18 custom-format dumps of
   application-owned schema.
 - Dumps are streamed through AES-256-GCM encryption and committed independently.
 - No plaintext dump remains after successful or failed handling.
-- Restore verification uses a disposable PostgreSQL 17 database whose name
+- Restore verification uses a disposable PostgreSQL 18 database whose name
   contains `restore`; never point it at production.
 
 ## Restore Procedure
@@ -166,11 +166,11 @@ Use real-network/browser acceptance before launch; local budgets are not hosted 
 ## Recovering the Project Venv
 
 The project venv at `.venv/` is the canonical interpreter for all backend
-tooling (Python ≥ 3.13). To rebuild after schema changes, dependency
+tooling (Python ≥ 3.14). To rebuild after schema changes, dependency
 upgrades, or accidental deletions:
 
 ```powershell
-py -3.13 -m venv .venv
+py -3.14 -m venv .venv
 & .venv\Scripts\python.exe -m pip install --upgrade pip
 & uv sync --extra documents --extra dev --extra db --extra auth --extra s3 --extra worker --extra gemini --extra test
 ```

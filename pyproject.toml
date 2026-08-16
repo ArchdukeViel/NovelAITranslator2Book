@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=82.0.0", "wheel>=0.46.3"]
+requires = ["setuptools>=84.0.0", "wheel>=0.48.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,80 +10,80 @@ authors = [
   {name = "ArchdukeViel"}
 ]
 readme = "readme.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 license = {text = "GPL-3.0-or-later"}
 
 dependencies = [
   "argon2-cffi>=25.1.0",
-  "fastapi>=0.139.0",
-  "uvicorn[standard]>=0.51.0",
+  "fastapi>=0.141.1",
+  "uvicorn[standard]>=0.52.3",
   "pydantic>=2.13.4",
-  "pydantic-settings>=2.14.2",
+  "pydantic-settings>=2.15.0",
   "python-dotenv>=1.2.2",
   "httpx>=0.28.1",
   "beautifulsoup4>=4.15.0",
   "lxml>=6.1.1",
-  "cryptography>=49.0.0",
-  "croniter>=6.0.0",
+  "cryptography>=50.0.0",
+  "croniter>=6.2.4",
   "email-validator>=2.3.0",
-  "google-genai>=2.11.0",
+  "google-genai>=2.18.1",
 ]
 
 [project.optional-dependencies]
 gemini = [
-  "google-genai>=2.11.0",
+  "google-genai>=2.18.1",
 ]
 test = [
-  "httpx2>=2.7.0",
+  "httpx2>=2.10.0",
   "pytest>=9.1.1",
   "pytest-asyncio>=1.4.0",
   "pytest-xdist>=3.8.0",
-  "aiosqlite>=0.20",
-  "hypothesis>=6.0",
-  "moto[s3]>=5.0.0",
+  "aiosqlite>=0.22.1",
+  "hypothesis>=6.165.9",
+  "moto[s3]>=5.2.2",
 ]
 documents = [
-  "pypdf>=6.14.2",
+  "pypdf>=6.16.1",
 ]
 db = [
-  "sqlalchemy>=2.0.51",
-  "alembic>=1.18.5",
+  "sqlalchemy>=2.0.52",
+  "alembic>=1.19.1",
   "psycopg[binary]>=3.3.4",
 ]
 worker = [
   "rq>=2.10.0",
-  "redis>=8.0.1",
+  "redis>=8.1.0",
 ]
 auth = [
   "argon2-cffi>=25.1.0",
-  "itsdangerous>=2.2",
+  "itsdangerous>=2.2.0",
 ]
 s3 = [
-  "boto3>=1.43.47",
+  "boto3>=1.43.72",
 ]
 dev = [
-  "aiosqlite>=0.20",
+  "aiosqlite>=0.22.1",
   "argon2-cffi>=25.1.0",
-  "cryptography>=49.0.0",
-  "croniter>=6.0.0",
-  "google-genai>=2.11.0",
-  "hypothesis>=6.0",
-  "httpx2>=2.7.0",
-  "itsdangerous>=2.2",
-  "moto[s3]>=5.0.0",
-  "pip-tools>=7.5.3",
+  "cryptography>=50.0.0",
+  "croniter>=6.2.4",
+  "google-genai>=2.18.1",
+  "hypothesis>=6.165.9",
+  "httpx2>=2.10.0",
+  "itsdangerous>=2.2.0",
+  "moto[s3]>=5.2.2",
+  "pip-tools>=7.6.1",
   "pyright[nodejs]>=1.1.411",
   "pytest>=9.1.1",
   "pytest-asyncio>=1.4.0",
   "pytest-xdist>=3.8.0",
-  "ruff>=0.15.21",
-  "sqlalchemy>=2.0.51",
-  "alembic>=1.18.5",
+  "ruff>=0.16.3",
+  "sqlalchemy>=2.0.52",
+  "alembic>=1.19.1",
   "psycopg[binary]>=3.3.4",
   "rq>=2.10.0",
-  "redis>=8.0.1",
-  "fakeredis>=2.36.2",
-  "pre-commit>=4.2.0",
+  "redis>=8.1.0",
+  "fakeredis>=2.37.0",
+  "pre-commit>=4.6.2",
   "pyasn1>=0.6.4",
 ]
 
@@ -113,7 +113,7 @@ markers = [
 ]
 
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 line-length = 120
 src = ["backend/src", "backend/tests"]
 

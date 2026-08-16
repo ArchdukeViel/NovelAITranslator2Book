@@ -37,7 +37,7 @@ Do not preload every document. Load canonical detail only when relevant:
 ## Project Venv
 
 The project virtualenv at `.venv/` is the canonical interpreter. Python
-version: ≥ 3.13. PATH-precedence mistakes cannot poison results when the
+version: ≥ 3.14. PATH-precedence mistakes cannot poison results when the
 wrapper resolves to `.venv\Scripts\python.exe` explicitly. Always invoke
 backend tooling through the wrappers in `tools/`:
 

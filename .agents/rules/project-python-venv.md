@@ -6,7 +6,7 @@ description: Always run backend tooling through the project virtualenv; never in
 ## project-python-venv
 
 The project virtualenv at `.venv/` is the canonical interpreter
-(Python ≥ 3.13). PATH-precedence mistakes against the system interpreter
+(Python ≥ 3.14). PATH-precedence mistakes against the system interpreter
 silently lose the venv pinning and poison results.
 
 Rules:

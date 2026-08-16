@@ -54,23 +54,6 @@ Push-Location $repoRoot
 try {
     if (-not $DevOnly) {
         Invoke-Compile -Args ($commonArgs + @("--output-file", "requirements.lock"))
-        # Vercel lockfile keeps a single deterministic generator: uv only.
-        # uv is the same solver that produces uv.lock, and `--locked` refuses
-        # to re-lock, so a committed requirements-vercel.lock is reproducible
-        # from the committed uv.lock. Fail if uv is unavailable rather than
-        # silently switching to a second, conflicting solver (pip-tools).
-        $uvExe = Get-Command "uv" -ErrorAction SilentlyContinue
-        if (-not $uvExe) {
-            throw "uv is required to regenerate requirements-vercel.lock. Install uv (https://docs.astral.sh/uv/) and re-run update-lockfiles.ps1."
-        }
-        & uv export `
-            --locked `
-            --extra db `
-            --extra s3 `
-            --extra auth `
-            --no-emit-workspace `
-            --output-file requirements-vercel.lock
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
 
     if (-not $RuntimeOnly) {

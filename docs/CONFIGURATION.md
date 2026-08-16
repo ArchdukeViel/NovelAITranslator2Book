@@ -20,7 +20,7 @@ Configuration contract. Exact fields/defaults live in
 ## Python Interpreter
 
 The canonical interpreter is the project virtualenv at `.venv\Scripts\python.exe`
-(Python ≥ 3.13). Always invoke backend tooling through the wrappers in `tools/`
+(Python ≥ 3.14). Always invoke backend tooling through the wrappers in `tools/`
 (`tools/pytest.ps1`, `tools/pyright.ps1`, `tools/ruff.ps1`); they resolve the
 venv explicitly so a PATH-precedence mistake cannot poison results. Bare
 `python` / `pytest` / `ruff` / `pyright` invocations outside the wrappers
@@ -74,7 +74,7 @@ backup bucket, and prefixes must not collapse into one unrestricted scope.
 
 `BACKUP_ENABLED` controls object snapshots. `DATABASE_BACKUP_ENABLED` controls
 encrypted PostgreSQL dumps and requires backup encryption key, independent DB
-prefix, and PostgreSQL 17 client tools. `DATABASE_RESTORE_VERIFICATION_MAX_AGE_DAYS`
+prefix, and PostgreSQL 18 client tools. `DATABASE_RESTORE_VERIFICATION_MAX_AGE_DAYS`
 (default 32) sets max days since last successful restore before probe goes unhealthy.
 Restore verification requires an explicit disposable target whose database name
 contains `restore`.

@@ -26,7 +26,7 @@ or credential fragments. -->
 ## Environment
 
 - Branch / commit:
-- Python version: (default 3.13)
+- Python version: (default 3.14)
 - Storage backend: filesystem / s3
 - Deployment: local / preview / production
 

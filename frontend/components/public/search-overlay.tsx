@@ -44,33 +44,8 @@ interface SearchResults {
 const EMPTY_RESULTS: SearchResults = { novels: [], authors: [], tags: [], genres: [] };
 
 export function SearchOverlay() {
-  const router = useRouter();
-  const { isOpen, close } = useSearchOverlay();
-  const { data: allGenres = [] } = useGenres();
+  const isOpen = useSearchOverlay((state) => state.isOpen);
 
-  const inputRef = useRef<HTMLInputElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
-
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResults>(EMPTY_RESULTS);
-  const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(-1);
-  const [recents, setRecents] = useState<string[]>([]);
-  // Query that actually completed a search cycle — "No matches" only renders
-  // after a real response, never during the debounce window.
-  const [completedQuery, setCompletedQuery] = useState("");
-
-  const debouncedQuery = useDebounce(query, DEBOUNCE_MS);
-  const trimmedQuery = query.trim();
-  const shouldSearch = trimmedQuery.length >= MIN_QUERY_LENGTH;
-  const debouncedTrimmed = debouncedQuery.trim();
-  const shouldSearchDebounced = debouncedTrimmed.length >= MIN_QUERY_LENGTH;
-
-  // Global `/` shortcut is mounted here so the overlay opens everywhere,
-  // including reader (quiet chrome) pages. Escape-close lives in a separate
-  // window-level listener below so it works regardless of which element has
-  // focus inside the dialog.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
@@ -88,10 +63,36 @@ export function SearchOverlay() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  return isOpen ? <SearchOverlayContent /> : null;
+}
+
+function SearchOverlayContent() {
+  const router = useRouter();
+  const close = useSearchOverlay((state) => state.close);
+  const { data: allGenres = [] } = useGenres();
+
+  const inputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchResults>(EMPTY_RESULTS);
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const [recents, setRecents] = useState<string[]>(() => loadRecentSearches());
+  // Query that actually completed a search cycle — "No matches" only renders
+  // after a real response, never during the debounce window.
+  const [completedQuery, setCompletedQuery] = useState("");
+
+  const debouncedQuery = useDebounce(query, DEBOUNCE_MS);
+  const trimmedQuery = query.trim();
+  const shouldSearch = trimmedQuery.length >= MIN_QUERY_LENGTH;
+  const debouncedTrimmed = debouncedQuery.trim();
+  const shouldSearchDebounced = debouncedTrimmed.length >= MIN_QUERY_LENGTH;
+
   // Escape closes the dialog from anywhere inside it (input, clear button,
   // result buttons, backdrop), matching dialog expectations.
   useEffect(() => {
-    if (!isOpen) return;
     function onWindowKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -100,26 +101,20 @@ export function SearchOverlay() {
     }
     window.addEventListener("keydown", onWindowKeyDown);
     return () => window.removeEventListener("keydown", onWindowKeyDown);
-  }, [isOpen, close]);
+  }, [close]);
 
   // Focus input on open; return focus to the opener on close. The input
   // mounts inside the same commit as `isOpen` flipping true, so the ref is
   // available synchronously in this effect.
   useEffect(() => {
-    if (isOpen) {
-      setQuery("");
-      setResults(EMPTY_RESULTS);
-      setError(false);
-      setActiveIndex(-1);
-      setRecents(loadRecentSearches());
-      inputRef.current?.focus();
-    } else {
+    inputRef.current?.focus();
+    return () => {
       const opener = useSearchOverlay.getState().openerRef;
       if (opener instanceof HTMLElement && opener.isConnected) {
         opener.focus();
       }
-    }
-  }, [isOpen]);
+    };
+  }, []);
 
   // Search effect: debounced query fires catalog + tag requests; a new
   // keystroke aborts whatever is still in flight; stale results stay visible
@@ -127,17 +122,14 @@ export function SearchOverlay() {
   useEffect(() => {
     if (!shouldSearchDebounced) {
       abortRef.current?.abort();
-      setResults(EMPTY_RESULTS);
-      setError(false);
-      setLoading(false);
       return;
     }
     const controller = new AbortController();
     abortRef.current?.abort();
     abortRef.current = controller;
-    setLoading(true);
 
     async function run() {
+      setLoading(true);
       try {
         const [catalogResult, tagsResult] = await Promise.allSettled([
           publicApi.catalog(
@@ -262,6 +254,17 @@ export function SearchOverlay() {
     setRecents(loadRecentSearches());
   }
 
+  function updateQuery(nextQuery: string) {
+    setQuery(nextQuery);
+    if (nextQuery.trim().length < MIN_QUERY_LENGTH) {
+      setResults(EMPTY_RESULTS);
+      setError(false);
+      setLoading(false);
+      setActiveIndex(-1);
+      setCompletedQuery("");
+    }
+  }
+
   function renderGroupHeader(label: string, count: number) {
     if (count === 0) return null;
     return (
@@ -280,8 +283,6 @@ export function SearchOverlay() {
       active ? "bg-accent/60 text-foreground" : "text-foreground/90 hover:bg-accent/40"
     );
   }
-
-  if (!isOpen) return null;
 
   return (
     <div
@@ -312,7 +313,7 @@ export function SearchOverlay() {
             ref={inputRef}
             type="search"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => updateQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Search novels, authors, tags…"
             aria-label="Search"
@@ -323,11 +324,7 @@ export function SearchOverlay() {
               type="button"
               aria-label="Clear search"
               onClick={() => {
-                setQuery("");
-                setResults(EMPTY_RESULTS);
-                setError(false);
-                setActiveIndex(-1);
-                setCompletedQuery("");
+                updateQuery("");
               }}
               className="rounded-sm p-1 text-muted-foreground hover:text-foreground"
             >

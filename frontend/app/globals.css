@@ -1,6 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.ts";
+@plugin "tailwindcss-animate";
 
 :root {
   --background: 38 24% 93.7%;   /* #F4F1EA Warm Washi Paper (reduced glare) */

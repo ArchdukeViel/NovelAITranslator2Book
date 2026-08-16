@@ -31,7 +31,6 @@ __pycache__
 frontend/node_modules
 frontend/.next
 frontend/.next-dev
-frontend/.vercel
 frontend/coverage
 frontend/novel_library
 frontend/tsconfig.tsbuildinfo

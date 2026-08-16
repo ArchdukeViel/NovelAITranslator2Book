@@ -43,6 +43,7 @@ function summary(overrides: Partial<AnalyticsSummary> = {}): AnalyticsSummary {
 }
 
 afterEach(() => {
+  vi.clearAllMocks();
   vi.restoreAllMocks();
   cleanup();
 });

@@ -1,7 +1,7 @@
 # =============================================================================
 # Stage 1: deps — restore npm cache layer independently
 # =============================================================================
-FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS deps
+FROM node:26.7.0-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS deps
 
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
@@ -11,14 +11,16 @@ RUN --mount=type=cache,target=/root/.npm \
 # =============================================================================
 # Stage 2: builder — compile Next.js standalone output
 # =============================================================================
-FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS builder
+FROM node:26.7.0-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS builder
 
 WORKDIR /app/frontend
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Passed in from compose build args; falls back to the rewrite proxy path
 ARG NEXT_PUBLIC_API_BASE_URL=/api
-ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+ARG NEXT_PUBLIC_API_URL=
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL} \
+    NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 COPY --from=deps /app/frontend/node_modules ./node_modules
 COPY frontend ./
@@ -32,7 +34,7 @@ RUN --mount=type=cache,target=/root/.npm \
 # =============================================================================
 # Stage 3: runner — minimal production image
 # =============================================================================
-FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS runner
+FROM node:26.7.0-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production \

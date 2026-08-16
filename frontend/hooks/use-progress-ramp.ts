@@ -20,7 +20,10 @@ export function useProgressRamp(
     if (!active) {
       return;
     }
-    setProgress((current) => Math.max(current, start));
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setProgress((current) => Math.max(current, start));
+    });
     const timer = window.setInterval(() => {
       setProgress((current) => {
         if (current >= max) {
@@ -29,7 +32,10 @@ export function useProgressRamp(
         return Math.min(max, current + Math.max(2, Math.round((max - current) / 8)));
       });
     }, intervalMs);
-    return () => window.clearInterval(timer);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [active, intervalMs, max, start]);
 
   const resetProgress = React.useCallback(() => setProgress(0), []);

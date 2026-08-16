@@ -49,9 +49,8 @@ export function ReasonDialog({
           : null;
 
   React.useEffect(() => {
-    if (open) {
-      setInternalReason("");
-    }
+    if (!open) return;
+    queueMicrotask(() => setInternalReason(""));
   }, [open]);
 
   return (

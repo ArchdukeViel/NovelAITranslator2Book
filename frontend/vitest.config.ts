@@ -1,13 +1,13 @@
 /// <reference types="vitest" />
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
-import path from "path";
+import { resolve } from "node:path";
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "."),
+      "@": resolve(import.meta.dirname, "."),
     },
   },
   test: {
@@ -19,10 +19,7 @@ export default defineConfig({
     // Single fork: measured on the 2-core GitHub runner, maxWorkers: 2 made
     // frontend-check SLOWER (89s vs 62s) — duplicated module transform and
     // jsdom environment setup per fork outweigh the 2-core parallelism.
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
-    },
+    maxWorkers: 1,
+    fileParallelism: false,
   },
 });

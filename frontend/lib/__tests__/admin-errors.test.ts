@@ -10,11 +10,15 @@ const secretGenerators = {
   bearerToken: fc.string({ minLength: 20, maxLength: 50 }).map(
     (s) => `Bearer ${s.replace(/[^A-Za-z0-9\-._~+/]/g, "x")}`
   ),
-  googleApiKey: fc.constantFrom(
-    "AIzaSyD1234567890abcdefghijklmnop",
-    "AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ",
-    "AIzaSy" + fc.sample(fc.hexaString({ maxLength: 30 }), 1)[0]
-  ).map((s) => s.slice(0, 39)),
+  googleApiKey: fc.oneof(
+    fc.constant("AIzaSyD1234567890abcdefghijklmnop"),
+    fc.constant("AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+    fc.string({
+      unit: fc.constantFrom(..."0123456789abcdefABCDEF"),
+      minLength: 20,
+      maxLength: 30,
+    }).map((suffix) => `AIzaSy${suffix}`.slice(0, 39))
+  ),
   openAiKey: fc.string({ minLength: 25, maxLength: 40 }).map(
     (s) => `sk-${s.replace(/[^A-Za-z0-9]/g, "a")}`.slice(0, 40)
   ),
@@ -88,25 +92,25 @@ describe("formatAdminError", () => {
         ),
         ({ value }) => {
           const result = formatAdminError(value);
-          
+
           // The result should not contain the raw secret values
           // Check that none of the secret patterns are present in the output
-          
+
           // Bearer tokens should be redacted
           expect(result.message).not.toMatch(/Bearer\s+[A-Za-z0-9\-._~+/]+=/i);
-          
+
           // Google API keys should be redacted
           expect(result.message).not.toMatch(/AIza[A-Za-z0-9\-_]{20,}/);
-          
+
           // OpenAI keys should be redacted
           expect(result.message).not.toMatch(/sk-[A-Za-z0-9]{20,}/);
-          
+
           // Authorization headers should be redacted
           expect(result.message).not.toMatch(/Authorization:\s*.+/i);
-          
+
           // Cookies should be redacted
           expect(result.message).not.toMatch(/cookie[:\s]+[^\r\n;]*/i);
-          
+
           // Session tokens should be redacted
           expect(result.message).not.toMatch(/session[_\-]?token[=\s]+/i);
         }

@@ -271,9 +271,10 @@ export default function LibraryPage() {
       return;
     }
 
-    setSelectedTranslationChapterIds(
-      new Set(translationChapters.data.filter((chapter) => !chapter.translated).map((chapter) => chapter.id)),
+    const nextSelection = new Set(
+      translationChapters.data.filter((chapter) => !chapter.translated).map((chapter) => chapter.id),
     );
+    queueMicrotask(() => setSelectedTranslationChapterIds(nextSelection));
   }, [translationNovelId, translationChapters.data]);
 
   // Pull summary items out into a map keyed by novel_id so each row can
