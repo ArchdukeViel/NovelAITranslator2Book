@@ -425,11 +425,15 @@ class ActivityWorkerService:
         return result
 
     async def run_activity(self, activity_id: str, *, lease_id: str | None = None) -> dict[str, Any] | None:
-        activity = (
-            self.activity_log.claim_activity(activity_id)
-            if lease_id is None
-            else self.activity_log.get_activity(activity_id)
-        )
+        if lease_id is None:
+            activity = self.activity_log.claim_activity(activity_id)
+            if activity is None:
+                existing = self.activity_log.get_activity(activity_id)
+                if existing is None:
+                    return None
+                raise ValueError(f"Activity cannot be run from status: {existing.get('status')}")
+        else:
+            activity = self.activity_log.get_activity(activity_id)
         if activity is None:
             return None
         if activity.get("status") != JobStatus.RUNNING.value:
