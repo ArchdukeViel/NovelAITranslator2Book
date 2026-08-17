@@ -284,7 +284,7 @@ class StorageService:
         """
         try:
             return str(int(stem))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return decode_physical_stem(stem)
 
     def _content_root(self, novel_id: str) -> Path:
@@ -333,6 +333,17 @@ class StorageService:
     def _rel(self, path: Path) -> str:
         """Convert absolute Path to backend-relative key."""
         return str(path.relative_to(self.base_dir))
+
+    def _read_text_optional(self, path: Path) -> str | None:
+        """Read text content if object exists, avoiding HEAD+GET round trips."""
+        try:
+            return self._backend.load(self._rel(path)).decode("utf-8")
+        except FileNotFoundError:
+            return None
+        except Exception as exc:
+            if type(exc).__name__ in {"NoSuchKey", "ClientError", "NotFound"}:
+                return None
+            raise
 
     def _read_text(self, path: Path) -> str:
         """Read text content via storage backend."""
@@ -459,11 +470,11 @@ class StorageService:
         """
         try:
             raw = self._backend.load(key)
-        except (FileNotFoundError, OSError):
+        except FileNotFoundError, OSError:
             return None
         try:
             data = json.loads(raw.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except json.JSONDecodeError, UnicodeDecodeError:
             return None
         return data if isinstance(data, dict) else None
 
@@ -537,7 +548,7 @@ class StorageService:
     def _normalize_optional_int(value: Any) -> int | None:
         try:
             return int(value) if value is not None else None
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
     @staticmethod

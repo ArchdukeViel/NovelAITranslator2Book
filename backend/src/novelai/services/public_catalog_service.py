@@ -240,10 +240,37 @@ class PublicCatalogService:
         genres, tags = self.taxonomy_from_db_novel(novel, include_adult=include_adult)
         source_title = novel.original_title if (novel.original_title and novel.original_title != novel.title) else None
         pub_status = normalize_publication_status(novel.publication_status)
+
+        # Serve directly from DB if the row has non-placeholder title and complete fields
+        if not self.db_title_is_placeholder(novel):
+            public_slug = self.slugify_public_title(novel.title) if novel.title else novel.slug
+            if public_slug == "novel" and novel.slug:
+                public_slug = novel.slug
+            return {
+                "novel_id": novel.slug,
+                "slug": public_slug,
+                "title": novel.title,
+                "source_title": source_title,
+                "author": novel.author,
+                "language": novel.language,
+                "synopsis": novel.synopsis,
+                "publication_status": pub_status,
+                "chapter_count": novel.chapter_count or 0,
+                "translated_count": novel.translated_count or 0,
+                "added_at": _datetime_to_public_string(novel.created_at),
+                "latest_chapter_id": novel.latest_chapter_id,
+                "latest_chapter_number": novel.latest_chapter_number,
+                "latest_chapter_title": novel.latest_chapter_title,
+                "latest_chapter_updated_at": _datetime_to_public_string(novel.latest_chapter_updated_at),
+                "genres": genres,
+                "tags": tags,
+            }
+
+        # Fallback hydration only for placeholder/underfed DB rows
         storage_summary: dict[str, Any] | None = None
         resolved = self._resolve_storage_metadata_for_db_novel(
             novel.slug,
-            allow_title_slug_scan=self.db_title_is_placeholder(novel),
+            allow_title_slug_scan=True,
         )
         if resolved is not None:
             storage_novel_id, metadata, _ = resolved
@@ -266,8 +293,8 @@ class PublicCatalogService:
             "language": novel.language,
             "synopsis": novel.synopsis,
             "publication_status": pub_status,
-            "chapter_count": novel.chapter_count,
-            "translated_count": novel.translated_count,
+            "chapter_count": novel.chapter_count or 0,
+            "translated_count": novel.translated_count or 0,
             "added_at": _datetime_to_public_string(novel.created_at),
             "latest_chapter_id": novel.latest_chapter_id,
             "latest_chapter_number": novel.latest_chapter_number,
@@ -362,12 +389,6 @@ class PublicCatalogService:
         self,
         slug: str,
     ) -> tuple[str, dict[str, Any], str] | None:
-        meta = self.storage.load_metadata(slug)
-        if meta is not None:
-            source_id = _optional_str(meta.get("novel_id")) or slug
-            if not self._db_row_allows_storage_catalog_entry(source_id):
-                return None
-            return source_id, meta, self.public_slug_from_metadata(source_id, meta)
         if self.db_session is not None:
             novel = self.db_session.query(Novel).filter_by(slug=slug).one_or_none()
             if novel is not None:
@@ -376,6 +397,12 @@ class PublicCatalogService:
                 meta = self.storage.load_metadata(novel.slug) or {}
                 source_id = _optional_str(meta.get("novel_id")) or novel.slug
                 return source_id, meta, self.public_slug_from_metadata(source_id, meta)
+        meta = self.storage.load_metadata(slug)
+        if meta is not None:
+            source_id = _optional_str(meta.get("novel_id")) or slug
+            if not self._db_row_allows_storage_catalog_entry(source_id):
+                return None
+            return source_id, meta, self.public_slug_from_metadata(source_id, meta)
         for novel_id in self.storage.list_novels():
             candidate_meta = self.storage.load_metadata(novel_id) or {}
             public_slug = self.public_slug_from_metadata(novel_id, candidate_meta)

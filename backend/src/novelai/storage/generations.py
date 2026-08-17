@@ -406,10 +406,11 @@ def _manifest_path(self: Any, novel_id: str, generation_id: str) -> Path:
 
 def _load_manifest(self: Any, novel_id: str, generation_id: str) -> GenerationManifest | None:
     manifest_path = _manifest_path(self, novel_id, generation_id)
-    if not self._path_exists(manifest_path):
+    text = self._read_text_optional(manifest_path)
+    if not text:
         return None
     try:
-        return GenerationManifest.from_dict(json.loads(self._read_text(manifest_path)))
+        return GenerationManifest.from_dict(json.loads(text))
     except Exception as exc:
         logger.warning("Failed to load generation manifest for %s/%s: %s", novel_id, generation_id, exc)
         return None
@@ -470,10 +471,11 @@ def get_active_generation(
     folder naming runs).
     """
     active_pointer_path = self._novel_dir(novel_id) / "generations" / "active_generation.json"
-    if not self._path_exists(active_pointer_path):
+    text = self._read_text_optional(active_pointer_path)
+    if not text:
         return None
     try:
-        data = json.loads(self._read_text(active_pointer_path))
+        data = json.loads(text)
         gen_id = data.get("active_generation_id")
         return self.load_generation_manifest(novel_id, gen_id) if gen_id else None
     except Exception as exc:
@@ -487,10 +489,11 @@ def resolve_active_generation_id(self: Any, novel_id: str) -> str | None:
     Read-only: never creates the ``generations/`` tree.
     """
     active_pointer_path = self._novel_dir(novel_id) / "generations" / "active_generation.json"
-    if not self._path_exists(active_pointer_path):
+    text = self._read_text_optional(active_pointer_path)
+    if not text:
         return None
     try:
-        data = json.loads(self._read_text(active_pointer_path))
+        data = json.loads(text)
         gen_id = data.get("active_generation_id")
         return str(gen_id) if isinstance(gen_id, str) and gen_id.strip() else None
     except Exception as exc:

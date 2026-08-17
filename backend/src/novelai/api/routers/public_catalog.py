@@ -355,8 +355,14 @@ async def catalog(
                 + len(tag_exclude_set),
             },
         )
-    blocked_slugs = TakedownService(db).active_takedown_slugs([novel.slug for novel in response.novels])
-    visible_novels = [novel for novel in response.novels if novel.slug.casefold() not in blocked_slugs]
+    blocked_slugs = TakedownService(db).active_takedown_slugs(
+        [novel.slug for novel in response.novels] + [novel.novel_id for novel in response.novels]
+    )
+    visible_novels = [
+        novel
+        for novel in response.novels
+        if novel.slug.casefold() not in blocked_slugs and novel.novel_id.casefold() not in blocked_slugs
+    ]
     if len(visible_novels) != len(response.novels):
         response = response.model_copy(
             update={

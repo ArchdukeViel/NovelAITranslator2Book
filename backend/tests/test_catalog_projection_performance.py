@@ -159,3 +159,87 @@ def test_storage_fallback_degraded_flag():
 
     resp = PublicCatalogResponse(novels=[], total=0, page=1, page_size=24, degraded=True)
     assert resp.degraded is True
+
+
+# ---------------------------------------------------------------------------
+# Remote Operation Upper Bound Regression Tests
+# ---------------------------------------------------------------------------
+
+
+def test_public_catalog_zero_remote_storage_io_when_db_fed(tmp_path):
+    """Catalog served from database makes exactly zero calls to storage backend."""
+    from unittest.mock import MagicMock
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from novelai.api.routers.public_catalog import catalog
+    from novelai.db.base import Base
+    from novelai.db.models.novel import Novel
+    from novelai.storage.service import StorageService
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db_session = Session()
+
+    mock_backend = MagicMock()
+    storage = StorageService(tmp_path / "lib")
+    storage._backend = mock_backend
+
+    # Seed DB with published novel
+    novel = Novel(
+        slug="test-novel",
+        title="Test Novel",
+        chapter_count=10,
+        translated_count=5,
+        is_published=True,
+    )
+    db_session.add(novel)
+    db_session.commit()
+
+    service = PublicCatalogService(storage=storage, db_session=db_session)
+    req = MagicMock()
+    resp = MagicMock()
+    user = MagicMock()
+    user.user_id = None
+
+    import asyncio
+
+    result = asyncio.run(
+        catalog(
+            request=req,
+            response_headers=resp,
+            page=1,
+            page_size=24,
+            sort_by="added_at",
+            order="desc",
+            min_chapters=None,
+            max_chapters=None,
+            source_key=None,
+            genre_include=None,
+            genre_exclude=None,
+            tag_include=None,
+            tag_exclude=None,
+            publication_status=None,
+            include_adult=False,
+            q=None,
+            service=service,
+            user=user,
+            db=db_session,
+        )
+    )
+
+    assert len(result.novels) == 1
+    assert result.novels[0].novel_id == "test-novel"
+    # Ensure zero storage backend load/save/exists/list calls
+    mock_backend.load.assert_not_called()
+    mock_backend.save.assert_not_called()
+    mock_backend.exists.assert_not_called()
+    mock_backend.list_keys.assert_not_called()
+    mock_backend.has_keys.assert_not_called()
