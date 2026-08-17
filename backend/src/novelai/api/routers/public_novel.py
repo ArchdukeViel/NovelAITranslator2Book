@@ -49,9 +49,6 @@ async def get_novel(
     response: Response = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
     """Public novel detail."""
-    resolved = service._resolve_public_novel(slug)
-    if resolved is None:
-        raise HTTPException(status_code=404, detail="Novel not found.")
     # HTTP 451 — Unavailable For Legal Reasons
     if isinstance(db, Session) and TakedownService(db).has_active_takedown_for_slug(slug):
         raise HTTPException(
@@ -59,13 +56,14 @@ async def get_novel(
             detail="Unavailable For Legal Reasons",
             headers={"Cache-Control": "no-store"},
         )
-    novel_id, meta, _public_slug = resolved
-    genres, tags, _ = service._load_taxonomy_for_novel(novel_id, include_adult=include_adult)
+    summary, novel_id = service.get_public_novel_summary(slug, include_adult=include_adult)
+    if summary is None or novel_id is None:
+        raise HTTPException(status_code=404, detail="Novel not found.")
     # Best-effort analytics: record public_novel.view
     record_server_event("public_novel.view", user_id=user.user_id, novel_id=novel_id)
     if response is not None:
         response.headers["Cache-Control"] = "public, max-age=60"
-    return service._novel_summary(novel_id, meta, genres=genres, tags=tags)
+    return summary
 
 
 @router.get("/novels/{slug}/chapters", response_model=list[PublicChapterSummary])

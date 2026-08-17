@@ -305,9 +305,9 @@ class StorageService:
         checkpoints, ``generations/`` itself) always stay in the novel
         directory and are never generation-scoped.
         """
-        active = get_active_generation(self, novel_id)
-        if active is not None:
-            return self._generations_dir(novel_id) / active.generation_id
+        active_gen_id = resolve_active_generation_id(self, novel_id)
+        if active_gen_id is not None:
+            return self._generations_dir(novel_id) / active_gen_id
         return self._novel_dir(novel_id)
 
     def __init__(self, base_dir: Path | None = None, backend: Any | None = None) -> None:

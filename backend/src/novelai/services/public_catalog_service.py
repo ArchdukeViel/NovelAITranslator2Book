@@ -190,6 +190,39 @@ class PublicCatalogService:
 
     # -- instance helpers (need storage / db) ----------------------------------
 
+    def get_public_novel_summary(
+        self,
+        slug: str,
+        *,
+        include_adult: bool = False,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """Resolve and build public novel summary.
+
+        Returns (summary_dict, novel_id) or (None, None).
+        Uses DB projection when fully populated to avoid storage reads.
+        """
+        if self.db_session is not None:
+            from sqlalchemy.orm import selectinload
+
+            from novelai.db.models.novel import Novel
+
+            db_novel = (
+                self.db_session.query(Novel)
+                .options(selectinload(Novel.genres), selectinload(Novel.tags))
+                .filter_by(slug=slug)
+                .one_or_none()
+            )
+            if db_novel is not None and db_novel.is_published is True:
+                if not self.db_title_is_placeholder(db_novel):
+                    return self._db_novel_summary(db_novel, include_adult=include_adult), db_novel.slug
+
+        resolved = self._resolve_public_novel(slug)
+        if resolved is None:
+            return None, None
+        novel_id, meta, _ = resolved
+        genres, tags, _ = self._load_taxonomy_for_novel(novel_id, include_adult=include_adult)
+        return self._novel_summary(novel_id, meta, genres=genres, tags=tags), novel_id
+
     def _novel_summary(
         self,
         novel_id: str,
@@ -338,7 +371,14 @@ class PublicCatalogService:
         """Return (genre_info, tag_info, has_adult_genre)."""
         if self.db_session is None:
             return [], [], False
-        novel = self.db_session.query(Novel).filter_by(slug=slug).one_or_none()
+        from sqlalchemy.orm import selectinload
+
+        novel = (
+            self.db_session.query(Novel)
+            .options(selectinload(Novel.genres), selectinload(Novel.tags))
+            .filter_by(slug=slug)
+            .one_or_none()
+        )
         if novel is None:
             return [], [], False
         genre_info: list[dict[str, Any]] = []

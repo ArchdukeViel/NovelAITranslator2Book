@@ -12,7 +12,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import and_, func, true
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.dependencies import (
@@ -158,7 +158,13 @@ def _catalog_from_db_page(
         order_field = Novel.created_at
     order_columns = (order_field.asc(), Novel.id.asc()) if order == "asc" else (order_field.desc(), Novel.id.desc())
     offset = (page - 1) * page_size
-    novels = query.order_by(*order_columns).offset(offset).limit(page_size).all()
+    novels = (
+        query.options(selectinload(Novel.genres), selectinload(Novel.tags))
+        .order_by(*order_columns)
+        .offset(offset)
+        .limit(page_size)
+        .all()
+    )
     return PublicCatalogResponse(
         novels=[
             PublicNovelSummary(**service._db_novel_summary(novel, include_adult=include_adult)) for novel in novels

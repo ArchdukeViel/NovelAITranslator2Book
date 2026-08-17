@@ -243,3 +243,67 @@ def test_public_catalog_zero_remote_storage_io_when_db_fed(tmp_path):
     mock_backend.exists.assert_not_called()
     mock_backend.list_keys.assert_not_called()
     mock_backend.has_keys.assert_not_called()
+
+
+def test_public_novel_detail_zero_remote_storage_io_when_db_fed(tmp_path):
+    """Novel detail served from database makes exactly zero calls to storage backend."""
+    from unittest.mock import MagicMock
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from novelai.api.routers.public_novel import get_novel
+    from novelai.db.base import Base
+    from novelai.db.models.novel import Novel
+    from novelai.storage.service import StorageService
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db_session = Session()
+
+    mock_backend = MagicMock()
+    storage = StorageService(tmp_path / "lib")
+    storage._backend = mock_backend
+
+    novel = Novel(
+        slug="test-novel",
+        title="Test Novel",
+        chapter_count=10,
+        translated_count=5,
+        is_published=True,
+    )
+    db_session.add(novel)
+    db_session.commit()
+
+    service = PublicCatalogService(storage=storage, db_session=db_session)
+    resp = MagicMock()
+    user = MagicMock()
+    user.user_id = None
+
+    import asyncio
+
+    result = asyncio.run(
+        get_novel(
+            slug="test-novel",
+            include_adult=False,
+            service=service,
+            user=user,
+            db=db_session,
+            response=resp,
+        )
+    )
+
+    assert result["novel_id"] == "test-novel"
+    assert result["title"] == "Test Novel"
+    # Ensure zero storage backend calls
+    mock_backend.load.assert_not_called()
+    mock_backend.save.assert_not_called()
+    mock_backend.exists.assert_not_called()
+    mock_backend.list_keys.assert_not_called()
+    mock_backend.has_keys.assert_not_called()
