@@ -24,7 +24,7 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_RESTORE_PASSWORD}
       POSTGRES_DB: novelai_restore_verify
     volumes:
-      - restore_db_data:/var/lib/postgresql/data
+      - restore_db_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U novelai_restore -d novelai_restore_verify"]
       interval: 10s
