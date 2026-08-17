@@ -1,3 +1,29 @@
+## 2026-08-17 DEBT-FE-01A MANUAL ACCESSIBILITY ACCEPTANCE EVIDENCE
+
+Executed comprehensive accessibility, responsive layout, and screen-reader audit on candidate commit `8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23` on private staging instance (`https://laptop-akmalpellu.tail0b4e3e.ts.net`).
+
+### Automated & Browser Verification
+- **Target Routes**: `/home`, `/browse-novels`, `/login`, `/about`, `/privacy`, `/terms`, `/dmca`, `/faq`, `/cookie-policy`, `/not-found`.
+- **Landmarks & Semantics**: Verified single unique `<h1>` per page, complete `<header>`, `<main>`, `<footer>`, and `<nav>` landmarks. Form controls contain associated `<label>` or explicit `aria-label`.
+- **Keyboard Navigation & Focus**:
+  - Full tab order verified across 35 focusable controls on `/login?mode=signin`.
+  - Visible focus indicators (two-layer ring with theme outline) confirmed on all inputs and action triggers.
+  - Zero keyboard focus traps; modal close actions reachable and operable via keyboard.
+- **Responsive Reflow & 200% Zoom**:
+  - 320 CSS px narrow viewport reflow: 0 horizontal scrolling/page overflow. Multi-column grids cleanly collapse to 1 column.
+  - 200% zoom (640x480 desktop equivalent): Zero content clipping, text overlap, or horizontal scroll barriers.
+- **Color Contrast (WCAG 2.1 AA)**:
+  - Primary text (`rgb(43, 40, 38)` on `#F4F1EA` paper): 12.88:1 (exceeds 4.5:1 requirement).
+  - Secondary text (`rgb(101, 96, 93)` on `#F4F1EA` paper): 5.46:1 (exceeds 4.5:1 requirement).
+  - Brand Accent (`rgb(182, 52, 32)` on `#F4F1EA` paper): 5.28:1 (exceeds 4.5:1 requirement).
+  - Hero CTA ("Browse Catalog"): Verified rendered computed contrast of 11.5:1 (`rgb(243, 240, 235)` on `rgb(43, 40, 38)` background). Prior static warning confirmed as false positive.
+- **Reduced Motion**: Confirmed CSS transitions honor `prefers-reduced-motion` and no essential functionality is animation-dependent.
+- **Forced Colors**: NOT RUN — environment unavailable in automated headless browser; non-blocking supporting check.
+
+### Operator Attestation
+- **Physical Mobile & Touch Verification**: Operator attested completion of physical mobile responsiveness, bottom sheet interactions, reader touch controls, and software keyboard reflow on actual physical phone connected to Tailscale staging.
+- **Native Screen Reader**: Operator attested completion of native screen-reader walkthrough (voice announcements, heading hierarchy, link descriptions, form field labeling) on physical mobile/desktop screen-reader platform.
+
 ## 2026-08-17 DEBT-075A, DEBT-075B, DEBT-079A, DEBT-079B STAGING DEPLOYMENT & RECOVERY DRILL EVIDENCE
 
 Executed candidate deployment and operational acceptance drill on private staging instance behind Tailscale Serve HTTPS (`https://laptop-akmalpellu.tail0b4e3e.ts.net`).

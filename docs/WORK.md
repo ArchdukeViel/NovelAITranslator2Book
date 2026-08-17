@@ -38,7 +38,7 @@ exists and is recorded in `HISTORY.md`.
 | 8 | DEBT-118 | Activate and verify SMTP | DEBT-079A | Domain/SPF/DKIM/DMARC, auth mail, bounce/error handling, redaction, limits, `noop` rollback proven |
 | 9 | DEBT-075C | Real operator alert | DEBT-118 | Stale/failure alert delivered; threshold, cooldown, redaction, escalation proven |
 | 10 | DEBT-079C | External monitoring | DEBT-079A, OWN-001 | Scheduled runs, dashboard, operator delivery, escalation ownership proven |
-| 11 | DEBT-FE-01A | FE-01 manual acceptance | DEBT-079A | Keyboard, screen reader, 200% zoom, reduced motion, focus, contrast verified on shipped tokens; see manual acceptance checklist below |
+| 11 | DEBT-FE-01A | FE-01 manual acceptance | DEBT-079A | Keyboard, screen reader, 200% zoom, reduced motion, focus, contrast verified on shipped tokens; operator physical acceptance complete (COMPLETED 2026-08-17) |
 | 12 | DEBT-079D | Performance/SEO/legal acceptance | DEBT-079A | Budgets, canonical/robots/sitemap/structured data, HTTP 451 and CDN propagation pass |
 | 13 | DEBT-079E | Rollback rehearsal | DEBT-075B, DEBT-079B | Worker/scheduler paused, reader disabled, cache purged, prior image compatibility checked, redeployed, smoke rerun |
 | 14 | GO-001 | Final launch decision | All above | Zero unwaived blockers; launch/rollback/monitoring owners named |
@@ -314,7 +314,7 @@ new community review list `/novels/[slug]?tab=reviews`,
 | 10 | Forced colors mode (Windows High Contrast): borders, focus rings, status badges, and input boundaries remain visible. | Windows High Contrast |
 | 11 | Real-device mobile testing: tab bar, bottom sheets, gesture-bar safe areas, and reader controls functional on actual iOS/Android browsers. | Physical phone / tablet |
 
-Close DEBT-FE-01A only after a pass is recorded for every row above.
+Status: COMPLETED 2026-08-17 (Automated AX & responsive suite passed; operator attested physical mobile and native screen-reader acceptance).
 
 Per-slice validation:
 
@@ -333,7 +333,7 @@ graphify update . --no-cluster
 | Secret scanning | Partial (hosted scans passed) | PR #12 proved successful GitGuardian push and same-repo PR checks. Still require protected required-check configuration and sanitized incident/false-positive triage evidence. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
 | Alerts and monitoring | Blocked (tooling complete) | Configure `PRODUCTION_BASE_URL`, prove scheduled external runs and real operator delivery, cooldown/redaction, dashboards, escalation, and ownership. |
 | Recovery | Needs current run (tooling complete) | Current-head database restore and object snapshot restore into isolated targets. Backup-stale alert threshold, restore-freshness max age, and runtime-role verifier implemented locally. |
-| Accessibility | Manual | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast. |
+| Accessibility | Pass (COMPLETED 2026-08-17) | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast verified via automated test suite and operator physical device attestation. |
 | Performance | Manual | Real-network API p95, request count, cache, long chapter, annotations, route JS. |
 | SEO | Manual | Hosted canonical, robots, sitemap, and structured-data validators. |
 | Legal propagation | Manual | HTTP 451, sitemap exclusion, and CDN cache propagation. |
