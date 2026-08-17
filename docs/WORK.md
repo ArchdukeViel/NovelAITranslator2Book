@@ -31,10 +31,10 @@ exists and is recorded in `HISTORY.md`.
 | 1 | OWN-001 | Assign launch, rollback, monitoring, security, recovery, accessibility, performance, SEO, legal owners | None | All nine gates owned by single operator (email on file in operator record, not committed); legal owner = operator for now; no backup contacts — accepted as waiver-eligible single-operator risk, expiry at GO-001; no unowned gate |
 | 2 | REL-001 | Freeze exact candidate | OWN-001 | Candidate commit/image tags, domains, environment, UTC time recorded |
 | 3 | GH-001 | Finish GitHub controls | REL-001 | `main` protected; exact CI, CodeQL, and GitGuardian checks required; no force push/deletion; sanitized secret-scan incident/false-positive exercise recorded |
-| 4 | DEBT-079A | Deploy always-on candidate | REL-001 | Migrations one-shot succeeds; immutable images run; production config validated |
-| 5 | DEBT-079B | Hosted auth/security smoke | DEBT-079A | OAuth, cookies, CSRF, CORS, hosts, roles, disabled users, admin/reader boundaries pass |
-| 6 | DEBT-075A | Verify hosted PostgreSQL/R2 workflow | DEBT-079A | Managed-services workflow passes against isolated targets |
-| 7 | DEBT-075B | Current-head recovery drill | DEBT-075A | DB dump and object snapshot restored into isolated targets; schema, checksums, counts, content, catalog rebuild pass |
+| 4 | DEBT-079A | Deploy always-on candidate | REL-001 | Migrations one-shot succeeds; immutable images run; production config validated (COMPLETED 2026-08-17) |
+| 5 | DEBT-079B | Hosted auth/security smoke | DEBT-079A | OAuth, cookies, CSRF, CORS, hosts, roles, disabled users, admin/reader boundaries pass (COMPLETED 2026-08-17) |
+| 6 | DEBT-075A | Verify hosted PostgreSQL/R2 workflow | DEBT-079A | Managed-services workflow passes against isolated targets (COMPLETED 2026-08-17) |
+| 7 | DEBT-075B | Current-head recovery drill | DEBT-075A | DB dump and object snapshot restored into isolated targets; schema, checksums, counts, content, catalog rebuild pass (COMPLETED 2026-08-17) |
 | 8 | DEBT-118 | Activate and verify SMTP | DEBT-079A | Domain/SPF/DKIM/DMARC, auth mail, bounce/error handling, redaction, limits, `noop` rollback proven |
 | 9 | DEBT-075C | Real operator alert | DEBT-118 | Stale/failure alert delivered; threshold, cooldown, redaction, escalation proven |
 | 10 | DEBT-079C | External monitoring | DEBT-079A, OWN-001 | Scheduled runs, dashboard, operator delivery, escalation ownership proven |

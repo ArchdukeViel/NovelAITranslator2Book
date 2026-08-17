@@ -1,3 +1,40 @@
+## 2026-08-17 DEBT-075A, DEBT-075B, DEBT-079A, DEBT-079B STAGING DEPLOYMENT & RECOVERY DRILL EVIDENCE
+
+Executed candidate deployment and operational acceptance drill on private staging instance behind Tailscale Serve HTTPS (`https://laptop-akmalpellu.tail0b4e3e.ts.net`).
+
+### Environment & Candidate Verification
+- Candidate Commit: `8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23` (`8c8c109`)
+- Alembic Head: `d7e4f9a1c2b3` (35 public tables, 0 invalid constraints)
+- Immutable Image Digests:
+  - Admin: `ghcr.io/archdukeviel/novelaitranslator2book/novelai-admin:sha-8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23@sha256:21a755c79aa7ad7eaf22422e319e6bb3c2cbccfc7876ec2b6001d3fa3ce35937`
+  - Reader: `ghcr.io/archdukeviel/novelaitranslator2book/novelai-reader:sha-8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23@sha256:146ce9a2bbd294d82996f844642111a5e1b59d5331b7ba20ea676a6f475168dd`
+  - Frontend: `ghcr.io/archdukeviel/novelaitranslator2book/novelai-frontend:sha-8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23@sha256:12f80eb27ab095e2978df067a73a15e886ae6d7395e2511229455d0e3ce5985e`
+  - Caddy: `caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648`
+  - Redis: `redis:8.8.0-alpine@sha256:9d317178eceac8454a2284a9e6df2466b93c745529947f0cd42a0fa9609d7005`
+  - Restore DB: `postgres:18.6-alpine@sha256:432b3b824c0769275ec9b0947736ef8b376d6997bcaa9de29818f613819c2feb`
+- Reverse Proxy: Tailscale Serve TLS termination on `https://laptop-akmalpellu.tail0b4e3e.ts.net/` proxying to `http://127.0.0.1:8080`.
+
+### DEBT-079A & DEBT-079B Shipped Verification
+- **Smoke Suite (`deploy-smoke.ps1`)**: 8/8 endpoints returned 200 OK (`/health/live`, `/health/ready`, `/`, `/login`, `/privacy`, `/terms`, `/novels`, `/api/public/novels`).
+- **Security & Cookie Invariants**:
+  - `SESSION_COOKIE_SECURE=true` verified: `Set-Cookie` emits `Secure; HttpOnly; SameSite=Lax`.
+  - Security headers present: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Strict-Transport-Security: max-age=31536000; includeSubDomains`.
+  - CSRF protection: POST `/api/admin/novels` and `/api/auth/register` reject missing/invalid `X-CSRF-Token` with HTTP 403.
+  - Reader isolation: `/api/admin/*` unreachable through reader port (8001); properly routed to admin on port 8000 via Caddy.
+
+### DEBT-075A Managed Services Verification
+- **PostgreSQL**: Connected via least-privilege `novelai_runtime` role against Supabase pooler (`aws-1-ap-southeast-1.pooler.supabase.com:5432`). Verified schema isolation, RLS constraints, and lease contention locks.
+- **R2 Storage & S3 Integration**: Executed `test_r2_snapshot_integration.py` against isolated prefix on Cloudflare R2 bucket `dokushodo`. Verified atomic write, read, and delete operations.
+
+### DEBT-075B Current-Head Recovery Drill
+- **Object Snapshot**: Created fresh snapshot `backup-20260817T013754Z-0a73f437` into R2 bucket `dokushodo-backup`. Verified AES-GCM encryption, plaintext checksum, and manifest integrity.
+- **Encrypted Database Backup**: Created backup `database-20260817T013953Z-b5777e92` into R2 bucket `dokushodo-backup`.
+- **Automated Restore Drill**: Restored backup into isolated disposable container `novel-ai-restore-db-1` (`postgres:18.6-alpine`) target database `novelai_restore_verify`.
+  - Result: `DatabaseBackupService.verify_latest_restore()` status `succeeded`.
+  - Restored Alembic Head: `d7e4f9a1c2b3`
+  - Public Tables: 35
+  - Invalid Constraints: 0
+
 ## 2026-08-11 PR-41 CLOSURE — Provider Exception Sanitization, Shared Atomic Replacement & Final Documentation Synchronization
 
 Final documentation synchronization pass for PR #41 on `feat/pipeline-upgrade-phases-1-8`.
