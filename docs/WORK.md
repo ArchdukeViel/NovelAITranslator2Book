@@ -39,7 +39,7 @@ exists and is recorded in `HISTORY.md`.
 | 9 | DEBT-075C | Real operator alert | DEBT-118 | Stale/failure alert delivered; threshold, cooldown, redaction, escalation proven |
 | 10 | DEBT-079C | External monitoring | DEBT-079A, OWN-001 | Scheduled runs, dashboard, operator delivery, escalation ownership proven |
 | 11 | DEBT-FE-01A | FE-01 manual acceptance | DEBT-079A | Keyboard, screen reader, 200% zoom, reduced motion, focus, contrast verified on shipped tokens; operator physical acceptance complete (COMPLETED 2026-08-17) |
-| 12 | DEBT-079D | Performance/SEO/legal acceptance | DEBT-079A | Budgets, canonical/robots/sitemap/structured data, HTTP 451 and CDN propagation pass (COMPLETED 2026-08-17) |
+| 12 | DEBT-079D | Performance/SEO/legal acceptance | DEBT-079A | Budgets, canonical/robots/sitemap/structured data, HTTP 451 and CDN propagation pass (PARTIAL / FAIL — HOSTED LATENCY BUDGET NOT MET) |
 | 13 | DEBT-079E | Rollback rehearsal | DEBT-075B, DEBT-079B | Worker/scheduler paused, reader disabled, cache purged, prior image compatibility checked, redeployed, smoke rerun |
 | 14 | GO-001 | Final launch decision | All above | Zero unwaived blockers; launch/rollback/monitoring owners named |
 
@@ -334,9 +334,9 @@ graphify update . --no-cluster
 | Alerts and monitoring | Blocked (tooling complete) | Configure `PRODUCTION_BASE_URL`, prove scheduled external runs and real operator delivery, cooldown/redaction, dashboards, escalation, and ownership. |
 | Recovery | Needs current run (tooling complete) | Current-head database restore and object snapshot restore into isolated targets. Backup-stale alert threshold, restore-freshness max age, and runtime-role verifier implemented locally. |
 | Accessibility | Pass (COMPLETED 2026-08-17) | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast verified via automated test suite and operator physical device attestation. |
-| Performance | Pass (COMPLETED 2026-08-17) | Real-network API latency measured (pooler RTT ~956ms, catalog p50=690ms, p95=764ms); Next.js client bundle (compressed ~169.8 KiB <= 250 KiB budget); memory & projections tested. |
-| SEO | Pass (COMPLETED 2026-08-17) | Hosted robots.txt, sitemap.xml, Open Graph / Twitter metadata, canonical URLs verified. |
-| Legal propagation | Pass (COMPLETED 2026-08-17) | HTTP 451 legal takedown verified (Cache-Control: no-store, no private info leak); sitemap exclusion & 404 contracts verified; CDN purge deferred to public edge. |
+| Performance | Partial / Fail (AUDITED 2026-08-17) | Catalog API p95 on hosted staging exceeds hard budget (reader direct p95=1001.60ms, Tailscale HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + S3 metadata list latency). Novel detail and Chapter APIs NOT RUN on hosted staging (no published novel/chapter fixture in DB). First-load JS passes (169.8 KiB <= 250 KiB). |
+| SEO | Staging Pass / Production Deferred (AUDITED 2026-08-17) | Staging robots.txt, sitemap.xml, Open Graph / Twitter metadata, canonical URLs verified on staging hostname; production domain SEO validation deferred until public domain cutover. |
+| Legal propagation | Pass (AUDITED 2026-08-17) | HTTP 451 legal takedown verified (Cache-Control: no-store, no private info leak); sitemap exclusion & 404 contracts verified; CDN purge deferred to public edge. |
 | Rollback | Blocked | Pause worker/scheduler, purge cache, disable reader, redeploy previous immutable version, rerun smoke. |
 | Ownership | Assigned | All nine gates owned by single operator; email on file in operator record (not committed). Legal owner: operator (temporary). No rollback/monitoring backup — waiver-eligible single-operator risk: risk = alert/rollback response may not reach a second person; reason = solo operation; mitigation = escalate via hosting provider support line on incident; owner = operator; approver = operator; expiry = GO-001. No unowned gate. |
 
