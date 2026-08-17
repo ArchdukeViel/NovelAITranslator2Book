@@ -154,4 +154,4 @@ class TestPreferencesService:
         svc.set_preferred_provider("gemini")
         svc.set_preferred_model("unsupported-model")
 
-        assert svc.get_provider_model() == "gemini-3.1-flash-lite"
+        assert svc.get_provider_model() == "gemini-3.5-flash-lite"

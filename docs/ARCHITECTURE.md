@@ -150,8 +150,17 @@ chapter storage -> paragraph IDs -> chunks/bundles -> prompt + glossary
 - QA checks empty/source-identical output, suspicious length, placeholders,
   refusals/errors, and mapping integrity before save.
 - Durable scheduler state records cooldown, exhaustion, heartbeat, and next eligibility.
-- Provider chain is Gemini only: `gemini-3.1-flash-lite`, then
-  `gemma-4-31b-it` through Gemini API.
+- Production translation uses the one discovered Gemini model
+  `gemini-3.5-flash-lite` (`models/gemini-3.5-flash-lite` in discovery
+  responses). There is no model or provider fallback: rate limits, temporary
+  failures, quota exhaustion, and 5xx responses wait, retry, or defer on that
+  same model; permanent configuration, credential, model, or request errors
+  fail closed.
+- All Gemini work shares hard request accounting: 15 requests/minute,
+  250,000 tokens/minute, and 500 requests/day. Body, metadata, chapter-title,
+  glossary discovery/translation, optional LLM QA, validation, cache
+  reconciliation, and retries are mapped by purpose and persisted through the
+  Gemini quota state and sanitized provider-request usage records.
 
 ## Storage and Database Ownership
 

@@ -592,7 +592,7 @@ async def test_review_glossary_terms_auto_approves_translated_targets(orchestrat
     storage.save_glossary(
         "novel-1",
         [
-            {"source": "勇者", "target": "hero", "status": "pending", "locked": True},
+            {"source": "勇者", "target": "hero", "status": "pending", "locked": True, "confidence": 0.9},
             {"source": "魔王", "target": "", "status": "pending", "locked": True},
         ],
     )
@@ -797,7 +797,7 @@ def _s6_gate_contract_kwargs(
     style_preset: str | None = None,
     consistency_mode: bool | None = False,
     json_output: bool | None = False,
-    honorific_policy: str | None = None,
+    honorific_policy: str | None = "contextual",
     active_raw_generation_id: str | None = None,
     qa_policy_fingerprint: str | None = None,
 ) -> dict[str, Any]:
@@ -2375,7 +2375,7 @@ async def test_pr41_stored_lineage_exact_values(orchestration_env) -> None:
     assert saved["style_preset"] is None
     assert saved["consistency_mode"] is False
     assert saved["json_output"] is False
-    assert saved["honorific_policy"] is None
+    assert saved["honorific_policy"] == "contextual"
     assert saved["source_episode_id"] == "1"
     assert saved["translation_run_id"] is not None
     assert saved["output_hash"] == storage._hash_text("exact lineage text")

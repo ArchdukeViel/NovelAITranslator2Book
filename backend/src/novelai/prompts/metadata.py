@@ -5,7 +5,7 @@ from typing import Any
 
 from novelai.config.settings import settings
 
-METADATA_TRANSLATION_PROMPT_VERSION = "metadata-literal-v3"
+METADATA_TRANSLATION_PROMPT_VERSION = "metadata-literal-v4"
 
 
 def build_metadata_translation_prompt(source_text: str, field: str) -> str:
@@ -38,6 +38,10 @@ def build_metadata_translation_prompt(source_text: str, field: str) -> str:
         "- Return only the translated text.\n"
         "- Do not explain, summarize, continue, rewrite, add alternatives, or add markdown.\n"
         "- Preserve names, numbers, episode markers, and honorifics unless a standard English rendering exists.\n"
+        "- Never infer omitted subjects, objects, pronouns, number, gender, or speaker identity; preserve ambiguity neutrally.\n"
+        "- Preserve source-order names and social register; do not invent dialogue attribution or relationships.\n"
+        "- Treat honorifics contextually: preserve personal-name nuance, but localize established ranks, professions, kinship address, and royal styles when the source establishes that role.\n"
+        "- Preserve ambiguity, register, counters, punctuation, fragments, and title function without adding translator commentary.\n"
         "- If the input is already in the target language, return it unchanged."
         f"{extra_rules}\n"
         "<source_text>\n"
@@ -62,8 +66,12 @@ def build_metadata_batch_translation_prompt(items: list[dict[str, Any]]) -> str:
         "- Return one JSON object only. No markdown fences, prose, comments, or text outside JSON.\n"
         "- The response object must contain one key: items.\n"
         "- Include every requested id exactly once and preserve each id byte-for-byte.\n"
-        "- Each item must be {\"id\":\"...\",\"translation\":\"...\"}.\n"
+        '- Each item must be {"id":"...","translation":"..."}.\n'
         "- Preserve names, numbers, episode markers, and honorifics unless a standard English rendering exists.\n"
+        "- Never infer omitted subjects, objects, pronouns, number, gender, or speaker identity; preserve ambiguity neutrally.\n"
+        "- Preserve source-order names and social register; do not invent dialogue attribution or relationships.\n"
+        "- Treat honorifics contextually: preserve personal-name nuance, but localize established ranks, professions, kinship address, and royal styles when the source establishes that role.\n"
+        "- Preserve ambiguity, register, counters, punctuation, fragments, and title function without adding translator commentary.\n"
         "- For author names, return only the name; omit labels such as Author or Writer.\n"
         "- For titles and chapter titles, keep the result short and title-like; do not expand it into a summary.\n"
         "- If the source title or chapter title has a banner-style suffix in brackets\n"

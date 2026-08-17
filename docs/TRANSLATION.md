@@ -12,21 +12,29 @@ translated chapter. Failed chapters do not erase successful siblings.
 ## JP-EN Quality Rules
 
 JP-EN policy applies when source is `ja|japanese` and target is `en|english`.
-Policy identity is `jp_en_quality_v1`; changing output-shaping instructions
-requires a version bump and cache invalidation.
+Policy identity is `jp_en_quality_v3`; the translation prompt template is
+`v4` and metadata prompts are `metadata-literal-v4`. Changing output-shaping
+instructions requires a version bump and cache invalidation.
 
 Prompts must:
 
 1. Preserve facts; never omit, summarize, censor, soften, or add information.
-2. Use approved glossary translations exactly.
-3. Preserve tone, register, narrator voice, paragraph order, and scene order.
-4. Prefer natural publication-quality English over awkward literalness.
-5. Never invent gender, identity, relationships, motives, or speaker attribution.
-6. Preserve ambiguity with neutral wording when context cannot resolve it.
-7. Preserve notes and structural boundaries; do not introduce markup needlessly.
+2. Do not invent omitted subjects, objects, pronouns, number, gender,
+   relationships, motives, or dialogue attribution. Add an English grammatical
+   subject only when context supports it; otherwise use neutral restructuring.
+3. Use approved glossary translations exactly and preserve source-order names.
+4. Preserve tone, register, narrator voice, paragraph order, and scene order.
+5. Prefer natural publication-quality English over awkward literalness while
+   preserving ambiguity when context cannot resolve it.
+6. Preserve notes and structural boundaries, including fragments, ellipses,
+   punctuation, counters, titles, kinship terms, embedded writing, and
+   wordplay; do not introduce markup needlessly.
 
-Honorific mode is one of `retain`, `translate`, or `omit`; do not mix modes
-without clear source need. Dialogue and narration remain distinct.
+Honorific mode is one of `contextual`, `retain`, `translate`, or `omit`; the
+default is `contextual`. Contextual handling preserves meaningful personal-name
+honorifics and localizes established rank, profession, royal, kinship, and
+social-role terms using the glossary. It never invents a relationship.
+Dialogue and narration remain distinct.
 
 ## Glossary Lifecycle
 
@@ -45,8 +53,35 @@ Rules:
 - Glossary injection happens once per prompt; do not duplicate full blocks.
 - Conflicts keep approved term and may report bounded review metadata.
 - Revision/hash changes participate in translation/cache invalidation.
+- Before body translation, incremental discovery inspects each selected chapter
+  in bounded batches. Approved/translated entries are immutable truth; only
+  structurally validated, high-confidence proposals at the configured
+  `TRANSLATION_LOW_CONFIDENCE_ACTIVATION_THRESHOLD` may activate immediately.
+  Ambiguous or low-confidence proposals remain pending and are excluded from
+  body prompts until reviewed. Discovery state is keyed by source hash, model,
+  and prompt version so resumed runs skip unchanged chapters.
+- Pending glossary translations use structured ID-based batches of
+  `TRANSLATION_GLOSSARY_BATCH_SIZE` terms. A malformed batch retries on the
+  same model and never falls back to one request per term or another model.
 - Public annotations include only explicitly public-visible approved entries.
 - Diagnostics and sync never expose private notes or credentials.
+
+## Gemini Request Budget
+
+The production Gemini contract is exact model `gemini-3.5-flash-lite` with no
+alternate model/provider fallback. All request purposes share hard limits of
+15 RPM, 250,000 TPM, and 500 RPD. The controller reserves conservative token
+estimates before a call, reconciles actual usage afterward, persists rolling
+minute/day state, honors provider `Retry-After`, and records sanitized purpose,
+model, estimates, actual tokens, retry, chapter/chunk, cache, and outcome
+metadata. Cache hits are recorded but do not consume provider quota.
+
+The dry-run estimator makes zero provider calls. It reports known chapters,
+characters, chunks, metadata/title batches, cached body chunks, known glossary
+batches, an upper estimate for undiscovered glossary output, minimum provider
+requests, configured retry reserve, selective QA requests, token estimates,
+RPD feasibility, and the RPM-only wall-clock lower bound. Unknown glossary
+terms and actual provider usage remain explicitly marked as estimates.
 
 ## Optional Review Metadata
 
@@ -236,8 +271,9 @@ signals propagate to reader / export ordering without retranslation.
 
 Deterministic checks cover empty or source-identical text, suspicious length,
 unresolved placeholders, provider refusals/error text, paragraph mapping, and
-glossary consistency. LLM QA is advisory, disabled by default where configured,
-and cannot silently replace deterministic gates or auto-publish findings.
+glossary consistency. Optional LLM QA is selective and bounded by risk/sample
+policy, advisory by default, and cannot silently replace deterministic gates or
+auto-publish findings.
 
 ## Change Checklist
 

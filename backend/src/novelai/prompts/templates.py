@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from textwrap import dedent
 
-PROMPT_TEMPLATE_VERSION = "v2"
+PROMPT_TEMPLATE_VERSION = "v4"
 
 # JP-EN prompt quality policy identity (REQ-10).
 # Bumped when output-shaping instructions change in a way that can
 # affect translation results. Cache identity includes this version
 # so old cached translations are not reused after policy changes.
 JP_EN_PROMPT_POLICY = "jp_en_quality"
-JP_EN_PROMPT_POLICY_VERSION = "jp_en_quality_v1"
+JP_EN_PROMPT_POLICY_VERSION = "jp_en_quality_v3"
 
 # Language aliases for JP-EN activation (REQ-2).
 JP_EN_SOURCE_LANGUAGE_ALIASES = frozenset({"ja", "japanese"})
@@ -31,13 +31,20 @@ MULTILINGUAL_SYSTEM_PROMPT_TEMPLATE = dedent(
     - Preserve narrator voice, internal monologue, humor, sarcasm, emotional nuance, and subtext.
     - Preserve dialogue naturally in {target_language} while keeping each speaker's personality, social tone, and implied relationships.
     - Keep names, places, titles, ranks, abilities, organizations, and recurring terminology consistent within the provided text.
-    - If a phrase is ambiguous, choose the most contextually appropriate literary rendering.
+    - If a phrase remains ambiguous, choose a natural neutral rendering that preserves the ambiguity; do not resolve it by inventing facts.
     - Do not add explanations, footnotes, translator notes, romanization notes, or commentary unless explicitly requested.
     - Do not repeat the source text.
     - Output only the translation in {target_language}.
     - Preserve image placeholders exactly as-is. Lines like [Image: description] must appear unchanged in the output.
     - Never fabricate or hallucinate content. Do not add events, dialogue, descriptions, or internal thoughts that do not appear in the source.
-    - Always preserve the grammatical subject of every sentence. Do not drop or omit subjects. If the source language permits dropped subjects (e.g., Japanese), infer and supply the correct subject explicitly in the translation.
+    - For Japanese, do not invent omitted subjects, objects, pronouns, number, gender, relationships, or speaker identity. When the source leaves one implicit, use neutral English restructuring (including passive or impersonal phrasing) rather than guessing.
+    - English may require a grammatical subject, but infer an omitted Japanese subject only when surrounding context establishes it with high confidence; otherwise preserve the ambiguity.
+    - Preserve the source order of personal names and do not Westernize, reorder, or silently expand them.
+    - Handle honorifics contextually according to the supplied policy; never apply a global suffix or invent a social relationship.
+    - Do not invent dialogue attribution, speaker labels, or dialogue tags that are not supported by the source.
+    - Preserve Japanese register in character voice: politeness, roughness, authority, age impression, intimacy, distance, keigo, casual or archaic speech, and sentence-ending nuance. Do not turn particles or pronouns into exaggerated gender stereotypes.
+    - Restructure clauses within the same paragraph when needed for idiomatic English, while preserving facts, scene order, emphasis, temporal relations, and the distinction between dialogue and narration.
+    - Treat onomatopoeia, ellipsis, fragments, punctuation, nested quotations, counters, titles, kinship address, signs, embedded writing, and archaic or fantasy terms according to context. Localize function naturally without adding translator commentary.
     - The glossary block is authoritative. If a source term appears in the glossary, you MUST use its approved translation. Do not substitute synonyms or paraphrases for glossed terms even if they seem contextually reasonable.
     - Pay attention to Japanese honorifics (-san, -kun, -chan, -sama, -sensei, -dono, -sempai, -kohai) and title/rank terms. Follow the honorific policy provided below.
     - The block delimited by `[CONTEXT OVERLAP]` and `[END CONTEXT OVERLAP]` is prior-chunk context, not content to translate. Do not translate, paraphrase, or echo it. Output the [CHAPTER ...] and [P ...] markers only for the paragraphs that come AFTER the [END CONTEXT OVERLAP] line.
@@ -119,7 +126,10 @@ JSON_SYSTEM_PROMPT_TEMPLATE = dedent(
     - Include chapter_id when [CHAPTER ...] markers are present.
     - If a paragraph cannot be translated, include its paragraph_map entry with an empty translated_text rather than omitting the paragraph_id.
     - Never fabricate or hallucinate content. Do not add events, dialogue, or descriptions absent from the source.
-    - Always preserve the grammatical subject of every sentence. Supply dropped subjects explicitly.
+    - For Japanese, do not invent omitted subjects, objects, pronouns, number, gender, relationships, or speaker identity. Use neutral English restructuring when the source is ambiguous.
+    - Preserve source-order names, contextual honorifics, register, and voice. Do not invent dialogue attribution or speaker labels.
+    - Preserve Japanese ambiguity and register; sentence/clause restructuring within the same paragraph is allowed when it does not add facts or alter scene order.
+    - Translate onomatopoeia, fragments, punctuation, nested quotations, counters, titles, kinship address, signs, embedded writing, and wordplay for their function where natural, without translator commentary.
     - The glossary block is authoritative. If a source term appears in the glossary, you MUST use its approved translation.
 
     Return this schema:
@@ -196,6 +206,12 @@ STYLE_PRESET_SYSTEM_SUFFIX_TEMPLATES: dict[str, str] = {
 }
 
 HONORIFIC_POLICY_BLOCKS: dict[str, str] = {
+    "contextual": (
+        "Honorific policy: decide contextually. Preserve personal-name honorifics such as -san, -kun, "
+        "-chan, and -sama when they carry meaningful social nuance. Localize forms that function as a "
+        "rank, profession, royal style, kinship address, or social role when context establishes that "
+        "rendering. Use approved glossary terms consistently and never invent a relationship."
+    ),
     "retain": (
         "Honorific policy: retain all Japanese honorifics as-is "
         "(-san, -kun, -chan, -sama, -sensei, -dono, -sempai, -kohai, etc.). "
@@ -207,7 +223,6 @@ HONORIFIC_POLICY_BLOCKS: dict[str, str] = {
         "Choose equivalents that match the social relationship in context."
     ),
     "omit": (
-        "Honorific policy: omit Japanese honorifics from names. "
-        "Use bare names unless a title is required for clarity."
+        "Honorific policy: omit Japanese honorifics from names. Use bare names unless a title is required for clarity."
     ),
 }

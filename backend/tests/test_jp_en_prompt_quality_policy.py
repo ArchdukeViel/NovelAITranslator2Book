@@ -178,6 +178,16 @@ class TestJpEnPromptSnapshots:
         )
         assert "omit" in prompt.lower()
 
+    def test_honorific_contextual_renders_social_role_instructions(self) -> None:
+        prompt = build_user_prompt(
+            text="テスト。",
+            source_language="Japanese",
+            target_language="English",
+            honorific_policy="contextual",
+        )
+        assert "contextually" in prompt.lower()
+        assert "social role" in prompt.lower()
+
     def test_glossary_and_jp_en_coexist_without_duplication(self) -> None:
         prompt = build_user_prompt(
             text="テスト。",

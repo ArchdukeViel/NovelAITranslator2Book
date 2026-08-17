@@ -8,8 +8,8 @@ from novelai.prompts.metadata import (
 
 
 class TestMetadataTranslationPrompt:
-    def test_version_is_v3(self) -> None:
-        assert METADATA_TRANSLATION_PROMPT_VERSION == "metadata-literal-v3"
+    def test_version_is_v4(self) -> None:
+        assert METADATA_TRANSLATION_PROMPT_VERSION == "metadata-literal-v4"
 
     def test_single_prompt_contains_banner_strip_rule(self) -> None:
         prompt = build_metadata_translation_prompt("test title", "title")

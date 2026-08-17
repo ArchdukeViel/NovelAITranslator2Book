@@ -35,7 +35,7 @@ from novelai.services.translation_cache import build_translation_cache_key
 
 class TestConstants:
     def test_prompt_template_version(self) -> None:
-        assert PROMPT_TEMPLATE_VERSION == "v2"
+        assert PROMPT_TEMPLATE_VERSION == "v4"
 
     def test_style_preset_templates_keys(self) -> None:
         assert set(STYLE_PRESET_TEMPLATES) == {"fantasy", "romance", "action", "comedy"}
@@ -44,7 +44,7 @@ class TestConstants:
         assert set(STYLE_PRESET_SYSTEM_SUFFIX_TEMPLATES) == {"fantasy", "romance", "action", "comedy"}
 
     def test_honorific_policy_blocks_keys(self) -> None:
-        assert set(HONORIFIC_POLICY_BLOCKS) == {"retain", "translate", "omit"}
+        assert set(HONORIFIC_POLICY_BLOCKS) == {"contextual", "retain", "translate", "omit"}
 
 
 # ============================================================================
@@ -141,7 +141,7 @@ class TestHonorificPolicy:
             _normalize_honorific_policy("bogus")
 
     def test_format_block_all_values(self) -> None:
-        for policy in ("retain", "translate", "omit"):
+        for policy in ("contextual", "retain", "translate", "omit"):
             block = _format_honorific_block(policy)
             assert block
             assert block.startswith("Honorific policy:")
@@ -357,7 +357,7 @@ class TestWorkflowDefaults:
         assert defaults == {
             "style_preset": None,
             "consistency_mode": False,
-            "honorific_policy": None,
+            "honorific_policy": "contextual",
         }
 
     def test_normalize_workflow_defaults_empty(self) -> None:
@@ -366,7 +366,7 @@ class TestWorkflowDefaults:
         result = normalize_workflow_defaults({})
         assert result["style_preset"] is None
         assert result["consistency_mode"] is False
-        assert result["honorific_policy"] is None
+        assert result["honorific_policy"] == "contextual"
 
     def test_normalize_workflow_defaults_valid(self) -> None:
         from novelai.config.workflow_profiles import normalize_workflow_defaults
@@ -394,7 +394,7 @@ class TestWorkflowDefaults:
         )
         assert result["style_preset"] is None
         assert result["consistency_mode"] is False
-        assert result["honorific_policy"] is None
+        assert result["honorific_policy"] == "contextual"
 
     def test_normalize_workflow_profiles_with_defaults(self) -> None:
         from novelai.config.workflow_profiles import normalize_workflow_profiles

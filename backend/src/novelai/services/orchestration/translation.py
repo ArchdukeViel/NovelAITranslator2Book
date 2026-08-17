@@ -548,7 +548,16 @@ def _preflight_translation(
         )
         normalized_glossary = []
 
-    pending_terms = [entry.source for entry in normalized_glossary if entry.status == "pending"]
+    incremental_pending = {
+        str(term).strip()
+        for term in (meta.get("_incremental_pending_terms") or [])
+        if isinstance(term, str) and term.strip()
+    }
+    pending_terms = [
+        entry.source
+        for entry in normalized_glossary
+        if entry.status == "pending" and entry.source not in incremental_pending
+    ]
     if pending_terms:
         preview = ", ".join(pending_terms[:5])
         if len(pending_terms) > 5:
@@ -567,8 +576,16 @@ def _preflight_translation(
             _novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
             if _novel is not None:
                 _novel_is_pending = _novel.glossary_status == "glossary_pending"
-        if _novel_is_pending:
-            pending_count = _count_pending_glossary_entries(novel_id)
+        pending_count = _count_pending_glossary_entries(novel_id) if _novel_is_pending else 0
+        incremental = meta.get("_incremental_glossary_preflight")
+        nonblocking_incremental_pending = (
+            isinstance(incremental, dict)
+            and incremental.get("status") in {"completed", "deferred"}
+            and isinstance(incremental.get("pending"), list)
+            and incremental.get("pending_only_new_terms") is True
+            and pending_count <= len(incremental.get("pending", []))
+        )
+        if _novel_is_pending and not nonblocking_incremental_pending:
             if pending_count == 0:
                 logger.info(
                     "Novel %r glossary_status=%r but no pending entries; skipping gate.",
@@ -997,17 +1014,42 @@ async def translate_chapters(
         workflow_defaults=workflow_defaults,
     )
 
-    # Auto-load stored glossary when none was explicitly provided.
-    if glossary is None:
-        stored_entries = self.storage.load_glossary(novel_id)
-        if stored_entries:
-            glossary = stored_entries
-
     resolved = resolve_chapter_selection(meta, chapters)
     _chapter_by_id = {record.chapter_id: record for record in resolved}
     selected_numbers = [record.sequence_number for record in resolved]
     selected_chapter_ids = [record.chapter_id for record in resolved]
     normalized_threshold = max(0.0, min(1.0, confidence_threshold))
+
+    # Incremental glossary preflight runs after chapter selection and before
+    # the body preflight/pipeline. Approved terms remain authoritative; new
+    # ambiguous terms are persisted as pending and excluded from prompts.
+    existing_glossary_entries = self.storage.load_glossary(novel_id)
+    preexisting_pending = {
+        str(entry.get("source"))
+        for entry in existing_glossary_entries
+        if isinstance(entry, dict) and str(entry.get("status") or "").lower() == "pending"
+    }
+    from novelai.services.orchestration.glossary import discover_incremental_glossary_terms
+
+    incremental_glossary = await discover_incremental_glossary_terms(
+        self,
+        novel_id,
+        resolved,
+        provider_key=effective_provider_key,
+        provider_model=effective_provider_model,
+        source_language=str(effective_source_language or "Unknown"),
+        existing_entries=existing_glossary_entries,
+    )
+    meta["_incremental_glossary_preflight"] = incremental_glossary
+    incremental_pending_terms = incremental_glossary.get("pending", [])
+    if isinstance(incremental_pending_terms, list):
+        meta["_incremental_pending_terms"] = incremental_pending_terms
+    if isinstance(incremental_glossary.get("discovery_state"), dict):
+        meta["incremental_glossary_discovery"] = incremental_glossary["discovery_state"]
+    if not preexisting_pending:
+        meta["_incremental_glossary_preflight"]["pending_only_new_terms"] = True
+    glossary = self.storage.load_glossary(novel_id)
+    glossary_revision = _resolve_glossary_revision(novel_id, platform_novel_id)
 
     preflight_issues = self._preflight_translation(
         novel_id=novel_id,

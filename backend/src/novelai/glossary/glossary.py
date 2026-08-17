@@ -82,7 +82,7 @@ def rank_glossary_terms_for_text(
     ranked: list[tuple[float, GlossaryTerm]] = []
 
     for term in terms:
-        if term.status == "ignored":
+        if term.status not in {"approved", "translated"}:
             continue
 
         source_cf = term.source.casefold()
@@ -133,6 +133,7 @@ class GlossaryTerm:
     context_summary: str | None = None
     occurrence_count: int = 0
     last_seen_index: int | None = None
+    confidence: float | None = None
 
     def normalized(self) -> GlossaryTerm:
         source = str(self.source).strip()
@@ -153,10 +154,13 @@ class GlossaryTerm:
         )
         try:
             occurrence_raw = int(self.occurrence_count)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             occurrence_raw = 0
         occurrence_count = occurrence_raw if occurrence_raw > 0 else 0
         last_seen_index = self.last_seen_index if isinstance(self.last_seen_index, int) else None
+        confidence = self.confidence if isinstance(self.confidence, (int, float)) else None
+        if confidence is not None:
+            confidence = max(0.0, min(1.0, float(confidence)))
 
         return GlossaryTerm(
             source=source,
@@ -168,6 +172,7 @@ class GlossaryTerm:
             context_summary=context_summary,
             occurrence_count=occurrence_count,
             last_seen_index=last_seen_index,
+            confidence=confidence,
         )
 
 
@@ -218,13 +223,13 @@ def normalize_glossary_entry(entry: GlossaryEntryLike) -> GlossaryTerm:
         occurrence_value = entry.get("occurrence_count", 0)
         try:
             occurrence_count = int(occurrence_value or 0)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             occurrence_count = 0
 
         last_seen_raw = entry.get("last_seen_index")
         try:
             last_seen_index = int(last_seen_raw) if last_seen_raw is not None else None
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             last_seen_index = None
 
         return GlossaryTerm(
@@ -237,6 +242,7 @@ def normalize_glossary_entry(entry: GlossaryEntryLike) -> GlossaryTerm:
             context_summary=entry.get("context_summary") if isinstance(entry.get("context_summary"), str) else None,
             occurrence_count=occurrence_count,
             last_seen_index=last_seen_index,
+            confidence=entry.get("confidence") if isinstance(entry.get("confidence"), (int, float)) else None,
         ).normalized()
     raise TypeError(f"Unsupported glossary entry type: {type(entry)!r}")
 
