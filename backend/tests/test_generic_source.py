@@ -238,7 +238,7 @@ class TestGenericSourcePublicationStatus:
         soup = _soup('<html><head><meta name="status" content="completed"/></head></html>')
         payload = GenericSource._extract_publication_status(soup)
         assert payload["publication_status"] == "completed"
-        assert payload["status"] == "completed"
+        assert "status" not in payload
         assert payload["source_publication_status"] == "completed"
 
     def test_extraction_from_ongoing_marker(self) -> None:

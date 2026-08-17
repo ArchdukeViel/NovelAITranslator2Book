@@ -262,14 +262,9 @@ async def test_public_novel_hook_does_not_break_response(monkeypatch) -> None:
     )
 
     class Service:
-        def _resolve_public_novel(self, _slug: str):
-            return "n1", {}, "novel"
-
-        def _load_taxonomy_for_novel(self, *_args, **_kwargs):
-            return [], [], False
-
-        def _novel_summary(self, novel_id: str, _meta: dict, **_kwargs):
-            return {"novel_id": novel_id}
+        def get_public_novel_summary(self, _slug: str, *, include_adult: bool = False):
+            assert include_adult is False
+            return {"novel_id": "n1"}, "n1"
 
     result = await get_novel(
         "novel",

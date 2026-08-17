@@ -94,7 +94,15 @@ def _chapter_path(self: Any, novel_id: str, chapter_id: str) -> Path:
 def _load_chapter_bundle(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
     """Load a current-schema chapter bundle from the canonical chapter directory."""
     chapter_path = self._chapter_path(novel_id, chapter_id)
-    text = self._read_text_optional(chapter_path)
+    read_text_optional = getattr(self, "_read_text_optional", None)
+    text: str | None
+    if callable(read_text_optional):
+        candidate = read_text_optional(chapter_path)
+        text = candidate if isinstance(candidate, str) else None
+    elif self._path_exists(chapter_path):
+        text = self._read_text(chapter_path)
+    else:
+        text = None
     if text is not None:
         try:
             data = json.loads(text)

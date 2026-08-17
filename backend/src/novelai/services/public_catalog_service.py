@@ -132,12 +132,11 @@ class PublicCatalogService:
 
     @staticmethod
     def public_slug_from_metadata(novel_id: str, meta: dict[str, Any]) -> str:
-        storage_slug = _optional_str(meta.get("storage_slug"))
-        if storage_slug:
-            return storage_slug
-        translated_title = _optional_str(meta.get("translated_title"))
-        if translated_title:
-            return PublicCatalogService.slugify_public_title(translated_title)
+        display_title = _optional_str(meta.get("translated_title")) or _optional_str(meta.get("title"))
+        if display_title:
+            public_slug = PublicCatalogService.slugify_public_title(display_title)
+            if public_slug != "novel":
+                return public_slug
         return novel_id
 
     @staticmethod

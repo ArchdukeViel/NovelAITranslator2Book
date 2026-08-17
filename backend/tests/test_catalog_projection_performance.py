@@ -307,3 +307,46 @@ def test_public_novel_detail_zero_remote_storage_io_when_db_fed(tmp_path):
     mock_backend.exists.assert_not_called()
     mock_backend.list_keys.assert_not_called()
     mock_backend.has_keys.assert_not_called()
+
+
+def test_public_slug_separates_storage_alias_from_db_identity(tmp_path):
+    """The public slug is stable across DB-first and storage-backed reads."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from novelai.db.base import Base
+    from novelai.db.models.novel import Novel
+    from novelai.storage.service import StorageService
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    db_session = Session()
+    db_session.add(
+        Novel(
+            slug="test-happy-e2e",
+            title="テスト小説",
+            is_published=True,
+        )
+    )
+    db_session.commit()
+
+    storage = StorageService(tmp_path / "lib")
+    service = PublicCatalogService(storage=storage, db_session=db_session)
+    summary, novel_id = service.get_public_novel_summary("test-happy-e2e")
+
+    assert novel_id == "test-happy-e2e"
+    assert summary is not None
+    assert summary["slug"] == "test-happy-e2e"
+    assert (
+        PublicCatalogService.public_slug_from_metadata(
+            "test-happy-e2e",
+            {"title": "テスト小説", "storage_slug": "e2e-test-novel-test-happy-e2e"},
+        )
+        == "test-happy-e2e"
+    )
