@@ -78,6 +78,17 @@ Manual trigger:
 POST /api/admin/backups
 ```
 
+### Backup Bucket Object Lock & Operator Retention Debt Procedure
+
+The Cloudflare R2 backup bucket `dokushodo-backup` operates with bucket-level Object Lock / retention policies. When automatic retention cleanup (`apply_retention()`) attempts to delete snapshots whose retention period has not expired, Cloudflare R2 rejects `DeleteObject` with `ObjectLockedByBucketPolicy: The object is locked by the bucket policy.`
+
+- **Operator Retention Debt**: Old snapshots (e.g. historical snapshots created before data-resets) remain immutable in `dokushodo-backup` until their lock period expires.
+- **Runbook Rule**:
+  1. Do not treat `ObjectLockedByBucketPolicy` errors as application backup failures; new snapshots and manifests are committed successfully.
+  2. Maintain `BACKUP_MIN_SUCCESSFUL_TO_KEEP` policy in application logic.
+  3. Once bucket retention locks expire, run standard retention prune via maintenance tasks or manual admin API call.
+  4. Never attempt force-deletion of locked objects; Cloudflare R2 bucket policy enforces compliance.
+
 ### Database
 
 - `DATABASE_BACKUP_ENABLED=true` creates PostgreSQL 18 custom-format dumps of

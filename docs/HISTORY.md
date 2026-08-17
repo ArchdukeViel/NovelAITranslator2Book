@@ -7,33 +7,50 @@ Executed minimal real staging fixture ingestion from 3 operator-supplied URLs, v
   - Source URL: `https://ncode.syosetu.com/n2056dn/`
   - Slug: `n2056dn`
   - Scraped: 3 chapters (metadata, chapter index, raw chapter bundles)
-  - Storage Backend: Cloudflare R2 bucket `dokushodo` (prefix `storage/novel_library`)
+  - Storage Backend: Cloudflare R2 bucket `dokushodo` (prefix `storage/novel_library/novels/n2056dn/`)
   - Active Generation: `gen-bc9b949823dd`
+  - Pointer File: `storage/novel_library/novels/n2056dn/generations/active_generation.json`
   - Translated: Chapter 1 via Gemini (`gemini-2.5-flash`)
   - Publication Status: Published (`is_published = true`) in Supabase PostgreSQL 18
 - **Source B (Kakuyomu / `kakuyomu`)**:
   - Source URL: `https://kakuyomu.jp/works/16817330655991571532`
   - Slug: `16817330655991571532`
   - Scraped: 3 chapters (metadata, chapter index, raw chapter bundles)
-  - Storage Backend: Cloudflare R2 bucket `dokushodo`
+  - Storage Backend: Cloudflare R2 bucket `dokushodo` (prefix `storage/novel_library/novels/16817330655991571532/`)
   - Active Generation: `gen-4d4e855cfe88`
+  - Pointer File: `storage/novel_library/novels/16817330655991571532/generations/active_generation.json`
   - Translated: Chapter 1 via Gemini (`gemini-2.5-flash`)
   - Publication Status: Published (`is_published = true`) in Supabase PostgreSQL 18
 - **Source C (Novel18 / `novel18_syosetu`)**:
   - Source URL: `https://novel18.syosetu.com/n3266mn/`
   - Slug: `n3266mn`
   - Scraped: 1 chapter (metadata, chapter index, raw chapter bundles)
-  - Storage Backend: Cloudflare R2 bucket `dokushodo`
+  - Storage Backend: Cloudflare R2 bucket `dokushodo` (prefix `storage/novel_library/novels/n3266mn/`)
   - Active Generation: `gen-ee00faf84b62`
+  - Pointer File: `storage/novel_library/novels/n3266mn/generations/active_generation.json`
   - Content Classification: `is_r18 = true` / adult content
   - Publication Status: Ingested for source validation only; **NOT published** to public catalog
 
-### 2. Adult Content Isolation & Public Reader Verification
+### 2. Live & Backup Storage Authoritative Inventory Truth
+- **Live Bucket `dokushodo`**:
+  - Total Objects: 31
+  - Total Size: 393,841 bytes (~384.6 KB)
+  - Layout: `storage/novel_library/novels/<novel_id>/...`
+- **Backup Bucket `dokushodo-backup`**:
+  - Total Objects: 187
+  - Total Size: 4,128,176 bytes (~3.94 MB)
+  - Clean Snapshot `snapshots/backup-20260817T125542Z-44705505`: 32 objects, 403,475 bytes (31 live data objects + 1 `manifest.json` at 9,634 bytes)
+  - Clean Database Backup `database/database-20260817T125749Z-2cdda27f`: 2 objects, 243,663 bytes (`dump.custom.aesgcm` 243,183 bytes + `manifest.json` 480 bytes)
+  - Historical Snapshots: 9 snapshots (17 objects, 386,782 bytes each) protected by Cloudflare R2 bucket-level Object Lock (`ObjectLockedByBucketPolicy`).
+  - Historical Database Backups: 9 dumps (~243 KB each).
+  - Note: The historical `11,438 objects / 3.61 GiB` figure reflects pre-wipe test runs prior to bucket initialization and does not represent the clean post-wipe staging baseline.
+
+### 3. Adult Content Isolation & Public Reader Verification
 - **Catalog Isolation**: `GET https://laptop-akmalpellu.tail0b4e3e.ts.net/api/public/catalog` returns exactly 2 published novels (`n2056dn`, `16817330655991571532`). Novel18 (`n3266mn`) is completely absent.
 - **Novel Route Isolation**: `GET https://laptop-akmalpellu.tail0b4e3e.ts.net/api/public/novels/n3266mn` returns HTTP 404 (Not Found).
 - **Chapter Reader Verification**: `GET https://laptop-akmalpellu.tail0b4e3e.ts.net/api/public/novels/n2056dn/chapters/1` returns HTTP 200 with 2,581 translated Japanese-to-English characters across 26 structured reader blocks.
 
-### 3. DEBT-079D Hosted Performance Benchmark Results (20 samples per endpoint)
+### 4. DEBT-079D Hosted Performance Benchmark Results (20 samples per endpoint)
 
 Executed via `backend/tests/run_hosted_benchmark.py`:
 
@@ -46,7 +63,7 @@ Executed via `backend/tests/run_hosted_benchmark.py`:
 | **Chapter API** (`GET /api/public/novels/n2056dn/chapters/1`) | Latency p95 | $\le 750\text{ ms}$ | **$11,953.9\text{ ms}$** ($p50 = 10,500.6\text{ ms}$) | **FAIL** | $4.6\text{ ms}$ ($p50 = 3.8\text{ ms}$) |
 | | Payload Size | $\le 1024\text{ KiB}$ | **$6.33\text{ KiB}$** | **PASS** | $6.33\text{ KiB}$ |
 
-### 4. Root Cause Determination: Infrastructure Topology vs Application Logic
+### 5. Root Cause Determination: Infrastructure Topology vs Application Logic
 - **Application Logic**: Extremely fast and optimal. When queried on localhost through Caddy reverse proxy, latency is $3\text{ ms} - 12\text{ ms}$, well under all performance budgets. Payload sizes ($2.5\text{ KiB} - 6.3\text{ KiB}$) are fractions of the size allowances.
 - **Hosted Latency Root Cause**:
   1. Multi-hop WAN latency between local Docker containers and remote Supabase PostgreSQL 18 in Singapore (`aws-1-ap-southeast-1.pooler.supabase.com`).
