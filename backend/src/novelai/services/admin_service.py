@@ -7,9 +7,10 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from novelai.activity.runner import BackgroundActivityRunner
-from novelai.config.settings import settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.config.workflow_profiles import WORKFLOW_PROFILE_STEPS
 from novelai.providers.model_fallbacks import model_candidates
+from novelai.services.gemini_request_control import get_gemini_quota_controller
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.provider_credentials import ProviderCredentialService
 from novelai.services.translation_cache import TranslationCache
@@ -19,13 +20,13 @@ from novelai.utils.hashing import hexdigest
 
 API_KEY_PROVIDERS = {"gemini"}
 DEFAULT_PROVIDER_MODELS = {
-    "gemini": "gemini-3.1-flash-lite",
+    "gemini": GEMINI_DEFAULT_MODEL,
 }
 PROVIDER_LABELS = {
     "gemini": "Gemini",
 }
 DEFAULT_QUOTA_HINTS = {
-    ("gemini", "gemini-3.1-flash-lite"): {
+    ("gemini", GEMINI_DEFAULT_MODEL): {
         "rpm_limit": 15,
         "tpm_limit": 250_000,
         "rpd_limit": 500,
@@ -116,7 +117,7 @@ def _clean_text(value: Any) -> str | None:
 def _optional_positive_int(value: Any) -> int | None:
     try:
         parsed = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return parsed if parsed > 0 else None
 
@@ -124,7 +125,7 @@ def _optional_positive_int(value: Any) -> int | None:
 def _optional_nonnegative_int(value: Any) -> int | None:
     try:
         parsed = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return parsed if parsed >= 0 else None
 
@@ -182,6 +183,36 @@ class AdminService:
             or "Connection has not been checked in this server session.",
         }
 
+    def gemini_request_accounting(self) -> dict[str, Any]:
+        """Return sanitized Gemini request and hard-quota counters for owners."""
+        quota = get_gemini_quota_controller().snapshot()
+        usage = self.usage.provider_request_summary()
+
+        def _mapping(value: Any) -> dict[str, Any]:
+            return value if isinstance(value, dict) else {}
+
+        limits = _mapping(quota.get("limits"))
+        current = _mapping(quota.get("current_minute"))
+        today = _mapping(quota.get("today"))
+
+        def _remaining(limit_key: str, value: Any) -> int | None:
+            limit = limits.get(limit_key)
+            return max(0, int(limit) - int(value or 0)) if isinstance(limit, int) else None
+
+        return {
+            "provider_key": "gemini",
+            "provider_model": GEMINI_DEFAULT_MODEL,
+            "fallback_enabled": False,
+            "limits": limits,
+            "usage": usage,
+            "quota": quota,
+            "remaining": {
+                "requests_per_minute": _remaining("requests_per_minute", current.get("requests")),
+                "tokens_per_minute": _remaining("tokens_per_minute", current.get("tokens")),
+                "requests_per_day": _remaining("requests_per_day", today.get("requests")),
+            },
+        }
+
     def normalize_provider(self, provider: str) -> str:
         normalized = provider.strip().lower()
         if normalized not in API_KEY_PROVIDERS:
@@ -205,6 +236,8 @@ class AdminService:
 
     def validate_provider_model(self, provider: str, model: str) -> None:
         normalized_provider = self.normalize_provider(provider)
+        if normalized_provider == "gemini" and model != GEMINI_DEFAULT_MODEL:
+            raise ValueError(f"Gemini production model must be {GEMINI_DEFAULT_MODEL}; model fallback is disabled.")
         try:
             from novelai.providers.registry import available_models
 

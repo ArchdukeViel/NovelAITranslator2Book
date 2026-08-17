@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from novelai.config.settings import settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.core.errors import PipelineStageError, ProviderConfigError, ProviderError, ProviderErrorCode
 from novelai.prompts.models import TranslationRequest
 from novelai.providers.base import TranslationProvider
@@ -90,6 +91,24 @@ logger = logging.getLogger(__name__)
 MAX_ATTEMPTS_EXCEEDED_ERROR_CODE = "max_attempts_exceeded"
 
 
+def _provider_kwargs(provider: Any, values: dict[str, Any]) -> dict[str, Any]:
+    """Keep optional request metadata compatible with narrow test providers.
+
+    The production provider interface accepts ``**kwargs``. A few legacy test
+    doubles implement only the three required positional parameters; filtering
+    optional audit fields for those doubles preserves the provider contract
+    without changing real Gemini calls.
+    """
+    try:
+        parameters = inspect.signature(provider.translate).parameters.values()
+    except TypeError, ValueError:
+        return values
+    if any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters):
+        return values
+    accepted = set(inspect.signature(provider.translate).parameters)
+    return {key: value for key, value in values.items() if key in accepted}
+
+
 class TranslateStage(PipelineStage):
     """Translate chunks using a configured provider.
 
@@ -131,6 +150,14 @@ class TranslateStage(PipelineStage):
         self._max_attempts_per_chunk = configured_max_attempts if configured_max_attempts > 0 else 3
 
     def _resolve_provider_and_model(self, provider_key: str, model: str) -> tuple[str, str]:
+        if provider_key == "gemini" and model != GEMINI_DEFAULT_MODEL:
+            raise ProviderConfigError(
+                ProviderErrorCode.CONFIGURATION,
+                provider_key=provider_key,
+                provider_model=model,
+                message=f"Gemini production model must be {GEMINI_DEFAULT_MODEL}; model fallback is disabled.",
+                details={"expected_model": GEMINI_DEFAULT_MODEL},
+            )
         if provider_key == "gemini" and not self._settings.get_api_key(provider_key):
             raise ProviderConfigError(
                 ProviderErrorCode.CONFIGURATION,
@@ -200,6 +227,11 @@ class TranslateStage(PipelineStage):
         except Exception:
             supported = []
         candidates = model_candidates(provider_key, model, supported)
+        if provider_key == "gemini":
+            # A Gemini request has exactly one production candidate. Rate,
+            # quota, temporary, and 5xx failures are handled by the same
+            # model's scheduler state; no alternate model is eligible.
+            candidates = [GEMINI_DEFAULT_MODEL]
         policy = normalize_policy(context.metadata.get("scheduler_policy") or settings.TRANSLATION_SCHEDULER_POLICY)
         raw_policy = context.metadata.get("scheduler_models")
         admin_policy_consulted = False
@@ -243,12 +275,32 @@ class TranslateStage(PipelineStage):
                     "priority_order": 0,
                 },
             ]
-        configs = normalize_model_configs(
-            raw_policy,
-            default_provider_key=provider_key,
-            default_models=candidates,
-            allow_empty=admin_policy_intentionally_empty,
-        )
+        if provider_key == "gemini":
+            configs = normalize_model_configs(
+                []
+                if admin_policy_intentionally_empty
+                else [
+                    {
+                        "provider_key": "gemini",
+                        "provider_model": GEMINI_DEFAULT_MODEL,
+                        "priority_order": 0,
+                        "rpm_limit": settings.GEMINI_RPM_LIMIT,
+                        "rpd_limit": settings.GEMINI_RPD_LIMIT,
+                    }
+                ],
+                default_provider_key="gemini",
+                default_models=[GEMINI_DEFAULT_MODEL],
+                allow_empty=admin_policy_intentionally_empty,
+            )
+            context.metadata["provider_lock"] = "gemini"
+            context.metadata["allow_cross_provider_fallback"] = False
+        else:
+            configs = normalize_model_configs(
+                raw_policy,
+                default_provider_key=provider_key,
+                default_models=candidates,
+                allow_empty=admin_policy_intentionally_empty,
+            )
         existing_state = context.scheduler_state
         job_id = safe_job_id(context)
         if job_id is not None:
@@ -410,7 +462,22 @@ class TranslateStage(PipelineStage):
         started_at = utc_now_iso()
         try:
             logger.debug("Translating chunk %s (len=%s) with %s/%s", chunk_id, len(chunk), provider.key, provider_model)
-            result = await provider.translate(prompt=chunk, model=provider_model, request=request)
+            result = await provider.translate(
+                prompt=chunk,
+                model=provider_model,
+                **_provider_kwargs(
+                    provider,
+                    {
+                        "request": request,
+                        "request_purpose": "body_translation",
+                        "request_id": context.metadata.get("request_id"),
+                        "chapter_id": context.chapter_id,
+                        "chunk_id": chunk_id,
+                        "retry_attempt": attempt_number,
+                        "cache_status": "miss",
+                    },
+                ),
+            )
         except ProviderError as exc:
             finished_at = utc_now_iso()
             self._storage.save_provider_request_record(
@@ -473,7 +540,8 @@ class TranslateStage(PipelineStage):
             usage_entry["tokens"] = usage.get("total_tokens")
             logger.debug("Translation tokens: %s", usage_entry["tokens"])
 
-        self._usage.record(usage_entry)
+        if not (isinstance(metadata, dict) and metadata.get("usage_accounting_recorded") is True):
+            self._usage.record(usage_entry)
 
         cache_key: str | None = None
         entry: CacheEntry | None = None
@@ -558,10 +626,14 @@ class TranslateStage(PipelineStage):
         context.provider_key = provider_key
         context.provider_model = model
         scheduler = self._build_scheduler(context, provider_key=provider_key, model=model)
-        context.metadata["model_fallbacks"] = [
-            state["provider_model"]
+        context.metadata["model_fallbacks"] = []
+        context.metadata["model_policy"] = [
+            {
+                "provider_key": state["provider_key"],
+                "provider_model": state["provider_model"],
+                "fallback": False,
+            }
             for state in scheduler.to_model_state_list()
-            if state.get("provider_key") == provider_key
         ]
         load_persisted_chunk_states(self._storage, context)
         save_chunk_records(self._storage, context, chunks)
@@ -735,7 +807,13 @@ class TranslateStage(PipelineStage):
 
                         push_scheduler_decision(decision_dict)
 
-                        attempted_models.add((used_provider_key, used_provider_model))
+                        # Gemini is a same-model-only contract. Keep its model
+                        # eligible after a cooldown so a resumed attempt can
+                        # retry the exact model; alternate providers/models
+                        # retain the legacy attempted-model exclusion used by
+                        # the general scheduler.
+                        if provider_key != "gemini":
+                            attempted_models.add((used_provider_key, used_provider_model))
                         # Blocker C: a chunk marked needs_retry/needs_review/
                         # qa_failed must bypass BOTH caches — its previous
                         # output was rejected and must never be reused. Only a
@@ -770,6 +848,23 @@ class TranslateStage(PipelineStage):
                         if cached is not None:
                             translated, used_provider_key, used_provider_model, _cache_hit = cached
                             cache_hit = True
+                            self._usage.record_provider_request(
+                                timestamp=utc_now_iso(),
+                                provider_key=used_provider_key,
+                                provider_model=used_provider_model,
+                                purpose="body_translation",
+                                input_tokens=None,
+                                output_tokens=None,
+                                total_tokens=None,
+                                estimated_input_tokens=0,
+                                estimated_output_tokens=0,
+                                success=True,
+                                retry_attempt=0,
+                                chapter_id=context.chapter_id,
+                                chunk_id=chunk_id,
+                                cache_status="hit",
+                                request_made=False,
+                            )
                             logger.debug(
                                 "Cache hit for chunk %s using %s/%s", chunk_id, used_provider_key, used_provider_model
                             )
@@ -944,8 +1039,8 @@ class TranslateStage(PipelineStage):
                             if exc.provider_error_code in {
                                 ProviderErrorCode.RATE_LIMITED,
                                 ProviderErrorCode.QUOTA_EXHAUSTED,
-                                ProviderErrorCode.MODEL_UNAVAILABLE,
-                                ProviderErrorCode.MODEL_DEPRECATED,
+                                ProviderErrorCode.TEMPORARY,
+                                ProviderErrorCode.TIMEOUT,
                             }:
                                 continue
                             raise
@@ -1014,6 +1109,7 @@ class TranslateStage(PipelineStage):
                 "context_summary": term.context_summary,
                 "occurrence_count": term.occurrence_count,
                 "last_seen_index": term.last_seen_index,
+                "confidence": term.confidence,
             }
             for term in sorted(glossary_state.values(), key=lambda item: (item.source.casefold(), item.source))
         ]

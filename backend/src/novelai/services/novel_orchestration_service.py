@@ -6,7 +6,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from novelai.config.settings import settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.config.workflow_profiles import normalize_workflow_profile_step
 from novelai.core.errors import ProviderConfigError, ProviderErrorCode
 from novelai.inputs.base import DocumentAdapter
@@ -449,6 +449,12 @@ class NovelOrchestrationService:
         self._assert_special_provider_guards(resolved_provider, model=explicit_model)
         supported = self._available_models_for(provider)
 
+        if resolved_provider == "gemini" and explicit_model is None:
+            # Stored workflow/preferences may still carry a retired model
+            # name. Resolve the known production contract explicitly instead
+            # of treating that stale value as a fallback candidate.
+            return resolved_provider, GEMINI_DEFAULT_MODEL
+
         # 3) Validate an explicit model up front (fail closed, do not silently
         #    fall back to a default — the caller asked for a specific model).
         #    Section 4.3 A/E: an unsupported explicit model is a configuration
@@ -524,6 +530,8 @@ class NovelOrchestrationService:
         )
 
     def _record_usage(self, provider_key: str, model: str, metadata: Any) -> None:
+        if isinstance(metadata, dict) and metadata.get("usage_accounting_recorded") is True:
+            return
         usage = metadata.get("usage") if isinstance(metadata, dict) else None
         self._usage.record(
             {

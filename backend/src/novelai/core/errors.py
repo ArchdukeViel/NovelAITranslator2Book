@@ -23,6 +23,7 @@ class ProviderErrorCode(StrEnum):
     CONTEXT_TOO_LARGE = "provider_context_too_large"
     SAFETY_BLOCKED = "provider_safety_blocked"
     TIMEOUT = "provider_timeout"
+    TEMPORARY = "provider_temporary_error"
     INVALID_JSON = "provider_invalid_json"
     EMPTY_OUTPUT = "provider_empty_output"
     PARTIAL_OUTPUT = "provider_partial_output"

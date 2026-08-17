@@ -12,7 +12,7 @@ def test_baseline_estimation_for_10000_characters() -> None:
     options = EstimationOptions(japanese_characters=10_000)
 
     token_estimate = estimate_tokens(options)
-    cost_estimate = estimate_cost("gemini-3.1-flash-lite", options)
+    cost_estimate = estimate_cost("gemini-3.5-flash-lite", options)
 
     assert token_estimate.estimated_input_tokens == 9_200
     assert token_estimate.estimated_output_tokens == 8_000
@@ -25,9 +25,7 @@ def test_baseline_estimation_for_10000_characters() -> None:
 
 def test_glossary_adjustment_adds_input_overhead_only() -> None:
     baseline = estimate_tokens(EstimationOptions(japanese_characters=10_000))
-    with_glossary = estimate_tokens(
-        EstimationOptions(japanese_characters=10_000, glossary_enabled=True)
-    )
+    with_glossary = estimate_tokens(EstimationOptions(japanese_characters=10_000, glossary_enabled=True))
 
     assert with_glossary.estimated_input_tokens == baseline.estimated_input_tokens + 250
     assert with_glossary.estimated_output_tokens == baseline.estimated_output_tokens

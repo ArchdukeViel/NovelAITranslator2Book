@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from pydantic import SecretStr
 
-from novelai.config.settings import settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.core.errors import ProviderError, ProviderErrorCode
 from novelai.prompts import build_json_translation_request, build_translation_request
 from novelai.providers.gemini_provider import GeminiProvider
@@ -34,6 +34,12 @@ class _FakeClient:
         self.models = _FakeModelsAPI(state)
 
 
+@pytest.fixture(autouse=True)
+def isolate_gemini_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """Keep provider accounting and quota state out of the project runtime tree."""
+    monkeypatch.setattr(settings, "NOVEL_LIBRARY_DIR", tmp_path)
+
+
 def test_gemini_provider_uses_request_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
     state: dict[str, Any] = {}
     previous_api_key = settings.PROVIDER_GEMINI_API_KEY
@@ -42,7 +48,7 @@ def test_gemini_provider_uses_request_prompt(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(
         GeminiProvider,
         "_modern_client",
-        staticmethod(lambda: (lambda *, api_key: _FakeClient(api_key=api_key, state=state))),
+        staticmethod(lambda: lambda *, api_key: _FakeClient(api_key=api_key, state=state)),
     )
 
     request = build_translation_request(
@@ -55,7 +61,7 @@ def test_gemini_provider_uses_request_prompt(monkeypatch: pytest.MonkeyPatch) ->
 
     try:
         provider = GeminiProvider()
-        result = asyncio.run(provider.translate(prompt=request.text, model="gemini-3.1-flash-lite", request=request))
+        result = asyncio.run(provider.translate(prompt=request.text, model=GEMINI_DEFAULT_MODEL, request=request))
     finally:
         settings.PROVIDER_GEMINI_API_KEY = previous_api_key
 
@@ -63,19 +69,19 @@ def test_gemini_provider_uses_request_prompt(monkeypatch: pytest.MonkeyPatch) ->
     assert result["text"] == "gemini translated"
     assert result["metadata"]["usage"]["prompt_tokens"] == 80
     assert result["metadata"]["usage"]["completion_tokens"] == 42
-    assert payload["model"] == "gemini-3.1-flash-lite"
+    assert payload["model"] == GEMINI_DEFAULT_MODEL
     assert "contents" in payload
 
 
 def test_gemini_provider_json_mode_sets_response_mime_type(monkeypatch: pytest.MonkeyPatch) -> None:
-    state: dict[str, Any] = {"response_text": "{\"paragraphs\": []}"}
+    state: dict[str, Any] = {"response_text": '{"paragraphs": []}'}
     previous_api_key = settings.PROVIDER_GEMINI_API_KEY
     settings.PROVIDER_GEMINI_API_KEY = SecretStr("gemini-key")
 
     monkeypatch.setattr(
         GeminiProvider,
         "_modern_client",
-        staticmethod(lambda: (lambda *, api_key: _FakeClient(api_key=api_key, state=state))),
+        staticmethod(lambda: lambda *, api_key: _FakeClient(api_key=api_key, state=state)),
     )
 
     request = build_json_translation_request(
@@ -86,7 +92,7 @@ def test_gemini_provider_json_mode_sets_response_mime_type(monkeypatch: pytest.M
 
     try:
         provider = GeminiProvider()
-        asyncio.run(provider.translate(prompt=request.text, model="gemini-3.1-flash-lite", request=request))
+        asyncio.run(provider.translate(prompt=request.text, model=GEMINI_DEFAULT_MODEL, request=request))
     finally:
         settings.PROVIDER_GEMINI_API_KEY = previous_api_key
 
@@ -97,14 +103,14 @@ def test_gemini_provider_json_mode_sets_response_mime_type(monkeypatch: pytest.M
 
 
 def test_gemini_provider_accepts_custom_json_schema(monkeypatch: pytest.MonkeyPatch) -> None:
-    state: dict[str, Any] = {"response_text": "{\"terms\": []}"}
+    state: dict[str, Any] = {"response_text": '{"terms": []}'}
     previous_api_key = settings.PROVIDER_GEMINI_API_KEY
     settings.PROVIDER_GEMINI_API_KEY = SecretStr("gemini-key")
 
     monkeypatch.setattr(
         GeminiProvider,
         "_modern_client",
-        staticmethod(lambda: (lambda *, api_key: _FakeClient(api_key=api_key, state=state))),
+        staticmethod(lambda: lambda *, api_key: _FakeClient(api_key=api_key, state=state)),
     )
 
     schema = {
@@ -116,7 +122,7 @@ def test_gemini_provider_accepts_custom_json_schema(monkeypatch: pytest.MonkeyPa
 
     try:
         provider = GeminiProvider()
-        asyncio.run(provider.translate(prompt="Extract terms", model="gemini-3.1-flash-lite", json_schema=schema))
+        asyncio.run(provider.translate(prompt="Extract terms", model=GEMINI_DEFAULT_MODEL, json_schema=schema))
     finally:
         settings.PROVIDER_GEMINI_API_KEY = previous_api_key
 
@@ -133,7 +139,7 @@ def test_gemini_provider_raises_when_api_key_missing() -> None:
     try:
         provider = GeminiProvider()
         with pytest.raises(Exception, match="API key"):
-            asyncio.run(provider.translate(prompt="hello", model="gemini-3.1-flash-lite"))
+            asyncio.run(provider.translate(prompt="hello", model=GEMINI_DEFAULT_MODEL))
     finally:
         settings.PROVIDER_GEMINI_API_KEY = previous
 
@@ -153,7 +159,9 @@ def test_gemini_provider_validate_connection_without_sdk(monkeypatch: pytest.Mon
 
 
 class _FakeGeminiError(Exception):
-    def __init__(self, message: str, *, status_code: int = 429, code: str = "RESOURCE_EXHAUSTED", details: object | None = None) -> None:
+    def __init__(
+        self, message: str, *, status_code: int = 429, code: str = "RESOURCE_EXHAUSTED", details: object | None = None
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.code = code
@@ -166,11 +174,11 @@ def _run_gemini_with_state(monkeypatch: pytest.MonkeyPatch, state: dict[str, Any
     monkeypatch.setattr(
         GeminiProvider,
         "_modern_client",
-        staticmethod(lambda: (lambda *, api_key: _FakeClient(api_key=api_key, state=state))),
+        staticmethod(lambda: lambda *, api_key: _FakeClient(api_key=api_key, state=state)),
     )
     try:
         provider = GeminiProvider()
-        asyncio.run(provider.translate(prompt="hello", model="gemini-3.1-flash-lite"))
+        asyncio.run(provider.translate(prompt="hello", model=GEMINI_DEFAULT_MODEL))
     finally:
         settings.PROVIDER_GEMINI_API_KEY = previous_api_key
 
@@ -189,7 +197,7 @@ def test_gemini_provider_normalizes_resource_exhausted_retry_delay(monkeypatch: 
     error = caught.value
     assert error.provider_error_code == ProviderErrorCode.RATE_LIMITED
     assert error.provider_key == "gemini"
-    assert error.provider_model == "gemini-3.1-flash-lite"
+    assert error.provider_model == GEMINI_DEFAULT_MODEL
     assert error.retry_after_seconds == 21
     assert error.cooldown_until is not None
 
@@ -205,7 +213,7 @@ def test_gemini_provider_normalizes_daily_quota_exhaustion(monkeypatch: pytest.M
         _run_gemini_with_state(monkeypatch, state)
 
     assert caught.value.provider_error_code == ProviderErrorCode.QUOTA_EXHAUSTED
-    assert caught.value.provider_model == "gemini-3.1-flash-lite"
+    assert caught.value.provider_model == GEMINI_DEFAULT_MODEL
 
 
 def test_gemini_provider_normalizes_unknown_provider_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -252,14 +260,22 @@ def test_gemini_provider_normalizes_invalid_json(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(
         GeminiProvider,
         "_modern_client",
-        staticmethod(lambda: (lambda *, api_key: _FakeClient(api_key=api_key, state=state))),
+        staticmethod(lambda: lambda *, api_key: _FakeClient(api_key=api_key, state=state)),
     )
     try:
         provider = GeminiProvider()
         request = build_json_translation_request(text="hello", source_language="Japanese", target_language="English")
         with pytest.raises(ProviderError) as caught:
-            asyncio.run(provider.translate(prompt=request.text, model="gemini-3.1-flash-lite", request=request))
+            asyncio.run(provider.translate(prompt=request.text, model=GEMINI_DEFAULT_MODEL, request=request))
     finally:
         settings.PROVIDER_GEMINI_API_KEY = previous_api_key
 
     assert caught.value.provider_error_code == ProviderErrorCode.INVALID_JSON
+
+
+def test_gemini_provider_exposes_one_exact_model_and_rejects_legacy_model() -> None:
+    provider = GeminiProvider()
+    assert provider.available_models() == [GEMINI_DEFAULT_MODEL]
+    with pytest.raises(ProviderError) as caught:
+        asyncio.run(provider.translate(prompt="hello", model="gemini-3.1-flash-lite"))
+    assert caught.value.provider_error_code == ProviderErrorCode.CONFIGURATION

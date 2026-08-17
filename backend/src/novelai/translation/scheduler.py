@@ -195,6 +195,10 @@ class SchedulerModelRuntimeState:
             self.status = SchedulerModelStatus.DAILY_EXHAUSTED.value
             self.exhausted_until = error.exhausted_until or _next_day_iso(current)
             return
+        if error.provider_error_code in {ProviderErrorCode.TEMPORARY, ProviderErrorCode.TIMEOUT}:
+            self.status = SchedulerModelStatus.COOLING_DOWN.value
+            self.cooldown_until = error.cooldown_until or iso_after_seconds(error.retry_after_seconds or 5, now=current)
+            return
         if error.provider_error_code in {
             ProviderErrorCode.MODEL_UNAVAILABLE,
             ProviderErrorCode.MODEL_DEPRECATED,
@@ -742,7 +746,7 @@ def _optional_str(value: Any) -> str | None:
 def _optional_positive_int(value: Any) -> int | None:
     try:
         parsed = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return parsed if parsed > 0 else None
 
@@ -750,7 +754,7 @@ def _optional_positive_int(value: Any) -> int | None:
 def _optional_nonnegative_int(value: Any) -> int | None:
     try:
         parsed = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return parsed if parsed >= 0 else None
 

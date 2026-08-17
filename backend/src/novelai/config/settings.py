@@ -8,8 +8,10 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
-GEMINI_DEFAULT_MODEL = "gemini-3.1-flash-lite"
-GEMINI_FALLBACK_MODEL = "gemma-4-31b-it"
+GEMINI_DEFAULT_MODEL = "gemini-3.5-flash-lite"
+# Kept as a compatibility name for older configuration imports. It is not a
+# second candidate: the production contract uses one exact Gemini model.
+GEMINI_FALLBACK_MODEL = GEMINI_DEFAULT_MODEL
 
 
 def _default_novel_library_dir() -> Path:
@@ -180,12 +182,31 @@ class AppSettings(BaseSettings):
     PROVIDER_CREDENTIAL_ENCRYPTION_KEY: SecretStr | None = None
     PROVIDER_GEMINI_DEFAULT_MODEL: str = GEMINI_DEFAULT_MODEL
     PROVIDER_GEMINI_MODEL_FALLBACKS: list[str] = Field(
-        default_factory=lambda: [GEMINI_FALLBACK_MODEL],
-        description=(
-            "Gemini-only text model fallback order. Default: Gemma 4 31B as the "
-            "fallback/alternative to the primary Gemini 3.1 Flash Lite."
-        ),
+        default_factory=list,
+        description="Deprecated compatibility setting. Gemini model fallback is disabled.",
     )
+
+    @field_validator("PROVIDER_GEMINI_DEFAULT_MODEL", mode="before")
+    @classmethod
+    def _enforce_gemini_model_contract(cls, value: Any) -> str:
+        """Reject explicit model drift instead of silently selecting another model."""
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return GEMINI_DEFAULT_MODEL
+        if str(value).strip() != GEMINI_DEFAULT_MODEL:
+            raise ValueError(
+                f"PROVIDER_GEMINI_DEFAULT_MODEL must be {GEMINI_DEFAULT_MODEL}; model fallback is disabled."
+            )
+        return GEMINI_DEFAULT_MODEL
+
+    @field_validator("PROVIDER_GEMINI_MODEL_FALLBACKS", mode="before")
+    @classmethod
+    def _disable_gemini_model_fallbacks(cls, value: Any) -> list[str]:
+        """Reject configured alternatives while retaining the legacy field."""
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return []
+        if isinstance(value, (list, tuple, set)) and not value:
+            return []
+        raise ValueError("PROVIDER_GEMINI_MODEL_FALLBACKS must be empty; model fallback is disabled.")
 
     # --- Scraping
     SCRAPE_DELAY_SECONDS: float = Field(
@@ -212,6 +233,7 @@ class AppSettings(BaseSettings):
     TRANSLATION_MAX_CHAPTERS_PER_BUNDLE: int = 3
     TRANSLATION_MAX_ATTEMPTS_PER_CHUNK: int = 3
     TRANSLATION_METADATA_CHAPTER_TITLE_BATCH_SIZE: int = 25
+    TRANSLATION_GLOSSARY_BATCH_SIZE: int = Field(default=25, ge=1, le=100)
     TRANSLATION_ADAPTIVE_CHUNKING_ENABLED: bool = True
     TRANSLATION_ADAPTIVE_SOFT_TARGET_CHARS: int = 5800
     TRANSLATION_ADAPTIVE_HARD_MAX_CHARS: int = 7000
@@ -234,6 +256,10 @@ class AppSettings(BaseSettings):
     COST_PER_TOKEN_USD: float = 0.000002
     TRANSLATION_TARGET_LANGUAGE: str = "English"
     TRANSLATION_LOW_CONFIDENCE_ACTIVATION_THRESHOLD: float = 0.55
+    GEMINI_RPM_LIMIT: int = Field(default=15, ge=1)
+    GEMINI_TPM_LIMIT: int = Field(default=250_000, ge=1)
+    GEMINI_RPD_LIMIT: int = Field(default=500, ge=1)
+    GEMINI_ESTIMATED_OUTPUT_TOKENS: int = Field(default=1024, ge=1)
 
     # --- Database
     DATABASE_URL: str | None = None
@@ -317,11 +343,14 @@ class AppSettings(BaseSettings):
     # left "translated" while claiming a retry state.
     LLM_QA_ENABLED: bool = False
     LLM_QA_PROVIDER: str = "gemini"
-    LLM_QA_MODEL: str = "gemini-3.1-flash-lite"
+    LLM_QA_MODEL: str = GEMINI_DEFAULT_MODEL
     LLM_QA_COST_TRACKING_ENABLED: bool = True
     LLM_QA_MIN_SCORE: float = 0.75
     LLM_QA_MAX_RETRY_ATTEMPTS: int = 1
     LLM_QA_POLICY: str = "advisory"
+    LLM_QA_SAMPLE_RATE: float = Field(default=0.10, ge=0.0, le=1.0)
+    LLM_QA_RISK_SCORE_THRESHOLD: float = Field(default=0.90, ge=0.0, le=1.0)
+    LLM_QA_MAX_CONTEXT_CHARS: int = Field(default=6000, ge=500)
 
     @field_validator("LLM_QA_POLICY", mode="after")
     @classmethod

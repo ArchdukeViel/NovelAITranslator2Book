@@ -12,7 +12,7 @@ from hypothesis import strategies as st
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from novelai.config.settings import settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.core.errors import ProviderConfigError, ProviderError, ProviderErrorCode
 from novelai.db.base import Base
 from novelai.db.models.novel import Novel
@@ -72,7 +72,7 @@ class _FallbackContractProvider(TranslationProvider):
 
     def available_models(self) -> list[str]:
         if self.key == "gemini":
-            return ["gemini-3.1-flash-lite", "gemma-4-31b-it", "gemini-2.5-flash-lite"]
+            return [GEMINI_DEFAULT_MODEL]
         return ["google/gemma-4-31b-it"]
 
     async def translate(
@@ -89,6 +89,31 @@ class _FallbackContractProvider(TranslationProvider):
                 provider_key=self.key,
                 provider_model=model or "unknown",
                 message=self.error_code.value,
+            )
+        return {"text": "Translated paragraph.", "metadata": {"usage": {"total_tokens": 3}}}
+
+
+class _RetryingGeminiProvider(_FallbackContractProvider):
+    def __init__(self) -> None:
+        super().__init__("gemini")
+        self.calls = 0
+
+    async def translate(
+        self,
+        prompt: str,
+        model: str | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> Mapping[str, Any]:
+        self.calls += 1
+        self.models_seen.append(model)
+        if self.calls == 1:
+            raise ProviderError(
+                ProviderErrorCode.TEMPORARY,
+                provider_key="gemini",
+                provider_model=model or GEMINI_DEFAULT_MODEL,
+                message="temporary",
+                cooldown_until="2000-01-01T00:00:00Z",
             )
         return {"text": "Translated paragraph.", "metadata": {"usage": {"total_tokens": 3}}}
 
@@ -121,7 +146,7 @@ class _PromptCaptureProvider(TranslationProvider):
 def _fallback_stage_env(tmp_path):
     prefs = PreferencesService(tmp_path / "prefs")
     prefs.set_preferred_provider("gemini")
-    prefs.set_preferred_model(settings.PROVIDER_GEMINI_DEFAULT_MODEL)
+    prefs.set_preferred_model(GEMINI_DEFAULT_MODEL)
     prefs.set_api_key("gemini-key", provider_key="gemini")
     return {
         "prefs": prefs,
@@ -137,7 +162,7 @@ def _fallback_context() -> PipelineState:
         novel_id="novel1",
         chapter_id="chapter_001",
         provider_key="gemini",
-        provider_model=settings.PROVIDER_GEMINI_DEFAULT_MODEL,
+        provider_model=GEMINI_DEFAULT_MODEL,
         translation_chunks=[
             TranslationChunk(
                 chunk_id="c0001",
@@ -691,9 +716,7 @@ async def test_translate_stage_default_fallback_order_is_gemini_only(tmp_path):
         storage=env["storage"],
     )
 
-    scheduler = stage._build_scheduler(
-        _fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL
-    )
+    scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=GEMINI_DEFAULT_MODEL)
     model_states = scheduler.to_model_state_list()
 
     assert len(model_states) >= 1
@@ -714,19 +737,19 @@ async def test_translate_stage_provider_lock_filters_cross_provider_fallback(tmp
     context = _fallback_context()
     context.metadata["allow_cross_provider_fallback"] = False
     context.metadata["scheduler_models"] = [
-        {"provider_key": "gemini", "provider_model": settings.PROVIDER_GEMINI_DEFAULT_MODEL, "priority_order": 0},
+        {"provider_key": "gemini", "provider_model": GEMINI_DEFAULT_MODEL, "priority_order": 0},
     ]
 
-    scheduler = stage._build_scheduler(context, provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL)
+    scheduler = stage._build_scheduler(context, provider_key="gemini", model=GEMINI_DEFAULT_MODEL)
     model_states = scheduler.to_model_state_list()
 
     assert [(item["provider_key"], item["provider_model"]) for item in model_states] == [
-        ("gemini", "gemini-3.1-flash-lite"),
+        ("gemini", GEMINI_DEFAULT_MODEL),
     ]
 
 
 @pytest.mark.asyncio
-async def test_translate_stage_gemini_quota_falls_back_to_fallback_model(tmp_path):
+async def test_translate_stage_gemini_quota_pauses_without_model_fallback(tmp_path):
     env = _fallback_stage_env(tmp_path)
     gemini_provider = _FallbackContractProvider("gemini", error_code=ProviderErrorCode.QUOTA_EXHAUSTED)
     stage = TranslateStage(
@@ -740,7 +763,24 @@ async def test_translate_stage_gemini_quota_falls_back_to_fallback_model(tmp_pat
     with pytest.raises(SchedulerPausedError):
         await stage.run(_fallback_context())
 
-    assert gemini_provider.models_seen == ["gemini-3.1-flash-lite", "gemma-4-31b-it"]
+    assert gemini_provider.models_seen == [GEMINI_DEFAULT_MODEL]
+
+
+@pytest.mark.asyncio
+async def test_translate_stage_retries_same_gemini_model_after_temporary_failure(tmp_path):
+    env = _fallback_stage_env(tmp_path)
+    gemini_provider = _RetryingGeminiProvider()
+    stage = TranslateStage(
+        provider_factory=lambda key: gemini_provider,
+        cache=env["cache"],
+        settings_service=env["prefs"],
+        usage_service=env["usage"],
+        storage=env["storage"],
+    )
+
+    await stage.run(_fallback_context())
+
+    assert gemini_provider.models_seen == [GEMINI_DEFAULT_MODEL, GEMINI_DEFAULT_MODEL]
 
 
 @pytest.mark.asyncio
@@ -760,7 +800,7 @@ async def test_translate_stage_provider_locked_gemini_failure_stops_without_cros
     with pytest.raises(SchedulerPausedError) as exc_info:
         await stage.run(context)
 
-    assert gemini_provider.models_seen == ["gemini-3.1-flash-lite", "gemma-4-31b-it"]
+    assert gemini_provider.models_seen == [GEMINI_DEFAULT_MODEL]
     assert {item["provider_key"] for item in exc_info.value.model_states} == {"gemini"}
 
 
@@ -779,7 +819,7 @@ async def test_translate_stage_uses_saved_admin_fallback_policy_order(tmp_path):
                     {
                         "priority_order": 0,
                         "provider": "gemini",
-                        "model": "gemini-3.1-flash-lite",
+                        "model": GEMINI_DEFAULT_MODEL,
                         "credential_id": "gemini",
                         "enabled": True,
                     },
@@ -795,13 +835,11 @@ async def test_translate_stage_uses_saved_admin_fallback_policy_order(tmp_path):
         storage=env["storage"],
     )
 
-    scheduler = stage._build_scheduler(
-        _fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL
-    )
+    scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=GEMINI_DEFAULT_MODEL)
     model_states = scheduler.to_model_state_list()
 
     assert [(item["provider_key"], item["provider_model"]) for item in model_states] == [
-        ("gemini", "gemini-3.1-flash-lite"),
+        ("gemini", GEMINI_DEFAULT_MODEL),
     ]
 
 
@@ -820,7 +858,7 @@ async def test_translate_stage_saved_policy_skips_disabled_credentials(tmp_path)
                     {
                         "priority_order": 0,
                         "provider": "gemini",
-                        "model": "gemini-3.1-flash-lite",
+                        "model": GEMINI_DEFAULT_MODEL,
                         "credential_id": "gemini",
                         "enabled": True,
                     },
@@ -836,9 +874,7 @@ async def test_translate_stage_saved_policy_skips_disabled_credentials(tmp_path)
         storage=env["storage"],
     )
 
-    scheduler = stage._build_scheduler(
-        _fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL
-    )
+    scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=GEMINI_DEFAULT_MODEL)
 
     assert scheduler.to_model_state_list() == []
 
@@ -858,7 +894,7 @@ async def test_translate_stage_saved_policy_skips_invalid_credentials(tmp_path):
                     {
                         "priority_order": 0,
                         "provider": "gemini",
-                        "model": "gemini-3.1-flash-lite",
+                        "model": GEMINI_DEFAULT_MODEL,
                         "credential_id": "gemini",
                         "enabled": True,
                     },
@@ -874,9 +910,7 @@ async def test_translate_stage_saved_policy_skips_invalid_credentials(tmp_path):
         storage=env["storage"],
     )
 
-    scheduler = stage._build_scheduler(
-        _fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL
-    )
+    scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=GEMINI_DEFAULT_MODEL)
 
     assert scheduler.to_model_state_list() == []
 
@@ -953,7 +987,7 @@ async def test_translate_stage_gemini_unknown_error_does_not_fallback(tmp_path):
     with pytest.raises(ProviderError):
         await stage.run(_fallback_context())
 
-    assert gemini_provider.models_seen == ["gemini-3.1-flash-lite"]
+    assert gemini_provider.models_seen == [GEMINI_DEFAULT_MODEL]
 
 
 @pytest.mark.asyncio

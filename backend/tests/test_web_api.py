@@ -37,7 +37,7 @@ from novelai.api.routers.dependencies import (
     get_translation_cache,
     get_usage,
 )
-from novelai.config.settings import settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.core.errors import (
     ConfigError,
     NovelAIError,
@@ -2483,7 +2483,7 @@ class TestAdmin:
         assert status_resp.status_code == 200
         assert status_resp.json()["configured"] is False
         assert status_resp.json()["provider_key"] == "gemini"
-        assert status_resp.json()["provider_model"] == "gemini-3.1-flash-lite"
+        assert status_resp.json()["provider_model"] == GEMINI_DEFAULT_MODEL
         canonical_status_resp = c.get("/api/admin/provider-api-key/gemini")
         assert canonical_status_resp.status_code == 200
         assert canonical_status_resp.json()["provider_key"] == "gemini"
@@ -2502,11 +2502,11 @@ class TestAdmin:
         assert set_resp.status_code == 200
         assert set_resp.json()["configured"] is True
         assert set_resp.json()["preferred_provider_key"] == "gemini"
-        assert set_resp.json()["provider_model"] == "gemini-3.1-flash-lite"
+        assert set_resp.json()["provider_model"] == GEMINI_DEFAULT_MODEL
         assert set_resp.json()["validation_status"] == "working"
         assert preferences.get_api_key("gemini") == "AIza-test-key"
         assert preferences.get_preferred_provider() == "gemini"
-        assert preferences.get_preferred_model() == "gemini-3.1-flash-lite"
+        assert preferences.get_preferred_model() == GEMINI_DEFAULT_MODEL
         assert preferences.get_llm_step_config("body_translation")["provider_key"] == "gemini"
         canonical_credential_resp = c.get("/api/admin/providers/gemini")
         assert canonical_credential_resp.status_code == 200
@@ -2590,7 +2590,7 @@ class TestAdmin:
                 "provider_key": "gemini",
                 "api_key": "AIza-admin-safe-key",
                 "label": "Primary Gemini",
-                "provider_model": "gemini-3.1-flash-lite",
+                "provider_model": GEMINI_DEFAULT_MODEL,
                 "is_active": True,
             },
             headers=_csrf_headers(owner),
@@ -2629,7 +2629,7 @@ class TestAdmin:
         models_resp = c.get("/api/admin/providers/models")
         assert models_resp.status_code == 200
         models = {(item["provider"], item["model"]) for item in models_resp.json()["models"]}
-        assert ("gemini", "gemma-4-31b-it") in models
+        assert ("gemini", GEMINI_DEFAULT_MODEL) in models
         assert ("gemini", "google/gemma-4-31b-it") not in models
 
         rejected = c.put(
@@ -2687,7 +2687,7 @@ class TestAdmin:
             json={
                 "provider_key": "gemini",
                 "api_key": "AIza-policy-key",
-                "provider_model": "gemma-4-31b-it",
+                "provider_model": GEMINI_DEFAULT_MODEL,
                 "is_active": True,
             },
             headers=headers,
@@ -2698,7 +2698,7 @@ class TestAdmin:
             "/api/admin/providers/fallback-policy",
             json={
                 "default_provider_key": "gemini",
-                "default_provider_model": "gemma-4-31b-it",
+                "default_provider_model": GEMINI_DEFAULT_MODEL,
                 "default_credential_id": "gemini",
                 "allow_cross_provider_fallback": False,
                 "fallback_on_qa_failure": False,
@@ -2706,7 +2706,7 @@ class TestAdmin:
                     {
                         "priority_order": 0,
                         "provider_key": "gemini",
-                        "provider_model": "gemma-4-31b-it",
+                        "provider_model": GEMINI_DEFAULT_MODEL,
                         "credential_id": "gemini",
                         "enabled": True,
                     },
@@ -2717,12 +2717,12 @@ class TestAdmin:
         assert policy_resp.status_code == 200
         policy = policy_resp.json()
         assert policy["default_provider_key"] == "gemini"
-        assert policy["default_provider_model"] == "gemma-4-31b-it"
+        assert policy["default_provider_model"] == GEMINI_DEFAULT_MODEL
         assert policy["allow_cross_provider_fallback"] is False
         assert policy["fallback_on_qa_failure"] is False
         assert "qa_failure" in policy["disallowed_failure_reasons"]
         assert [(item["provider_key"], item["provider_model"]) for item in policy["candidates"]] == [
-            ("gemini", "gemma-4-31b-it"),
+            ("gemini", GEMINI_DEFAULT_MODEL),
         ]
 
     def test_provider_fallback_policy_rejects_legacy_provider_fields(

@@ -72,14 +72,52 @@ class TestUsageService:
     def test_estimate_entries_separate_from_usage(self, usage_dir: Path) -> None:
         svc = UsageService(base_dir=usage_dir)
         svc.record({"timestamp": _ts(), "tokens": 50, "entry_type": "usage"})
-        svc.record({
-            "timestamp": _ts(),
-            "entry_type": "estimate",
-            "estimated_input_tokens": 100,
-            "estimated_output_tokens": 200,
-            "estimated_cost_usd": 0.05,
-        })
+        svc.record(
+            {
+                "timestamp": _ts(),
+                "entry_type": "estimate",
+                "estimated_input_tokens": 100,
+                "estimated_output_tokens": 200,
+                "estimated_cost_usd": 0.05,
+            }
+        )
         summary = svc.summary(all_days=True)
         assert summary["total_requests"] == 1
         assert summary["total_estimates"] == 1
         assert summary["estimated_total_tokens"] == 300
+
+    def test_provider_request_summary_excludes_cache_hits_from_quota_requests(self, usage_dir: Path) -> None:
+        svc = UsageService(base_dir=usage_dir)
+        svc.record_provider_request(
+            timestamp=datetime.now(UTC).isoformat(),
+            provider_key="gemini",
+            provider_model="gemini-3.5-flash-lite",
+            purpose="body_translation",
+            input_tokens=10,
+            output_tokens=5,
+            total_tokens=15,
+            estimated_input_tokens=12,
+            estimated_output_tokens=8,
+            success=True,
+            retry_attempt=0,
+            cache_status="miss",
+        )
+        svc.record_provider_request(
+            timestamp=datetime.now(UTC).isoformat(),
+            provider_key="gemini",
+            provider_model="gemini-3.5-flash-lite",
+            purpose="body_translation",
+            input_tokens=None,
+            output_tokens=None,
+            total_tokens=None,
+            estimated_input_tokens=0,
+            estimated_output_tokens=0,
+            success=True,
+            retry_attempt=0,
+            cache_status="hit",
+            request_made=False,
+        )
+        summary = svc.provider_request_summary()
+        assert summary["current_minute"]["requests"] == 1
+        assert summary["current_minute"]["total_tokens"] == 15
+        assert summary["cache_hits_today"] == 1

@@ -13,7 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 # ORM models are registered by the session-scoped autouse fixture in conftest.py.
-from novelai.config.settings import AppSettings, settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, AppSettings, settings
 from novelai.db.base import Base
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.provider_credentials import ProviderCredentialService, hydrate_active_provider_credentials
@@ -28,8 +28,8 @@ def test_default_settings() -> None:
     assert s.LOG_LEVEL == "INFO"
     assert s.PROVIDER_DEFAULT == "gemini"
     assert s.PROVIDER_GEMINI_API_KEY is None
-    assert s.PROVIDER_GEMINI_DEFAULT_MODEL == "gemini-3.1-flash-lite"
-    assert s.PROVIDER_GEMINI_MODEL_FALLBACKS == ["gemma-4-31b-it"]
+    assert s.PROVIDER_GEMINI_DEFAULT_MODEL == GEMINI_DEFAULT_MODEL
+    assert s.PROVIDER_GEMINI_MODEL_FALLBACKS == []
     assert s.TRANSLATION_CONCURRENCY == 4
     assert s.COST_PER_TOKEN_USD > 0
     assert s.SCRAPE_DELAY_SECONDS == 1.0
@@ -63,12 +63,18 @@ def test_web_defaults() -> None:
     assert s.WEB_PORT == 8000
 
 
-def test_gemini_default_model_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gemini_default_model_env_cannot_select_another_production_model(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PROVIDER_GEMINI_DEFAULT_MODEL", "gemini-custom-model")
 
-    s = AppSettings(_env_file=None)  # type: ignore[call-arg]
+    with pytest.raises(ValueError, match="model fallback is disabled"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
 
-    assert s.PROVIDER_GEMINI_DEFAULT_MODEL == "gemini-custom-model"
+
+def test_gemini_model_fallbacks_reject_configured_alternatives(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PROVIDER_GEMINI_MODEL_FALLBACKS", '["other-model"]')
+
+    with pytest.raises(ValueError, match="model fallback is disabled"):
+        AppSettings(_env_file=None)  # type: ignore[call-arg]
 
 
 @pytest.fixture()
@@ -98,7 +104,7 @@ def test_provider_credential_hydration_loads_active_encrypted_key(
         provider="gemini",
         api_key="AIza-bootstrap-secret",
         label="Primary Gemini",
-        model="gemini-3.1-flash-lite",
+        model=GEMINI_DEFAULT_MODEL,
         is_active=True,
         notes=None,
     )
@@ -129,7 +135,7 @@ def test_provider_credential_hydration_skips_disabled_and_invalid(monkeypatch, s
         provider="gemini",
         api_key="AIza-disabled-secret",
         label="Disabled Gemini",
-        model="gemini-3.1-flash-lite",
+        model=GEMINI_DEFAULT_MODEL,
         is_active=False,
         notes=None,
     )
@@ -157,7 +163,7 @@ def test_provider_credential_hydration_missing_key_fails_safely(monkeypatch, sql
         provider="gemini",
         api_key="AIza-needs-key",
         label="Primary Gemini",
-        model="gemini-3.1-flash-lite",
+        model=GEMINI_DEFAULT_MODEL,
         is_active=True,
         notes=None,
     )

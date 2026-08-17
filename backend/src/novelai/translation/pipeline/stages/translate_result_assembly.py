@@ -155,7 +155,7 @@ def platform_novel_id(context: PipelineState) -> int | None:
 def nonnegative_int(value: Any, *, default: int) -> int:
     try:
         parsed = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return default
     return parsed if parsed >= 0 else default
 
@@ -187,6 +187,7 @@ def observe_chunk_context(
             context_summary=summarize_term_context(history),
             occurrence_count=term.occurrence_count + 1,
             last_seen_index=chunk_index,
+            confidence=term.confidence,
         ).normalized()
 
 
