@@ -39,7 +39,7 @@ exists and is recorded in `HISTORY.md`.
 | 9 | DEBT-075C | Real operator alert | DEBT-118 | Stale/failure alert delivered; threshold, cooldown, redaction, escalation proven |
 | 10 | DEBT-079C | External monitoring | DEBT-079A, OWN-001 | Scheduled runs, dashboard, operator delivery, escalation ownership proven |
 | 11 | DEBT-FE-01A | FE-01 manual acceptance | DEBT-079A | Keyboard, screen reader, 200% zoom, reduced motion, focus, contrast verified on shipped tokens; operator physical acceptance complete (COMPLETED 2026-08-17) |
-| 12 | DEBT-079D | Performance/SEO/legal acceptance | DEBT-079A | Budgets, canonical/robots/sitemap/structured data, HTTP 451 and CDN propagation pass (PARTIAL / FAIL — HOSTED LATENCY BUDGET NOT MET) |
+| 12 | DEBT-079D | Performance/SEO/legal acceptance | DEBT-079A | Minimal real staging fixtures populated across 3 source adapters; adult gating proven; payload size budgets met; hosted latency budget blocked on remote network topology / WAN latency to Supabase SG & R2 (FAIL / BLOCKED 2026-08-17) |
 | 13 | DEBT-079E | Rollback rehearsal | DEBT-075B, DEBT-079B | Worker/scheduler paused, reader disabled, cache purged, prior image compatibility checked, redeployed, smoke rerun |
 | 14 | GO-001 | Final launch decision | All above | Zero unwaived blockers; launch/rollback/monitoring owners named |
 

@@ -969,7 +969,7 @@ def validate_generation_activation(
     # ── exact membership reconciliation ────────────────────────────────
     chapter_dir = g_dir / "chapters"
     physical_logical_ids: list[str] = []
-    if self._path_exists(chapter_dir):
+    if self._is_dir_present(chapter_dir):
         for physical_path in self._glob(chapter_dir, "*.json"):
             try:
                 physical_logical_ids.append(self.logical_id_from_stem(physical_path.stem))
@@ -1583,6 +1583,6 @@ def rollback_generation(
         manifest.rolled_back_at = _utc_now_iso()
         _save_manifest(self, novel_id, generation_id, manifest)
     g_dir = self._generation_dir(novel_id, generation_id)
-    if self._path_exists(g_dir):
+    if self._is_dir_present(g_dir):
         self._rmtree(g_dir)
     logger.warning("Rolled back generation %s for %s (%s).", generation_id, novel_id, reason)

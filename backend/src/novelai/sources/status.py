@@ -65,7 +65,6 @@ def publication_status_payload(raw_status: Any) -> dict[str, str]:
     status = normalize_publication_status(raw_status)
     payload = {
         "publication_status": status,
-        "status": status,
     }
     if isinstance(raw_status, str) and raw_status.strip():
         payload["source_publication_status"] = raw_status.strip()

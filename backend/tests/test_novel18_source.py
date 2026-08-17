@@ -55,7 +55,6 @@ def test_novel18_parse_metadata_html_extracts_completed_publication_status() -> 
     metadata = source._parse_metadata_html(html, "https://novel18.syosetu.com/n0813kx/")
 
     assert metadata["publication_status"] == "completed"
-    assert metadata["status"] == "completed"
     assert metadata["source_publication_status"] == "完結済"
 
 
@@ -75,7 +74,6 @@ def test_novel18_parse_metadata_html_extracts_ongoing_publication_status() -> No
     metadata = source._parse_metadata_html(html, "https://novel18.syosetu.com/n0813kx/")
 
     assert metadata["publication_status"] == "ongoing"
-    assert metadata["status"] == "ongoing"
     assert metadata["source_publication_status"] == "連載中"
 
 
@@ -95,7 +93,6 @@ def test_novel18_parse_metadata_html_leaves_ambiguous_publication_status_unknown
     metadata = source._parse_metadata_html(html, "https://novel18.syosetu.com/n0813kx/")
 
     assert metadata["publication_status"] == "unknown"
-    assert metadata["status"] == "unknown"
     assert "source_publication_status" not in metadata
 
 

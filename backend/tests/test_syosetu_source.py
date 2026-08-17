@@ -41,7 +41,6 @@ def test_parse_metadata_html_extracts_completed_publication_status() -> None:
     metadata = source._parse_metadata_html(html, "https://ncode.syosetu.com/n8733gf/")
 
     assert metadata["publication_status"] == "completed"
-    assert metadata["status"] == "completed"
     assert metadata["source_publication_status"] == "完結済"
 
 
@@ -61,7 +60,6 @@ def test_parse_metadata_html_extracts_ongoing_publication_status() -> None:
     metadata = source._parse_metadata_html(html, "https://ncode.syosetu.com/n8733gf/")
 
     assert metadata["publication_status"] == "ongoing"
-    assert metadata["status"] == "ongoing"
     assert metadata["source_publication_status"] == "連載中"
 
 
@@ -81,7 +79,6 @@ def test_parse_metadata_html_leaves_ambiguous_publication_status_unknown() -> No
     metadata = source._parse_metadata_html(html, "https://ncode.syosetu.com/n8733gf/")
 
     assert metadata["publication_status"] == "unknown"
-    assert metadata["status"] == "unknown"
     assert "source_publication_status" not in metadata
 
 

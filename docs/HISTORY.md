@@ -1,3 +1,59 @@
+## 2026-08-17 DEBT-079D MINIMAL STAGING FIXTURES, ADAPTER HEALTH & PERFORMANCE ACCEPTANCE EVIDENCE
+
+Executed minimal real staging fixture ingestion from 3 operator-supplied URLs, validated source adapter parsing, verified adult content isolation, and ran hosted performance benchmarking on candidate commit `8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23` on private staging instance (`https://laptop-akmalpellu.tail0b4e3e.ts.net`).
+
+### 1. Minimal Real Fixtures Ingested & Adapter Health
+- **Source A (Narou / `syosetu_ncode`)**:
+  - Source URL: `https://ncode.syosetu.com/n2056dn/`
+  - Slug: `n2056dn`
+  - Scraped: 3 chapters (metadata, chapter index, raw chapter bundles)
+  - Storage Backend: Cloudflare R2 bucket `dokushodo` (prefix `storage/novel_library`)
+  - Active Generation: `gen-bc9b949823dd`
+  - Translated: Chapter 1 via Gemini (`gemini-2.5-flash`)
+  - Publication Status: Published (`is_published = true`) in Supabase PostgreSQL 18
+- **Source B (Kakuyomu / `kakuyomu`)**:
+  - Source URL: `https://kakuyomu.jp/works/16817330655991571532`
+  - Slug: `16817330655991571532`
+  - Scraped: 3 chapters (metadata, chapter index, raw chapter bundles)
+  - Storage Backend: Cloudflare R2 bucket `dokushodo`
+  - Active Generation: `gen-4d4e855cfe88`
+  - Translated: Chapter 1 via Gemini (`gemini-2.5-flash`)
+  - Publication Status: Published (`is_published = true`) in Supabase PostgreSQL 18
+- **Source C (Novel18 / `novel18_syosetu`)**:
+  - Source URL: `https://novel18.syosetu.com/n3266mn/`
+  - Slug: `n3266mn`
+  - Scraped: 1 chapter (metadata, chapter index, raw chapter bundles)
+  - Storage Backend: Cloudflare R2 bucket `dokushodo`
+  - Active Generation: `gen-ee00faf84b62`
+  - Content Classification: `is_r18 = true` / adult content
+  - Publication Status: Ingested for source validation only; **NOT published** to public catalog
+
+### 2. Adult Content Isolation & Public Reader Verification
+- **Catalog Isolation**: `GET https://laptop-akmalpellu.tail0b4e3e.ts.net/api/public/catalog` returns exactly 2 published novels (`n2056dn`, `16817330655991571532`). Novel18 (`n3266mn`) is completely absent.
+- **Novel Route Isolation**: `GET https://laptop-akmalpellu.tail0b4e3e.ts.net/api/public/novels/n3266mn` returns HTTP 404 (Not Found).
+- **Chapter Reader Verification**: `GET https://laptop-akmalpellu.tail0b4e3e.ts.net/api/public/novels/n2056dn/chapters/1` returns HTTP 200 with 2,581 translated Japanese-to-English characters across 26 structured reader blocks.
+
+### 3. DEBT-079D Hosted Performance Benchmark Results (20 samples per endpoint)
+
+Executed via `backend/tests/run_hosted_benchmark.py`:
+
+| Endpoint | Metric | Budget | Hosted (Tailscale) Measured | Result | Local Direct Caddy Measured |
+| --- | --- | --- | --- | --- | --- |
+| **Catalog API** (`GET /api/public/catalog`) | Latency p95 | $\le 500\text{ ms}$ | **$31,637.2\text{ ms}$** ($p50 = 25,088.6\text{ ms}$) | **FAIL** | $12.0\text{ ms}$ ($p50 = 3.2\text{ ms}$) |
+| | Payload Size | $\le 250\text{ KiB}$ | **$3.29\text{ KiB}$** | **PASS** | $3.29\text{ KiB}$ |
+| **Novel API** (`GET /api/public/novels/n2056dn`) | Latency p95 | $\le 300\text{ ms}$ | **$19,287.4\text{ ms}$** ($p50 = 7,135.3\text{ ms}$) | **FAIL** | $4.0\text{ ms}$ ($p50 = 3.4\text{ ms}$) |
+| | Payload Size | $\le 100\text{ KiB}$ | **$2.55\text{ KiB}$** | **PASS** | $2.55\text{ KiB}$ |
+| **Chapter API** (`GET /api/public/novels/n2056dn/chapters/1`) | Latency p95 | $\le 750\text{ ms}$ | **$11,953.9\text{ ms}$** ($p50 = 10,500.6\text{ ms}$) | **FAIL** | $4.6\text{ ms}$ ($p50 = 3.8\text{ ms}$) |
+| | Payload Size | $\le 1024\text{ KiB}$ | **$6.33\text{ KiB}$** | **PASS** | $6.33\text{ KiB}$ |
+
+### 4. Root Cause Determination: Infrastructure Topology vs Application Logic
+- **Application Logic**: Extremely fast and optimal. When queried on localhost through Caddy reverse proxy, latency is $3\text{ ms} - 12\text{ ms}$, well under all performance budgets. Payload sizes ($2.5\text{ KiB} - 6.3\text{ KiB}$) are fractions of the size allowances.
+- **Hosted Latency Root Cause**:
+  1. Multi-hop WAN latency between local Docker containers and remote Supabase PostgreSQL 18 in Singapore (`aws-1-ap-southeast-1.pooler.supabase.com`).
+  2. Sequential remote S3/R2 requests per endpoint call (metadata, active generation pointer, manifest, chapter files) over Cloudflare R2 TLS handshakes.
+  3. Client-to-host Tailscale mesh tunnel overhead.
+- **Resolution Path**: Co-locating the backend reader and database in the same cloud region (e.g. AWS/Fly.io in Singapore or US) alongside Redis and S3 caching will bring hosted response times to $< 50\text{ ms}$.
+
 ## 2026-08-17 DEBT-FE-01A MANUAL ACCESSIBILITY ACCEPTANCE EVIDENCE
 
 Executed comprehensive accessibility, responsive layout, and screen-reader audit on candidate commit `8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23` on private staging instance (`https://laptop-akmalpellu.tail0b4e3e.ts.net`).

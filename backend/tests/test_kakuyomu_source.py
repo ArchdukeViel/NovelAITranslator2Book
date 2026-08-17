@@ -49,7 +49,6 @@ def test_parse_metadata_html_extracts_completed_publication_status_from_next_dat
     metadata = source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
 
     assert metadata["publication_status"] == "completed"
-    assert metadata["status"] == "completed"
     assert metadata["source_publication_status"] == "完結済"
 
 
@@ -82,7 +81,6 @@ def test_parse_metadata_html_extracts_ongoing_publication_status_from_next_data(
     metadata = source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
 
     assert metadata["publication_status"] == "ongoing"
-    assert metadata["status"] == "ongoing"
     assert metadata["source_publication_status"] == "連載中"
 
 
@@ -114,7 +112,6 @@ def test_parse_metadata_html_leaves_missing_publication_status_unknown() -> None
     metadata = source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
 
     assert metadata["publication_status"] == "unknown"
-    assert metadata["status"] == "unknown"
     assert "source_publication_status" not in metadata
 
 
