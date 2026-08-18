@@ -34,6 +34,21 @@ _AGE_GATE_RE = re.compile(
     r"18歳未満|18才未満|未成年)",
     re.IGNORECASE,
 )
+_AGE_GATE_URL_RE = re.compile(r"(?:/redirect/ageauth(?:/|[?#])|redirect[_/-]?ageauth)", re.IGNORECASE)
+_AGE_GATE_HEADING_RE = re.compile(
+    r"(?:age\s+(?:verification|gate)|adult\s+(?:verification|only)|年齢(?:確認|認証))",
+    re.IGNORECASE,
+)
+_AGE_GATE_CONFIRMATION_RE = re.compile(
+    r"(?:18\s*(?:\+|or\s+older|years?\s+old)|18歳(?:以上|未満)|adult(?:s)?\s+only|"
+    r"over18|yes18|i\s+am\s+over\s+18|confirm\s+(?:your|the)\s+age|成人向け|閲覧禁止)",
+    re.IGNORECASE,
+)
+_AGE_GATE_INTERACTION_RE = re.compile(
+    r"(?:<button\b|<input\b[^>]*type\s*=|data-url\s*=|id\s*=\s*['\"]yes18['\"]|"
+    r"javascript:|>\s*(?:yes|enter|confirm|はい)\s*<)",
+    re.IGNORECASE,
+)
 _NAV_WORDS = {
     "home",
     "top",
@@ -137,8 +152,6 @@ def evaluate_chapter_quality(
         errors.append("chapter_text_empty")
         return _result(warnings, errors)
 
-    if detect_age_gate_text(normalized):
-        errors.append("age_gate")
     if detect_block_page_text(normalized):
         errors.append("blocked_or_gate")
 
@@ -178,7 +191,36 @@ def evaluate_chapter_quality(
 
 
 def detect_age_gate_text(text: str) -> bool:
+    """Detect legacy age-gate markers in an unparsed response.
+
+    This deliberately remains a broad compatibility helper for callers that
+    inspect raw response text. Parsed chapter quality must use structural page
+    detection instead: ordinary prose can mention age restrictions without
+    being an interstitial.
+    """
     return bool(_AGE_GATE_RE.search(text or ""))
+
+
+def detect_age_gate_page(text: str, *, final_url: str | None = None) -> bool:
+    """Detect an age-confirmation interstitial without flagging story prose.
+
+    The detector requires page-level structure (a known age-auth redirect,
+    confirmation control, or a heading plus confirmation interaction). A
+    chapter mentioning ``18歳未満`` by itself is not an age gate.
+    """
+    if final_url:
+        parsed = urlparse(final_url)
+        host = (parsed.hostname or "").lower()
+        if host == "nl.syosetu.com" and parsed.path.lower().startswith("/redirect/ageauth/"):
+            return True
+
+    html = text or ""
+    if _AGE_GATE_URL_RE.search(html):
+        return True
+
+    if not _AGE_GATE_HEADING_RE.search(html):
+        return False
+    return bool(_AGE_GATE_CONFIRMATION_RE.search(html) and _AGE_GATE_INTERACTION_RE.search(html))
 
 
 def detect_block_page_text(text: str) -> bool:

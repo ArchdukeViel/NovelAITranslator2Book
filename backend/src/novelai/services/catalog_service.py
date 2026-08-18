@@ -608,10 +608,10 @@ class CatalogService:
         self._session.add(novel)
         self._session.flush()
 
-        visibility_warnings: list[str] = []
-        if is_published and any(genre.is_adult for genre in novel.genres if genre.is_active):
-            visibility_warnings.append("adult_hidden_by_default")
-        return CatalogPublicationResult(novel=novel, visibility_warnings=visibility_warnings)
+        # Adult/R18 classification remains available to taxonomy and source
+        # provenance code, but it does not create a separate publication
+        # lifecycle or hide an explicitly published novel.
+        return CatalogPublicationResult(novel=novel, visibility_warnings=[])
 
     def _latest_translated_chapter(
         self,

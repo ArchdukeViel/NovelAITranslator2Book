@@ -4,6 +4,7 @@ import httpx
 
 from novelai.core.errors import SourceError
 from novelai.infrastructure.http.profiles import PROFILE_NOVEL18_HTML
+from novelai.sources.quality import detect_age_gate_page
 from novelai.sources.syosetu_ncode import SyosetuNcodeSource
 from novelai.sources.taxonomy import NOVEL18_GENRE_MAP
 
@@ -84,15 +85,15 @@ class Novel18SyosetuSource(SyosetuNcodeSource):
         return cookies
 
     def _is_age_gate_page(self, final_url: httpx.URL, html: str) -> bool:
-        host = (final_url.host or "").lower()
-        if host == self.AGE_GATE_HOST and final_url.path.startswith(self.AGE_GATE_PATH_PREFIX):
-            return True
+        return detect_age_gate_page(html, final_url=str(final_url))
 
-        lowered_html = html.lower()
+    def _is_allowed_age_gate_target_url(self, requested_url: str, target_url: str) -> bool:
+        requested = httpx.URL(requested_url)
+        target = httpx.URL(target_url)
         return (
-            "redirect/ageauth/" in lowered_html
-            and ("cookie" in lowered_html or "javascript" in lowered_html)
-            and ("18" in lowered_html or "年齢" in html)
+            target.scheme == requested.scheme
+            and (target.host or "").lower() in self.ADULT_SITE_HOSTS
+            and self.normalize_novel_id(str(target)) == self.normalize_novel_id(requested_url)
         )
 
     def _validate_fetched_page(self, requested_url: str, final_url: httpx.URL, html: str) -> None:
@@ -100,6 +101,6 @@ class Novel18SyosetuSource(SyosetuNcodeSource):
             return
 
         raise SourceError(
-            "Syosetu Novel18 returned the 18+ age verification page instead of the novel content. "
-            "The scraper sent the adult confirmation cookie, but the site still requires browser-side age auth."
+            "Syosetu Novel18 remained behind the 18+ age verification page after the bounded public "
+            "confirmation flow; the chapter content was not stored."
         )

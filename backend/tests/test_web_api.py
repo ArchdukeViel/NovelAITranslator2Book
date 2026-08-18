@@ -2185,7 +2185,7 @@ class TestAdminNovelPublish:
         novel = isolated_db_session.query(Novel).filter_by(slug="unpublish-n1").one()
         assert novel.is_published is False
 
-    def test_published_adult_novel_stays_hidden_by_default(
+    def test_published_adult_novel_uses_normal_public_lifecycle(
         self,
         _session_auth_defaults: None,
         isolated_db_session: Session,
@@ -2215,11 +2215,15 @@ class TestAdminNovelPublish:
         publish_resp = c.post("/api/admin/novels/adult-publish/publish", headers=_csrf_headers(c))
         default_catalog = c.get("/api/public/catalog").json()
         adult_catalog = c.get("/api/public/catalog?include_adult=true").json()
+        detail = c.get("/api/public/novels/adult-publish")
+        reader = c.get("/api/public/novels/adult-publish/chapters/1")
 
         assert publish_resp.status_code == 200
-        assert publish_resp.json()["visibility_warnings"] == ["adult_hidden_by_default"]
-        assert default_catalog["novels"] == []
+        assert publish_resp.json()["visibility_warnings"] == []
+        assert [novel["novel_id"] for novel in default_catalog["novels"]] == ["adult-publish"]
         assert [novel["novel_id"] for novel in adult_catalog["novels"]] == ["adult-publish"]
+        assert detail.status_code == 200
+        assert reader.status_code == 200
 
     def test_public_route_does_not_expose_publish_operation(
         self,

@@ -1812,18 +1812,18 @@ class TestCatalogTaxonomy:
         assert novel["genres"] == [{"slug": "romance", "name_ja": "恋愛", "name_en": "romance"}]
         assert novel["tags"] == [{"name": "転生", "name_ja": None}]
 
-    def test_adult_genre_novel_excluded_by_default(
+    def test_adult_genre_novel_visible_by_default(
         self, client: TestClient, storage: StorageService, db_session
     ) -> None:
-        """Novel with adult genre excluded from catalog by default."""
+        """Published adult novels participate in the default catalog."""
         _seed_novel(storage, "adult-novel")
         self._seed_genre(db_session, "adult-romance", "大人向け恋愛", display_order=101, is_adult=True)
         self._assign_genre(db_session, "adult-novel", "adult-romance")
 
         resp = client.get("/api/public/catalog")
         assert resp.status_code == 200
-        slugs = {n["slug"] for n in resp.json()["novels"]}
-        assert "adult-novel" not in slugs
+        novel_ids = {n["novel_id"] for n in resp.json()["novels"]}
+        assert "adult-novel" in novel_ids
 
     def test_adult_genre_novel_included_when_include_adult_true(
         self, client: TestClient, storage: StorageService, db_session

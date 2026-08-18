@@ -6,12 +6,13 @@ import logging
 import re
 from collections.abc import Callable
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup, Tag
 
 from novelai.core.errors import SourceError
+from novelai.infrastructure.http.client import validate_safe_url
 from novelai.infrastructure.http.fetch_service import FetchService, get_default_fetch_service
 from novelai.infrastructure.http.profiles import PROFILE_ASSETS, PROFILE_SYOSETU_HTML
 from novelai.sources._helpers import (
@@ -21,7 +22,7 @@ from novelai.sources._helpers import (
 from novelai.sources.base import SourceAdapter
 from novelai.sources.html_parsers import HTMLParserMixin
 from novelai.sources.quality import (
-    detect_age_gate_text,
+    detect_age_gate_page,
     detect_block_page_text,
 )
 from novelai.sources.source_layout import normalize_source_blocks
@@ -103,8 +104,54 @@ class SyosetuNcodeSource(SourceAdapter):
     def _build_request_cookies(self) -> httpx.Cookies | None:
         return None
 
-    def _validate_fetched_page(self, requested_url: str, final_url: httpx.URL, html: str) -> None:
+    def _is_age_gate_page(self, final_url: httpx.URL, html: str) -> bool:
+        return detect_age_gate_page(html, final_url=str(final_url))
+
+    def _is_allowed_age_gate_target_url(self, requested_url: str, target_url: str) -> bool:
+        requested = httpx.URL(requested_url)
+        target = httpx.URL(target_url)
+        return (
+            target.scheme == requested.scheme
+            and (target.host or "").lower() == (requested.host or "").lower()
+            and self.normalize_novel_id(str(target)) == self.normalize_novel_id(requested_url)
+        )
+
+    def _extract_age_gate_target_url(
+        self,
+        requested_url: str,
+        final_url: httpx.URL,
+        html: str,
+    ) -> str | None:
+        """Return a safe same-novel URL from a public age interstitial."""
+        candidates: list[str] = []
+        query_target = parse_qs(urlparse(str(final_url)).query).get("url")
+        if query_target:
+            candidates.extend(query_target)
+
+        soup = BeautifulSoup(html, "lxml")
+        for node in soup.select("[data-url]"):
+            value = node.get("data-url")
+            if isinstance(value, str) and value.strip():
+                candidates.append(value.strip())
+
+        for candidate in candidates:
+            try:
+                resolved = urljoin(requested_url, candidate.strip())
+                safe_url = validate_safe_url(resolved)
+                if self._is_allowed_age_gate_target_url(requested_url, safe_url):
+                    return safe_url
+            except Exception:
+                # Invalid or cross-site interstitial targets are treated as
+                # unresolved rather than followed.
+                continue
         return None
+
+    def _validate_fetched_page(self, requested_url: str, final_url: httpx.URL, html: str) -> None:
+        if self._is_age_gate_page(final_url, html):
+            raise SourceError(
+                f"Syosetu page at {requested_url} remained behind an age-verification interstitial "
+                "after the bounded public confirmation flow."
+            )
 
     def _request_headers(self, *, referer: str | None = None) -> dict[str, str]:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -134,7 +181,24 @@ class SyosetuNcodeSource(SourceAdapter):
             on_retry=on_retry,
         )
         html = self._decode_page_body(result.body)
-        self._validate_fetched_page(url, httpx.URL(result.final_url), html)
+        final_url = httpx.URL(result.final_url)
+        if self._is_age_gate_page(final_url, html):
+            target_url = self._extract_age_gate_target_url(url, final_url, html)
+            if target_url is None:
+                self._validate_fetched_page(url, final_url, html)
+                raise SourceError(f"Syosetu age-verification page at {url} did not expose a safe chapter target.")
+            result = await self._fetch_service.get_text(
+                target_url,
+                source_key=self.source_key,
+                profile=self._request_profile,
+                headers=self._request_headers(referer=url),
+                cookies=self._build_request_cookies(),
+                on_retry=on_retry,
+                use_cache=False,
+            )
+            html = self._decode_page_body(result.body)
+            final_url = httpx.URL(result.final_url)
+        self._validate_fetched_page(url, final_url, html)
         return html
 
     async def fetch_asset(self, url: str, *, referer: str | None = None) -> dict[str, Any]:
@@ -408,7 +472,7 @@ class SyosetuNcodeSource(SourceAdapter):
         }
 
     def _parse_chapter_payload(self, html: str, url: str) -> dict[str, Any]:
-        if detect_age_gate_text(html):
+        if detect_age_gate_page(html, final_url=url):
             raise SourceError("Syosetu page appears to be an age gate or auth redirect.")
         if detect_block_page_text(html):
             raise SourceError("Syosetu page appears to be blocked or unavailable.")

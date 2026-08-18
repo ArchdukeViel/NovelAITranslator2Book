@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from novelai.core.errors import SourceError
+from novelai.infrastructure.http.fetch_service import FetchResult
 from novelai.sources.novel18_syosetu import Novel18SyosetuSource
 from tests.test_fetch_service import FakeFetchService
 
@@ -37,6 +38,136 @@ def test_novel18_raises_clear_error_for_age_gate_redirect() -> None:
             ),
             "<html><body>年齢確認 Cookie JavaScript redirect/ageauth/</body></html>",
         )
+
+
+@pytest.mark.asyncio
+async def test_novel18_follows_age_gate_and_parses_only_actual_chapter() -> None:
+    chapter_url = "https://novel18.syosetu.com/n0813kx/1/"
+    target_url = chapter_url
+    gate_url = (
+        "https://nl.syosetu.com/redirect/ageauth/?url=https%3A%2F%2Fnovel18.syosetu.com%2Fn0813kx%2F1%2F&hash=test"
+    )
+    gate_html = """
+    <html><head><title>年齢確認</title></head><body>
+      <h1>年齢確認</h1>
+      <p>18歳未満閲覧禁止ページです。</p>
+      <a id="yes18" data-url="https://novel18.syosetu.com/n0813kx/1/">Enter</a>
+    </body></html>
+    """
+    chapter_html = """
+    <html><body>
+      <div class="p-novel__text p-novel__text--body js-novel-text">
+        <p>本文には18歳未満の登場人物についての記述がある。</p>
+        <p>これは実際の章本文であり、年齢確認ページではない。</p>
+      </div>
+    </body></html>
+    """
+    service = FakeFetchService("")
+    responses = [
+        FetchResult(
+            requested_url=chapter_url,
+            final_url=gate_url,
+            status_code=200,
+            headers={"content-type": "text/html"},
+            text=gate_html,
+            body=gate_html.encode("utf-8"),
+            source_key="novel18_syosetu",
+            fetched_at="2026-06-04T00:00:00Z",
+        ),
+        FetchResult(
+            requested_url=target_url,
+            final_url=target_url,
+            status_code=200,
+            headers={"content-type": "text/html"},
+            text=chapter_html,
+            body=chapter_html.encode("utf-8"),
+            source_key="novel18_syosetu",
+            fetched_at="2026-06-04T00:00:00Z",
+        ),
+    ]
+
+    async def sequenced_get_text(
+        url: str,
+        *,
+        source_key: str,
+        referer=None,
+        headers=None,
+        cookies=None,
+        on_retry=None,
+        profile=None,
+        kind="html",
+        use_cache=True,
+    ) -> FetchResult:
+        service.calls.append({"url": url, "referer": referer, "use_cache": use_cache, "cookies": cookies})
+        return responses.pop(0)
+
+    service.get_text = sequenced_get_text  # type: ignore[method-assign]
+    source = Novel18SyosetuSource(fetch_service=service)
+
+    payload = await source.fetch_chapter_payload(chapter_url)
+
+    assert [call["url"] for call in service.calls] == [chapter_url, target_url]
+    assert service.calls[1]["use_cache"] is False
+    assert payload["text"] == (
+        "本文には18歳未満の登場人物についての記述がある。\n\nこれは実際の章本文であり、年齢確認ページではない。"
+    )
+    assert "年齢確認" in payload["text"]
+    assert "Enter" not in payload["text"]
+
+
+@pytest.mark.asyncio
+async def test_novel18_age_gate_retry_is_bounded_and_reports_unresolved_gate() -> None:
+    chapter_url = "https://novel18.syosetu.com/n0813kx/1/"
+    gate_url = (
+        "https://nl.syosetu.com/redirect/ageauth/?url=https%3A%2F%2Fnovel18.syosetu.com%2Fn0813kx%2F1%2F&hash=test"
+    )
+    gate_html = f'<html><body><h1>年齢確認</h1><a id="yes18" data-url="{chapter_url}">Enter</a></body></html>'
+    service = FakeFetchService("")
+    responses = [
+        FetchResult(
+            requested_url=chapter_url,
+            final_url=gate_url,
+            status_code=200,
+            headers={},
+            text=gate_html,
+            body=gate_html.encode("utf-8"),
+            source_key="novel18_syosetu",
+            fetched_at="2026-06-04T00:00:00Z",
+        ),
+        FetchResult(
+            requested_url=chapter_url,
+            final_url=gate_url,
+            status_code=200,
+            headers={},
+            text=gate_html,
+            body=gate_html.encode("utf-8"),
+            source_key="novel18_syosetu",
+            fetched_at="2026-06-04T00:00:00Z",
+        ),
+    ]
+
+    async def sequenced_get_text(
+        url: str,
+        *,
+        source_key: str,
+        referer=None,
+        headers=None,
+        cookies=None,
+        on_retry=None,
+        profile=None,
+        kind="html",
+        use_cache=True,
+    ) -> FetchResult:
+        service.calls.append({"url": url, "use_cache": use_cache})
+        return responses.pop(0)
+
+    service.get_text = sequenced_get_text  # type: ignore[method-assign]
+    source = Novel18SyosetuSource(fetch_service=service)
+
+    with pytest.raises(SourceError, match="bounded public confirmation flow"):
+        await source.fetch_chapter_payload(chapter_url)
+
+    assert len(service.calls) == 2
 
 
 def test_novel18_parse_metadata_html_extracts_completed_publication_status() -> None:

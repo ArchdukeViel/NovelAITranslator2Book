@@ -45,19 +45,12 @@ logger = logging.getLogger(__name__)
 
 
 def _published_db_catalog_query(db: Session, *, include_adult: bool):
-    from novelai.db.models.genre import Genre
     from novelai.db.models.novel import Novel
 
+    # Adult/R18 classification affects optional taxonomy projection, not
+    # whether an explicitly published novel participates in the catalog.
+    _ = include_adult
     query = db.query(Novel).filter(Novel.is_published.is_(True))
-    if not include_adult:
-        query = query.filter(
-            ~Novel.genres.any(
-                and_(
-                    Genre.is_active.is_(True),
-                    Genre.is_adult.is_(True),
-                )
-            )
-        )
     return query
 
 
@@ -204,9 +197,7 @@ def _catalog_from_storage(
             continue
         if source_key and _optional_str(meta.get("source_key")) != source_key:
             continue
-        genres, tags, is_adult = service._load_taxonomy_for_novel(novel_id, include_adult=include_adult)
-        if not include_adult and is_adult:
-            continue
+        genres, tags, _is_adult = service._load_taxonomy_for_novel(novel_id, include_adult=include_adult)
         novel_genre_set = {g["slug"] for g in genres}
         novel_tag_set = {t["name"] for t in tags}
         if genre_include_set and not genre_include_set.issubset(novel_genre_set):
@@ -268,7 +259,10 @@ async def catalog(
     genre_exclude: str | None = Query(default=None, description="Comma-separated genre slugs — novel must have none"),
     tag_include: str | None = Query(default=None, description="Comma-separated tag names — novel must have all"),
     tag_exclude: str | None = Query(default=None, description="Comma-separated tag names — novel must have none"),
-    include_adult: bool = Query(default=False, description="Include novels with adult/R18 genres"),
+    include_adult: bool = Query(
+        default=False,
+        description="Include adult/R18 taxonomy terms in catalog metadata and filters",
+    ),
     page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(default=24, ge=1, le=100, description="Items per page"),
     service: PublicCatalogService = Depends(get_public_catalog_service),

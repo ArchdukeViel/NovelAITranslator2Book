@@ -24,7 +24,7 @@ from novelai.sources.base import SourceAdapter
 from novelai.sources.html_parsers import HTMLParserMixin
 from novelai.sources.quality import (
     QualityGateResult,
-    detect_age_gate_text,
+    detect_age_gate_page,
     detect_block_page_text,
 )
 from novelai.sources.status import publication_status_payload
@@ -145,7 +145,7 @@ class GenericSource(SourceAdapter):
         """
         if detect_block_page_text(html):
             raise SourceError(f"Page at {url} appears to be blocked (Cloudflare, CAPTCHA, or bot challenge).")
-        if detect_age_gate_text(html):
+        if detect_age_gate_page(html, final_url=url):
             raise SourceError(f"Page at {url} appears to require age verification or adult confirmation.")
 
     @staticmethod

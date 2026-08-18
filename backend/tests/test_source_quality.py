@@ -50,14 +50,14 @@ def test_nav_menu_heavy_text_fails_or_warns():
     assert "chapter_navigation_boilerplate" in result.errors or "chapter_navigation_boilerplate" in result.warnings
 
 
-def test_age_gate_detection_fails_quality_gate():
+def test_age_gate_words_in_chapter_prose_do_not_fail_quality_gate():
     result = evaluate_chapter_quality(
-        "年齢確認 18歳未満の方は閲覧できません over18 ageauth",
+        "物語の中で18歳未満の登場人物が年齢確認について話した。" * 8,
         source_key="novel18_syosetu",
     )
 
-    assert result.passed is False
-    assert "age_gate" in result.errors
+    assert result.passed is True
+    assert "age_gate" not in result.errors
 
 
 def test_duplicate_chapter_url_warns_metadata_quality():
@@ -86,9 +86,7 @@ def test_valid_dedicated_source_quality_passes():
             "source_novel_id": "n1234ab",
             "source_url": "https://ncode.syosetu.com/n1234ab/",
             "title": "Valid Novel",
-            "chapters": [
-                {"id": "1", "num": 1, "title": "One", "url": "https://ncode.syosetu.com/n1234ab/1/"}
-            ],
+            "chapters": [{"id": "1", "num": 1, "title": "One", "url": "https://ncode.syosetu.com/n1234ab/1/"}],
         },
         source_key="syosetu_ncode",
     )
@@ -111,9 +109,7 @@ def test_legacy_source_metadata_field_is_rejected():
             "source_novel_id": "n1234ab",
             "source_url": "https://ncode.syosetu.com/n1234ab/",
             "title": "Valid Novel",
-            "chapters": [
-                {"id": "1", "num": 1, "title": "One", "url": "https://ncode.syosetu.com/n1234ab/1/"}
-            ],
+            "chapters": [{"id": "1", "num": 1, "title": "One", "url": "https://ncode.syosetu.com/n1234ab/1/"}],
         },
         source_key="syosetu_ncode",
     )

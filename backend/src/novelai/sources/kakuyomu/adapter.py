@@ -28,7 +28,7 @@ from novelai.sources.kakuyomu.parser import (
     extract_chapters_from_next_data,
     next_data_apollo_state,
 )
-from novelai.sources.quality import detect_age_gate_text, detect_block_page_text
+from novelai.sources.quality import detect_age_gate_page, detect_block_page_text
 from novelai.sources.status import publication_status_payload
 from novelai.utils.text_normalization import normalize_text
 
@@ -139,7 +139,7 @@ class KakuyomuSource(SourceAdapter):
     def _preflight_check(html: str, url: str) -> None:
         if detect_block_page_text(html):
             raise SourceError(f"Kakuyomu page at {url} appears to be blocked (Cloudflare, CAPTCHA, or bot challenge).")
-        if detect_age_gate_text(html):
+        if detect_age_gate_page(html, final_url=url):
             raise SourceError(f"Kakuyomu page at {url} appears to require age verification or adult confirmation.")
 
     async def _fetch_page(self, url: str, *, on_retry: Callable[[int, Exception], None] | None = None) -> str:
