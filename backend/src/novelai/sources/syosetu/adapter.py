@@ -282,8 +282,17 @@ class SyosetuNcodeSource(SourceAdapter):
         title: str | None,
         *,
         initial_part: str | None = None,
+        initial_section_title: str | None = None,
+        initial_section_ordinal: int | None = None,
     ) -> list[dict[str, Any]]:
-        return extract_chapters(soup, url, title, initial_part=initial_part)
+        return extract_chapters(
+            soup,
+            url,
+            title,
+            initial_part=initial_part,
+            initial_section_title=initial_section_title,
+            initial_section_ordinal=initial_section_ordinal,
+        )
 
     @staticmethod
     def _apply_chapter_cap(chapters: list[dict[str, Any]], max_chapter: int | None) -> list[dict[str, Any]]:
@@ -306,6 +315,21 @@ class SyosetuNcodeSource(SourceAdapter):
             if isinstance(part, str) and part.strip():
                 return part.strip()
         return None
+
+    @staticmethod
+    def _last_chapter_section(chapters: Any) -> tuple[str | None, int | None]:
+        if not isinstance(chapters, list):
+            return None, None
+        for chapter in reversed(chapters):
+            if not isinstance(chapter, dict):
+                continue
+            title = chapter.get("section_title") or chapter.get("part") or chapter.get("volume")
+            if not isinstance(title, str) or not title.strip():
+                continue
+            ordinal = chapter.get("section_ordinal")
+            normalized_ordinal = ordinal if isinstance(ordinal, int) and ordinal > 0 else None
+            return title.strip(), normalized_ordinal
+        return None, None
 
     def _find_story_sections(self, soup: BeautifulSoup) -> list[Tag]:
         return find_story_sections(soup)
@@ -460,6 +484,12 @@ class SyosetuNcodeSource(SourceAdapter):
         )
 
         novel_id = self.normalize_novel_id(url)
+        root_url = str(httpx.URL(url).copy_with(query=None, fragment=None)).rstrip("/")
+        direct_body = (
+            len(chapters) == 1
+            and str(chapters[0].get("url") or "").rstrip("/") == root_url
+            and self._find_story_body(soup) is not None
+        )
         return {
             "source_key": self.source_key,
             "source_url": url,
@@ -472,6 +502,7 @@ class SyosetuNcodeSource(SourceAdapter):
             "published_at": published_at,
             "updated_at": updated_at,
             "chapters": chapters,
+            "work_structure": "direct_body" if direct_body else "episodes",
             "source_genre_name": source_genre_name,
             "genre_slug": genre_slug,
             "source_keywords": source_keywords,
@@ -612,11 +643,14 @@ class SyosetuNcodeSource(SourceAdapter):
             page_url = f"{url.rstrip('/')}/?p={page}"
             page_html = await self._fetch_page(page_url, on_retry=None)
             page_soup = BeautifulSoup(page_html, "lxml")
+            section_title, section_ordinal = self._last_chapter_section(metadata.get("chapters"))
             page_chapters = self._extract_chapters(
                 page_soup,
                 url,
                 metadata.get("title"),
-                initial_part=self._last_chapter_part(metadata.get("chapters")),
+                initial_part=section_title or self._last_chapter_part(metadata.get("chapters")),
+                initial_section_title=section_title,
+                initial_section_ordinal=section_ordinal,
             )
             existing_chapters = metadata.get("chapters", [])
             seen_ids = {c["id"] for c in existing_chapters if isinstance(c, dict) and "id" in c}

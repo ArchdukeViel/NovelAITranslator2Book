@@ -56,18 +56,39 @@ function chapterHref(slug: string, chapterId: string): string {
 }
 
 type VolumeGroup = {
+  key: string;
   label: string;
+  ordinal: number | null;
   chapters: PublicChapterSummary[];
 };
 
+function chapterSectionKey(chapter: PublicChapterSummary): string | null {
+  const sourceId = chapter.section_source_id?.trim();
+  if (sourceId) {
+    return `source:${sourceId}`;
+  }
+  if (chapter.section_ordinal !== null && chapter.section_ordinal !== undefined) {
+    return `ordinal:${chapter.section_ordinal}`;
+  }
+  const title = chapter.section_title?.trim() || chapter.part?.trim();
+  return title ? `legacy:${title}` : null;
+}
+
 function groupChaptersByVolume(chapters: PublicChapterSummary[], order: "asc" | "desc" = "asc"): VolumeGroup[] {
   const groups = new Map<string, VolumeGroup>();
-  groups.set("", { label: "Chapters", chapters: [] });
+  const hasSections = chapters.some((chapter) => chapterSectionKey(chapter) !== null);
 
   for (const ch of chapters) {
-    const key = ch.part?.trim() || "";
+    const sectionKey = chapterSectionKey(ch);
+    const key = sectionKey ?? (hasSections ? "ungrouped" : "flat");
     if (!groups.has(key)) {
-      groups.set(key, { label: key, chapters: [] });
+      const label = ch.section_title?.trim() || ch.part?.trim() || (sectionKey ? `Section ${ch.section_ordinal ?? ""}`.trim() : "");
+      groups.set(key, {
+        key,
+        label: label || (hasSections ? "Chapters" : ""),
+        ordinal: ch.section_ordinal ?? null,
+        chapters: [],
+      });
     }
     groups.get(key)!.chapters.push(ch);
   }
@@ -82,9 +103,12 @@ function groupChaptersByVolume(chapters: PublicChapterSummary[], order: "asc" | 
     );
   }
   groupsArray.sort((a, b) => {
+    if (a.ordinal !== null && b.ordinal !== null && a.ordinal !== b.ordinal) {
+      return order === "asc" ? a.ordinal - b.ordinal : b.ordinal - a.ordinal;
+    }
     const aMin = Math.min(...a.chapters.map((c) => c.chapter_number ?? 0));
     const bMin = Math.min(...b.chapters.map((c) => c.chapter_number ?? 0));
-    const result = aMin - bMin || a.label.localeCompare(b.label);
+    const result = aMin - bMin || a.label.localeCompare(b.label) || a.key.localeCompare(b.key);
     return order === "asc" ? result : -result;
   });
 
@@ -310,11 +334,13 @@ export default function NovelDetailPage() {
                 <button type="button" onClick={() => setChapterOrder((value) => value === "asc" ? "desc" : "asc")} className="rounded-md border border-border px-3 text-sm">{chapterOrder === "asc" ? "Ascending" : "Descending"}</button>
               </div>
               <div className="mt-5 rounded-lg bg-card/70 px-4 ring-1 ring-border sm:px-5">
-                {chapters.isPending ? <div className="py-10 text-center">Loading chapters…</div> : chapters.isError ? <div className="py-10 text-center text-sm text-muted-foreground">Could not load chapters.</div> : visibleChapters.length === 0 ? <div className="py-10 text-center"><Library className="mx-auto h-10 w-10 text-muted-foreground/50" /><p className="mt-3 text-sm text-muted-foreground">No chapters matched.</p></div> : groupChaptersByVolume(visibleChapters, chapterOrder).map((group) => (
-                  <details key={group.label} open={groupsExpanded} className="group/volume border-b border-border/70 last:border-b-0">
+                {chapters.isPending ? <div className="py-10 text-center">Loading chapters…</div> : chapters.isError ? <div className="py-10 text-center text-sm text-muted-foreground">Could not load chapters.</div> : visibleChapters.length === 0 ? <div className="py-10 text-center"><Library className="mx-auto h-10 w-10 text-muted-foreground/50" /><p className="mt-3 text-sm text-muted-foreground">No chapters matched.</p></div> : groupChaptersByVolume(visibleChapters, chapterOrder).map((group) => group.label ? (
+                  <details key={group.key} open={groupsExpanded} className="group/volume border-b border-border/70 last:border-b-0">
                     <summary className="flex cursor-pointer items-center justify-between py-3 text-sm font-medium"><span>{group.label}</span><span className="text-xs text-muted-foreground">{group.chapters.length}</span></summary>
                     <div className="border-t border-border/40">{group.chapters.map((chapter) => <div id={`chapter-${chapter.chapter_id}`} key={chapter.chapter_id}><ChapterRow chapter={chapter} slug={publicSlug} isLastRead={progressChapterId === chapter.chapter_id} isRead={progressChapterNumber != null && chapter.chapter_number != null && chapter.chapter_number <= progressChapterNumber} /></div>)}</div>
                   </details>
+                ) : (
+                  <div key={group.key}>{group.chapters.map((chapter) => <div id={`chapter-${chapter.chapter_id}`} key={chapter.chapter_id}><ChapterRow chapter={chapter} slug={publicSlug} isLastRead={progressChapterId === chapter.chapter_id} isRead={progressChapterNumber != null && chapter.chapter_number != null && chapter.chapter_number <= progressChapterNumber} /></div>)}</div>
                 ))}
               </div>
               {orderedChapters.length > chapterLimit && <button type="button" onClick={() => setChapterLimit((value) => value + 100)} className="mt-5 rounded-md border border-border px-4 py-2 text-sm">Show more chapters</button>}

@@ -109,19 +109,7 @@ def classes_of(tag: Tag) -> set[str]:
 
 def is_part_heading(tag: Tag) -> bool:
     cls = classes_of(tag)
-    if cls.intersection(PART_HEADING_CLASSES):
-        return True
-    if tag.name.lower() not in {"h2", "h3", "h4", "div", "p"}:
-        return False
-    if tag.find("a", href=True):
-        return False
-    text = tag.get_text(" ", strip=True)
-    if not text:
-        return False
-    lowered = text.lower()
-    if "chapter" in lowered or "part" in lowered or "arc" in lowered:
-        return True
-    return bool(re.search(r"(?:^|\s)(?:第?[0-9０-９一二三四五六七八九十百]+[章部編]|[0-9０-９]+章)(?:\s|　|$)", text))
+    return bool(cls.intersection(PART_HEADING_CLASSES))
 
 
 def extract_source_date_from_text(text: str) -> str | None:
@@ -205,12 +193,24 @@ def extract_chapters(
     title: str | None,
     *,
     initial_part: str | None = None,
+    initial_section_title: str | None = None,
+    initial_section_ordinal: int | None = None,
 ) -> list[dict[str, Any]]:
     base_url = httpx.URL(url)
     novel_id = normalize_syosetu_novel_id(url)
     chapter_pattern = re.compile(rf"^/{re.escape(novel_id)}/(\d+)/?$", re.IGNORECASE)
     chapter_urls: dict[int, dict[str, Any]] = {}
-    current_part = initial_part.strip() if isinstance(initial_part, str) and initial_part.strip() else None
+    chapter_order: list[int] = []
+    inherited_title = initial_section_title or initial_part
+    current_section_title = (
+        inherited_title.strip() if isinstance(inherited_title, str) and inherited_title.strip() else None
+    )
+    current_section_ordinal = (
+        initial_section_ordinal
+        if isinstance(initial_section_ordinal, int) and initial_section_ordinal > 0
+        else (1 if current_section_title else None)
+    )
+    episodes_seen_since_section = False
 
     for node in soup.find_all(["div", "section", "h2", "h3", "h4", "p", "li", "a"], recursive=True):
         if not isinstance(node, Tag):
@@ -219,7 +219,12 @@ def extract_chapters(
         if is_part_heading(node):
             text = node.get_text(" ", strip=True)
             if text:
-                current_part = text
+                if current_section_title is None:
+                    current_section_ordinal = 1
+                elif text != current_section_title or episodes_seen_since_section:
+                    current_section_ordinal = (current_section_ordinal or 0) + 1
+                current_section_title = text
+                episodes_seen_since_section = False
             continue
 
         if node.name.lower() != "a":
@@ -241,23 +246,33 @@ def extract_chapters(
             "title": node.get_text(strip=True) or f"Chapter {chapter_number}",
             "url": absolute_url,
         }
-        part = extract_chapter_part(node, current_part)
+        part = extract_chapter_part(node, current_section_title)
         if part:
             chapter["part"] = part
+            chapter["section_title"] = part
+            chapter["section_source_id"] = None
+            chapter["section_ordinal"] = current_section_ordinal or 1
+            current_section_title = part
+            current_section_ordinal = current_section_ordinal or 1
         date_added = extract_chapter_date(node)
         if date_added:
             chapter["date_added"] = date_added
         existing = chapter_urls.get(chapter_number)
         if existing is not None:
-            if part and not existing.get("part"):
+            if part and not existing.get("section_title"):
                 existing["part"] = part
+                existing["section_title"] = part
+                existing["section_source_id"] = None
+                existing["section_ordinal"] = current_section_ordinal or 1
             if date_added and not existing.get("date_added"):
                 existing["date_added"] = date_added
             continue
         chapter_urls[chapter_number] = chapter
+        chapter_order.append(chapter_number)
+        episodes_seen_since_section = True
 
     if chapter_urls:
-        return [chapter_urls[index] for index in sorted(chapter_urls)]
+        return [chapter_urls[index] for index in chapter_order]
 
     if find_story_body(soup) is None:
         return []

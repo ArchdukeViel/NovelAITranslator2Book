@@ -224,6 +224,45 @@ def test_novel18_parse_metadata_html_keeps_work_metadata_separate_from_age_notic
     assert "年齢確認" not in metadata["synopsis"]
 
 
+def test_novel18_flat_episode_titles_preserve_numeric_prefixes_and_no_sections() -> None:
+    source = Novel18SyosetuSource()
+    html = """
+    <html>
+      <body>
+        <h1 class="p-novel__title">Flat Adult Story</h1>
+        <a href="/n3266mn/1/">1話　聖水要員</a>
+        <a href="/n3266mn/2/">2話　鉄級の聖水女</a>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, "https://novel18.syosetu.com/n3266mn/")
+
+    assert metadata["work_structure"] == "episodes"
+    assert [chapter["title"] for chapter in metadata["chapters"]] == ["1話　聖水要員", "2話　鉄級の聖水女"]
+    assert all("section_title" not in chapter for chapter in metadata["chapters"])
+
+
+def test_novel18_reuses_structural_section_metadata_without_adult_specific_hierarchy() -> None:
+    source = Novel18SyosetuSource()
+    html = """
+    <html>
+      <body>
+        <h1 class="p-novel__title">Sectioned Adult Story</h1>
+        <div class="p-eplist__chapter-title">第一部　地下迷宮</div>
+        <a href="/n0813kx/1/">プロローグ</a>
+        <a href="/n0813kx/2/">第一話</a>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, "https://novel18.syosetu.com/n0813kx/")
+
+    assert [chapter["section_title"] for chapter in metadata["chapters"]] == ["第一部　地下迷宮"] * 2
+    assert all(chapter["section_source_id"] is None for chapter in metadata["chapters"])
+    assert [chapter["section_ordinal"] for chapter in metadata["chapters"]] == [1, 1]
+
+
 def test_novel18_narrative_synopsis_retains_adult_story_prose() -> None:
     source = Novel18SyosetuSource()
     html = """

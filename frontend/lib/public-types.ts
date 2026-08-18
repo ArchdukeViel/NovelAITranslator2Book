@@ -68,6 +68,10 @@ export interface PublicChapterSummary {
   chapter_number: number | null; // sort ascending (Req 4.3)
   translated: boolean; // false -> pending indicator (Req 4.5)
   part?: string | null; // optional volume/part grouping label
+  section_title?: string | null;
+  section_source_id?: string | null;
+  section_ordinal?: number | null;
+  section_level?: number | null;
 }
 
 export type PublicReaderBlock =
@@ -100,6 +104,10 @@ export interface PublicChapterDetail {
   chapter_number: number | null;
   novel_title: string | null;
   title: string | null;
+  section_title?: string | null;
+  section_source_id?: string | null;
+  section_ordinal?: number | null;
+  section_level?: number | null;
   text: string;
   reader_blocks?: PublicReaderBlock[];
   previous_chapter_id: string | null; // Req 5.4

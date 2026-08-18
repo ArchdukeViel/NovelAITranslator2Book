@@ -363,6 +363,10 @@ export type PreliminaryCrawlResult = {
     arc?: string | number | null;
     section?: string | number | null;
     group?: string | number | null;
+    section_title?: string | null;
+    section_source_id?: string | null;
+    section_ordinal?: number | null;
+    section_level?: number | null;
     url?: string | null;
   } & Record<string, unknown>>;
 };

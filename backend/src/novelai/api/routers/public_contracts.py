@@ -113,6 +113,10 @@ class PublicChapterSummary(BaseModel):
     translated: bool = False
     availability_status: str = "not_translated"
     part: str | None = None
+    section_title: str | None = None
+    section_source_id: str | None = None
+    section_ordinal: int | None = None
+    section_level: int | None = None
 
 
 class PublicCatalogResponse(BaseModel):
@@ -153,6 +157,27 @@ class PublicReviewListResponse(BaseModel):
 
 def _optional_str(value: Any) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _optional_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+        return int(value.strip())
+    return None
+
+
+def _public_section_fields(chapter: dict[str, Any]) -> dict[str, Any]:
+    """Return additive, reader-safe section metadata for one chapter."""
+    return {
+        "section_title": _optional_str(chapter.get("translated_section_title"))
+        or _optional_str(chapter.get("section_title")),
+        "section_source_id": _optional_str(chapter.get("section_source_id")),
+        "section_ordinal": _optional_int(chapter.get("section_ordinal")),
+        "section_level": _optional_int(chapter.get("section_level")),
+    }
 
 
 def _parse_csv_filter(value: str | None) -> list[str]:

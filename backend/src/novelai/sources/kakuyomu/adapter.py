@@ -82,6 +82,14 @@ class KakuyomuSource(SourceAdapter):
         "停止",
         "中断",
     )
+    UI_RANGE_LABEL_PATTERN = re.compile(r"^\s*\d+\s*[〜~]\s*\d+\s*$")
+    LAZY_TOC_LABELS = (
+        "show more",
+        "load more",
+        "もっと見る",
+        "さらに表示",
+        "続きを読む",
+    )
 
     def __init__(self, fetch_service: FetchService | None = None) -> None:
         self._fetch_service = fetch_service or get_default_fetch_service()
@@ -313,7 +321,34 @@ class KakuyomuSource(SourceAdapter):
         text = anchor.get_text(" ", strip=True)
         return text or f"Episode {fallback_index}"
 
-    def _extract_chapters_from_html(self, soup: BeautifulSoup, url: str) -> list[dict[str, str | int]]:
+    @classmethod
+    def _is_ui_range_label(cls, text: str) -> bool:
+        return cls.UI_RANGE_LABEL_PATTERN.fullmatch(text) is not None
+
+    @classmethod
+    def _dom_incomplete_indicators(cls, soup: BeautifulSoup) -> tuple[list[str], list[str]]:
+        range_labels: list[str] = []
+        for element in soup.find_all(True):
+            if not isinstance(element, Tag):
+                continue
+            text = element.get_text(" ", strip=True)
+            if text and cls._is_ui_range_label(text) and text not in range_labels:
+                range_labels.append(text)
+
+        lazy_labels: list[str] = []
+        for element in soup.find_all(["button", "a"]):
+            if not isinstance(element, Tag):
+                continue
+            text = element.get_text(" ", strip=True)
+            if (
+                text
+                and text.casefold() in {label.casefold() for label in cls.LAZY_TOC_LABELS}
+                and text not in lazy_labels
+            ):
+                lazy_labels.append(text)
+        return range_labels, lazy_labels
+
+    def _extract_chapters_from_html(self, soup: BeautifulSoup, url: str) -> list[dict[str, Any]]:
         work_id = self.normalize_novel_id(url)
         toc_roots: list[Tag] = []
         for selector in self.TOC_ROOT_SELECTORS:
@@ -323,10 +358,12 @@ class KakuyomuSource(SourceAdapter):
         if not toc_roots:
             toc_roots.append(soup)
 
-        chapters: list[dict[str, str | int]] = []
+        chapters: list[dict[str, Any]] = []
         seen_urls: set[str] = set()
         base_url = httpx.URL(url)
-        current_part: str | None = None
+        current_section_title: str | None = None
+        current_section_ordinal: int | None = None
+        episodes_seen_since_section = False
 
         for root in toc_roots:
             for element in root.find_all(["a", "h2", "h3", "h4", "div", "li", "span"], recursive=True):
@@ -343,8 +380,13 @@ class KakuyomuSource(SourceAdapter):
                         or element.name.lower() == "h2"
                     ):
                         heading_text = element.get_text(" ", strip=True)
-                        if heading_text:
-                            current_part = heading_text
+                        if heading_text and not self._is_ui_range_label(heading_text):
+                            if current_section_title is None:
+                                current_section_ordinal = 1
+                            elif heading_text != current_section_title or episodes_seen_since_section:
+                                current_section_ordinal = (current_section_ordinal or 0) + 1
+                            current_section_title = heading_text
+                            episodes_seen_since_section = False
                         continue
 
                 if element.name.lower() != "a":
@@ -368,17 +410,22 @@ class KakuyomuSource(SourceAdapter):
 
                 canonical_url = f"https://kakuyomu.jp/works/{work_id}/episodes/{match.group(2)}"
                 if canonical_url in seen_urls:
-                    # Update part mapping if duplicate link encountered under a real part heading
-                    if current_part:
+                    # A broad root can contain the same episode more than once.
+                    # Enrich an ungrouped first sighting, but never let a later
+                    # duplicate overwrite the source-order grouping.
+                    if current_section_title:
                         for existing_ch in chapters:
-                            if existing_ch.get("url") == canonical_url:
-                                existing_ch["part"] = current_part
+                            if existing_ch.get("url") == canonical_url and not existing_ch.get("section_title"):
+                                existing_ch["part"] = current_section_title
+                                existing_ch["section_title"] = current_section_title
+                                existing_ch["section_source_id"] = None
+                                existing_ch["section_ordinal"] = current_section_ordinal or 1
                     continue
                 seen_urls.add(canonical_url)
 
                 index = len(chapters) + 1
                 ep_id = match.group(2)
-                chapter_item: dict[str, str | int] = {
+                chapter_item: dict[str, Any] = {
                     "id": f"kakuyomu:{ep_id}",
                     "num": index,
                     "sequence_number": index,
@@ -386,18 +433,50 @@ class KakuyomuSource(SourceAdapter):
                     "url": canonical_url,
                     "source_episode_id": ep_id,
                 }
-                if current_part:
-                    chapter_item["part"] = current_part
+                if current_section_title:
+                    chapter_item["part"] = current_section_title
+                    chapter_item["section_title"] = current_section_title
+                    chapter_item["section_source_id"] = None
+                    chapter_item["section_ordinal"] = current_section_ordinal or 1
                 chapters.append(chapter_item)
+                episodes_seen_since_section = True
 
         return chapters
 
-    def _extract_chapters(self, soup: BeautifulSoup, url: str) -> tuple[list[dict[str, str | int]], dict[str, Any]]:
+    def _extract_chapters(self, soup: BeautifulSoup, url: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         chapters, provenance = extract_chapters_from_next_data(soup, self.normalize_novel_id(url))
-        if chapters:
+        expected_count = provenance.get("expected_episode_count")
+        if chapters and provenance.get("apollo_complete", True):
             return chapters, provenance
+
         html_chapters = self._extract_chapters_from_html(soup, url)
-        return html_chapters, {"metadata_extraction_mode": "html_dom", "chapter_index_extraction_mode": "html_dom"}
+        range_labels, lazy_labels = self._dom_incomplete_indicators(soup)
+        html_count = len(html_chapters)
+        if isinstance(expected_count, int) and html_count < expected_count:
+            raise SourceError(
+                "Kakuyomu chapter index is incomplete: "
+                f"expected {expected_count} public episodes but enumerated {html_count} from the available page data."
+            )
+        if (range_labels or lazy_labels) and not isinstance(expected_count, int):
+            indicators = ", ".join(range_labels + lazy_labels)
+            raise SourceError(
+                "Kakuyomu chapter index appears to be lazy or UI-paginated "
+                f"({indicators}); complete episode enumeration is unavailable."
+            )
+
+        if chapters and provenance.get("apollo_structurally_valid") and expected_count is None:
+            return chapters, provenance
+
+        fallback_provenance = {
+            "metadata_extraction_mode": "html_dom",
+            "chapter_index_extraction_mode": "html_dom",
+            "apollo_state_present": bool(provenance.get("apollo_state_present")),
+            "apollo_structurally_valid": bool(provenance.get("apollo_structurally_valid")),
+            "expected_episode_count": expected_count,
+            "extracted_episode_count": html_count,
+            "fallbacks_used": ["html_dom"],
+        }
+        return html_chapters, fallback_provenance
 
     def _extract_publication_status_text(self, soup: BeautifulSoup) -> str | None:
         apollo_state = next_data_apollo_state(soup)

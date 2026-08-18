@@ -267,6 +267,14 @@ history is retained); on reappearance `missing_since` is cleared. Repeated
 crawls after reconciliation produce no reorder / removal delta. Reorder
 signals propagate to reader / export ordering without retranslation.
 
+Optional source sections are metadata/display context attached to the existing
+chapter index. Section discovery, ordinal changes, section moves, and section
+title changes do not change raw chapter content, body translation identity,
+glossary hashes, or body-cache keys. If translated section labels are enabled,
+the exact `section_title` is sent through the existing metadata-title batching
+and cache path as `translated_section_title`; it is never included in body
+translation prompts and does not cause a novel-wide body retranslation.
+
 ## QA
 
 Deterministic checks cover empty or source-identical text, suspicious length,

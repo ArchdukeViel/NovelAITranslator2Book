@@ -25,6 +25,7 @@ from novelai.api.routers.public_contracts import (
     PublicReviewItem,
     PublicReviewListResponse,
     _optional_str,
+    _public_section_fields,
 )
 from novelai.services.analytics_service import record_server_event
 from novelai.services.public_catalog_service import PublicCatalogService
@@ -97,6 +98,7 @@ async def list_chapters(
                 translated=is_translated,
                 availability_status="available" if is_translated else "not_translated",
                 part=_optional_str(ch.get("part")) or _optional_str(ch.get("volume")),
+                **_public_section_fields(ch),
             )
         )
     response.headers["Cache-Control"] = "public, max-age=60"

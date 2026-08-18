@@ -31,6 +31,7 @@ from novelai.api.routers.public_contracts import (
     VALID_UNAVAILABLE_POLICIES,
     PublicTagSearchResult,
     _optional_str,
+    _public_section_fields,
 )
 from novelai.config.settings import settings
 from novelai.services.analytics_service import record_server_event
@@ -372,6 +373,7 @@ def _chapter_shell_response(
         "provider_key": None,
         "provider_model": None,
         "translated_at": None,
+        **_public_section_fields(chapter),
     }
 
 
@@ -529,6 +531,7 @@ async def get_chapter(
         "next_chapter_id": next_chapter_id,
         "previous_chapter_unavailable": previous_adjacent_id is not None and previous_chapter_id is None,
         "next_chapter_unavailable": next_adjacent_id is not None and next_chapter_id is None,
+        **_public_section_fields(chapter),
     }
     response.update(_availability_fields(translated, is_active_version=is_active_version))
 

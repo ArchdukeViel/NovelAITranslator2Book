@@ -357,6 +357,49 @@ describe("Novel detail page — chapter list", () => {
     renderPage();
     expect(screen.getByText("Chapter One")).toBeInTheDocument();
   });
+
+  it("renders named sections without creating a header for flat chapters", () => {
+    mocks.chaptersQuery.mockReturnValue({
+      data: [
+        {
+          chapter_id: "1",
+          title: "Episode One",
+          chapter_number: 1,
+          translated: true,
+          section_title: "Part One",
+          section_source_id: "section-1",
+          section_ordinal: 1,
+        },
+        {
+          chapter_id: "2",
+          title: "Episode Two",
+          chapter_number: 2,
+          translated: true,
+          section_title: "Part One",
+          section_source_id: "section-1",
+          section_ordinal: 1,
+        },
+        {
+          chapter_id: "3",
+          title: "Episode Three",
+          chapter_number: 3,
+          translated: true,
+          section_title: null,
+          section_source_id: null,
+          section_ordinal: null,
+        },
+      ],
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    renderPage();
+
+    expect(screen.getByText("Part One")).toBeInTheDocument();
+    expect(screen.getByText("Episode Three")).toBeInTheDocument();
+    expect(screen.queryByText("Section")).not.toBeInTheDocument();
+  });
 });
 
 describe("Novel detail page — FE-07 tabs and controls", () => {

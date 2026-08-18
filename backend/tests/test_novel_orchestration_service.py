@@ -1779,6 +1779,37 @@ async def test_metadata_chapter_title_batch_deduplicates_exact_repeated_titles(o
 
 
 @pytest.mark.asyncio
+async def test_metadata_section_titles_use_existing_batch_translation_cache(orchestration_env) -> None:
+    provider = BatchMetadataProvider()
+    metadata = {
+        "source_key": "syosetu_ncode",
+        "chapters": [
+            {"id": "1", "num": 1, "section_title": "Part One", "section_ordinal": 1},
+            {"id": "2", "num": 2, "section_title": "Part One", "section_ordinal": 1},
+        ],
+    }
+    orchestrator = NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    translated = await orchestrator._translate_metadata_fields(metadata)
+
+    assert provider.call_count == 1
+    batch = json.loads(provider.prompts[0].split("<metadata_items>", 1)[1].split("</metadata_items>", 1)[0])
+    assert batch["items"] == [{"id": "section:1", "field": "section_title", "source_text": "Part One"}]
+    assert [chapter["translated_section_title"] for chapter in translated["chapters"]] == [
+        "[TRANSLATED] Part One",
+        "[TRANSLATED] Part One",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_metadata_batch_skips_reusable_and_cached_fields(orchestration_env) -> None:
     provider = BatchMetadataProvider()
     cache = orchestration_env["cache"]

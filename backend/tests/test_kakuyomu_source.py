@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from novelai.core.errors import SourceError
 from novelai.sources.kakuyomu import KakuyomuSource
 
 
@@ -379,6 +380,13 @@ def test_parse_metadata_html_prefers_grouped_next_data_toc_over_partial_links() 
     assert [chapter["source_episode_id"] for chapter in metadata["chapters"]] == ["e1", "e2", "e3", "e4"]
     assert [chapter["num"] for chapter in metadata["chapters"]] == [1, 2, 3, 4]
     assert [chapter["part"] for chapter in metadata["chapters"]] == ["Part One", "Part One", "Part Two", "Part Two"]
+    assert [chapter["section_source_id"] for chapter in metadata["chapters"]] == [
+        "part-1",
+        "part-1",
+        "part-2",
+        "part-2",
+    ]
+    assert [chapter["section_ordinal"] for chapter in metadata["chapters"]] == [1, 1, 2, 2]
     assert metadata["chapters"][0]["url"] == f"https://kakuyomu.jp/works/{work_id}/episodes/e1"
     assert metadata["chapters"][0]["date_added"] == "2026-01-01T00:00:00Z"
 
@@ -410,6 +418,160 @@ def test_parse_metadata_html_fallback_scans_all_toc_roots_and_preserves_group_la
 
     assert [chapter["source_episode_id"] for chapter in metadata["chapters"]] == ["e1", "e2", "e3"]
     assert [chapter["part"] for chapter in metadata["chapters"]] == ["Part One", "Part One", "Part Two"]
+
+
+def test_parse_metadata_html_supports_flat_structured_toc_without_fake_section() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+    next_data = {
+        "props": {
+            "pageProps": {
+                "__APOLLO_STATE__": {
+                    f"Work:{work_id}": {
+                        "__typename": "Work",
+                        "id": work_id,
+                        "publicEpisodeCount": 2,
+                        "tableOfContentsV2": [{"__ref": "TableOfContentsChapter:flat"}],
+                    },
+                    "TableOfContentsChapter:flat": {
+                        "__typename": "TableOfContentsChapter",
+                        "chapter": None,
+                        "episodeUnions": [{"__ref": "Episode:e1"}, {"__ref": "Episode:e2"}],
+                    },
+                    "Episode:e1": {"__typename": "Episode", "id": "e1", "title": "1話　開始"},
+                    "Episode:e2": {"__typename": "Episode", "id": "e2", "title": "2話　続き"},
+                }
+            }
+        }
+    }
+    html = f"""
+    <html><body>
+      <main><h1 class="widget-workTitle">Flat Work</h1>
+        <a href="/works/{work_id}/episodes/e1">1話　開始</a>
+      </main>
+      <script id="__NEXT_DATA__" type="application/json">{json.dumps(next_data)}</script>
+    </body></html>
+    """
+
+    metadata = source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
+
+    assert [chapter["source_episode_id"] for chapter in metadata["chapters"]] == ["e1", "e2"]
+    assert all("section_title" not in chapter for chapter in metadata["chapters"])
+    assert all("section_source_id" not in chapter for chapter in metadata["chapters"])
+
+
+def test_parse_metadata_html_preserves_kakuyomu_section_level() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+    next_data = {
+        "props": {
+            "pageProps": {
+                "__APOLLO_STATE__": {
+                    f"Work:{work_id}": {
+                        "id": work_id,
+                        "publicEpisodeCount": 1,
+                        "tableOfContentsV2": [{"__ref": "TableOfContentsChapter:part"}],
+                    },
+                    "TableOfContentsChapter:part": {
+                        "chapter": {"__ref": "Chapter:part"},
+                        "episodeUnions": [{"__ref": "Episode:e1"}],
+                    },
+                    "Chapter:part": {"id": "real-section-id", "title": "Nested Part", "level": 2},
+                    "Episode:e1": {"id": "e1", "title": "Episode"},
+                }
+            }
+        }
+    }
+    html = (
+        f'<html><body><script id="__NEXT_DATA__" type="application/json">{json.dumps(next_data)}</script></body></html>'
+    )
+
+    metadata = source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
+
+    chapter = metadata["chapters"][0]
+    assert chapter["section_title"] == "Nested Part"
+    assert chapter["section_source_id"] == "real-section-id"
+    assert chapter["section_level"] == 2
+
+
+def test_parse_metadata_html_falls_back_after_invalid_apollo() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+    html = f"""
+    <html><body>
+      <main><h1 class="widget-workTitle">Fallback Work</h1>
+        <a href="/works/{work_id}/episodes/e1">Episode One</a>
+        <a href="/works/{work_id}/episodes/e2">Episode Two</a>
+      </main>
+      <script id="__NEXT_DATA__" type="application/json">{{not-json}}</script>
+    </body></html>
+    """
+
+    metadata = source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
+
+    assert [chapter["source_episode_id"] for chapter in metadata["chapters"]] == ["e1", "e2"]
+
+
+def test_parse_metadata_html_rejects_incomplete_structured_episode_index() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+    next_data = {
+        "props": {
+            "pageProps": {
+                "__APOLLO_STATE__": {
+                    f"Work:{work_id}": {
+                        "id": work_id,
+                        "publicEpisodeCount": 3,
+                        "tableOfContentsV2": [{"__ref": "TableOfContentsChapter:flat"}],
+                    },
+                    "TableOfContentsChapter:flat": {
+                        "chapter": None,
+                        "episodeUnions": [{"__ref": "Episode:e1"}],
+                    },
+                    "Episode:e1": {"id": "e1", "title": "Episode One"},
+                }
+            }
+        }
+    }
+    html = f"""
+    <html><body>
+      <main><a href="/works/{work_id}/episodes/e1">Episode One</a></main>
+      <script id="__NEXT_DATA__" type="application/json">{json.dumps(next_data)}</script>
+    </body></html>
+    """
+
+    with pytest.raises(SourceError, match="incomplete"):
+        source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
+
+
+def test_parse_metadata_html_rejects_ui_pagination_without_complete_index() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+    html = f"""
+    <html><body>
+      <main><h2>1〜30</h2>
+        <a href="/works/{work_id}/episodes/e1">Episode One</a>
+      </main>
+    </body></html>
+    """
+
+    with pytest.raises(SourceError, match="lazy or UI-paginated"):
+        source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
+
+
+def test_parse_metadata_html_rejects_ui_range_div_without_complete_index() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+    html = f"""
+    <html><body>
+      <main><div class="widget-toc-heading">1〜30</div>
+        <a href="/works/{work_id}/episodes/e1">Episode One</a>
+      </main>
+    </body></html>
+    """
+
+    with pytest.raises(SourceError, match="lazy or UI-paginated"):
+        source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
 
 
 @pytest.mark.asyncio

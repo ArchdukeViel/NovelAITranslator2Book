@@ -43,7 +43,7 @@ def _metadata_translation_max_tokens(source_text: str, field: str) -> int:
     normalized_field = field.strip().lower()
     if normalized_field == "author":
         return 48
-    if normalized_field in {"title", "chapter_title", "glossary_term"}:
+    if normalized_field in {"title", "chapter_title", "section_title", "glossary_term"}:
         return 96
     if normalized_field == "synopsis":
         return min(2048, max(384, len(source_text) // 2 + 192))
@@ -67,7 +67,7 @@ def _clean_metadata_translation(translated: str, source_text: str, field: str) -
     ).strip()
 
     normalized_field = field.strip().lower()
-    if normalized_field in {"title", "author", "chapter_title", "glossary_term"}:
+    if normalized_field in {"title", "author", "chapter_title", "section_title", "glossary_term"}:
         lines = [line.strip().strip("\"'") for line in cleaned.splitlines() if line.strip()]
         if lines:
             cleaned = lines[0]
@@ -97,7 +97,7 @@ def _metadata_translation_is_usable(source_text: str, translated: str, field: st
     if candidate == source:
         return not _CJK_RE.search(source)
 
-    if normalized_field in {"title", "chapter_title", "glossary_term"}:
+    if normalized_field in {"title", "chapter_title", "section_title", "glossary_term"}:
         source_core = _source_title_core(source)
         candidate_core = _source_title_core(candidate)
         source_has_meaning_after_marker = bool(source_core) and source_core != source
@@ -106,7 +106,7 @@ def _metadata_translation_is_usable(source_text: str, translated: str, field: st
         if source_has_meaning_after_marker and not candidate_core:
             return False
 
-    if normalized_field in {"title", "chapter_title", "synopsis", "glossary_term"}:
+    if normalized_field in {"title", "chapter_title", "section_title", "synopsis", "glossary_term"}:
         source_has_cjk = bool(_CJK_RE.search(source))
         candidate_has_cjk = bool(_CJK_RE.search(candidate))
         candidate_has_latin = bool(re.search(r"[A-Za-z]", candidate))
@@ -337,6 +337,24 @@ def _chapter_title_estimate(
     return True, None, chapter_title.strip()
 
 
+def _section_title_estimate(
+    self: Any, chapter: dict[str, Any], *, can_reuse: bool
+) -> tuple[bool, str | None, str | None]:
+    section_title = chapter.get("section_title")
+    if not isinstance(section_title, str) or not section_title.strip():
+        return False, None, None
+    if can_reuse and _can_reuse_metadata_translation(
+        section_title,
+        chapter.get("section_title"),
+        chapter.get("translated_section_title"),
+        "section_title",
+    ):
+        return False, "reused", section_title.strip()
+    if _cached_metadata_translation(self, section_title, "section_title") is not None:
+        return False, "cached", section_title.strip()
+    return True, None, section_title.strip()
+
+
 def _metadata_request_estimate(
     self: Any,
     metadata: dict[str, Any],
@@ -371,6 +389,7 @@ def _metadata_request_estimate(
     can_reuse_previous = metadata.get("metadata_translation_prompt_version") == METADATA_TRANSLATION_PROMPT_VERSION
     chapters = metadata.get("chapters", [])
     unique_chapter_titles: set[str] = set()
+    unique_section_titles: set[str] = set()
     if isinstance(chapters, list):
         for chapter in chapters:
             if not isinstance(chapter, dict):
@@ -385,10 +404,22 @@ def _metadata_request_estimate(
                 cached_fields += 1
             if needed and title_source is not None:
                 unique_chapter_titles.add(title_source)
+            section_needed, section_skip, section_source = _section_title_estimate(
+                self,
+                chapter,
+                can_reuse=can_reuse_previous,
+            )
+            if section_skip == "reused":
+                reusable_fields += 1
+            elif section_skip == "cached":
+                cached_fields += 1
+            if section_needed and section_source is not None:
+                unique_section_titles.add(section_source)
 
     batch_size = _metadata_batch_size(settings.TRANSLATION_METADATA_CHAPTER_TITLE_BATCH_SIZE)
     chapter_titles = math.ceil(len(unique_chapter_titles) / batch_size) if unique_chapter_titles else 0
-    total = novel_fields + chapter_titles
+    section_titles = math.ceil(len(unique_section_titles) / batch_size) if unique_section_titles else 0
+    total = novel_fields + chapter_titles + section_titles
     return {
         "title": int(title_needed),
         "author": int(author_needed),
@@ -397,6 +428,9 @@ def _metadata_request_estimate(
         "chapter_titles": chapter_titles,
         "chapter_title_batch_size": batch_size,
         "unique_chapter_titles": len(unique_chapter_titles),
+        "section_titles": section_titles,
+        "section_title_batch_size": batch_size,
+        "unique_section_titles": len(unique_section_titles),
         "reusable_fields": reusable_fields,
         "cached_fields": cached_fields,
         "metadata_batching": True,
@@ -583,6 +617,9 @@ async def _translate_metadata_fields(
     title_to_item_id: dict[str, str] = {}
     title_item_sources: dict[str, str] = {}
     chapter_item_refs: dict[str, list[dict[str, Any]]] = {}
+    section_title_to_item_id: dict[str, str] = {}
+    section_item_sources: dict[str, str] = {}
+    section_item_refs: dict[str, list[dict[str, Any]]] = {}
     for chapter in chapters:
         if not isinstance(chapter, dict):
             continue
@@ -610,6 +647,26 @@ async def _translate_metadata_fields(
                     title_item_sources[item_id] = normalized_title
                 chapter_item_refs.setdefault(item_id, []).append(translated_chapter)
 
+        section_title = translated_chapter.get("section_title")
+        if isinstance(section_title, str) and section_title.strip():
+            if can_reuse_previous and _can_reuse_metadata_translation(
+                section_title,
+                previous_chapter.get("section_title"),
+                previous_chapter.get("translated_section_title"),
+                "section_title",
+            ):
+                translated_chapter["translated_section_title"] = previous_chapter["translated_section_title"]
+            elif cached := _cached_metadata_translation(self, section_title, "section_title"):
+                translated_chapter["translated_section_title"] = cached
+            else:
+                normalized_section_title = section_title.strip()
+                item_id = section_title_to_item_id.get(normalized_section_title)
+                if item_id is None:
+                    item_id = f"section:{len(section_title_to_item_id) + 1}"
+                    section_title_to_item_id[normalized_section_title] = item_id
+                    section_item_sources[item_id] = normalized_section_title
+                section_item_refs.setdefault(item_id, []).append(translated_chapter)
+
         translated_chapters.append(translated_chapter)
 
     batch_size = _metadata_batch_size(settings.TRANSLATION_METADATA_CHAPTER_TITLE_BATCH_SIZE)
@@ -617,15 +674,22 @@ async def _translate_metadata_fields(
         {"id": item_id, "field": "chapter_title", "source_text": source_text}
         for item_id, source_text in title_item_sources.items()
     ]
-    for start in range(0, len(chapter_items), batch_size):
-        batch = chapter_items[start : start + batch_size]
+    section_items = [
+        {"id": item_id, "field": "section_title", "source_text": source_text}
+        for item_id, source_text in section_item_sources.items()
+    ]
+    metadata_items = chapter_items + section_items
+    for start in range(0, len(metadata_items), batch_size):
+        batch = metadata_items[start : start + batch_size]
         translations = await _translate_metadata_items(self, batch)
         for item in batch:
-            translated_title = translations.get(item["id"])
-            if translated_title is None:
-                translated_title = await self._translate_text(item["source_text"], field="chapter_title")
+            translated_value = translations.get(item["id"])
+            if translated_value is None:
+                translated_value = await self._translate_text(item["source_text"], field=item["field"])
             for translated_chapter in chapter_item_refs.get(item["id"], []):
-                translated_chapter["translated_title"] = translated_title
+                translated_chapter["translated_title"] = translated_value
+            for translated_chapter in section_item_refs.get(item["id"], []):
+                translated_chapter["translated_section_title"] = translated_value
 
     translated_metadata["chapters"] = translated_chapters
     translated_metadata["metadata_translation_prompt_version"] = METADATA_TRANSLATION_PROMPT_VERSION

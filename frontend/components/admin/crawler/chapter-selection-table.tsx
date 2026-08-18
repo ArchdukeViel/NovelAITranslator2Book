@@ -58,7 +58,7 @@ export function formatSourceDate(value: string | null | undefined) {
 }
 
 export function chapterRowGroup(row: PreliminaryChapter) {
-  const value = row.volume ?? row.part ?? row.arc ?? row.section ?? row.group;
+  const value = row.section_title ?? row.volume ?? row.part ?? row.arc ?? row.section ?? row.group;
   if (value === null || value === undefined || value === "") {
     return "-";
   }

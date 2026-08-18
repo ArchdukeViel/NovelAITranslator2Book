@@ -33,6 +33,11 @@ class TestMetadataTranslationPrompt:
         prompt = build_metadata_translation_prompt("Some synopsis.", "synopsis")
         assert "banner-style suffix" not in prompt
 
+    def test_single_prompt_labels_section_titles_as_title_metadata(self) -> None:
+        prompt = build_metadata_translation_prompt("第一部　天国篇", "section_title")
+        assert "novel section title" in prompt
+        assert "title-like" in prompt
+
     def test_batch_prompt_contains_banner_strip_rule(self) -> None:
         items = [{"id": "1", "field": "title", "source_text": "test"}]
         prompt = build_metadata_batch_translation_prompt(items)

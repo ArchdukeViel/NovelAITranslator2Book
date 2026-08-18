@@ -16,14 +16,15 @@ def build_metadata_translation_prompt(source_text: str, field: str) -> str:
         "author": "author name",
         "synopsis": "novel synopsis",
         "chapter_title": "chapter title",
+        "section_title": "novel section title",
         "glossary_term": "glossary term",
     }.get(normalized_field, "text")
     extra_rules = ""
     if normalized_field == "author":
         extra_rules = "\n- For author names, return only the name; omit labels such as Author or Writer."
-    elif normalized_field in {"title", "chapter_title", "glossary_term"}:
+    elif normalized_field in {"title", "chapter_title", "section_title", "glossary_term"}:
         extra_rules = "\n- Keep the result short and title-like; do not expand it into a summary."
-    if normalized_field in {"title", "chapter_title"}:
+    if normalized_field in {"title", "chapter_title", "section_title"}:
         extra_rules += (
             "\n- If the source title has a banner-style suffix in brackets (e.g. "
             "【コミカライズN巻発売中】, 【アニメ化】, 【書籍化】, 【Web版】, 【改訂版】, "
@@ -73,8 +74,8 @@ def build_metadata_batch_translation_prompt(items: list[dict[str, Any]]) -> str:
         "- Treat honorifics contextually: preserve personal-name nuance, but localize established ranks, professions, kinship address, and royal styles when the source establishes that role.\n"
         "- Preserve ambiguity, register, counters, punctuation, fragments, and title function without adding translator commentary.\n"
         "- For author names, return only the name; omit labels such as Author or Writer.\n"
-        "- For titles and chapter titles, keep the result short and title-like; do not expand it into a summary.\n"
-        "- If the source title or chapter title has a banner-style suffix in brackets\n"
+        "- For titles, chapter titles, and section titles, keep the result short and title-like; do not expand it into a summary.\n"
+        "- If the source title, chapter title, or section title has a banner-style suffix in brackets\n"
         "  (e.g. 【コミカライズN巻発売中】, 【アニメ化】, 【書籍化】, 【Web版】, 【改訂版】,\n"
         "  【電子版】, 【連載中】), translate only the main title and drop the banner.\n"
         "- If the bracket text names a part, chapter, story arc, or sub-volume\n"

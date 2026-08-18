@@ -201,6 +201,9 @@ def test_parse_metadata_html_detects_chapter_parts_and_source_dates() -> None:
             "title": "Prologue",
             "url": "https://ncode.syosetu.com/n8733gf/1/",
             "part": "Part One: The Eventful First Year",
+            "section_title": "Part One: The Eventful First Year",
+            "section_source_id": None,
+            "section_ordinal": 1,
             "date_added": "2025/01/13 20:00",
         },
         {
@@ -209,6 +212,9 @@ def test_parse_metadata_html_detects_chapter_parts_and_source_dates() -> None:
             "title": "Episode 1",
             "url": "https://ncode.syosetu.com/n8733gf/2/",
             "part": "Part One: The Eventful First Year",
+            "section_title": "Part One: The Eventful First Year",
+            "section_source_id": None,
+            "section_ordinal": 1,
             "date_added": "2025/01/14 19:00",
         },
     ]
@@ -239,6 +245,27 @@ def test_parse_metadata_html_counts_episodes_not_arc_headings_and_preserves_grou
         "Chapter 2: 12 Years Old",
         "Chapter 2: 12 Years Old",
     ]
+    assert [chapter["section_ordinal"] for chapter in metadata["chapters"]] == [1, 1, 2, 2]
+    assert all(chapter["section_source_id"] is None for chapter in metadata["chapters"])
+
+
+def test_parse_metadata_html_does_not_infer_sections_from_title_like_text() -> None:
+    source = SyosetuNcodeSource()
+    html = """
+    <html>
+      <body>
+        <h1 class="p-novel__title">Flat Story</h1>
+        <p>第1章 1話</p>
+        <a href="/n8733gf/1/">第1章 1話</a>
+        <a href="/n8733gf/2/">第1章 2話</a>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, "https://ncode.syosetu.com/n8733gf/")
+
+    assert [chapter["title"] for chapter in metadata["chapters"]] == ["第1章 1話", "第1章 2話"]
+    assert all("section_title" not in chapter for chapter in metadata["chapters"])
 
 
 def test_parse_metadata_html_synthesizes_single_chapter_for_one_shot() -> None:
@@ -257,6 +284,7 @@ def test_parse_metadata_html_synthesizes_single_chapter_for_one_shot() -> None:
 
     metadata = source._parse_metadata_html(html, "https://ncode.syosetu.com/n6656lw/")
 
+    assert metadata["work_structure"] == "direct_body"
     assert metadata["chapters"] == [
         {
             "id": "1",
@@ -265,6 +293,25 @@ def test_parse_metadata_html_synthesizes_single_chapter_for_one_shot() -> None:
             "url": "https://ncode.syosetu.com/n6656lw/",
         }
     ]
+
+
+def test_parse_metadata_html_distinguishes_one_episode_serial_from_direct_body() -> None:
+    source = SyosetuNcodeSource()
+    html = """
+    <html>
+      <body>
+        <h1 class="p-novel__title">One Episode Serial</h1>
+        <div id="novel_honbun"><p>Episode body.</p></div>
+        <a href="/n6656lw/1/">1話　開始</a>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, "https://ncode.syosetu.com/n6656lw/")
+
+    assert metadata["work_structure"] == "episodes"
+    assert metadata["chapters"][0]["title"] == "1話　開始"
+    assert metadata["chapters"][0]["url"].endswith("/1/")
 
 
 def test_parse_chapter_html_preserves_preface_afterword_and_separator_lines() -> None:

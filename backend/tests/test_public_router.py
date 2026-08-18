@@ -1149,6 +1149,42 @@ class TestListChapters:
         assert data[0]["translated"] is True
         assert data[1]["translated"] is False
 
+    def test_exposes_optional_section_fields_without_changing_flat_chapters(
+        self,
+        client: TestClient,
+        storage: StorageService,
+    ) -> None:
+        _seed_novel(
+            storage,
+            "novel-001",
+            chapters=[
+                {
+                    "id": "ch001",
+                    "title": "Episode One",
+                    "num": 1,
+                    "section_title": "第一部",
+                    "translated_section_title": "Part One",
+                    "section_source_id": "section-1",
+                    "section_ordinal": 1,
+                    "section_level": 2,
+                },
+                {"id": "ch002", "title": "Episode Two", "num": 2},
+            ],
+        )
+
+        response = client.get("/api/public/novels/novel-001/chapters")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data[0]["section_title"] == "Part One"
+        assert data[0]["section_source_id"] == "section-1"
+        assert data[0]["section_ordinal"] == 1
+        assert data[0]["section_level"] == 2
+        assert data[1]["section_title"] is None
+        assert data[1]["section_source_id"] is None
+        assert data[1]["section_ordinal"] is None
+        assert data[1]["section_level"] is None
+
     def test_404_for_unknown_novel(self, client: TestClient) -> None:
         assert client.get("/api/public/novels/unknown/chapters").status_code == 404
 
@@ -1172,6 +1208,34 @@ class TestGetChapter:
         assert data["previous_chapter_unavailable"] is False
         assert data["next_chapter_unavailable"] is False
         assert resp.headers["cache-control"] == "public, max-age=60"
+
+    def test_reader_includes_optional_section_fields(self, client: TestClient, storage: StorageService) -> None:
+        _seed_novel(
+            storage,
+            "novel-001",
+            chapters=[
+                {
+                    "id": "ch001",
+                    "title": "Episode One",
+                    "num": 1,
+                    "section_title": "第一部",
+                    "translated_section_title": "Part One",
+                    "section_source_id": "section-1",
+                    "section_ordinal": 1,
+                    "section_level": 2,
+                }
+            ],
+        )
+        _seed_translated_chapter(storage, "novel-001", "ch001", "Hello translated world.")
+
+        response = client.get("/api/public/novels/novel-001/chapters/ch001")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["section_title"] == "Part One"
+        assert data["section_source_id"] == "section-1"
+        assert data["section_ordinal"] == 1
+        assert data["section_level"] == 2
 
     def test_returns_only_public_glossary_annotations(
         self,
