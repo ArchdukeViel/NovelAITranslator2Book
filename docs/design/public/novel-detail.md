@@ -1,112 +1,126 @@
 # Dokushodo - Novel Detail
 
 ## Design Task
-Design the novel detail page with overview, chapters, and community reviews.
+Design the public novel detail page as a quiet, reading-first entry point for translated web novels.
 
 ## Product Context
-The destination of every novel card and the entry point for reading, saving, and reviewing.
+The destination of every novel card and the entry point for reading, saving, reviewing, and inspecting the source chapter hierarchy.
 
 ## Global Visual Snapshot
-Dokushodo is a quiet Japanese literary reading platform for translated web novels. The interface favors a restrained warm-light aesthetic: a washi paper background with near-black ink text, vermillion reserved for the single primary action on a card or screen, and soft teal used only for secondary surfaces. The desktop shell is a slim header with the brand mark on the left, inline navigation, a search overlay trigger, a theme toggle, and a user menu, above a persistent footer with catalog, help, legal, and account links. Mobile replaces the header with a compact bar and a fixed bottom tab bar offering Home, Browse, Search, Library, and Account. Cards are quiet: white paper, thin borders, six pixel corners, no shadow. Imagery is limited to the brand mark, gradient book covers generated from title and author, and three restrained illustrations for empty, error, and maintenance states. Serif typography is reserved for novel titles and reading matter; sans-serif covers interface text; monospace marks metadata such as identifiers and timestamps. Motion is subtle and short, never decorative. The platform tells the truth: unavailable features state that they are unavailable, ranking shows a quiet not-live notice, and empty states point to a clear next step. The settled state is calm, legible, and free of noise.
+Dokushodo is a quiet Japanese literary reading platform for translated web novels. The interface uses washi paper, near-black ink, restrained borders, literary serif titles, and vermillion only for the single primary reading action or active tab. Covers use a real persisted public asset only when a cover contract exists; otherwise the page uses a deterministic initials-and-borders Dokushodo bookplate. There are no invented covers, hotlinked source images, decorative gradients, fake metrics, or behavioral popularity claims. Motion is short and optional, with reduced motion honored. The settled state is calm, legible, and focused on the story.
 
 ## Page Goal
-Give a reader the full picture of a novel and put reading one click away.
+Give a reader the full picture of a novel and put the first readable chapter or saved position one click away.
 
 ## Audience and Access
-All visitors; signed-in readers get save, continue, and review actions.
+All visitors can view the novel, inspect the synopsis, browse chapters, read available chapters, and view published reviews. Signed-in readers can continue from saved progress, save the novel, and write a review or request.
 
 ## Primary Action
-Continue Reading or Read First Chapter for signed-in readers; Save to Library as the secondary action.
+Guests see `Start Reading` when a translated chapter is available. Signed-in readers with saved progress see `Continue Reading`; signed-in readers without progress see `Start Reading`. `Save to Library` is always secondary and prompts for authentication only when needed.
 
 ## Information Hierarchy
-- Novel header: gradient cover, title in serif, author, source title label, status badge, actions
+- Novel hero: cover or bookplate, title, source title, author text, status, truthful metadata, one reading CTA, and Save to Library
 - Tabs: Overview, Chapters, Reviews
-- Overview: synopsis, metadata, tags
-- Chapters: filter and search, First unread anchor, chapter list
-- Reviews: community reviews with star ratings
+- Overview: synopsis, added date when present, language-aware genre and tag links, and a quiet Report an issue link
+- Chapters: real section groups when supplied by the public API, flat lists when no section exists, search, order, First unread, Latest, and a closed Request translation disclosure at the bottom
+- Reviews: existing rating and published review behavior
 - Footer
 
+Recommendations are intentionally deferred. The public API has no bounded related-novels contract, so the page must not show a fourth tab or fabricate similarity, popularity, or reader behavior.
+
 ## Desktop Composition
-- Left column with cover, title, author, source title label, and status badge
-- Right side actions: Continue Reading and Save to Library
-- Tab bar below the header with Overview, Chapters, and Reviews
-- Chapters list with chapter numbers, titles, and translated labels
-- Sidebar metadata: language, author, year, tags
+- A full-width hero grid places the bookplate or real cover beside the title block and a compact action cluster
+- The title block contains the H1, plain-text author, source title label only when distinct, status badge, and a compact metadata row for real language, chapter counts, and latest update data
+- The tab bar sits below the hero and remains visible while the active panel changes
+- Overview is open by default and does not contain an operational request form
+- Chapters preserve API order and render consecutive section runs with their exact returned section titles
 
 ## Mobile Composition
-- Compact header with smaller cover, stacked title and badge
-- Sticky bottom action bar with Read and Save
-- Tabs scroll horizontally
-- Chapter list rows with title and translated label
+- The hero stacks the cover, title, author, source title, status, metadata, and actions in that order
+- Reading and Save targets remain at least 44px high and do not create a second primary action
+- Tabs scroll horizontally without page overflow and use semantic tab states
+- Chapter rows keep the source title prominent and omit generated numbering when the source title already carries it
+- The request form stays closed behind a compact disclosure after the chapter list
 
 ## Page Anatomy
 - Public header
-- Novel header block
-- Tab bar
+- Back to Browse link
+- Reading-first novel hero
+- Semantic tab list
 - Active tab panel
-- Sticky mobile action bar
 - Public footer
 
 ## Key Components
-- Gradient cover with fallback
-- Status badge
-- Tab bar
-- Chapter list with search and filter
-- First unread anchor
-- Review card with star rating
-- Save to Library button
-- Continue Reading button
+- Deterministic Dokushodo bookplate fallback or a contract-backed cover
+- Status badge with text
+- Semantic tab list and tab panel
+- Compact metadata row
+- Chapter list with source hierarchy, search, ordering, First unread, and Latest
+- Closed Request translation disclosure containing the existing RequestControl
+- Quiet Report an issue link to the existing contact route
+- Review card, rating form, Save to Library, and Start or Continue Reading
 
 ## Representative Content
-- Novel title and author
-- Source title label followed by the source name
+- Novel title, source title, and author
 - Status badge: Ongoing, Completed, Hiatus, or Dropped
+- Real chapter and translated counts when present
 - Overview, Chapters, Reviews
-- First unread
-- Continue Reading, Save to Library
+- First unread, Latest, Start Reading, Continue Reading, Save to Library
+- Exact source section titles such as `1章　8歳`, `閑話`, or `第一部　天国篇` when returned by the API
 
 ## Normal Settled State
-A calm two-column layout: cover and title on the left, synopsis below, tabbed content beneath, one vermillion primary action.
+A calm editorial hero with one vermillion reading action, a quiet secondary save action, a short synopsis, and a chapter tab that makes real source hierarchy easy to scan.
 
 ## Alternate Visual States
-- Guest view without save or continue actions
-- Novel with no chapters yet: quiet empty state
-- Novel not from a known source: no source title label
-- Loading state with cover placeholder
+- Guest view with Start Reading and a secondary sign-in path for Save to Library
+- Signed-in view with Continue Reading from saved progress
+- Novel with no translated chapters yet: honest unavailable reading state
+- Novel without a public cover contract: deterministic bookplate
+- Novel without a source title or author: omit the optional field or use the existing safe author fallback
+- Loading, not found, and API error states
 
 ## Interaction Cues
-- Tab switch is instant with clear active underline
-- Save to Library toggles its label and filled state
-- First unread scrolls the chapter list to the reading anchor
-- Star ratings fill in accent color
+- Tab buttons update the shareable `tab` URL parameter and expose selected state through `aria-selected`
+- First unread and Latest are real anchors to stable chapter row IDs
+- Search and order controls update only the chapter list
+- Source section disclosures preserve their open or closed state without changing source order
+- Save to Library toggles its existing authenticated state
+- Request translation remains closed until explicitly opened
+- Report an issue is a small text link to `/contact`
 
 ## Accessibility and Legibility
 - WCAG AA contrast in both themes
-- Visible focus ring on every interactive element
-- Complete keyboard navigation, including the search overlay and the mobile tab bar
-- Semantic heading order starting at H1
-- Reduced motion honored: no movement when requested
-- Tap targets at least 44 px on mobile
+- One H1 for the novel and H2 headings for the active content sections
+- `role="tablist"`, `role="tab"`, `aria-selected`, `aria-controls`, and `role="tabpanel"` are present and coherent
+- Visible focus rings on every interactive element
+- Keyboard-operable tabs, links, disclosures, filters, and chapter controls
+- Accurate bookplate alternative text and no color-only status meaning
+- Reduced motion honored
+- Tap targets at least 44px on mobile
+- 320px, 390px, and 1440px layouts have no horizontal overflow
 
 ## Assets
-- brand-mark.png
-- Gradient cover generated from title and author
-- empty.png for no-chapters state
+- `brand-mark.png` only where the public shell requires it
+- A persisted public cover asset only when the API contract supplies one
+- Deterministic bookplate fallback for missing covers
+- `empty.png` only for the existing no-chapters state when appropriate
 
 ## Preserve Exactly
-- Tab labels exactly as listed
-- Source title label wording
-- Status badge colors from the status system
-- Fallback cover with readable title lettering
+- Tab labels `Overview`, `Chapters`, and `Reviews`
+- The `Source title` label wording
+- Existing review, request, library, progress, and contact routes
+- Exact source episode titles and section titles returned by the public API
+- Honest chapter availability and status labels
 
 ## Avoid
-- Spoiler copy in representative content
-- Carousels of related novels without a title
-- More than one primary action in the header
-- Fake chapter counts
+- Recommendations or related-novel rails without a truthful bounded public contract
+- Fake views, readers, rankings, word counts, patrons, ratings, or popularity
+- Large request or report cards beside the synopsis
+- Duplicate generated numbering beside source titles such as `1話　聖水要員`
+- Fake author routes, hotlinked artwork, nested interactive elements, or a second primary CTA
 
 ## Stitch Output Requirements
-- Produce the settled state as a 1440 px desktop frame and a 390 px mobile frame
-- Use only the copy, labels, and elements listed in this brief
-- Do not invent features, badges, text, or colors
-- Show the primary alternate state as an additional frame only when listed above
+- Produce the settled state as a 1440px desktop frame and a 390px mobile frame
+- Show a 320px reflow check in addition to the required frames
+- Use only the copy, labels, and data states described in this brief
+- Do not invent features, badges, metrics, assets, or colors

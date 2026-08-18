@@ -14,10 +14,11 @@ import {
 import { ApiError } from "@/lib/api";
 
 interface SaveToLibraryProps {
+  compactGuest?: boolean;
   slug: string;
 }
 
-export function SaveToLibrary({ slug }: SaveToLibraryProps) {
+export function SaveToLibrary({ compactGuest = false, slug }: SaveToLibraryProps) {
   const { isAuthenticated, isPending: authPending } = usePublicAuth();
   const libraryItem = useLibraryItem(slug);
   const addToLibrary = useAddToLibrary(slug);
@@ -33,6 +34,17 @@ export function SaveToLibrary({ slug }: SaveToLibraryProps) {
   }
 
   if (!isAuthenticated) {
+    if (compactGuest) {
+      return (
+        <Link
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
+          href={`/login?mode=signin&callbackUrl=${encodeURIComponent(`/novels/${slug}`)}`}
+        >
+          <Bookmark className="h-4 w-4" />
+          Save to Library
+        </Link>
+      );
+    }
     return <LoginPrompt />;
   }
 
@@ -65,7 +77,8 @@ export function SaveToLibrary({ slug }: SaveToLibraryProps) {
         <div className="flex items-center gap-2">
           <Button
             variant="secondary"
-            size="sm"
+            size={compactGuest ? "default" : "sm"}
+            className={compactGuest ? "h-11 w-full" : undefined}
             disabled={!slug || isBusy}
             onClick={onClick}
             type="button"
@@ -87,7 +100,8 @@ export function SaveToLibrary({ slug }: SaveToLibraryProps) {
       ) : (
         <Button
           variant="outline"
-          size="sm"
+          size={compactGuest ? "default" : "sm"}
+          className={compactGuest ? "h-11 w-full" : undefined}
           disabled={!slug || isBusy}
           onClick={onClick}
           type="button"

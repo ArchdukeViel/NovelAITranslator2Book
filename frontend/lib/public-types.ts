@@ -67,6 +67,7 @@ export interface PublicChapterSummary {
   title: string | null;
   chapter_number: number | null; // sort ascending (Req 4.3)
   translated: boolean; // false -> pending indicator (Req 4.5)
+  availability_status?: "available" | "not_translated" | "unavailable" | "refresh_failed" | string;
   part?: string | null; // optional volume/part grouping label
   section_title?: string | null;
   section_source_id?: string | null;

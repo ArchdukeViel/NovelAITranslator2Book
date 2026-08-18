@@ -21,6 +21,16 @@ alerting, browser/network acceptance, and rollback evidence remain incomplete.
 - Work closes only after evidence is recorded in `HISTORY.md`; passing local
   tests never substitutes for hosted/manual evidence.
 
+## Novel Detail Stage B Decision (2026-08-19)
+
+The public novel detail redesign keeps the existing Overview, Chapters, and
+Reviews contract and makes the first viewport reading-first. Recommendations
+remain deferred because the current public catalog API has no bounded related-
+novel contract. Do not add a fourth tab, behavioral language, popularity
+metrics, or a client-side catalog download to simulate one. A future related-
+novel slice needs an approved public contract with deterministic exclusions,
+stable ordering, and bounded work before it reaches the page.
+
 ## Launch Roadmap
 
 Dependency-ordered plan. Each row closes only when its "Done when" evidence
@@ -296,7 +306,7 @@ PR/change, each with exact tests:
 | FE-04 | Shared search overlay, keyboard behavior, request cancellation, local recent searches — shipped (typecheck, 781 tests, build, backend 156 tests pass); original-title search added to catalog DB + storage fallback | FE-03 |
 | FE-05 | Browse/catalog layout, URL filter state, taxonomy/source canonical routes — shipped (typecheck, 790 tests, build, backend public-router 123 tests pass); authors route remains deferred pending stable identity/alias contract | FE-04 |
 | FE-06 | Homepage rails and honest featured-novel selection — rails, Continue Reading/guest state, catalog-derived genres, `/random`, real `updated_at` sort, single-CTA eligible Spotlight shipped (typecheck, 769 tests, build, backend public-router 125 tests pass); 2026-08-04 editorial hero upgrade (asymmetric cover card, source title, metadata row, genre chips) + honest NEW chips (14-day `added_at` freshness) shipped (847 tests); manual admin-curated rotation still needs an approved persistence/API contract | FE-05 |
-| FE-07 | Novel-detail sticky layout, URL tabs, chapter controls, single CTA — supported UI shipped (typecheck, 776 tests, 48-route build); pending backend contracts: chapter added/failure metadata for New/Failed markers and public review-list pagination | FE-03 |
+| FE-07 | Novel-detail reading-first hero, semantic URL tabs, truthful metadata, deterministic bookplate fallback, source section hierarchy, chapter search/order/anchors, one reading CTA, quiet report link, and closed request disclosure — Stage B implementation complete; Recommendations remain deferred pending a bounded related-novels contract | FE-03 |
 | FE-08 | Reader Aa panel, progress bar, resume position, quiet chrome — shipped (typecheck, 785 tests across 68 files, 48-route build); account progress + guest local-only persistence, keyboard navigation, strong end CTA | FE-03 |
 | FE-09 | Library board/list and account shell — shipped (lint, typecheck, 813 tests across 71 files, 47-page build; prior branch CI); pending backend contracts: plan-to-read/dropped status mutation, bulk status update, progress/title/recent-update fields/filter/badge | FE-03 |
 | FE-10 | `/faq`, `/news`, account reviews; `/random` and account overview already shipped — shipped (typecheck, lint, Vitest suite, 47+ page build, backend user-data router tests pass); `GET /api/user/reviews` added for the session user's own reviews; review moderation contract (status lifecycle, public listing, admin moderation, audit) implemented and merged | FE-03 |

@@ -324,7 +324,7 @@ describe("Novel detail page — report action", () => {
   it("links to /contact instead of claiming backend phase", () => {
     renderPage();
     expect(screen.queryByText(/later backend phase/i)).not.toBeInTheDocument();
-    const contactLink = screen.getByText("Contact us").closest("a");
+    const contactLink = screen.getByRole("link", { name: "Report an issue" });
     expect(contactLink).toHaveAttribute("href", "/contact");
   });
 
@@ -454,7 +454,7 @@ describe("Novel detail page — chapter list", () => {
 describe("Novel detail page — FE-07 tabs and controls", () => {
   it("writes tab selection to a shareable URL", () => {
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: /^chapters$/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /^chapters$/i }));
     expect(mocks.pushMock).toHaveBeenCalledWith("/novels/test-slug?tab=chapters", { scroll: false });
   });
 
@@ -469,7 +469,52 @@ describe("Novel detail page — FE-07 tabs and controls", () => {
     mocks.useProgressMock.mockReturnValue({ data: { chapter_id: "2", chapter_number: 2 }, isPending: false, isError: false, error: null });
     renderPage();
     expect(screen.queryByRole("link", { name: "Start Reading" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Continue from Ch. 2" })).toHaveLength(1);
+    expect(screen.getAllByRole("link", { name: /Continue Reading from Ch\. 2/ })).toHaveLength(1);
+  });
+
+  it("exposes semantic tabs and a labelled active panel", () => {
+    renderPage();
+    const tablist = screen.getByRole("tablist", { name: "Novel sections" });
+    expect(within(tablist).getAllByRole("tab")).toHaveLength(3);
+    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "novel-tab-overview");
+  });
+
+  it("keeps the request form out of Overview and behind a Chapters disclosure", () => {
+    renderPage();
+    expect(screen.queryByText("Submit a Request")).not.toBeInTheDocument();
+
+    mocks.searchParamsMock.mockReturnValue(new URLSearchParams("tab=chapters"));
+    renderPage();
+    const disclosure = screen.getByText("Request translation").closest("details");
+    expect(disclosure).toBeInTheDocument();
+    expect(disclosure).not.toHaveAttribute("open");
+    expect(within(disclosure as HTMLElement).getByText("Submit a Request")).toBeInTheDocument();
+  });
+
+  it("does not attach Japanese taxonomy labels to a non-Japanese work", () => {
+    mocks.novelQuery.mockReturnValue({
+      data: makeNovelData({ language: "zh" }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    renderPage();
+    expect(screen.queryByText("ファンタジー")).not.toBeInTheDocument();
+    expect(screen.getByText("fantasy")).toBeInTheDocument();
+  });
+
+  it("does not repeat generated numbering when a source title already includes it", () => {
+    mocks.searchParamsMock.mockReturnValue(new URLSearchParams("tab=chapters"));
+    mocks.chaptersQuery.mockReturnValue({
+      data: [{ chapter_id: "1", title: "1話　聖水要員", chapter_number: 1, translated: true }],
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    renderPage();
+    expect(screen.getByText(/1話\s+聖水要員/)).toBeInTheDocument();
+    expect(screen.queryByText("Chapter 1")).not.toBeInTheDocument();
   });
 
   it("filters chapters and reverses their order", () => {

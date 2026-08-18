@@ -30,13 +30,61 @@ import {
 } from "@/lib/public-format";
 import { publicChapterHref } from "@/lib/public-routes";
 import type { PublicChapterSummary } from "@/lib/public-types";
-import { useChapters, useGenreLabelMap, useNovel, useProgress, usePublicAuth } from "@/hooks/public";
+import { useChapters, useGenreLabelMap, useNovel, useProgress } from "@/hooks/public";
+
+type NovelTab = "overview" | "chapters" | "reviews";
+
+const NOVEL_TABS: ReadonlyArray<{ id: NovelTab; label: string }> = [
+  { id: "overview", label: "Overview" },
+  { id: "chapters", label: "Chapters" },
+  { id: "reviews", label: "Reviews" },
+];
+
+function formatLanguage(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const normalized = trimmed.toLowerCase().replaceAll("_", "-");
+  if (normalized === "ja" || normalized.startsWith("ja-") || normalized.includes("japanese") || trimmed === "日本語") {
+    return "Japanese";
+  }
+  if (normalized === "zh" || normalized.startsWith("zh-") || normalized.includes("chinese") || trimmed === "中文") {
+    return "Chinese";
+  }
+  if (normalized === "ko" || normalized.startsWith("ko-") || normalized.includes("korean") || trimmed === "한국어") {
+    return "Korean";
+  }
+  if (normalized === "en" || normalized.startsWith("en-") || normalized.includes("english")) {
+    return "English";
+  }
+  return trimmed;
+}
+
+function isJapaneseLanguage(value: string | null | undefined): boolean {
+  const normalized = value?.trim().toLowerCase().replaceAll("_", "-");
+  return Boolean(
+    normalized &&
+      (normalized === "ja" || normalized.startsWith("ja-") || normalized.includes("japanese") || normalized === "日本語")
+  );
+}
 
 function chapterDisplayTitle(chapter: PublicChapterSummary): string {
-  return (
-    chapter.title ||
-    `Chapter ${chapter.chapter_number ?? chapter.chapter_id}`
-  );
+  return chapter.title?.trim() || `Chapter ${chapter.chapter_number ?? chapter.chapter_id}`;
+}
+
+function hasSourceNumber(chapter: PublicChapterSummary): boolean {
+  if (chapter.chapter_number === null || chapter.chapter_number === undefined || !chapter.title?.trim()) {
+    return false;
+  }
+
+  const number = String(chapter.chapter_number);
+  return new RegExp(`(?:^|[^0-9])${number}(?:[^0-9]|$)`).test(chapter.title);
+}
+
+function shouldShowGeneratedChapterNumber(chapter: PublicChapterSummary): boolean {
+  return Boolean(chapter.title?.trim()) && chapter.chapter_number !== null && chapter.chapter_number !== undefined && !hasSourceNumber(chapter);
 }
 
 function formatAddedDate(value: string): string {
@@ -53,6 +101,10 @@ function formatAddedDate(value: string): string {
 
 function chapterHref(slug: string, chapterId: string): string {
   return publicChapterHref(slug, chapterId);
+}
+
+function chapterAnchorId(chapterId: string): string {
+  return `chapter-${encodeURIComponent(chapterId)}`;
 }
 
 type VolumeGroup = {
@@ -79,22 +131,25 @@ function groupChaptersByVolume(chapters: PublicChapterSummary[]): VolumeGroup[] 
   const hasSections = chapters.some((chapter) => chapterSectionKey(chapter) !== null);
   let lastGroupKey: string | null = null;
 
-  for (const ch of chapters) {
-    const sectionKey = chapterSectionKey(ch);
+  for (const chapter of chapters) {
+    const sectionKey = chapterSectionKey(chapter);
     const groupKey = sectionKey ?? (hasSections ? "ungrouped" : "flat");
     let group = groups.at(-1);
     if (!group || lastGroupKey !== groupKey) {
-      const label = ch.section_title?.trim() || ch.part?.trim() || (sectionKey ? `Section ${ch.section_ordinal ?? ""}`.trim() : "");
+      const label =
+        chapter.section_title?.trim() ||
+        chapter.part?.trim() ||
+        (sectionKey ? `Section ${chapter.section_ordinal ?? ""}`.trim() : "");
       group = {
         key: `${groupKey}:run:${groups.length}`,
         label: label || (hasSections ? "Chapters" : ""),
-        ordinal: ch.section_ordinal ?? null,
+        ordinal: chapter.section_ordinal ?? null,
         chapters: [],
       };
       groups.push(group);
       lastGroupKey = groupKey;
     }
-    group.chapters.push(ch);
+    group.chapters.push(chapter);
   }
 
   return groups;
@@ -112,10 +167,10 @@ function PageLoadingState() {
 function BackToBrowse() {
   return (
     <Link
-      className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      className="inline-flex min-h-11 items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
       href="/browse-novels"
     >
-      <ArrowLeft className="h-4 w-4" />
+      <ArrowLeft className="h-4 w-4" aria-hidden="true" />
       Back to Browse
     </Link>
   );
@@ -149,37 +204,45 @@ function ChapterRow({
   isLastRead?: boolean;
   isRead?: boolean;
 }) {
+  const canRead = chapter.translated && (!chapter.availability_status || chapter.availability_status === "available");
+  const availabilityLabel =
+    chapter.availability_status === "unavailable" || chapter.availability_status === "refresh_failed"
+      ? "Unavailable"
+      : "Not translated";
+
   return (
-    <div className={`group flex flex-col gap-3 border-b border-border/70 py-4 last:border-b-0 sm:flex-row sm:items-center sm:justify-between ${isRead ? "opacity-70" : ""}`}>
+    <div
+      className={`group flex flex-col gap-3 border-b border-border/70 py-4 last:border-b-0 sm:flex-row sm:items-center sm:justify-between ${isRead ? "opacity-70" : ""}`}
+    >
       <div className="min-w-0">
-        <h3 className="truncate font-literary text-base font-medium transition-colors group-hover:text-accent">
+        <h3 className="break-words font-literary text-base font-medium transition-colors group-hover:text-accent">
           {chapterDisplayTitle(chapter)}
         </h3>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          {chapter.chapter_number !== null && (
+          {shouldShowGeneratedChapterNumber(chapter) && (
             <span className="font-metadata">Chapter {chapter.chapter_number}</span>
           )}
-          {chapter.translated ? (
-            <span className="font-metadata text-accent">Translated</span>
-          ) : (
-            <StatusBadge status="Pending" />
-          )}
+          {canRead && <span className="font-metadata text-accent">Translated</span>}
           {isRead && <span className="font-metadata">Read</span>}
-          {isLastRead && <span className="rounded bg-primary/15 px-1.5 py-0.5 font-metadata text-primary">Last read</span>}
+          {isLastRead && (
+            <span className="rounded bg-primary/15 px-1.5 py-0.5 font-metadata text-primary">
+              Last read
+            </span>
+          )}
         </div>
       </div>
-      {chapter.translated ? (
+      {canRead ? (
         <Link
-          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-muted"
+          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-muted"
           href={chapterHref(slug, chapter.chapter_id)}
         >
-          <BookOpen className="h-4 w-4" />
+          <BookOpen className="h-4 w-4" aria-hidden="true" />
           Read
         </Link>
       ) : (
-        <span className="inline-flex h-9 shrink-0 items-center gap-2 text-sm text-muted-foreground">
-          <Clock className="h-4 w-4" />
-          Not translated
+        <span className="inline-flex min-h-11 shrink-0 items-center gap-2 text-sm text-muted-foreground">
+          <Clock className="h-4 w-4" aria-hidden="true" />
+          {availabilityLabel}
         </span>
       )}
     </div>
@@ -191,14 +254,14 @@ export default function NovelDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const slug = decodeURIComponent(params.slug);
-  const { isAuthenticated, isPending: authPending } = usePublicAuth();
 
   const novel = useNovel(slug);
   const chapters = useChapters(slug);
   const progress = useProgress(slug);
   const genreLabels = useGenreLabelMap();
   const requestedTab = searchParams.get("tab");
-  const activeTab = requestedTab === "chapters" || requestedTab === "reviews" ? requestedTab : "overview";
+  const activeTab: NovelTab =
+    requestedTab === "chapters" || requestedTab === "reviews" ? requestedTab : "overview";
   const [chapterQuery, setChapterQuery] = useState("");
   const [chapterOrder, setChapterOrder] = useState<"asc" | "desc">("asc");
   const [groupsExpanded, setGroupsExpanded] = useState(true);
@@ -233,113 +296,363 @@ export default function NovelDetailPage() {
   const synopsis = data.synopsis?.trim();
   const sourceTitle = data.source_title?.trim();
   const showSourceTitle = Boolean(sourceTitle && sourceTitle !== title);
-  const sortedChapters = chapters.data
-    ? sortChaptersAscending(chapters.data)
-    : [];
-  const translatedChapters = sortedChapters.filter((chapter) => chapter.translated);
-  const firstTranslatedChapter = translatedChapters[0] ?? null;
-  const latestTranslatedChapter =
-    translatedChapters[translatedChapters.length - 1] ?? null;
+  const languageLabel = formatLanguage(data.language);
+  const showJapaneseTaxonomy = isJapaneseLanguage(data.language);
+  const sortedChapters = chapters.data ? sortChaptersAscending(chapters.data) : [];
+  const readableChapters = sortedChapters.filter(
+    (chapter) => chapter.translated && (!chapter.availability_status || chapter.availability_status === "available")
+  );
+  const firstTranslatedChapter = readableChapters[0] ?? null;
+  const latestTranslatedChapter = readableChapters[readableChapters.length - 1] ?? null;
   const firstChapterId = firstTranslatedChapter?.chapter_id ?? null;
   const progressChapterId = progress.data?.chapter_id ?? null;
   const progressChapterNumber = progress.data?.chapter_number ?? null;
   const normalizedQuery = chapterQuery.trim().toLowerCase();
   const filteredChapters = sortedChapters.filter((chapter) => {
     if (!normalizedQuery) return true;
-    return `${chapterDisplayTitle(chapter)} ${chapter.chapter_number ?? ""}`.toLowerCase().includes(normalizedQuery);
+    return `${chapterDisplayTitle(chapter)} ${chapter.chapter_number ?? ""} ${chapter.section_title ?? ""}`
+      .toLowerCase()
+      .includes(normalizedQuery);
   });
   const orderedChapters = chapterOrder === "asc" ? filteredChapters : [...filteredChapters].reverse();
   const visibleChapters = orderedChapters.slice(0, chapterLimit);
   const firstUnread = sortedChapters.find(
-    (chapter) => chapter.translated && (progressChapterNumber == null || (chapter.chapter_number ?? 0) > progressChapterNumber)
+    (chapter) =>
+      chapter.translated &&
+      (!chapter.availability_status || chapter.availability_status === "available") &&
+      (progressChapterNumber == null || (chapter.chapter_number ?? 0) > progressChapterNumber)
   );
 
-  function setTab(tab: "overview" | "chapters" | "reviews") {
+  function setTab(tab: NovelTab) {
     const next = new URLSearchParams(searchParams.toString());
     if (tab === "overview") next.delete("tab");
     else next.set("tab", tab);
-    router.push(`/novels/${encodeURIComponent(publicSlug)}${next.toString() ? `?${next}` : ""}`, { scroll: false });
+    router.push(
+      `/novels/${encodeURIComponent(publicSlug)}${next.toString() ? `?${next}` : ""}`,
+      { scroll: false }
+    );
   }
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       <BackToBrowse />
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start">
-        <aside className="lg:sticky lg:top-24">
-          <div className="mx-auto w-full max-w-[260px] lg:mx-0">
-            <FallbackCover genres={data.genres} language={data.language} sourceTitle={sourceTitle} status={data.publication_status} title={title} />
-          </div>
-          <h1 className="mt-5 font-literary text-3xl font-medium leading-tight">{title}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">{authorOrFallback(data.author)}</p>
-          {showSourceTitle && <p className="mt-2 font-literary text-sm text-accent"><span className="mr-1 font-metadata text-xs uppercase text-muted-foreground">Source title</span>{sourceTitle}</p>}
-          <div className="mt-4"><StatusBadge status={data.publication_status} /></div>
-          <NovelMetadataRow className="mt-4" chapterCount={data.chapter_count} translatedCount={data.translated_count} source={data.language} />
-          <div className="mt-4 border-t border-border/40 pt-4 flex flex-col gap-2.5">
-            <ContinueReading slug={publicSlug} firstChapterId={firstChapterId} allowGuestStart primary />
-            <SaveToLibrary slug={publicSlug} />
-          </div>
-        </aside>
+      <header className="mt-8 grid gap-6 border-b border-border/70 pb-8 lg:grid-cols-[220px_minmax(0,1fr)_auto] lg:items-end lg:gap-8">
+        <div className="mx-auto w-full max-w-[220px] lg:mx-0">
+          <FallbackCover
+            genres={data.genres}
+            language={data.language}
+            sourceTitle={sourceTitle}
+            status={data.publication_status}
+            title={title}
+          />
+        </div>
 
         <div className="min-w-0">
-          <nav aria-label="Novel sections" className="sticky top-0 z-20 -mx-1 flex gap-1 overflow-x-auto border-b border-border bg-background/95 p-1 backdrop-blur">
-            {(["overview", "chapters", "reviews"] as const).map((tab) => (
-              <button key={tab} type="button" onClick={() => setTab(tab)} aria-current={activeTab === tab ? "page" : undefined} className={`shrink-0 rounded-md px-4 py-2 text-sm font-medium capitalize ${activeTab === tab ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>
-                {tab}
-              </button>
-            ))}
-          </nav>
+          <h1 className="font-literary text-3xl font-medium leading-tight sm:text-4xl">
+            {title}
+          </h1>
+          <p className="mt-3 text-base text-muted-foreground">{authorOrFallback(data.author)}</p>
+          {showSourceTitle && (
+            <p className="mt-2 break-words font-literary text-sm text-accent">
+              <span className="mr-2 font-metadata text-xs uppercase text-muted-foreground">
+                Source title
+              </span>
+              {sourceTitle}
+            </p>
+          )}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <StatusBadge status={data.publication_status} />
+            <NovelMetadataRow
+              chapterCount={data.chapter_count}
+              source={languageLabel}
+              translatedCount={data.translated_count}
+              updatedAt={data.latest_chapter_updated_at}
+            />
+          </div>
+        </div>
 
-          {activeTab === "overview" && (
-            <div className="space-y-8 py-8">
-              <section>
-                <h2 className="font-literary text-2xl font-semibold">About this story</h2>
-                <p className="mt-4 leading-7 text-muted-foreground">{synopsis || "Synopsis unavailable for this novel."}</p>
-              </section>
-              {data.added_at && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><CalendarDays className="h-3.5 w-3.5" />Added {formatAddedDate(data.added_at)}</p>}
-              {(data.genres?.length ?? 0) > 0 && <div className="flex flex-wrap gap-2">{(data.genres ?? []).map((genre) => <Link key={genre.slug} href={`/genres/${encodeURIComponent(genre.slug)}`}><GenreChip label={genreLabels?.get(genre.slug) ?? genre.slug} labelJa={genre.name_ja} /></Link>)}</div>}
-              {(data.tags?.length ?? 0) > 0 && <div className="flex flex-wrap gap-2">{(data.tags ?? []).map((tag) => <Link key={tag.name} href={`/tags/${encodeURIComponent(tag.name)}`}><TagChip label={tag.name} labelJa={tag.name_ja} /></Link>)}</div>}
-              <section className="rounded-lg bg-card/70 p-4 ring-1 ring-border"><div className="flex gap-3"><Flag className="h-4 w-4 text-muted-foreground" /><div><h2 className="text-sm font-medium">Report an issue</h2><p className="mt-1 text-sm">Found a problem? <Link href="/contact" className="text-accent underline">Contact us</Link>.</p></div></div></section>
-              <RequestControl slug={publicSlug} />
-            </div>
+        <div className="flex flex-col items-stretch gap-2 sm:flex-row lg:w-48 lg:flex-col">
+          <ContinueReading
+            allowGuestStart
+            firstChapterId={firstChapterId}
+            primary
+            slug={publicSlug}
+          />
+          <SaveToLibrary compactGuest slug={publicSlug} />
+        </div>
+      </header>
+
+      <nav
+        aria-label="Novel sections"
+        className="sticky top-0 z-20 -mx-1 mt-6 flex gap-1 overflow-x-auto border-b border-border bg-background/95 p-1 backdrop-blur"
+        role="tablist"
+      >
+        {NOVEL_TABS.map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              aria-controls={`novel-panel-${tab.id}`}
+              aria-selected={isActive}
+              className={`min-h-11 shrink-0 rounded-md px-4 py-2 text-sm font-medium transition-colors ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              id={`novel-tab-${tab.id}`}
+              key={tab.id}
+              onClick={() => setTab(tab.id)}
+              role="tab"
+              type="button"
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      {activeTab === "overview" && (
+        <section
+          aria-labelledby="novel-tab-overview"
+          className="space-y-8 py-8"
+          id="novel-panel-overview"
+          role="tabpanel"
+          tabIndex={0}
+        >
+          <section>
+            <h2 className="font-literary text-2xl font-semibold">About this story</h2>
+            <p className="mt-4 leading-7 text-muted-foreground">
+              {synopsis || "Synopsis unavailable for this novel."}
+            </p>
+          </section>
+
+          {data.added_at && (
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+              Added {formatAddedDate(data.added_at)}
+            </p>
           )}
 
-          {activeTab === "chapters" && (
-            <section className="py-8">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div><h2 className="font-literary text-2xl font-semibold">Chapters</h2><p className="mt-1 text-sm text-muted-foreground">{sortedChapters.length} total</p></div>
-                <div className="flex flex-wrap gap-2">
-                  {firstUnread && <a href={`#chapter-${firstUnread.chapter_id}`} className="rounded-md border border-border px-3 py-2 text-xs">First unread</a>}
-                  {latestTranslatedChapter && <a href={`#chapter-${latestTranslatedChapter.chapter_id}`} className="rounded-md border border-border px-3 py-2 text-xs">Latest</a>}
-                  <button type="button" onClick={() => setGroupsExpanded((value) => !value)} className="rounded-md border border-border px-3 py-2 text-xs">{groupsExpanded ? "Collapse all" : "Expand all"}</button>
-                </div>
-              </div>
-              <div className="mt-5 flex flex-wrap gap-3">
-                <label className="relative min-w-52 flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><span className="sr-only">Search chapters</span><input value={chapterQuery} onChange={(event) => { setChapterQuery(event.target.value); setChapterLimit(100); }} placeholder="Search chapters" className="h-10 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm" /></label>
-                <button type="button" onClick={() => setChapterOrder((value) => value === "asc" ? "desc" : "asc")} className="rounded-md border border-border px-3 text-sm">{chapterOrder === "asc" ? "Ascending" : "Descending"}</button>
-              </div>
-              <div className="mt-5 rounded-lg bg-card/70 px-4 ring-1 ring-border sm:px-5">
-                {chapters.isPending ? <div className="py-10 text-center">Loading chapters…</div> : chapters.isError ? <div className="py-10 text-center text-sm text-muted-foreground">Could not load chapters.</div> : visibleChapters.length === 0 ? <div className="py-10 text-center"><Library className="mx-auto h-10 w-10 text-muted-foreground/50" /><p className="mt-3 text-sm text-muted-foreground">No chapters matched.</p></div> : groupChaptersByVolume(visibleChapters).map((group) => group.label ? (
-                  <details key={group.key} open={groupsExpanded} className="group/volume border-b border-border/70 last:border-b-0">
-                    <summary className="flex cursor-pointer items-center justify-between py-3 text-sm font-medium"><span>{group.label}</span><span className="text-xs text-muted-foreground">{group.chapters.length}</span></summary>
-                    <div className="border-t border-border/40">{group.chapters.map((chapter) => <div id={`chapter-${chapter.chapter_id}`} key={chapter.chapter_id}><ChapterRow chapter={chapter} slug={publicSlug} isLastRead={progressChapterId === chapter.chapter_id} isRead={progressChapterNumber != null && chapter.chapter_number != null && chapter.chapter_number <= progressChapterNumber} /></div>)}</div>
-                  </details>
-                ) : (
-                  <div key={group.key}>{group.chapters.map((chapter) => <div id={`chapter-${chapter.chapter_id}`} key={chapter.chapter_id}><ChapterRow chapter={chapter} slug={publicSlug} isLastRead={progressChapterId === chapter.chapter_id} isRead={progressChapterNumber != null && chapter.chapter_number != null && chapter.chapter_number <= progressChapterNumber} /></div>)}</div>
+          {(data.genres?.length ?? 0) > 0 && (
+            <section aria-labelledby="novel-genres-heading" className="space-y-2">
+              <h3 className="text-sm font-medium" id="novel-genres-heading">
+                Genres
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {(data.genres ?? []).map((genre) => (
+                  <Link
+                    href={`/genres/${encodeURIComponent(genre.slug)}`}
+                    key={genre.slug}
+                    className="min-h-11 inline-flex items-center"
+                  >
+                    <GenreChip
+                      label={genreLabels?.get(genre.slug) ?? genre.slug}
+                      labelJa={showJapaneseTaxonomy ? genre.name_ja : undefined}
+                    />
+                  </Link>
                 ))}
               </div>
-              {orderedChapters.length > chapterLimit && <button type="button" onClick={() => setChapterLimit((value) => value + 100)} className="mt-5 rounded-md border border-border px-4 py-2 text-sm">Show more chapters</button>}
             </section>
           )}
 
-          {activeTab === "reviews" && (
-            <div className="space-y-8 py-8">
-              <RatingReview slug={publicSlug} />
-              <CommunityReviews slug={publicSlug} />
-            </div>
+          {(data.tags?.length ?? 0) > 0 && (
+            <section aria-labelledby="novel-tags-heading" className="space-y-2">
+              <h3 className="text-sm font-medium" id="novel-tags-heading">
+                Tags
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {(data.tags ?? []).map((tag) => (
+                  <Link
+                    href={`/tags/${encodeURIComponent(tag.name)}`}
+                    key={tag.name}
+                    className="min-h-11 inline-flex items-center"
+                  >
+                    <TagChip
+                      label={tag.name}
+                      labelJa={showJapaneseTaxonomy ? tag.name_ja : undefined}
+                    />
+                  </Link>
+                ))}
+              </div>
+            </section>
           )}
-        </div>
-      </div>
+
+          <div className="border-t border-border/60 pt-4">
+            <Link
+              className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+              href="/contact"
+            >
+              <Flag className="h-4 w-4" aria-hidden="true" />
+              Report an issue
+            </Link>
+          </div>
+        </section>
+      )}
+
+      {activeTab === "chapters" && (
+        <section
+          aria-labelledby="novel-tab-chapters"
+          className="py-8"
+          id="novel-panel-chapters"
+          role="tabpanel"
+          tabIndex={0}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-literary text-2xl font-semibold">Chapters</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{sortedChapters.length} total</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {firstUnread && (
+                <a
+                  className="inline-flex min-h-11 items-center rounded-md border border-border px-3 py-2 text-xs"
+                  href={`#${chapterAnchorId(firstUnread.chapter_id)}`}
+                >
+                  First unread
+                </a>
+              )}
+              {latestTranslatedChapter && (
+                <a
+                  className="inline-flex min-h-11 items-center rounded-md border border-border px-3 py-2 text-xs"
+                  href={`#${chapterAnchorId(latestTranslatedChapter.chapter_id)}`}
+                >
+                  Latest
+                </a>
+              )}
+              <button
+                className="min-h-11 rounded-md border border-border px-3 py-2 text-xs"
+                onClick={() => setGroupsExpanded((value) => !value)}
+                type="button"
+              >
+                {groupsExpanded ? "Collapse all" : "Expand all"}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <label className="relative min-w-52 flex-1">
+              <Search
+                aria-hidden="true"
+                className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <span className="sr-only">Search chapters</span>
+              <input
+                className="h-11 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm"
+                onChange={(event) => {
+                  setChapterQuery(event.target.value);
+                  setChapterLimit(100);
+                }}
+                placeholder="Search chapters"
+                value={chapterQuery}
+              />
+            </label>
+            <button
+              className="min-h-11 rounded-md border border-border px-3 text-sm"
+              onClick={() => setChapterOrder((value) => (value === "asc" ? "desc" : "asc"))}
+              type="button"
+            >
+              {chapterOrder === "asc" ? "Ascending" : "Descending"}
+            </button>
+          </div>
+
+          <div className="mt-5 rounded-md border border-border bg-card/70 px-4 sm:px-5">
+            {chapters.isPending ? (
+              <div className="py-10 text-center">Loading chapters...</div>
+            ) : chapters.isError ? (
+              <div className="py-10 text-center text-sm text-muted-foreground">
+                Could not load chapters.
+              </div>
+            ) : visibleChapters.length === 0 ? (
+              <div className="py-10 text-center">
+                <Library className="mx-auto h-10 w-10 text-muted-foreground/50" aria-hidden="true" />
+                <p className="mt-3 text-sm text-muted-foreground">No chapters matched.</p>
+              </div>
+            ) : (
+              groupChaptersByVolume(visibleChapters).map((group) =>
+                group.label ? (
+                  <details
+                    className="group/volume border-b border-border/70 last:border-b-0"
+                    key={group.key}
+                    open={groupsExpanded}
+                  >
+                    <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 py-3 text-sm font-medium">
+                      <span className="break-words">{group.label}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {group.chapters.length}
+                      </span>
+                    </summary>
+                    <div className="border-t border-border/40">
+                      {group.chapters.map((chapter) => (
+                        <div id={chapterAnchorId(chapter.chapter_id)} key={chapter.chapter_id}>
+                          <ChapterRow
+                            chapter={chapter}
+                            isLastRead={progressChapterId === chapter.chapter_id}
+                            isRead={
+                              progressChapterNumber != null &&
+                              chapter.chapter_number != null &&
+                              chapter.chapter_number <= progressChapterNumber
+                            }
+                            slug={publicSlug}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ) : (
+                  <div key={group.key}>
+                    {group.chapters.map((chapter) => (
+                      <div id={chapterAnchorId(chapter.chapter_id)} key={chapter.chapter_id}>
+                        <ChapterRow
+                          chapter={chapter}
+                          isLastRead={progressChapterId === chapter.chapter_id}
+                          isRead={
+                            progressChapterNumber != null &&
+                            chapter.chapter_number != null &&
+                            chapter.chapter_number <= progressChapterNumber
+                          }
+                          slug={publicSlug}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )
+              )
+            )}
+          </div>
+
+          {orderedChapters.length > chapterLimit && (
+            <button
+              className="mt-5 min-h-11 rounded-md border border-border px-4 py-2 text-sm"
+              onClick={() => setChapterLimit((value) => value + 100)}
+              type="button"
+            >
+              Show more chapters
+            </button>
+          )}
+
+          <details className="mt-8 border-t border-border/60 pt-5">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 text-sm font-medium">
+              <span>Request translation</span>
+              <span className="text-xs font-normal text-muted-foreground">
+                Missing or untranslated chapter?
+              </span>
+            </summary>
+            <div className="pt-4">
+              <RequestControl slug={publicSlug} />
+            </div>
+          </details>
+        </section>
+      )}
+
+      {activeTab === "reviews" && (
+        <section
+          aria-labelledby="novel-tab-reviews"
+          className="space-y-8 py-8"
+          id="novel-panel-reviews"
+          role="tabpanel"
+          tabIndex={0}
+        >
+          <h2 className="font-literary text-2xl font-semibold">Reviews</h2>
+          <RatingReview slug={publicSlug} />
+          <CommunityReviews slug={publicSlug} />
+        </section>
+      )}
     </main>
   );
 }

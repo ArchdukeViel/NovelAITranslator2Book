@@ -160,7 +160,7 @@ describe("public reading-state UI", () => {
 
     renderWithQuery(<ContinueReading slug="demo" />);
 
-    const link = await screen.findByRole("link", { name: /continue from ch/i });
+    const link = await screen.findByRole("link", { name: /continue reading from ch/i });
     expect(link).toHaveAttribute("href", "/novels/demo/chapter/7");
   });
 
@@ -230,7 +230,7 @@ describe("public reading-state UI", () => {
 
     renderWithQuery(<ContinueReading slug="demo" />);
 
-    const link = await screen.findByRole("link", { name: /continue from chapter/i });
+    const link = await screen.findByRole("link", { name: /continue reading/i });
     expect(link).toBeInTheDocument();
     // Link href still uses chapter_id
     expect(link).toHaveAttribute("href", "/novels/demo/chapter/99");
@@ -260,11 +260,11 @@ describe("public reading-state UI", () => {
 
     renderWithQuery(<ContinueReading slug="demo" />);
 
-    const link = await screen.findByRole("link", { name: /continue from ch/i });
+    const link = await screen.findByRole("link", { name: /continue reading from ch/i });
     expect(link).toBeInTheDocument();
     expect(link).toHaveAttribute("href", "/novels/demo/chapter/42");
-    // Label shows chapter_number=7, not chapter_id=42
-    expect(link?.textContent).toContain("Ch. 7");
+    // Accessible context shows chapter_number=7, not chapter_id=42.
+    expect(link).toHaveAccessibleName("Continue Reading from Ch. 7");
     expect(link?.textContent).not.toContain("Ch. 42");
   });
 

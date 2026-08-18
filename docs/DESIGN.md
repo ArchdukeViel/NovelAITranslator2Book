@@ -156,8 +156,10 @@ The frontend App Router overhaul (PR #38) is merged and describes the current im
 
 - Implemented: full public surface (home, browse, taxonomy, novel detail, chapter reader, account, auth, trust and system pages), full admin surface (dashboard, crawler, library, activity, scheduler, maintenance, analytics, requests, reviews, users, editor, credentials, settings, audit, takedowns, glossary), shared search overlay, light and dark site themes, reader light/dark/sepia themes, brand assets, and the Stitch-ready page brief structure.
 - Frontend verification baseline at the merge: 76 test files and 841 tests passed.
+- Novel detail is a reading-first surface: the hero puts the title, source title, author, status, truthful metadata, and one reading CTA before tabbed content. Guest readers can start the first available chapter; signed-in readers with progress can continue from it. Save remains a secondary personalized action.
+- Novel detail chapters consume the public section metadata contract and preserve source order, exact returned episode titles, grouped runs, flat lists, search, ordering, First unread, and Latest. The request form is a closed disclosure at the end of Chapters, and issue reporting is a quiet contact link in Overview.
 - Not implemented: ranking data (the Ranking page intentionally shows an unavailable state), public contribution key management (gated, documented as not available), profile editing, account deletion, and admin-curated featured rotation (the homepage spotlight is derived from catalog data, not owner curation).
-- Deferred intentionally: extended locale support, WebGL graphics, GSAP sequences.
+- Deferred intentionally: related-novel Recommendations (no bounded public related-novels contract exists), extended locale support, WebGL graphics, and GSAP sequences.
 - Still manually unverified: screen-reader acceptance across NVDA/VoiceOver/TalkBack, forced-colors mode, and 200% zoom reflow. These are tracked as manual acceptance work in `docs/WORK.md` (DEBT-FE-01A). Do not claim hosted or manual visual validation that was not performed.
 
 ## 3. Design Read and Target Dials
@@ -480,7 +482,7 @@ All component contracts below are global. Do not create component Markdown files
 
 ### 9.6 Tabs
 
-- Segmented tabs with vermillion fill for the active tab (novel detail: Overview, Chapters, Reviews) and sticky under the public header.
+- Segmented tabs with vermillion fill for the active tab (novel detail: Overview, Chapters, Reviews) and sticky under the public header. Novel detail tabs use `role="tablist"`, `role="tab"`, `aria-selected`, and `aria-controls`; Recommendations is not shown until a truthful bounded public contract exists.
 
 ### 9.7 Pagination
 
@@ -603,6 +605,9 @@ Current implementation uses CSS transitions and native browser behavior only. No
 - Dynamic content slots in briefs use bracketed placeholders such as [Novel title], [Original Japanese title], [Chapter count], [Publication status], [Updated date].
 - Legal copy is frozen; briefs reference protected labels and required excerpts only, never restate full legal text.
 - Dates and numbers format per visitor locale; relative time for recent events.
+- Novel detail uses only persisted public fields for metadata: status, language or source context, total and translated chapters, and available dates. It never invents views, readers, rankings, word counts, patrons, or ratings.
+- A source author is plain text unless a stable public author identity route exists. Taxonomy chips show Japanese secondary text only when the novel language identifies a Japanese work.
+- When no public cover contract exists, detail and catalog surfaces use the deterministic Dokushodo bookplate fallback. They do not hotlink or invent source artwork.
 
 ## 15. Anti-Slop Rules
 

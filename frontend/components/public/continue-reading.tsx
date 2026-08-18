@@ -26,7 +26,7 @@ export function ContinueReading({ slug, firstChapterId, hasHeroCta = false, allo
 
   if (authPending) {
     return (
-      <Button variant="outline" disabled>
+      <Button className={primary ? "w-full" : undefined} variant="outline" disabled>
         <Loader2 className="h-4 w-4 animate-spin" />
         Checking progress
       </Button>
@@ -37,7 +37,7 @@ export function ContinueReading({ slug, firstChapterId, hasHeroCta = false, allo
     if (allowGuestStart && firstChapterId) {
       return (
         <Link
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           href={publicChapterHref(slug, firstChapterId)}
         >
           <BookOpen className="h-4 w-4" />
@@ -80,11 +80,12 @@ export function ContinueReading({ slug, firstChapterId, hasHeroCta = false, allo
     const href = publicChapterHref(slug, chapterId);
     return (
       <Link
-        className={primary ? "inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90" : "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"}
+        aria-label={chapterNumber != null ? `Continue Reading from Ch. ${chapterNumber}` : "Continue Reading"}
+        className={primary ? "inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90" : "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"}
         href={href}
       >
         <BookOpen className="h-4 w-4" />
-        Continue from {chapterNumber != null ? `Ch. ${chapterNumber}` : "Chapter"}
+        Continue Reading
       </Link>
     );
   }
@@ -97,7 +98,7 @@ export function ContinueReading({ slug, firstChapterId, hasHeroCta = false, allo
     const href = publicChapterHref(slug, firstChapterId);
     return (
       <Link
-        className={primary ? "inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90" : "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"}
+        className={primary ? "inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90" : "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"}
         href={href}
       >
         <BookOpen className="h-4 w-4" />
