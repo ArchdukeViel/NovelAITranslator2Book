@@ -168,6 +168,130 @@ def test_parse_metadata_html_collects_episode_links_in_order() -> None:
     ]
 
 
+def test_parse_metadata_html_extracts_canonical_title_author_and_synopsis() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+    html = f"""
+    <html>
+      <head>
+        <meta name="author" content="Fallback author" />
+        <meta property="og:description" content="Fallback synopsis" />
+      </head>
+      <body>
+        <main id="contentMain">
+          <h1 class="widget-workTitle">  Canonical Kakuyomu Work  </h1>
+          <div class="widget-authorName">  Canonical Kakuyomu Author  </div>
+          <div class="widget-workSynopsis">
+            First canonical synopsis line. <br />
+
+
+            Second canonical synopsis line.
+          </div>
+          <section class="widget-toc">
+            <a class="widget-toc-episode-episodeTitle" href="/works/{work_id}/episodes/822139845959540845">
+              <span class="widget-toc-episodeTitleLabel">第1話 はじまり</span>
+            </a>
+          </section>
+        </main>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
+
+    assert metadata["title"] == "Canonical Kakuyomu Work"
+    assert metadata["author"] == "Canonical Kakuyomu Author"
+    assert metadata["synopsis"] == "First canonical synopsis line.\nSecond canonical synopsis line."
+
+
+def test_parse_metadata_html_extracts_complete_overview_and_canonical_current_author() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+    html = f"""
+    <html>
+      <body>
+        <main>
+          <div><h2>概要</h2></div>
+          <div>
+            <div class="WorkIntroductionBox_catch__fixture">コミカライズ1巻発売中！！！！</div>
+            <div class="CollapseTextWithKakuyomuLinks_collapseText__fixture">
+              <br />引きニートの言葉世界はある日、コンビニ強盗から女性を守って死んでしまう。<br />
+              女神が異世界に転生させてくれるというので、「刺されても死なないような、世界で一番強い存在に」と願って転生させてもらう。<br />
+              なんと世界が転生したのは、ただの若木だった。
+            </div>
+          </div>
+          <div class="WorkAuthorBox_workAuthorBox__fixture">
+            <a href="/users/MintoTsukino">みんとちゃん</a>
+          </div>
+          <a href="/works/{work_id}/episodes/e1">第1話</a>
+        </main>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
+
+    assert metadata["author"] == "みんとちゃん"
+    assert metadata["source_synopsis"] == (
+        "コミカライズ1巻発売中！！！！\n"
+        "引きニートの言葉世界はある日、コンビニ強盗から女性を守って死んでしまう。\n"
+        "女神が異世界に転生させてくれるというので、「刺されても死なないような、世界で一番強い存在に」と願って転生させてもらう。\n"
+        "なんと世界が転生したのは、ただの若木だった。"
+    )
+    assert metadata["narrative_synopsis"] == (
+        "引きニートの言葉世界はある日、コンビニ強盗から女性を守って死んでしまう。\n"
+        "女神が異世界に転生させてくれるというので、「刺されても死なないような、世界で一番強い存在に」と願って転生させてもらう。\n"
+        "なんと世界が転生したのは、ただの若木だった。"
+    )
+    assert metadata["synopsis"] == metadata["narrative_synopsis"]
+    assert metadata["source_synopsis_blocks"][0]["classification"] == "promotion"
+    assert metadata["source_synopsis_blocks"][0]["included_in_narrative"] is False
+
+
+def test_kakuyomu_overview_without_promotion_preserves_all_narrative_blocks() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+    html = f"""
+    <html><body>
+      <div><h2>概要</h2></div>
+      <div><div class="CollapseTextWithKakuyomuLinks_collapseText__fixture">
+        <p>主人公は静かな村で暮らしていた。</p>
+        <p>やがて旅に出て、仲間と出会った。</p>
+      </div></div>
+      <a href="/works/{work_id}/episodes/e1">第1話</a>
+    </body></html>
+    """
+
+    metadata = source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
+
+    assert metadata["narrative_synopsis"] == "主人公は静かな村で暮らしていた。\nやがて旅に出て、仲間と出会った。"
+    assert len(metadata["source_synopsis_blocks"]) == 2
+    assert all(block["included_in_narrative"] for block in metadata["source_synopsis_blocks"])
+
+
+def test_kakuyomu_promotion_at_end_is_excluded_but_narrative_keywords_are_preserved() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+    html = f"""
+    <html><body>
+      <div><h2>概要</h2></div>
+      <div>
+        <div class="CollapseTextWithKakuyomuLinks_collapseText__fixture">
+          <p>物語の中でコミカライズ版の発売日が話題になった。</p>
+        </div>
+        <div class="WorkIntroductionBox_catch__fixture">書籍化決定！</div>
+      </div>
+      <a href="/works/{work_id}/episodes/e1">第1話</a>
+    </body></html>
+    """
+
+    metadata = source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
+
+    assert metadata["narrative_synopsis"] == "物語の中でコミカライズ版の発売日が話題になった。"
+    assert metadata["source_synopsis_blocks"][-1]["classification"] == "promotion"
+    assert metadata["source_synopsis_blocks"][-1]["included_in_narrative"] is False
+
+
 def test_parse_metadata_html_prefers_grouped_next_data_toc_over_partial_links() -> None:
     source = KakuyomuSource()
     work_id = "822139845959461179"

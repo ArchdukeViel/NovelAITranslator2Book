@@ -253,7 +253,12 @@ class ActivityWorkerService:
             if not isinstance(chapters, str) or not chapters.strip():
                 chapters = str(metadata.get("chapter_id") or "all")
 
-            meta = self.orchestrator.storage.load_metadata(novel_id) or {}
+            load_metadata_for_crawl = getattr(
+                self.orchestrator.storage,
+                "load_metadata_for_crawl",
+                self.orchestrator.storage.load_metadata,
+            )
+            meta = load_metadata_for_crawl(novel_id) or {}
             chapter_list = meta.get("chapters")
             total = len(chapter_list) if isinstance(chapter_list, list) else None
 

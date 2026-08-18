@@ -40,11 +40,13 @@ class _CrawlSource(SourceAdapter):
         self,
         *,
         chapter_count: int = 4,
+        chapter_ids: list[int] | None = None,
         fail_urls: set[str] | None = None,
         payloads: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         self.source_key = "test_source"
         self._chapter_count = chapter_count
+        self._chapter_ids = chapter_ids or list(range(1, chapter_count + 1))
         self._fail_urls = fail_urls or set()
         self._payloads = payloads or {}
         self.fetch_count = 0
@@ -67,7 +69,7 @@ class _CrawlSource(SourceAdapter):
                     "title": f"Chapter {i}",
                     "url": f"http://example.test/{url}/{i}",
                 }
-                for i in range(1, self._chapter_count + 1)
+                for i in self._chapter_ids
             ],
         }
 
@@ -208,6 +210,94 @@ async def test_scoped_crawl_preserves_complete_index_membership() -> None:
     # Unselected chapters were carried forward byte-identically.
     for cid in ("2", "3", "4"):
         assert _bundle_bytes_for(storage, novel_id, active.generation_id, cid) == bundle_bytes[cid]
+
+
+@pytest.mark.asyncio
+async def test_update_consumes_newer_metadata_projection_when_active_index_is_stale() -> None:
+    """A metadata refresh must hand its newer index to the next chapter crawl."""
+    storage = _fresh_storage()
+    source = _CrawlSource(chapter_count=4, chapter_ids=[1, 2, 3, 5])
+    novel_id = "novel-metadata-handoff"
+    first_generation = await _full_crawl(storage, source, novel_id)
+    old_bundle_bytes = {
+        cid: _bundle_bytes_for(storage, novel_id, first_generation, cid) for cid in ("1", "2", "3", "5")
+    }
+
+    source._chapter_ids = [1, 2, 3, 4, 5]
+    refreshed_metadata = await source.fetch_metadata(novel_id)
+    storage.save_metadata(novel_id, refreshed_metadata)
+
+    active_metadata = storage.load_metadata(novel_id)
+    assert active_metadata is not None
+    assert [chapter["id"] for chapter in active_metadata["chapters"]] == ["1", "2", "3", "5"]
+    crawl_metadata = storage.load_metadata_for_crawl(novel_id)
+    assert crawl_metadata is not None
+    assert [chapter["id"] for chapter in crawl_metadata["chapters"]] == ["1", "2", "3", "4", "5"]
+
+    result = await _make_orchestrator(storage, source).scrape_chapters("test_source", novel_id, "all", mode="update")
+
+    assert result["failed"] == 0
+    assert result["succeeded"] == 1
+    assert result["skipped"] == 4
+    active = storage.get_active_generation(novel_id)
+    assert active is not None
+    manifest = storage.load_generation_manifest(novel_id, active.generation_id)
+    assert manifest is not None
+    assert manifest.expected_chapters == 5
+    assert _bundle_ids_in(storage, novel_id, active.generation_id) == {"1", "2", "3", "4", "5"}
+    for cid, bundle_bytes in old_bundle_bytes.items():
+        assert _bundle_bytes_for(storage, novel_id, active.generation_id, cid) == bundle_bytes
+
+    active_metadata_after = storage.load_metadata(novel_id)
+    assert active_metadata_after is not None
+    assert len(active_metadata_after["chapters"]) == 5
+
+    second_result = await _make_orchestrator(storage, source).scrape_chapters(
+        "test_source", novel_id, "all", mode="update"
+    )
+    assert second_result["failed"] == 0
+    assert second_result["succeeded"] == 0
+    assert second_result["skipped"] == 5
+
+
+@pytest.mark.asyncio
+async def test_unchanged_refetch_refreshes_source_state_and_converges() -> None:
+    """An unchanged body refetch still records the current source index state."""
+    storage = _fresh_storage()
+    source = _CrawlSource(chapter_count=3)
+    novel_id = "novel-source-state-convergence"
+    await _full_crawl(storage, source, novel_id)
+
+    refreshed_metadata = storage.load_metadata(novel_id)
+    assert refreshed_metadata is not None
+    for index, chapter in enumerate(refreshed_metadata["chapters"], start=1):
+        chapter["source_update_date"] = f"2025-01-{index:02d}"
+    storage.save_metadata(novel_id, refreshed_metadata)
+
+    first_update = await _make_orchestrator(storage, source).scrape_chapters(
+        "test_source", novel_id, "all", mode="update"
+    )
+    assert first_update["failed"] == 0
+    assert first_update["succeeded"] == 0
+    assert first_update["skipped"] == 3
+
+    state = storage.load_source_state(novel_id)
+    assert state is not None
+    assert state["ordered_episode_ids"] == ["1", "2", "3"]
+    assert [state["episode_map"][str(index)]["source_update_date"] for index in range(1, 4)] == [
+        "2025-01-01",
+        "2025-01-02",
+        "2025-01-03",
+    ]
+
+    fetch_count_after_first_update = source.fetch_count
+    second_update = await _make_orchestrator(storage, source).scrape_chapters(
+        "test_source", novel_id, "all", mode="update"
+    )
+    assert second_update["failed"] == 0
+    assert second_update["succeeded"] == 0
+    assert second_update["skipped"] == 3
+    assert source.fetch_count == fetch_count_after_first_update
 
 
 @pytest.mark.asyncio

@@ -141,7 +141,14 @@ class PublicCatalogService:
 
     @staticmethod
     def public_synopsis_from_metadata(meta: dict[str, Any]) -> str | None:
-        for key in ("translated_synopsis", "translated_description", "synopsis", "description"):
+        for key in (
+            "translated_narrative_synopsis",
+            "translated_synopsis",
+            "narrative_synopsis",
+            "synopsis",
+            "translated_description",
+            "description",
+        ):
             value = _optional_str(meta.get(key))
             if value:
                 return value

@@ -107,6 +107,7 @@ from novelai.storage.novels import (
     list_metadata_history,
     list_novels,
     load_metadata,
+    load_metadata_for_crawl,
     load_metadata_snapshot,
     load_source_state,
     resolve_onboarding_status,
@@ -629,6 +630,7 @@ class StorageService:
     delete_novel = delete_novel
     save_metadata = save_metadata
     load_metadata = load_metadata
+    load_metadata_for_crawl = load_metadata_for_crawl
     save_source_state = save_source_state
     load_source_state = load_source_state
     _generations_dir = _generations_dir

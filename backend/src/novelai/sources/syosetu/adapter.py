@@ -27,6 +27,7 @@ from novelai.sources.quality import (
 )
 from novelai.sources.source_layout import normalize_source_blocks
 from novelai.sources.status import normalize_publication_status, publication_status_payload
+from novelai.sources.synopsis import normalize_synopsis_metadata
 from novelai.sources.syosetu.parser import (
     AFTERWORD_SELECTORS,
     BODY_SELECTORS,
@@ -452,6 +453,11 @@ class SyosetuNcodeSource(SourceAdapter):
         source_genre_name, genre_slug = self._extract_source_genre(soup)
         source_keywords = self._extract_source_keywords(soup)
         status_payload = self._publication_status_payload_from_html(html, url)
+        synopsis_metadata = normalize_synopsis_metadata(
+            synopsis,
+            source_key=self.source_key,
+            separator="\n",
+        )
 
         novel_id = self.normalize_novel_id(url)
         return {
@@ -462,6 +468,7 @@ class SyosetuNcodeSource(SourceAdapter):
             "title": title,
             "author": author,
             "synopsis": synopsis,
+            **synopsis_metadata,
             "published_at": published_at,
             "updated_at": updated_at,
             "chapters": chapters,
@@ -561,6 +568,17 @@ class SyosetuNcodeSource(SourceAdapter):
                 metadata[key] = api_entry[key]
 
         metadata.update(metadata_provenance)
+
+        raw_synopsis = api_entry.get("synopsis")
+        if not isinstance(raw_synopsis, str) or not raw_synopsis.strip():
+            raw_synopsis = metadata.get("source_synopsis") or metadata.get("synopsis")
+        metadata.update(
+            normalize_synopsis_metadata(
+                raw_synopsis,
+                source_key=self.source_key,
+                separator="\n",
+            )
+        )
 
         infotop_url = self._infotop_url(url)
         try:

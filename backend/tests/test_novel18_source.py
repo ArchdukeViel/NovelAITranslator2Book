@@ -189,6 +189,67 @@ def test_novel18_parse_metadata_html_extracts_completed_publication_status() -> 
     assert metadata["source_publication_status"] == "完結済"
 
 
+def test_novel18_parse_metadata_html_keeps_work_metadata_separate_from_age_notice() -> None:
+    source = Novel18SyosetuSource()
+    html = """
+    <html>
+      <head><title>年齢確認</title></head>
+      <body>
+        <section class="age-gate">
+          <h1>年齢確認</h1>
+          <p>18歳未満閲覧禁止ページです。</p>
+          <button id="yes18">Enter</button>
+        </section>
+        <main>
+          <h1 class="p-novel__title">  Canonical Adult Story  </h1>
+          <div id="novel_writername">  Canonical Adult Author  </div>
+          <div id="novel_ex">
+            Actual synopsis line. <br />
+
+
+            Second actual synopsis line.
+          </div>
+          <a href="/n0813kx/1/">First chapter</a>
+        </main>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, "https://novel18.syosetu.com/n0813kx/")
+
+    assert metadata["title"] == "Canonical Adult Story"
+    assert metadata["author"] == "Canonical Adult Author"
+    assert metadata["synopsis"] == "Actual synopsis line.\nSecond actual synopsis line."
+    assert "年齢確認" not in metadata["title"]
+    assert "年齢確認" not in metadata["synopsis"]
+
+
+def test_novel18_narrative_synopsis_retains_adult_story_prose() -> None:
+    source = Novel18SyosetuSource()
+    html = """
+    <html>
+      <body>
+        <h1 class="p-novel__title">Adult Story</h1>
+        <div id="novel_writername">Author</div>
+        <div id="novel_ex">
+          18歳の主人公は女冒険者を聖水要員として扱っていた。<br />
+          彼女は迷宮で彼の運命を変える。<br />
+          ※更新に関するお知らせ。
+        </div>
+        <a href="/n0813kx/1/">Chapter One</a>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, "https://novel18.syosetu.com/n0813kx/")
+
+    assert metadata["narrative_synopsis"] == (
+        "18歳の主人公は女冒険者を聖水要員として扱っていた。\n彼女は迷宮で彼の運命を変える。"
+    )
+    assert "18歳" in metadata["narrative_synopsis"]
+    assert "聖水要員" in metadata["narrative_synopsis"]
+
+
 def test_novel18_parse_metadata_html_extracts_ongoing_publication_status() -> None:
     source = Novel18SyosetuSource()
     html = """

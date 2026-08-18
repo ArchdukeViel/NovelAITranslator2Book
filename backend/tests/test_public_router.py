@@ -175,6 +175,68 @@ def _seed_public_glossary_entry(db_session, novel: Novel) -> NovelGlossaryEntry:
     return entry
 
 
+@pytest.mark.parametrize("source_key", ["syosetu_ncode", "novel18_syosetu", "kakuyomu"])
+@pytest.mark.parametrize("is_published", [False, True])
+def test_publication_authorization_matrix_is_source_agnostic(
+    client: TestClient,
+    storage: StorageService,
+    db_session,
+    source_key: str,
+    is_published: bool,
+) -> None:
+    """All supported sources use the same ordinary publication contract."""
+    novel_id = f"matrix-{source_key}-{str(is_published).lower()}"
+    _seed_novel(
+        storage,
+        novel_id,
+        source_key=source_key,
+        title=f"Matrix {source_key}",
+        chapters=[{"id": "ch001", "title": "Chapter 1", "num": 1}],
+    )
+    _seed_translated_chapter(storage, novel_id, "ch001")
+    novel = _seed_db_catalog_novel(
+        db_session,
+        novel_id,
+        title=f"Matrix {source_key}",
+        source_key=source_key,
+        is_published=is_published,
+        chapter_count=1,
+        translated_count=1,
+    )
+
+    if source_key == "novel18_syosetu":
+        adult_genre = Genre(
+            slug=f"{novel_id}-adult",
+            name_ja="成人向け",
+            name_en="adult",
+            is_adult=True,
+            display_order=1,
+        )
+        novel.genres.append(adult_genre)
+        db_session.commit()
+
+    catalog = client.get("/api/public/catalog")
+    detail = client.get(f"/api/public/novels/{novel_id}")
+    chapters = client.get(f"/api/public/novels/{novel_id}/chapters")
+
+    if is_published:
+        assert catalog.status_code == 200
+        assert novel_id in {item["novel_id"] for item in catalog.json()["novels"]}
+        assert detail.status_code == 200
+        assert chapters.status_code == 200
+        assert chapters.json()[0]["chapter_id"] == "ch001"
+        if source_key == "novel18_syosetu":
+            assert detail.json()["genres"] == []
+            adult_detail = client.get(f"/api/public/novels/{novel_id}?include_adult=true")
+            assert adult_detail.status_code == 200
+            assert adult_detail.json()["genres"][0]["slug"] == f"{novel_id}-adult"
+    else:
+        assert catalog.status_code == 200
+        assert novel_id not in {item["novel_id"] for item in catalog.json()["novels"]}
+        assert detail.status_code == 404
+        assert chapters.status_code == 404
+
+
 # ---------------------------------------------------------------------------
 # Catalog endpoint
 # ---------------------------------------------------------------------------
@@ -985,8 +1047,11 @@ class TestGetNovel:
                 "translated_title": "English Title",
                 "author": "原作者",
                 "translated_author": "Original Author",
-                "synopsis": "日本語のあらすじ",
-                "translated_synopsis": "English synopsis.",
+                "source_synopsis": "書籍化のお知らせ。\n日本語のあらすじ",
+                "narrative_synopsis": "日本語のあらすじ",
+                "synopsis": "書籍化のお知らせ。\n日本語のあらすじ",
+                "translated_synopsis": "Legacy full synopsis.",
+                "translated_narrative_synopsis": "English synopsis.",
                 "publication_status": "ongoing",
                 "chapters": [
                     {

@@ -604,6 +604,19 @@ class SynopsisSource(StubSource):
         return metadata
 
 
+class NarrativeSynopsisSource(StubSource):
+    async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, object]:
+        metadata = await super().fetch_metadata(url, max_chapter=max_chapter)
+        metadata.update(
+            {
+                "source_synopsis": "書籍化のお知らせ。\n主人公は旅に出る。",
+                "narrative_synopsis": "主人公は旅に出る。",
+                "synopsis": "主人公は旅に出る。",
+            }
+        )
+        return metadata
+
+
 class BatchMetadataProvider(MockTranslationProvider):
     def __init__(
         self,
@@ -1559,6 +1572,48 @@ async def test_scrape_metadata_batches_title_author_and_synopsis(orchestration_e
     assert stored["metadata_translation_status"] == "completed"
     first_batch = json.loads(provider.prompts[0].split("<metadata_items>", 1)[1].split("</metadata_items>", 1)[0])
     assert [item["id"] for item in first_batch["items"]] == ["novel_title", "author", "synopsis"]
+
+
+@pytest.mark.asyncio
+async def test_scrape_metadata_translates_narrative_synopsis_and_preserves_raw_overview(orchestration_env) -> None:
+    provider = BatchMetadataProvider()
+    source = NarrativeSynopsisSource()
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "novel-1",
+        {
+            "title": "Original Novel",
+            "synopsis": "Old promotion",
+            "translated_synopsis": "Old promotion translation",
+            "chapters": [
+                {"id": "1", "title": "Chapter One"},
+                {"id": "2", "title": "Chapter Two"},
+            ],
+        },
+    )
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: source,
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
+
+    assert metadata["source_synopsis"] == "書籍化のお知らせ。\n主人公は旅に出る。"
+    assert metadata["narrative_synopsis"] == "主人公は旅に出る。"
+    assert metadata["translated_narrative_synopsis"] == "[TRANSLATED] 主人公は旅に出る。"
+    assert metadata["translated_synopsis"] == "[TRANSLATED] 主人公は旅に出る。"
+    stored = storage.load_metadata("novel-1")
+    assert stored["source_synopsis"] == metadata["source_synopsis"]
+    assert stored["translated_synopsis"] == metadata["translated_synopsis"]
+    first_batch = json.loads(provider.prompts[0].split("<metadata_items>", 1)[1].split("</metadata_items>", 1)[0])
+    synopsis_item = next(item for item in first_batch["items"] if item["id"] == "synopsis")
+    assert synopsis_item["source_text"] == "主人公は旅に出る。"
+    assert "書籍化のお知らせ" not in synopsis_item["source_text"]
 
 
 @pytest.mark.asyncio

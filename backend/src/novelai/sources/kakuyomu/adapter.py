@@ -30,6 +30,7 @@ from novelai.sources.kakuyomu.parser import (
 )
 from novelai.sources.quality import detect_age_gate_page, detect_block_page_text
 from novelai.sources.status import publication_status_payload
+from novelai.sources.synopsis import normalize_synopsis_metadata
 from novelai.utils.text_normalization import normalize_text
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ class KakuyomuSource(SourceAdapter):
     BODY_SELECTORS = BODY_SELECTORS
     TITLE_SELECTORS = TITLE_SELECTORS
     AUTHOR_SELECTORS = (
+        "[class*='WorkAuthorBox_'] a[href^='/users/']",
         ".widget-authorName",
         "[itemprop='author']",
         "[rel='author']",
@@ -195,7 +197,92 @@ class KakuyomuSource(SourceAdapter):
         content = meta.get("content") if isinstance(meta, Tag) else None
         return content.strip() if isinstance(content, str) and content.strip() else None
 
-    def _extract_synopsis(self, soup: BeautifulSoup) -> str | None:
+    @staticmethod
+    def _text_blocks(node: Tag) -> list[str]:
+        text = node.get_text("\n", strip=True)
+        return [normalized for normalized in (normalize_text(line) for line in text.splitlines()) if normalized]
+
+    def _overview_region(self, soup: BeautifulSoup) -> Tag | None:
+        heading = next(
+            (
+                candidate
+                for candidate in soup.find_all(("h2", "h3"))
+                if isinstance(candidate, Tag) and candidate.get_text(" ", strip=True) == "概要"
+            ),
+            None,
+        )
+        if not isinstance(heading, Tag) or not isinstance(heading.parent, Tag):
+            return None
+
+        heading_wrapper = heading.parent
+        parent = heading_wrapper.parent
+        if not isinstance(parent, Tag):
+            return None
+        children = [child for child in parent.find_all(recursive=False) if isinstance(child, Tag)]
+        try:
+            heading_index = children.index(heading_wrapper)
+        except ValueError:
+            return None
+
+        following = children[heading_index + 1 :]
+        if not following:
+            return None
+        # The first sibling after the 概要 heading is the overview content;
+        # status, author, reviews, and related works follow it in the page DOM.
+        return following[0]
+
+    def _extract_synopsis_blocks(self, soup: BeautifulSoup) -> list[dict[str, str]]:
+        region = self._overview_region(soup)
+        if region is None:
+            return []
+
+        nodes: list[tuple[Tag, str]] = []
+        for node in region.select("[class*='WorkIntroductionBox_catch_']"):
+            if isinstance(node, Tag):
+                nodes.append((node, "promotion"))
+        for node in region.select("[class*='CollapseTextWithKakuyomuLinks_']"):
+            if isinstance(node, Tag):
+                nodes.append((node, "narrative"))
+
+        if nodes:
+            descendants = list(region.descendants)
+            nodes.sort(key=lambda item: descendants.index(item[0]) if item[0] in descendants else len(descendants))
+            blocks: list[dict[str, str]] = []
+            for node, classification in nodes:
+                for text in self._text_blocks(node):
+                    blocks.append(
+                        {
+                            "id": f"b{len(blocks) + 1:04d}",
+                            "text": text,
+                            "classification": classification,
+                        }
+                    )
+            if blocks:
+                return blocks
+
+        # DOM fixtures and older Kakuyomu layouts may expose ordinary
+        # paragraphs without the current hashed component classes.  Restrict
+        # the fallback to the overview region so reviews and related works are
+        # never mistaken for synopsis text.
+        blocks = []
+        for node in region.find_all(("p", "blockquote")):
+            if not isinstance(node, Tag):
+                continue
+            for text in self._text_blocks(node):
+                blocks.append({"id": f"b{len(blocks) + 1:04d}", "text": text})
+        return blocks
+
+    def _extract_synopsis_metadata(self, soup: BeautifulSoup) -> dict[str, Any]:
+        blocks = self._extract_synopsis_blocks(soup)
+        if blocks:
+            raw = "\n".join(block["text"] for block in blocks)
+            return normalize_synopsis_metadata(
+                raw,
+                source_key=self.source_key,
+                blocks=blocks,
+                separator="\n",
+            )
+
         for selector in (
             ".widget-workSynopsis",
             ".widget-work-introduction",
@@ -208,11 +295,16 @@ class KakuyomuSource(SourceAdapter):
                 continue
             content = node.get("content")
             if isinstance(content, str) and content.strip():
-                return normalize_text(content)
+                return normalize_synopsis_metadata(content, source_key=self.source_key)
             text = node.get_text("\n", strip=True)
             if text:
-                return normalize_text(text)
-        return None
+                return normalize_synopsis_metadata(text, source_key=self.source_key)
+        return {}
+
+    def _extract_synopsis(self, soup: BeautifulSoup) -> str | None:
+        metadata = self._extract_synopsis_metadata(soup)
+        value = metadata.get("narrative_synopsis") or metadata.get("source_synopsis")
+        return value if isinstance(value, str) and value.strip() else None
 
     def _extract_episode_title(self, anchor: Tag, fallback_index: int) -> str:
         title = self._first_text(anchor, self.EPISODE_TITLE_SELECTORS)
@@ -386,7 +478,10 @@ class KakuyomuSource(SourceAdapter):
         novel_id = self.normalize_novel_id(url)
         title = self._extract_work_title(soup) or f"Work {novel_id}"
         author = self._extract_author(soup)
-        synopsis = self._extract_synopsis(soup)
+        synopsis_metadata = self._extract_synopsis_metadata(soup)
+        synopsis = synopsis_metadata.get("synopsis")
+        if not isinstance(synopsis, str) or not synopsis.strip():
+            synopsis = None
         chapters, provenance = self._extract_chapters(soup, url)
         status_text = self._extract_publication_status_text(soup)
         published_at, updated_at = self._extract_dates(soup)
@@ -402,6 +497,7 @@ class KakuyomuSource(SourceAdapter):
             "title": title,
             "author": author,
             "synopsis": synopsis,
+            **synopsis_metadata,
             "chapters": chapters,
             **provenance,
             **publication_status_payload(status_text),

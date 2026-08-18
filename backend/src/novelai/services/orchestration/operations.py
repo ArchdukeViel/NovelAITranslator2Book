@@ -71,6 +71,7 @@ class OperationsService:
                     novel_id,
                     chapters,
                     mode=mode,
+                    metadata=meta,
                 ),
                 timeout=timeout,
             )

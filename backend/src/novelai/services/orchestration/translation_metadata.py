@@ -351,7 +351,7 @@ def _metadata_request_estimate(
     synopsis_source_key = next(
         (
             key
-            for key in ("synopsis", "description", "summary")
+            for key in ("narrative_synopsis", "synopsis", "description", "summary")
             if isinstance(metadata.get(key), str) and str(metadata.get(key)).strip()
         ),
         None,
@@ -530,20 +530,30 @@ async def _translate_metadata_fields(
         else:
             novel_items.append({"id": "author", "field": "author", "source_text": author.strip()})
 
-    synopsis = (
-        translated_metadata.get("synopsis")
-        or translated_metadata.get("description")
-        or translated_metadata.get("summary")
+    synopsis_source_key = next(
+        (
+            key
+            for key in ("narrative_synopsis", "synopsis", "description", "summary")
+            if isinstance(translated_metadata.get(key), str) and str(translated_metadata.get(key)).strip()
+        ),
+        None,
     )
+    synopsis = translated_metadata.get(synopsis_source_key) if synopsis_source_key is not None else None
     if isinstance(synopsis, str) and synopsis:
+        previous_synopsis = previous.get("narrative_synopsis")
+        if not isinstance(previous_synopsis, str) or not previous_synopsis.strip():
+            previous_synopsis = previous.get("synopsis") or previous.get("description") or previous.get("summary")
+        previous_translation = previous.get("translated_narrative_synopsis") or previous.get("translated_synopsis")
         if can_reuse_previous and _can_reuse_metadata_translation(
             synopsis,
-            previous.get("synopsis"),
-            previous.get("translated_synopsis"),
+            previous_synopsis,
+            previous_translation,
             "synopsis",
         ):
-            translated_metadata["translated_synopsis"] = previous["translated_synopsis"]
+            translated_metadata["translated_narrative_synopsis"] = previous_translation
+            translated_metadata["translated_synopsis"] = previous_translation
         elif cached := _cached_metadata_translation(self, synopsis, "synopsis"):
+            translated_metadata["translated_narrative_synopsis"] = cached
             translated_metadata["translated_synopsis"] = cached
         else:
             novel_items.append({"id": "synopsis", "field": "synopsis", "source_text": synopsis.strip()})
@@ -555,6 +565,7 @@ async def _translate_metadata_fields(
         if "author" in novel_translations:
             translated_metadata["translated_author"] = novel_translations["author"]
         if "synopsis" in novel_translations:
+            translated_metadata["translated_narrative_synopsis"] = novel_translations["synopsis"]
             translated_metadata["translated_synopsis"] = novel_translations["synopsis"]
 
     previous_chapters = previous.get("chapters", [])
@@ -712,8 +723,16 @@ def estimate_translation_requests(
     source_chars = sum(int(item.get("source_chars") or 0) for item in per_chapter)
     body_input_tokens = max(0, math.ceil(source_chars / 3))
     body_output_tokens = estimated_chunks * settings.GEMINI_ESTIMATED_OUTPUT_TOKENS
+    metadata_synopsis_key = next(
+        (
+            key
+            for key in ("narrative_synopsis", "synopsis", "description", "summary")
+            if isinstance(metadata.get(key), str) and str(metadata.get(key)).strip()
+        ),
+        None,
+    )
     metadata_source_chars = sum(
-        len(str(metadata.get(key) or "")) for key in ("title", "author", "synopsis", "description", "summary")
+        len(str(metadata.get(key) or "")) for key in ("title", "author", metadata_synopsis_key) if key is not None
     )
     metadata_input_tokens = max(0, math.ceil(metadata_source_chars / 3))
     metadata_output_tokens = metadata_requests["total"] * 256

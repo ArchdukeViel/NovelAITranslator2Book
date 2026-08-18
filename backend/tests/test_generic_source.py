@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 
 from novelai.sources.generic import GenericSource
+from novelai.sources.synopsis import normalize_synopsis_metadata
 
 
 def _soup(html: str) -> BeautifulSoup:
@@ -86,6 +87,18 @@ class TestGenericSourceHelpers:
         fetch_service = object()
         src = GenericSource(fetch_service=fetch_service)  # type: ignore[arg-type]
         assert src._fetch_service is fetch_service
+
+    def test_ambiguous_synopsis_is_preserved_conservatively(self) -> None:
+        raw = "主人公はコミカライズ版の発売日を待ちながら旅を続ける。"
+
+        metadata = normalize_synopsis_metadata(raw, source_key="generic")
+
+        assert metadata["narrative_synopsis"] == raw
+        assert metadata["source_synopsis"] == raw
+
+    def test_missing_synopsis_blocks_return_no_invented_metadata(self) -> None:
+        assert normalize_synopsis_metadata(None, source_key="generic") == {}
+        assert GenericSource._extract_synopsis(_soup("<html><body></body></html>")) is None
 
 
 class TestGenericRubyStripping:

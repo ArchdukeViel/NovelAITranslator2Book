@@ -115,6 +115,63 @@ def test_parse_metadata_html_detects_multi_chapter_series() -> None:
     ]
 
 
+def test_parse_metadata_html_extracts_normalized_title_author_and_synopsis() -> None:
+    source = SyosetuNcodeSource()
+    html = """
+    <html>
+      <body>
+        <nav><h1>Navigation title must not win</h1></nav>
+        <main>
+          <h1 class="p-novel__title">  Canonical Story  </h1>
+          <div id="novel_writername">  Canonical Author  </div>
+          <div id="novel_ex">
+            First synopsis line. <br />
+
+
+            Second synopsis line.
+          </div>
+          <a href="/n8733gf/1/">Chapter One</a>
+        </main>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, "https://ncode.syosetu.com/n8733gf/")
+
+    assert metadata["title"] == "Canonical Story"
+    assert metadata["author"] == "Canonical Author"
+    assert metadata["synopsis"] == "First synopsis line.\nSecond synopsis line."
+
+
+def test_parse_metadata_html_separates_boundary_notices_from_syosetu_narrative() -> None:
+    source = SyosetuNcodeSource()
+    html = """
+    <html>
+      <body>
+        <h1 class="p-novel__title">Story</h1>
+        <div id="novel_writername">Author</div>
+        <div id="novel_ex">
+          書籍化のお知らせ。<br />
+          https://example.com/book<br />
+          日本で研究者をしていた主人公は、異世界へ転生した。<br />
+          主人公はコミカライズ版の発売日を待ちながら旅を続ける。<br />
+          ※書籍版には加筆があります。
+        </div>
+        <a href="/n8733gf/1/">Chapter One</a>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, "https://ncode.syosetu.com/n8733gf/")
+
+    assert metadata["narrative_synopsis"] == (
+        "日本で研究者をしていた主人公は、異世界へ転生した。\n主人公はコミカライズ版の発売日を待ちながら旅を続ける。"
+    )
+    assert metadata["source_synopsis_blocks"][0]["included_in_narrative"] is False
+    assert metadata["source_synopsis_blocks"][1]["classification"] == "external_link"
+    assert metadata["source_synopsis_blocks"][-1]["classification"] == "notice"
+
+
 def test_parse_metadata_html_detects_chapter_parts_and_source_dates() -> None:
     source = SyosetuNcodeSource()
     html = """

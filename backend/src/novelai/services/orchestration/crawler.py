@@ -178,6 +178,28 @@ def _mark_metadata_translation_failure(meta: dict[str, Any], exc: Exception, *, 
     meta["metadata_translation_error"] = _bounded_metadata_translation_error(exc)
 
 
+def _clear_stale_metadata_translations(
+    meta: dict[str, Any],
+    previous: dict[str, Any] | None,
+) -> None:
+    """Prevent an old synopsis translation from masking corrected source text."""
+    if not previous:
+        return
+    current_source = meta.get("narrative_synopsis") or meta.get("synopsis") or meta.get("description")
+    previous_source = (
+        previous.get("narrative_synopsis")
+        or previous.get("synopsis")
+        or previous.get("description")
+        or previous.get("summary")
+    )
+    if not isinstance(current_source, str) or not current_source.strip():
+        return
+    if not isinstance(previous_source, str) or current_source.strip() == previous_source.strip():
+        return
+    for key in ("translated_narrative_synopsis", "translated_synopsis", "translated_description"):
+        meta[key] = None
+
+
 async def _translate_and_mark_metadata(
     self: Any,
     meta: dict[str, Any],
@@ -236,7 +258,15 @@ def _bootstrap_source_texts(storage: Any, novel_id: str, meta: dict[str, Any]) -
     if texts:
         return texts
 
-    for key in ("title", "translated_title", "author", "synopsis", "description", "summary"):
+    for key in (
+        "title",
+        "translated_title",
+        "author",
+        "narrative_synopsis",
+        "synopsis",
+        "description",
+        "summary",
+    ):
         value = meta.get(key)
         if isinstance(value, str) and value.strip():
             texts.append(value)
@@ -350,6 +380,7 @@ async def scrape_metadata(
     meta.setdefault("input_adapter_key", "web")
     meta.setdefault("context_group_id", novel_id)
 
+    _clear_stale_metadata_translations(meta, existing_metadata)
     meta = await _translate_and_mark_metadata(self, meta, existing_metadata)
     self.storage.save_metadata(novel_id, meta)
     safely_refresh_catalog_projection_after_storage_write(
@@ -425,6 +456,7 @@ async def scrape_chapters(
     progress_callback: Callable[[str], None] | None = None,
     cancellation_check: Callable[[], bool] | None = None,
     progress_events_callback: Callable[[CrawlProgressEvent], None] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Fetch chapter content from the source site and persist it.
 
@@ -467,6 +499,7 @@ async def scrape_chapters(
             progress_callback,
             cancellation_check,
             progress_events_callback,
+            metadata=metadata,
         )
 
     terminal_status = result.get("terminal_status", TERMINAL_STATUS_FAILED)
@@ -499,6 +532,7 @@ async def _scrape_chapters_impl(
     progress_callback: Callable[[str], None] | None,
     cancellation_check: Callable[[], bool] | None = None,
     progress_events_callback: Callable[[CrawlProgressEvent], None] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Internal implementation of scrape_chapters (called under lock).
 
@@ -560,7 +594,8 @@ async def _scrape_chapters_impl(
         # the source of truth after activation, and a failed stage is
         # rolled back without touching the legacy file.
     else:
-        meta = self.storage.load_metadata(novel_id)
+        load_metadata_for_crawl = getattr(self.storage, "load_metadata_for_crawl", self.storage.load_metadata)
+        meta = metadata if metadata is not None else load_metadata_for_crawl(novel_id)
         if not meta:
             raise RuntimeError("Metadata not found; run scrape-metadata first.")
 
@@ -772,6 +807,14 @@ async def _scrape_chapters_impl(
                     self.storage.seed_generation_from_active(novel_id, generation_id, [chapter_id])
                     skipped += 1
                     chapter_dispositions[chapter_id] = DISPOSITION_UNCHANGED_SELECTED
+                    scraped_chapters_for_state.append(
+                        {
+                            **chapter,
+                            "id": chapter_id,
+                            "source_episode_id": ep_id,
+                            "content_hash": new_signature,
+                        }
+                    )
                     _emit(
                         STAGE_BODY_CRAWL,
                         "skipped",
