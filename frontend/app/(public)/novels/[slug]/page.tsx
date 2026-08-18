@@ -74,45 +74,30 @@ function chapterSectionKey(chapter: PublicChapterSummary): string | null {
   return title ? `legacy:${title}` : null;
 }
 
-function groupChaptersByVolume(chapters: PublicChapterSummary[], order: "asc" | "desc" = "asc"): VolumeGroup[] {
-  const groups = new Map<string, VolumeGroup>();
+function groupChaptersByVolume(chapters: PublicChapterSummary[]): VolumeGroup[] {
+  const groups: VolumeGroup[] = [];
   const hasSections = chapters.some((chapter) => chapterSectionKey(chapter) !== null);
+  let lastGroupKey: string | null = null;
 
   for (const ch of chapters) {
     const sectionKey = chapterSectionKey(ch);
-    const key = sectionKey ?? (hasSections ? "ungrouped" : "flat");
-    if (!groups.has(key)) {
+    const groupKey = sectionKey ?? (hasSections ? "ungrouped" : "flat");
+    let group = groups.at(-1);
+    if (!group || lastGroupKey !== groupKey) {
       const label = ch.section_title?.trim() || ch.part?.trim() || (sectionKey ? `Section ${ch.section_ordinal ?? ""}`.trim() : "");
-      groups.set(key, {
-        key,
+      group = {
+        key: `${groupKey}:run:${groups.length}`,
         label: label || (hasSections ? "Chapters" : ""),
         ordinal: ch.section_ordinal ?? null,
         chapters: [],
-      });
+      };
+      groups.push(group);
+      lastGroupKey = groupKey;
     }
-    groups.get(key)!.chapters.push(ch);
+    group.chapters.push(ch);
   }
 
-  // Build result sorted by the first chapter number in each group
-  const groupsArray = Array.from(groups.values());
-  for (const g of groupsArray) {
-    g.chapters.sort((a, b) =>
-      order === "asc"
-        ? (a.chapter_number ?? 0) - (b.chapter_number ?? 0)
-        : (b.chapter_number ?? 0) - (a.chapter_number ?? 0),
-    );
-  }
-  groupsArray.sort((a, b) => {
-    if (a.ordinal !== null && b.ordinal !== null && a.ordinal !== b.ordinal) {
-      return order === "asc" ? a.ordinal - b.ordinal : b.ordinal - a.ordinal;
-    }
-    const aMin = Math.min(...a.chapters.map((c) => c.chapter_number ?? 0));
-    const bMin = Math.min(...b.chapters.map((c) => c.chapter_number ?? 0));
-    const result = aMin - bMin || a.label.localeCompare(b.label) || a.key.localeCompare(b.key);
-    return order === "asc" ? result : -result;
-  });
-
-  return groupsArray;
+  return groups;
 }
 
 function PageLoadingState() {
@@ -334,7 +319,7 @@ export default function NovelDetailPage() {
                 <button type="button" onClick={() => setChapterOrder((value) => value === "asc" ? "desc" : "asc")} className="rounded-md border border-border px-3 text-sm">{chapterOrder === "asc" ? "Ascending" : "Descending"}</button>
               </div>
               <div className="mt-5 rounded-lg bg-card/70 px-4 ring-1 ring-border sm:px-5">
-                {chapters.isPending ? <div className="py-10 text-center">Loading chapters…</div> : chapters.isError ? <div className="py-10 text-center text-sm text-muted-foreground">Could not load chapters.</div> : visibleChapters.length === 0 ? <div className="py-10 text-center"><Library className="mx-auto h-10 w-10 text-muted-foreground/50" /><p className="mt-3 text-sm text-muted-foreground">No chapters matched.</p></div> : groupChaptersByVolume(visibleChapters, chapterOrder).map((group) => group.label ? (
+                {chapters.isPending ? <div className="py-10 text-center">Loading chapters…</div> : chapters.isError ? <div className="py-10 text-center text-sm text-muted-foreground">Could not load chapters.</div> : visibleChapters.length === 0 ? <div className="py-10 text-center"><Library className="mx-auto h-10 w-10 text-muted-foreground/50" /><p className="mt-3 text-sm text-muted-foreground">No chapters matched.</p></div> : groupChaptersByVolume(visibleChapters).map((group) => group.label ? (
                   <details key={group.key} open={groupsExpanded} className="group/volume border-b border-border/70 last:border-b-0">
                     <summary className="flex cursor-pointer items-center justify-between py-3 text-sm font-medium"><span>{group.label}</span><span className="text-xs text-muted-foreground">{group.chapters.length}</span></summary>
                     <div className="border-t border-border/40">{group.chapters.map((chapter) => <div id={`chapter-${chapter.chapter_id}`} key={chapter.chapter_id}><ChapterRow chapter={chapter} slug={publicSlug} isLastRead={progressChapterId === chapter.chapter_id} isRead={progressChapterNumber != null && chapter.chapter_number != null && chapter.chapter_number <= progressChapterNumber} /></div>)}</div>

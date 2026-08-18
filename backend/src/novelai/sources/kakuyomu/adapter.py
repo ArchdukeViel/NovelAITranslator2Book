@@ -59,6 +59,11 @@ class KakuyomuSource(SourceAdapter):
         "#contentMain",
         "main",
     )
+    STRUCTURAL_TOC_ROOT_SELECTORS = (
+        ".widget-toc",
+        ".widget-toc-main",
+        "[data-work-toc]",
+    )
     EPISODE_TITLE_SELECTORS = (
         ".widget-toc-episode-episodeTitleLabel",
         ".widget-toc-episode-episodeTitle",
@@ -350,13 +355,13 @@ class KakuyomuSource(SourceAdapter):
 
     def _extract_chapters_from_html(self, soup: BeautifulSoup, url: str) -> list[dict[str, Any]]:
         work_id = self.normalize_novel_id(url)
-        toc_roots: list[Tag] = []
+        toc_roots: list[tuple[Tag, bool]] = []
         for selector in self.TOC_ROOT_SELECTORS:
             node = soup.select_one(selector)
             if isinstance(node, Tag):
-                toc_roots.append(node)
+                toc_roots.append((node, selector in self.STRUCTURAL_TOC_ROOT_SELECTORS))
         if not toc_roots:
-            toc_roots.append(soup)
+            toc_roots.append((soup, False))
 
         chapters: list[dict[str, Any]] = []
         seen_urls: set[str] = set()
@@ -365,7 +370,7 @@ class KakuyomuSource(SourceAdapter):
         current_section_ordinal: int | None = None
         episodes_seen_since_section = False
 
-        for root in toc_roots:
+        for root, is_structural_toc_root in toc_roots:
             for element in root.find_all(["a", "h2", "h3", "h4", "div", "li", "span"], recursive=True):
                 if not isinstance(element, Tag):
                     continue
@@ -377,7 +382,7 @@ class KakuyomuSource(SourceAdapter):
                         "widget-toc-chapter" in cls_str
                         or "widget-toc-heading" in cls_str
                         or "chapter-title" in cls_str
-                        or element.name.lower() == "h2"
+                        or (is_structural_toc_root and element.name.lower() in {"h2", "h3", "h4"})
                     ):
                         heading_text = element.get_text(" ", strip=True)
                         if heading_text and not self._is_ui_range_label(heading_text):

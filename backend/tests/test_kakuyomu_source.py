@@ -420,6 +420,31 @@ def test_parse_metadata_html_fallback_scans_all_toc_roots_and_preserves_group_la
     assert [chapter["part"] for chapter in metadata["chapters"]] == ["Part One", "Part One", "Part Two"]
 
 
+def test_parse_metadata_html_fallback_ignores_unrelated_heading_in_broad_root() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+    html = f"""
+    <html>
+      <body>
+        <main id="contentMain">
+          <h2>概要</h2>
+          <p>Work synopsis text, not a table-of-contents section.</p>
+          <section class="widget-toc">
+            <a href="/works/{work_id}/episodes/e1">Episode One</a>
+            <a href="/works/{work_id}/episodes/e2">Episode Two</a>
+          </section>
+        </main>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
+
+    assert [chapter["source_episode_id"] for chapter in metadata["chapters"]] == ["e1", "e2"]
+    assert all("section_title" not in chapter for chapter in metadata["chapters"])
+    assert all("section_source_id" not in chapter for chapter in metadata["chapters"])
+
+
 def test_parse_metadata_html_supports_flat_structured_toc_without_fake_section() -> None:
     source = KakuyomuSource()
     work_id = "822139845959461179"
