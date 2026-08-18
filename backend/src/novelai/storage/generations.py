@@ -703,8 +703,29 @@ def seed_generation_from_active(
 
     Used for chapters the planner reuses or that are unchanged: the stage
     must contain a complete snapshot, so existing raw + translation content
-    is carried forward. Returns ``(copied_chapters, copied_assets)``.
+    is carried forward.  When the active generation has a manifest, immutable
+    objects are copied directly by the backend and the staged manifest is
+    persisted once after all references are recorded.  This avoids a
+    load/save/manifest-write round trip for every unchanged chapter while
+    retaining the complete physical snapshot contract.  Returns
+    ``(copied_chapters, copied_assets)``.
     """
+    active_generation_id = resolve_active_generation_id(self, novel_id)
+    active_manifest = (
+        load_generation_manifest(self, novel_id, active_generation_id) if active_generation_id is not None else None
+    )
+    staged_manifest = _load_manifest(self, novel_id, generation_id)
+    if active_generation_id is not None and active_manifest is not None and staged_manifest is not None:
+        return _seed_generation_from_active_manifest(
+            self,
+            novel_id,
+            generation_id,
+            chapter_ids,
+            active_generation_id,
+            active_manifest,
+            staged_manifest,
+        )
+
     copied_chapters = 0
     copied_assets = 0
     for chapter_id in chapter_ids:
@@ -729,6 +750,85 @@ def seed_generation_from_active(
                 if not isinstance(local_path, str) or not local_path.strip():
                     continue
                 copied_assets += self._copy_asset_to_generation(novel_id, generation_id, local_path)
+    return copied_chapters, copied_assets
+
+
+def _seed_generation_from_active_manifest(
+    self: Any,
+    novel_id: str,
+    generation_id: str,
+    chapter_ids: list[str],
+    active_generation_id: str,
+    active_manifest: GenerationManifest,
+    staged_manifest: GenerationManifest,
+) -> tuple[int, int]:
+    """Carry forward immutable objects using one active-manifest snapshot."""
+    source_generation_dir = _generation_dir(self, novel_id, active_generation_id)
+    target_generation_dir = _generation_dir(self, novel_id, generation_id)
+    source_chapters_dir = source_generation_dir / "chapters"
+    target_chapters_dir = target_generation_dir / "chapters"
+    source_assets_dir = source_generation_dir / "assets" / "images"
+    target_assets_dir = target_generation_dir / "assets" / "images"
+
+    source_assets_prefix = self._rel(source_assets_dir).replace("\\", "/").rstrip("/") + "/"
+    active_asset_keys = self._backend.list_keys(self._rel(source_assets_dir), recursive=True)
+    copied_chapters = 0
+    copied_assets = 0
+
+    # The index can contain stable IDs with characters that are unsafe as
+    # filesystem names.  Use the canonical physical filename/encoding for
+    # both chapter bundles and their asset directory.
+    from novelai.core.security import encode_physical_stem
+
+    for chapter_id in chapter_ids:
+        physical_filename = _physical_chapter_filename(self, chapter_id)
+        source_path = source_chapters_dir / physical_filename
+        target_path = target_chapters_dir / physical_filename
+        try:
+            self._backend.copy_object(self._rel(source_path), self._rel(target_path))
+        except FileNotFoundError:
+            # Preserve the existing behavior: a missing active bundle is
+            # left for generation validation to report as an incomplete
+            # snapshot instead of being silently synthesized.
+            continue
+
+        copied_chapters += 1
+        if chapter_id not in staged_manifest.chapter_ids:
+            staged_manifest.chapter_ids.append(chapter_id)
+
+        # A valid active manifest already contains the canonical hashes and
+        # version metadata for the immutable bytes just copied.  Missing
+        # fields are deliberately left empty so validation fails closed for
+        # a corrupt/legacy active manifest rather than accepting unverified
+        # content.
+        for field_name in (
+            "source_hashes",
+            "structure_hashes",
+            "image_manifest_hashes",
+            "parser_versions",
+            "translation_versions",
+        ):
+            source_values = getattr(active_manifest, field_name)
+            target_values = getattr(staged_manifest, field_name)
+            if chapter_id in source_values:
+                target_values[chapter_id] = source_values[chapter_id]
+
+        encoded_stem = encode_physical_stem(str(chapter_id))
+        asset_prefix = f"{source_assets_prefix}{encoded_stem}/"
+        for key in active_asset_keys:
+            normalized_key = str(key).replace("\\", "/")
+            if not normalized_key.startswith(asset_prefix):
+                continue
+            relative_asset = normalized_key[len(source_assets_prefix) :]
+            target_asset = target_assets_dir.joinpath(*relative_asset.split("/"))
+            self._mkdirs(target_asset.parent)
+            self._backend.copy_object(normalized_key, self._rel(target_asset))
+            copied_assets += 1
+
+    # Keep manifest persistence out of the per-object loop.  The validator
+    # still reads every staged bundle and asset before activation, so this
+    # optimization changes only transport, not integrity or atomicity.
+    _save_manifest(self, novel_id, generation_id, staged_manifest)
     return copied_chapters, copied_assets
 
 

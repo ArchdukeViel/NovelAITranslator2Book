@@ -175,6 +175,18 @@ legacy root when no generation was active) remains in effect. Operators can
 invoke `commit_generation_recovery(reason=..., evidence=...)` only for explicit
 recovery paths. After activation, `generations/<gen-id>/` is byte-immutable.
 
+When a crawl reuses chapters from the active generation,
+`seed_generation_from_active` still creates a complete physical copy in the
+new stage. S3/R2 uses the provider's server-side `CopyObject` primitive and
+the filesystem backend uses an atomic native file copy; custom backends retain
+the load/save fallback. The staged manifest carries the active chapter hash
+and lineage fields and is persisted once after the copy set is recorded. A
+copy failure is handled like any other staging failure: the active pointer is
+unchanged, the incomplete stage is removable, and a retry starts from a new
+stage. This optimization reduces transport and manifest-write overhead but
+does not introduce cross-generation references or weaken pre-activation
+validation.
+
 Generation activation uses a cross-process compare-and-swap on `active_generation.json`: the filesystem backend wraps the read-compare-write in an `InterProcessFileLock`; the S3 backend uses a conditional `PUT` with `If-Match`/`If-None-Match` so concurrent activations cannot silently overwrite each other (loser receives `GenerationConflictError`).
 
 ## Episode Order & Removal State

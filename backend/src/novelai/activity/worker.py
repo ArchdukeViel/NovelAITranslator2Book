@@ -107,7 +107,11 @@ class ActivityWorkerService:
             kind = str(activity.get("kind") or "")
             if kind == CrawlJobKind.METADATA.value:
                 return "crawling"
-            if kind in {CrawlJobKind.CHAPTERS.value, CrawlJobKind.RECRAWL_CHAPTER.value}:
+            if kind in {
+                CrawlJobKind.CHAPTERS.value,
+                CrawlJobKind.RECRAWL_CHAPTER.value,
+                CrawlJobKind.SCRAPE.value,
+            }:
                 return "scraping"
 
         return str(activity.get("type") or "activity")
@@ -129,6 +133,8 @@ class ActivityWorkerService:
                 return "chapter_recrawl"
             if kind == CrawlJobKind.CHAPTERS.value:
                 return "chapter_scrape"
+            if kind == CrawlJobKind.SCRAPE.value:
+                return "novel_scrape"
 
         return str(activity.get("kind") or "activity")
 
@@ -233,16 +239,61 @@ class ActivityWorkerService:
         self._check_cancelled(activity_id)
 
         mode = str(metadata.get("mode") or "update")
+        if kind == CrawlJobKind.SCRAPE.value:
+            max_chapter = metadata.get("max_chapter")
+            if not isinstance(max_chapter, int):
+                max_chapter = None
+            source_identifier = activity.get("source_url")
+            if not isinstance(source_identifier, str) or not source_identifier.strip():
+                source_identifier = metadata.get("source_identifier")
+            if not isinstance(source_identifier, str) or not source_identifier.strip():
+                source_identifier = None
+
+            self._check_cancelled(activity_id)
+            metadata_result = await self.orchestrator.scrape_metadata(
+                source_key,
+                novel_id,
+                mode=mode,
+                max_chapter=max_chapter,
+                source_identifier=source_identifier,
+                progress_callback=self._make_label_callback(activity_id, lease_id=lease_id),
+            )
+            self._check_cancelled(activity_id)
+
+            # Re-enter the existing chapter activity implementation so the
+            # scrape workflow gets the same progress, cancellation, rollback,
+            # and partial-failure behavior as a directly queued chapter job.
+            chapter_activity = dict(activity)
+            chapter_activity["kind"] = CrawlJobKind.CHAPTERS.value
+            chapter_activity["metadata"] = {
+                **metadata,
+                "_scrape_metadata": metadata_result,
+            }
+            chapter_result = await self._run_crawl_activity(chapter_activity, lease_id=lease_id)
+            return {
+                "metadata": {
+                    "chapter_count": len(metadata_result.get("chapters", []))
+                    if isinstance(metadata_result, dict)
+                    else 0
+                },
+                **chapter_result,
+            }
+
         if kind == CrawlJobKind.METADATA.value:
             max_chapter = metadata.get("max_chapter")
             if not isinstance(max_chapter, int):
                 max_chapter = None
+            raw_source_identifier = activity.get("source_url")
+            source_identifier = raw_source_identifier.strip() if isinstance(raw_source_identifier, str) else None
+            if not source_identifier:
+                source_identifier = None
             self._check_cancelled(activity_id)
             result = await self.orchestrator.scrape_metadata(
                 source_key,
                 novel_id,
                 mode=mode,
                 max_chapter=max_chapter,
+                source_identifier=source_identifier,
                 progress_callback=self._make_label_callback(activity_id, lease_id=lease_id),
             )
             self._check_cancelled(activity_id)
@@ -288,11 +339,13 @@ class ActivityWorkerService:
                 )
 
             self._check_cancelled(activity_id)
+            crawl_metadata = metadata.get("_scrape_metadata")
             result = await self.orchestrator.scrape_chapters(
                 source_key,
                 novel_id,
                 chapters,
                 mode=mode,
+                metadata=crawl_metadata if isinstance(crawl_metadata, dict) else None,
                 progress_callback=_progress_callback,
                 cancellation_check=_cancelled_check,
                 progress_events_callback=_progress_events_callback,

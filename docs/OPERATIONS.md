@@ -33,6 +33,23 @@ output never includes paths, hosts, credentials, or traces.
   applies backup retention. Use dry-run before changed cleanup policy.
 - Never reintroduce APScheduler.
 
+### Long-running scrape and resume
+
+`POST /api/admin/{novel_id}/scrape` is an enqueue operation and returns
+`202 Accepted` with an `activity_id`; it does not wait for metadata or chapter
+fetching to finish. The durable `scrape` activity runs metadata reconciliation
+and chapter acquisition in one worker lease, renewing its heartbeat and
+preserving the standard staged-generation validation, activation, and rollback
+behavior. Resume of an interrupted onboarding flow queues a durable chapter
+activity using the same contract.
+
+Poll `GET /api/admin/activity/{activity_id}` for the redacted status record.
+With a worker disabled, an owner can execute one queued record through
+`POST /api/admin/activity/{activity_id}/run`; with the worker enabled, the
+background runner claims it. A request/network timeout applies to each
+individual outbound operation, while the activity lease and heartbeat govern
+the total crawl duration.
+
 Owner maintenance status:
 
 ```text

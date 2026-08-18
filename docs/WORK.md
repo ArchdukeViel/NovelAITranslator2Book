@@ -266,6 +266,24 @@ CDN propagation after takedown.
    forward-fix.
 9. Record rollback duration and responsible owner.
 
+#### G. Cross-source hierarchy persistence and long-running crawl acceptance
+
+The backend contract for persisted section hierarchy is now explicit: source
+metadata owns optional section fields, raw chapter identity remains stable,
+and a reconciliation creates a complete immutable generation before pointer
+activation. Reused chapters and their image assets are copied into the new
+generation; failed staging preserves the prior active pointer. Long-running
+scrape and onboarding-resume requests enqueue durable activities and must be
+accepted through activity status plus persisted-generation evidence, not an
+open HTTP request.
+
+Acceptance evidence still requires a live persisted representative from
+Syosetu, Novel18, and Kakuyomu, including grouped/flat public behavior,
+idempotent repeat reconciliation, no body-translation or glossary invalidation
+from metadata-only hierarchy changes, and rollback after an injected staging
+failure. This subsection records the contract and gate; it is not completion
+evidence by itself.
+
 ### DEBT-FE-01 — Frontend design rework
 
 Keep the full rework out of one giant change. Bounded slices, one per

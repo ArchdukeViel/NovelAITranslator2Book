@@ -3492,7 +3492,8 @@ class TestRateLimit:
             headers = _csrf_headers(c)
             for _ in range(5):
                 resp = c.post("/api/admin/novels/test-n1/scrape", json=body, headers=headers)
-                assert resp.status_code == 200
+                assert resp.status_code == 202
+                assert resp.json()["status"] == "pending"
             # 6th should be rate-limited
             resp = c.post("/api/admin/novels/test-n1/scrape", json=body, headers=headers)
             assert resp.status_code == 429

@@ -53,45 +53,35 @@ class OperationsService:
     ) -> dict[str, Any]:
         detected_adapter = get_registry().get_adapter(url)
         resolved_source_key = detected_adapter.source_key if detected_adapter is not None else source_key or "generic"
-        timeout = settings.WEB_REQUEST_TIMEOUT_SECONDS
-        try:
-            meta = await asyncio.wait_for(
-                self.orchestrator.scrape_metadata(
-                    resolved_source_key,
-                    novel_id,
-                    mode=mode,
-                    max_chapter=max_chapter,
-                    source_identifier=url,
-                ),
-                timeout=timeout,
-            )
-            await asyncio.wait_for(
-                self.orchestrator.scrape_chapters(
-                    resolved_source_key,
-                    novel_id,
-                    chapters,
-                    mode=mode,
-                    metadata=meta,
-                ),
-                timeout=timeout,
-            )
-        except TimeoutError as exc:
-            raise OperationError(504, "Operation timed out") from exc
+        from novelai.core.platform import CrawlJobKind
 
-        # Best-effort post-scrape DB reconciliation (REQ-2.1)
-        try:
-            from novelai.db.engine import session_scope
-
-            with session_scope() as session:
-                CatalogService(storage=self.storage, session=session).reconcile_catalog_projection(novel_id)
-        except Exception:
-            logger.warning(
-                "Post-scrape catalog projection reconciliation failed for %s",
-                novel_id,
-                exc_info=True,
-            )
-
-        return {"novel_id": novel_id, "source_key": resolved_source_key, "chapters": len(meta.get("chapters", []))}
+        # A complete scrape can include source requests, provider-backed
+        # metadata translation, glossary bootstrap, and a full staged
+        # generation commit.  Keep its lifetime in the durable activity
+        # worker rather than tying it to the HTTP request timeout.
+        activity = self.activity_log.create_crawl_activity(
+            novel_id=novel_id,
+            source_key=resolved_source_key,
+            kind=CrawlJobKind.SCRAPE,
+            chapters=chapters,
+            source_url=url,
+            metadata={
+                "activity_subtype": "scraping",
+                "activity_phase": "novel_scrape",
+                "operation": "scrape_novel",
+                "mode": mode,
+                "max_chapter": max_chapter,
+                "source_identifier": url,
+                "selected_source_key": resolved_source_key,
+            },
+        )
+        return {
+            "novel_id": novel_id,
+            "source_key": resolved_source_key,
+            "chapters": None,
+            "activity_id": activity["activity_id"],
+            "status": activity["status"],
+        }
 
     async def preliminary_crawl_novel(
         self,
@@ -477,62 +467,28 @@ class OperationsService:
             )
 
         resolved_source_key = meta.get("source_key") or meta.get("input_adapter_key") or "generic"
-        timeout = settings.WEB_REQUEST_TIMEOUT_SECONDS
-        activity_id: str | None = None
-        try:
-            from novelai.core.platform import CrawlJobKind
+        from novelai.core.platform import CrawlJobKind
 
-            activity = self.activity_log.create_crawl_activity(
-                novel_id=novel_id,
-                source_key=resolved_source_key,
-                kind=CrawlJobKind.CHAPTERS,
-                chapters=chapters,
-                source_url=meta.get("source_url"),
-                metadata={
-                    "activity_subtype": "crawling",
-                    "activity_phase": "resume_onboarding",
-                    "resumed_from_status": current_status,
-                    "identifier": meta.get("source_url") or novel_id,
-                    "selected_source_key": resolved_source_key,
-                },
-            )
-            activity_id = activity.get("activity_id")
-        except Exception:
-            logger.warning("Failed to record resume activity.", exc_info=True)
-
-        try:
-            await asyncio.wait_for(
-                self.orchestrator.scrape_chapters(
-                    resolved_source_key,
-                    novel_id,
-                    chapters,
-                    mode="update",
-                ),
-                timeout=timeout,
-            )
-        except TimeoutError as exc:
-            raise OperationError(504, "Resume operation timed out") from exc
-        except RuntimeError as exc:
-            self.storage.update_onboarding_status(
-                novel_id,
-                "failed",
-                error_code="scrape_locked",
-                error_message=str(exc)[:500],
-            )
-            raise OperationError(409, {"error": str(exc), "novel_id": novel_id}) from exc
-        except Exception as exc:
-            self.storage.update_onboarding_status(
-                novel_id,
-                "failed",
-                error_code="resume_error",
-                error_message=f"Resume failed: {exc.__class__.__name__}",
-            )
-            raise
+        activity = self.activity_log.create_crawl_activity(
+            novel_id=novel_id,
+            source_key=resolved_source_key,
+            kind=CrawlJobKind.CHAPTERS,
+            chapters=chapters,
+            source_url=meta.get("source_url"),
+            metadata={
+                "activity_subtype": "crawling",
+                "activity_phase": "resume_onboarding",
+                "resumed_from_status": current_status,
+                "identifier": meta.get("source_url") or novel_id,
+                "selected_source_key": resolved_source_key,
+            },
+        )
 
         return {
             "novel_id": novel_id,
-            "onboarding_status": self.storage.resolve_onboarding_status(novel_id),
-            "activity_id": activity_id,
+            "onboarding_status": current_status,
+            "activity_id": activity.get("activity_id"),
+            "status": activity.get("status"),
         }
 
     def cancel_onboarding(self, *, novel_id: str) -> dict[str, Any]:

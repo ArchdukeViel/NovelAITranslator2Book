@@ -43,6 +43,15 @@ class StorageBackend(ABC):
         self.save(path, new_value)
         return True
 
+    def copy_object(self, source: str | Path, destination: str | Path) -> None:
+        """Copy one immutable object without changing its bytes.
+
+        Backends with a native object-copy primitive should override this
+        method.  The load/save fallback keeps custom and test backends
+        compatible while preserving the same staging semantics.
+        """
+        self.save(destination, self.load(source))
+
     @abstractmethod
     def load(self, path: str | Path) -> bytes:
         """Return the bytes stored at *path*.

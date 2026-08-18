@@ -52,7 +52,7 @@ def _create_novel(client: TestClient, auth: dict[str, str], novel_id: str = NOVE
 
 
 def _scrape_novel(client: TestClient, auth: dict[str, str], novel_id: str = NOVEL_ID) -> None:
-    """Scrape metadata and chapters."""
+    """Queue and execute metadata + chapter scrape through the worker."""
     resp = client.post(
         f"/api/admin/novels/{novel_id}/scrape",
         json={
@@ -63,7 +63,11 @@ def _scrape_novel(client: TestClient, auth: dict[str, str], novel_id: str = NOVE
         },
         headers=auth,
     )
-    assert resp.status_code == 200, f"Scrape failed: {resp.status_code} {resp.text}"
+    assert resp.status_code == 202, f"Scrape enqueue failed: {resp.status_code} {resp.text}"
+    activity_id = resp.json()["activity_id"]
+    run_resp = client.post(f"/api/admin/activity/{activity_id}/run", headers=auth)
+    assert run_resp.status_code == 200, f"Scrape worker failed: {run_resp.status_code} {run_resp.text}"
+    assert run_resp.json()["status"] == "completed", run_resp.json()
 
 
 def _refresh_catalog(client: TestClient, auth: dict[str, str], novel_id: str = NOVEL_ID) -> None:

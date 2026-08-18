@@ -32,6 +32,7 @@ class CrawlJobKind(StrEnum):
     METADATA = "metadata"
     CHAPTERS = "chapters"
     RECRAWL_CHAPTER = "recrawl_chapter"
+    SCRAPE = "scrape"
 
 
 class TranslationJobKind(StrEnum):

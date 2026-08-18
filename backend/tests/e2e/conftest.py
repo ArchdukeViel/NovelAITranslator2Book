@@ -140,6 +140,7 @@ def e2e_test_client(
     # Step 4: Import novel_orchestration_service — its module-level
     # ``from catalog_service import safely_refresh…`` catches the noop.
     import novelai.services.novel_orchestration_service as _orch_svc
+
     monkeypatch_session.setattr(
         _orch_svc,
         "safely_refresh_catalog_projection_after_storage_write",
@@ -173,6 +174,7 @@ def e2e_test_client(
     # Without this the scheduler sees no configs → SchedulerPausedError
     # because no gemini-compatible policy exists for the "dummy" provider.
     from novelai.config.settings import settings as _app_settings
+
     monkeypatch_session.setattr(
         _app_settings,
         "TRANSLATION_MODEL_POLICY",
@@ -201,6 +203,7 @@ def e2e_test_client(
     # Clear stale asyncio locks from previous aborted runs (module-level state)
     _translation_svc._translation_locks.clear()
     from novelai.services.orchestration.operations_helpers import _novel_translation_locks
+
     _novel_translation_locks.clear()
 
     # Step 8b: Disable translation cache to prevent cross-test cache hits
@@ -237,9 +240,17 @@ def e2e_test_client(
     monkeypatch_session.setattr(container, "_storage", storage)
     monkeypatch_session.setattr(container, "_translation", None)
     monkeypatch_session.setattr(container, "_orchestrator", None)
+    # Earlier backend tests may have initialized these global activity
+    # singletons against the default storage root. The scrape endpoint now
+    # queues work, so the E2E fixture must rebuild the activity graph along
+    # with the orchestrator or the worker can execute against stale storage.
+    monkeypatch_session.setattr(container, "_activity_log", None)
+    monkeypatch_session.setattr(container, "_activity_worker", None)
+    monkeypatch_session.setattr(container, "_activity_runner", None)
     container.orchestrator.storage = storage
 
     from novelai.api.app import create_app
+
     app = create_app()
 
     # MUST register test adapters AFTER create_app() — bootstrap() inside

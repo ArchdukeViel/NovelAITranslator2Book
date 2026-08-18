@@ -72,7 +72,7 @@ def _raise_operation_error(exc: OperationError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.post("/{novel_id}/scrape")
+@router.post("/{novel_id}/scrape", status_code=202)
 async def scrape_novel(
     novel_id: str,
     body: ScrapeRequest,

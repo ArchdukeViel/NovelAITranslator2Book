@@ -14,6 +14,7 @@ from novelai.storage.backends.filesystem import FilesystemBackend, _try_unlink
 
 # ── FilesystemBackend ────────────────────────────────────────────────
 
+
 class TestFilesystemBackend:
     """Real filesystem I/O against a temp directory."""
 
@@ -25,6 +26,13 @@ class TestFilesystemBackend:
         fs.save("hello.txt", b"world")
         assert fs.load("hello.txt") == b"world"
         assert (tmp_path / "hello.txt").read_bytes() == b"world"
+
+    def test_copy_object(self, fs: FilesystemBackend) -> None:
+        fs.save("source.txt", b"payload")
+
+        fs.copy_object("source.txt", "nested/destination.txt")
+
+        assert fs.load("nested/destination.txt") == b"payload"
 
     def test_load_missing_raises(self, fs: FilesystemBackend) -> None:
         with pytest.raises(FileNotFoundError):
@@ -122,6 +130,13 @@ class TestS3Backend:
         s3.save("hello.txt", b"world")
         assert s3.load("hello.txt") == b"world"
 
+    def test_copy_object(self, s3: StorageBackend) -> None:
+        s3.save("source.txt", b"payload")
+
+        s3.copy_object("source.txt", "nested/destination.txt")
+
+        assert s3.load("nested/destination.txt") == b"payload"
+
     def test_load_missing_raises(self, s3: StorageBackend) -> None:
         with pytest.raises(FileNotFoundError):
             s3.load("does-not-exist.txt")
@@ -144,9 +159,7 @@ class TestS3Backend:
         s3.save("x.txt", b"")
         assert s3.exists("x.txt")
 
-    def test_exists_propagates_provider_failure(
-        self, s3: StorageBackend, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_exists_propagates_provider_failure(self, s3: StorageBackend, monkeypatch: pytest.MonkeyPatch) -> None:
         from botocore.exceptions import ClientError
 
         def denied(**_kwargs: object) -> None:
@@ -159,9 +172,7 @@ class TestS3Backend:
         with pytest.raises(ClientError):
             s3.exists("x.txt")
 
-    def test_delete_propagates_provider_failure(
-        self, s3: StorageBackend, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_delete_propagates_provider_failure(self, s3: StorageBackend, monkeypatch: pytest.MonkeyPatch) -> None:
         from botocore.exceptions import ClientError
 
         def denied(**_kwargs: object) -> None:
@@ -206,6 +217,7 @@ class TestS3Backend:
 
 # ── Factory / singleton ──────────────────────────────────────────────
 
+
 class TestGetStorageBackend:
     """Factory behaviour — does not test I/O."""
 
@@ -236,6 +248,7 @@ class TestGetStorageBackend:
 
 
 # ── _try_unlink helper ──────────────────────────────────────────────
+
 
 class TestTryUnlink:
     def test_missing_file(self, tmp_path: Path) -> None:

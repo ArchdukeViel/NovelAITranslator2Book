@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -71,6 +72,19 @@ class FilesystemBackend(StorageBackend):
 
     def load(self, path: str | Path) -> bytes:
         return self._resolve(path).read_bytes()
+
+    def copy_object(self, source: str | Path, destination: str | Path) -> None:
+        """Copy an immutable staged object without a Python byte round trip."""
+        source_path = self._resolve(source)
+        destination_path = self._resolve(destination)
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = destination_path.with_name(f".{destination_path.name}.{os.getpid()}.copy.tmp")
+        try:
+            shutil.copyfile(source_path, temporary_path)
+            replace_with_retry(temporary_path, destination_path)
+        except BaseException:
+            _try_unlink(temporary_path)
+            raise
 
     def delete(self, path: str | Path) -> None:
         dest = self._resolve(path)
