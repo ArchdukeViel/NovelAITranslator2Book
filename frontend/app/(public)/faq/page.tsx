@@ -47,7 +47,7 @@ export default function FaqPage() {
         },
         {
           title: "Can I contribute translations?",
-          body: "Community editing and credential contribution features are not yet available. The current product does not accept public translation edits or provider API keys.",
+          body: "Authenticated readers can contribute one Gemini API key from Account > Contributions. Keys are validated, encrypted, masked in the UI, quota-limited, and removable by the owner. Community editing and public translation edits remain outside the current product scope.",
         },
         {
           title: "Browser or device issues",

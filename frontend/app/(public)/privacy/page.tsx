@@ -18,7 +18,7 @@ export default function PrivacyPage() {
         },
         {
           title: "Sessions and cookies",
-          body: "The site uses an HTTP-only session cookie to keep you signed in and a CSRF token for state-changing actions such as saving library items, updating progress, writing reviews, or creating requests. These cookies support account security and are not a promise of anonymous use while signed in.",
+          body: "The site uses an HTTP-only session cookie to keep you signed in and a CSRF token for state-changing actions such as saving library items, updating progress, writing reviews, or creating requests. Guest novel-detail views may use a signed first-party anonymous viewer token so ranking can count distinct viewers without storing IP addresses. The server stores only a one-way digest of that token and applies the configured analytics retention window.",
         },
         {
           title: "Reader data",
@@ -30,15 +30,15 @@ export default function PrivacyPage() {
         },
         {
           title: "Credential contributions",
-          body: "Public provider/API credential contribution is gated and unavailable in the current product. Preview contribution screens should not receive real API keys. A future credential feature would need separate secure handling, audit, revocation, and usage controls before accepting keys.",
+          body: "Authenticated users may optionally contribute one Gemini API key through the Contributions page. The key is encrypted at rest, validated explicitly, isolated from owner credentials, never returned to the browser after submission, and represented by masked metadata. The service records sanitized usage and token accounting, not prompts, authorization headers, or provider responses. Users can pause, replace, or permanently delete their own credential; owners retain emergency revoke controls.",
         },
         {
           title: "Technical data",
-          body: "Like most web services, the backend may process technical data needed to operate and protect the site, such as request timing, session state, rate-limit signals, and error information. Project guardrails require secrets, cookies, OAuth tokens, provider keys, and raw tracebacks not to be exposed in public responses.",
+          body: "Like most web services, the backend may process technical data needed to operate and protect the site, such as request timing, session state, rate-limit signals, and error information. Public novel-detail rankings use authenticated user ids or anonymous viewer-token digests, never IP addresses. Project guardrails require secrets, cookies, OAuth tokens, provider keys, and raw tracebacks not to be exposed in public responses.",
         },
         {
           title: "Your controls",
-          body: "Current account controls are limited. You can use available product controls to remove saved novels or delete your own review where those controls exist. General account deletion, privacy preference management, and contributed-credential deletion are not active public features yet.",
+          body: "Current account controls include removing saved novels, deleting your own review where available, and managing your contributor credential from the Contributions page. You can pause, resume, replace, or permanently delete that credential. General account deletion and separate analytics preference management are not active public controls; disabling cookies may prevent anonymous ranking identity from working.",
         },
       ]}
     />
