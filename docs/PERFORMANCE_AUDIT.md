@@ -2,21 +2,22 @@
 
 **Initial audit:** 2026-08-19
 **Phase 0 update:** 2026-08-20
+**Phase 2 update:** 2026-08-20
 **Repository revision:** `8048306` (`perf/debt-079d-public-path-hardening`)
 **Scope:** browser-to-Caddy traffic, the public reader API, database access, object storage, Redis/queues, translation workers/providers, and the public Next.js client.
 
 ## Executive conclusion
 
-The initial runtime was behind the checkout and allowed public storage waterfalls. Phase 0 rebuilt and deployed the current checkout locally; Phase 1 now makes the public catalog/detail metadata path projection-first. The current local runtime is healthy with the documented readiness override, but the live serving projection still needs storage-backed chapter reconciliation. The largest remaining risks are:
+The initial runtime was behind the checkout and allowed public storage waterfalls. Phase 0 rebuilt and deployed the current checkout locally; Phase 1 made the public catalog/detail metadata path projection-first; Phase 2 now server-hydrates the guest home view and bounds public browser reads. The current local runtime is healthy with the documented readiness override, but the live serving projection still needs storage-backed chapter reconciliation. The largest remaining risks are:
 
 1. The original runtime was older than the checkout; the local Phase 0 deployment now uses freshly built local images, but those tags do not carry an immutable source revision.
 2. Live projection repair is storage-latency-bound: the bounded reconciliation attempt exceeded 180 seconds, and the current live database still has zero chapter projection rows. Public chapter metadata therefore returns a truthful unavailable response until maintenance succeeds.
 3. Caddy repeatedly attempted stale backend container addresses during container replacement, producing connection-refused errors and making availability look like latency.
-4. The public home page still starts several client-side requests before it can render useful catalog content. There is no server-side initial-data hydration for these public queries, and the catalog request asks for 100 novels.
+4. The home SSR boundary now hydrates the catalog and weekly ranking, but its local server response was about 2.6 seconds and production-scale TTFB/LCP/INP remain unmeasured. The browser no longer makes duplicate initial catalog/ranking/genre requests.
 5. Rankings and novel summaries can combine database aggregation with per-novel summary/storage calls. The current analytics indexes do not match the ranking filters and distinct-viewer grouping.
 6. Translation work can occupy a web request for up to the configured 120-second timeout. Provider calls also use blocking SDK calls in worker threads, bounded concurrency, retries, and quota reservation, so provider latency can create sustained backpressure.
 
-The remaining release/operations problem is durable readiness configuration: the application and Caddy are healthy locally only with an explicit two-second probe override because the protected runtime file still carries the one-second budget. The highest-value Phase 1 application change is complete locally: published public reads now use the database projection and do not enumerate object storage on normal requests.
+The remaining release/operations problem is durable readiness configuration: the application and Caddy are healthy locally only with an explicit two-second probe override because the protected runtime file still carries the one-second budget. Phase 1 projection-only reads and the Phase 2 home request-graph change are complete locally, but chapter projection and production-scale browser budgets remain open.
 
 ## Evidence and confidence rules
 
@@ -49,7 +50,7 @@ The proxy request was made with the configured site host. Requests sent with an 
 
 ## Phase 0 execution update — 2026-08-20
 
-Phase 0 was executed against the local Compose environment and is **complete as the local baseline**. The Phase 1 execution update below records the subsequent public-read changes and review gate.
+Phase 0 was executed against the local Compose environment and is **complete as the local baseline**. The Phase 1 and Phase 2 execution updates below record the subsequent public-read changes and browser request-graph work.
 
 | Gate | Result | Evidence |
 | --- | --- | --- |
@@ -69,7 +70,7 @@ The current local deployment therefore proves that the migration and current pub
 
 ## Phase 1 execution update — 2026-08-20
 
-Phase 1 implementation is complete in the checkout and the focused backend acceptance suite passes. The phase is **stopped for review before Phase 2**.
+Phase 1 implementation is complete in the checkout and the focused backend acceptance suite passes. Phase 2 was subsequently executed; the current Phase 2 review gate is recorded below.
 
 | Area | Result | Evidence |
 | --- | --- | --- |
@@ -127,27 +128,65 @@ Phase 1 implementation is complete in the checkout and the focused backend accep
 
 **Confidence:** Measured live maintenance behavior.
 
+## Phase 2 execution update - 2026-08-20
+
+Phase 2 implementation is complete in the checkout and the browser/frontend acceptance checks pass. The phase is **stopped for review before Phase 3**.
+
+| Area | Result | Evidence |
+| --- | --- | --- |
+| Guest home hydration | Passed in source/build/live HTML | `frontend/app/(public)/home/layout.tsx` prefetches only the catalog page of 24 and the weekly ranking, then hydrates the existing client queries. The production build marks `/home` dynamic and succeeded. |
+| Initial catalog volume | Passed | `HOME_CATALOG_PARAMS.page_size` is 24 instead of the previous 100; additional catalog pages remain a client navigation concern. |
+| Ranking request graph | Passed in source/browser trace | The home ranking tab defaults to weekly, the weekly Trending query is disabled while the selected tab is weekly, and the browser request trace showed no initial `/api/public/catalog` or `/api/public/rankings` request because both were server-hydrated. |
+| Non-critical data | Passed in source/browser trace | Genre data is no longer requested by the home page; auth/history are enabled through deferred personalization after the catalog settles. The trace showed only the deferred `/api/auth/me` request and no initial genre request. |
+| Public cancellation | Passed in tests/source | `publicFetch` uses a shared 10-second timeout, preserves React Query signals, and exposes separate caller-cancelled and timeout error reasons. Catalog, ranking, novel, chapter-list, and chapter hooks pass the query signal and disable unbounded retries. |
+| Frontend validation | Passed | Targeted Phase 2 tests: `21 passed`; full frontend suite: `857 passed` in `219.66s`; `npm run lint`, `npm run typecheck`, and `npm run build` passed. |
+| Live SSR route | Passed with measured caveat | Rebuilt `novelai-frontend:local`; `GET /home` returned `200` in about `2,604 ms`, with a `61,501`-byte HTML response containing the live title `That Time I Got Reincarnated as a World Tree`, `unique_novel_views`, and `analytics_disabled`. |
+| Browser performance sample | Partial, honest | One Playwright sample reported navigation response end about `363 ms`, DOMContentLoaded about `411 ms`, load about `910 ms`, 54 resources, and about `3.23 MB` transfer. LCP and INP were not exposed by the available buffered entries; this is not a production p95. |
+| Runtime topology | Passed after correction | The first SSR probe used admin port 8000 and returned 404 for public routes; adding `READER_API_URL=http://reader:8001` corrected the boundary. All five Compose services remained healthy after recreation. |
+
+### Phase 2 findings and resolutions
+
+### F-25 - P1 - Server prefetch must target the reader service boundary
+
+**Evidence:** The first live server-prefetch attempt used `BACKEND_API_URL=http://backend:8000`; both public catalog and ranking requests returned `404` because public routes are served by the reader service. The corrected `READER_API_URL=http://reader:8001` returned catalog `200` with 2 live novels and ranking `200` with the truthful `analytics_disabled` response.
+
+**Impact:** A server-rendered home can silently fall back to client loading if its internal service boundary is wrong, restoring the request waterfall while the build remains green.
+
+**Recommendation:** Keep `READER_API_URL` explicit in Compose and align `BACKEND_API_HOST` with the backend/reader allowed-host contract. Add an SSR smoke check to deployment validation.
+
+**Confidence:** Measured live behavior and corrected source/configuration.
+
+### F-26 - P1 - SSR removes browser waterfalls but does not yet prove end-to-end latency budget
+
+**Evidence:** The browser received useful catalog HTML and made no initial public catalog/ranking/genre requests, but a PowerShell request to `/home` took about `2.6 s` on the current local stack. The browser timing sample had response end about `363 ms` after navigation, while LCP and INP were unavailable from the available entries.
+
+**Impact:** Server hydration improves time to useful content and request fan-out, but it can move backend latency into TTFB. Without repeated cold/warm samples and real LCP/INP, no production budget claim is justified.
+
+**Recommendation:** Measure cold/warm TTFB, LCP, INP, transfer size, and API timings across representative catalog volume before Phase 6 sign-off. Keep the server prefetch timeout bounded and continue to allow honest client fallback when the reader is unavailable.
+
+**Confidence:** One live runtime sample and one browser trace; insufficient for p95 capacity claims.
+
 ## Public request waterfalls
 
 ### Home page
 
-The current `frontend/app/(public)/home/page.tsx` is a client component. A guest home load can request:
+The home route now has a server layout that prefetches the two guest-visible datasets and hydrates the client page. A guest home load is now:
 
 ```text
-home shell
-  ├─ catalog: 100 newest novels
-  ├─ rankings: selected period, limit 5
-  ├─ rankings: weekly widget, limit 5
-  ├─ genres/taxonomy
-  └─ public auth/session
+server home layout
+  ├─ catalog: 24 newest novels (reader service)
+  └─ ranking: weekly, limit 5 (reader service)
+       ↓ hydrate existing client queries
+browser after useful content is available
+  └─ deferred auth/session
        └─ authenticated users: history after auth is known
 ```
 
-React Query deduplicates calls that share a query key, including the repeated auth calls from shell components, but it does not remove the catalog, genre, and two ranking dependencies. There is no server-side prefetch/dehydrate path for the public page. The home page then sorts the 100-item catalog and computes genre counts in the browser. That CPU work is small compared with the API and storage waits, but the data volume and request fan-out increase the time to useful content.
+React Query still revalidates hydrated data after its bounded stale window. The home page sorts the 24-item catalog and computes genre counts in the browser, while the shared search overlay remains responsible for its own debounced catalog/tag requests when opened. This reduces initial data volume and fan-out without inventing catalog or ranking data when the reader service is unavailable.
 
 ### Ranking page and widget
 
-`frontend/app/(public)/ranking/ranking-client.tsx` requests up to 50 rows for the selected period. The home page separately requests the selected period and weekly results. The ranking API is cacheable for 60 seconds at the HTTP layer, but `PublicRankingService` has no server-side result cache and enriches each result with a public novel summary. A ranking response can therefore be:
+`frontend/app/(public)/ranking/ranking-client.tsx` requests up to 50 rows for the selected period. The home page starts on weekly so its ranking widget and Trending state share the hydrated weekly query; after a user selects another tab, the selected period and weekly widget can be active together. The ranking API is cacheable for 60 seconds at the HTTP layer, but `PublicRankingService` has no server-side result cache and enriches each result with a public novel summary. A ranking response can therefore be:
 
 ```text
 two distinct-viewer aggregation queries

@@ -104,6 +104,21 @@ duration and renewal; do not tune lease below realistic job duration without tes
 
 Use source defaults unless measured behavior justifies change.
 
+### Frontend server prefetch
+
+- `READER_API_URL`: internal reader-service URL used only by Next.js server-side
+  public catalog and ranking prefetch. The split Compose default is
+  `http://reader:8001`; it is not exposed to the browser.
+- `BACKEND_API_URL`: backend/admin URL retained for backend-facing rewrites and
+  other existing server-side use; it does not serve public reader routes in
+  split mode.
+- `BACKEND_API_HOST`: `Host` header used for internal server-side public reads.
+  It must match the configured `ALLOWED_HOSTS`/`SITE_DOMAIN` contract.
+
+Keep these values aligned with the internal service topology. A wrong boundary
+can make server prefetch return a truthful fallback while silently restoring a
+browser request waterfall.
+
 ## Auth and Email
 
 Google OAuth requires client ID, client secret, and exact redirect URI. One

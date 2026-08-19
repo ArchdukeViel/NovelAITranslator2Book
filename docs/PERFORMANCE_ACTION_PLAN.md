@@ -65,7 +65,7 @@ Remaining gate requiring review:
 - The development overlay is not a valid production-style startup: its frontend bind mount hides the standalone server and causes `MODULE_NOT_FOUND`. The base Compose file was used for the valid current-image check.
 - The local `:local` image tags do not embed an immutable source revision, so a release deployment still needs digest/revision evidence.
 
-The local Phase 0 baseline is signed off: current images, migration, routes, application health, readiness, and one replacement cycle were verified. The durable configuration caveat is carried into Phase 4. Phase 1 implementation is now complete locally; review is required before Phase 2.
+The local Phase 0 baseline is signed off: current images, migration, routes, application health, readiness, and one replacement cycle were verified. The durable configuration caveat is carried into Phase 4. Phase 1 and Phase 2 implementation are now complete locally; the Phase 2 review gate is recorded below before Phase 3.
 
 ## Phase 1 — remove public-read request waterfalls
 
@@ -127,7 +127,7 @@ Completed in the local checkout and Compose environment:
 - The failed host-side migration was due to database table-ownership privileges and rolled back. The deployment-authoritative Compose migration succeeded; no `.env` or secret file was changed.
 - Superseded project/test Docker images were removed only after checking the current healthy containers; base Postgres, Redis, Caddy, and build/runtime dependency images were retained.
 
-Phase 1 exit gate status: source-level and focused-test gates passed, and live catalog/detail/ranking behavior passed. The live chapter projection gate remains open because reconciliation timed out; review is required before Phase 2.
+Phase 1 exit gate status: source-level and focused-test gates passed, and live catalog/detail/ranking behavior passed. The live chapter projection gate remains open because reconciliation timed out; this remains a Phase 4/production-readiness follow-up rather than a reason to discard the completed projection-first read path.
 
 ## Phase 2 — make the browser start with useful data and stop obsolete work
 
@@ -157,6 +157,8 @@ Actions:
 
 Exit gate: browser tests show aborted requests on route change, no unbounded fetch remains in the public API client, and error UI does not claim a preview is real catalog data.
 
+Phase 2 result: `home/layout.tsx` prefetches only the 24-item catalog and weekly ranking through the reader service, then hydrates the existing client queries. `publicFetch` now has a 10-second timeout, preserves caller cancellation, classifies timeout versus caller abort, and all public content hooks forward React Query signals with retries disabled. Auth/history are deferred until the initial home content settles. Targeted tests cover the request and hydration contracts.
+
 ### 2.3 Keep bundle work proportional to evidence
 
 Actions:
@@ -165,6 +167,21 @@ Actions:
 - Do not prioritize broad bundle splitting over catalog/readiness/reader saturation work unless browser LCP measurements identify JavaScript as the limiting component.
 
 Exit gate: browser traces include LCP, INP, transfer size, and API timings so bundle decisions are evidence-based.
+
+### Phase 2 execution log - 2026-08-20
+
+**Status: implementation and local validation complete; stopped for review before Phase 3.**
+
+Completed in the local checkout and Compose environment:
+
+- Added a server home layout that prefetches 24 newest catalog items and the weekly ranking, with a 20-second hydrated-query stale window and a three-second server prefetch bound. The browser trace showed no initial public catalog, ranking, or genre requests.
+- Corrected the internal SSR topology after the first probe used the admin service: public prefetch now targets `READER_API_URL=http://reader:8001`, while `BACKEND_API_URL` remains the admin/rewrite boundary. The live reader calls returned catalog `200` and a truthful ranking `200` with `analytics_disabled`.
+- Deferred auth/history personalization, added React Query cancellation propagation and bounded public request timeouts, and removed unbounded public-query retries.
+- Frontend validation passed: 21 targeted tests; the full suite passed with 857 tests across 78 files in 219.66 seconds; lint, typecheck, and production build passed. The rebuilt frontend image was recreated with all five Compose services healthy.
+- Live `/home` returned `200` with useful catalog HTML, the current live title, and honest unavailable ranking markup. One browser sample measured response end about 363 ms, DOMContentLoaded about 411 ms, load about 910 ms, 54 resources, and about 3.23 MB transferred.
+- Added the non-secret `READER_API_URL` and `BACKEND_API_HOST` configuration documentation without changing protected `.env` files.
+
+Phase 2 exit gate status: source, focused tests, full frontend checks, live SSR, and browser request-graph checks passed. Production-scale repeated TTFB, LCP, and INP budgets remain unmeasured, and the local chapter projection completeness issue from Phase 1 remains open. Review is required before Phase 3.
 
 ## Phase 3 — make rankings cheap, truthful, and cacheable
 
@@ -329,11 +346,12 @@ Record for every run:
 
 1. Complete Phase 0 and rerun the same runtime probes against the current revision. (Complete.)
 2. Implement the projection-first catalog/detail path and add request-level object/query-count tests. (Complete locally; chapter projection reconciliation remains open.)
-3. Review Phase 1 evidence and approve the chapter-projection/readiness gate before starting Phase 2.
-4. Add browser cancellation/timeouts and reduce home critical fan-out.
-5. Align ranking indexes, remove summary enrichment fan-out, and add bounded result caching.
-6. Stabilize readiness and decouple analytics writes.
-7. Move translation to enqueue/worker-only execution, then replace file-backed activity/cache hot paths.
-8. Run the full load scenario and update the budgets using measured capacity.
+3. Review Phase 1 evidence; the projection-first read path is complete locally while chapter projection completeness and durable readiness remain open follow-ups.
+4. Add browser cancellation/timeouts and reduce home critical fan-out. (Complete locally in Phase 2.)
+5. Review Phase 2 evidence and approve the ranking/index/cache work before starting Phase 3.
+6. Align ranking indexes, remove summary enrichment fan-out, and add bounded result caching.
+7. Stabilize readiness and decouple analytics writes.
+8. Move translation to enqueue/worker-only execution, then replace file-backed activity/cache hot paths.
+9. Run the full load scenario and update the budgets using measured capacity.
 
 The first practical gate is not a frontend optimization: it is a current-revision deployment with a healthy reader, healthy readiness, current migrations, and a catalog request that cannot fall back to a serial object-storage scan.
