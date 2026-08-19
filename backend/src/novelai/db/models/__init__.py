@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from novelai.db.models.analytics_event import AnalyticsEvent
 from novelai.db.models.chapter import Chapter
+from novelai.db.models.contributor import ContributorCredential, ContributorUsageLedger
 from novelai.db.models.genre import Genre, novel_genres
 from novelai.db.models.glossary import (
     NovelGlossaryAlias,
@@ -41,6 +42,8 @@ __all__ = [
     "AnalyticsEvent",
     "AuditLog",
     "Chapter",
+    "ContributorCredential",
+    "ContributorUsageLedger",
     "CrawlJob",
     "EmailVerificationToken",
     "Genre",
@@ -78,6 +81,8 @@ REGISTERED_MODELS = (
     AuditLog,
     Chapter,
     CrawlJob,
+    ContributorCredential,
+    ContributorUsageLedger,
     EmailVerificationToken,
     Genre,
     LibraryItem,

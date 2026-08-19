@@ -208,6 +208,21 @@ class AppSettings(BaseSettings):
             return []
         raise ValueError("PROVIDER_GEMINI_MODEL_FALLBACKS must be empty; model fallback is disabled.")
 
+    # --- Public contributor credentials
+    CONTRIBUTOR_CREDENTIALS_ENABLED: bool = Field(
+        default=True,
+        description="Enable authenticated contributor credential intake and contributor-backed translation jobs.",
+    )
+    CONTRIBUTOR_CONSENT_VERSION: str = Field(
+        default="2026-08-19",
+        description="Consent text version accepted when a user registers a contributor credential.",
+    )
+    CONTRIBUTOR_MAX_ACTIVE_PER_USER: int = Field(default=1, ge=1, le=1)
+    CONTRIBUTOR_RPM_LIMIT: int = Field(default=15, ge=1)
+    CONTRIBUTOR_TPM_LIMIT: int = Field(default=250_000, ge=1)
+    CONTRIBUTOR_RPD_LIMIT: int = Field(default=500, ge=1)
+    CONTRIBUTOR_USAGE_RETENTION_DAYS: int = Field(default=365, ge=1)
+
     # --- Scraping
     SCRAPE_DELAY_SECONDS: float = Field(
         default=1.0,

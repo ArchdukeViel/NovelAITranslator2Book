@@ -301,6 +301,13 @@ def validate_production_config(settings: AppSettings) -> ValidationResult:
             "CSRF_TRUSTED_ORIGINS is required in production.",
         )
 
+    if settings.CONTRIBUTOR_CREDENTIALS_ENABLED and not settings.PROVIDER_CREDENTIAL_ENCRYPTION_KEY:
+        result.add(
+            Severity.FATAL,
+            "contributors",
+            "PROVIDER_CREDENTIAL_ENCRYPTION_KEY is required when contributor credentials are enabled.",
+        )
+
     # --- Backup
     if not settings.BACKUP_ENABLED:
         result.add(
