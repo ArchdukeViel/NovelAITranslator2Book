@@ -4,31 +4,127 @@ import type { Metadata } from "next";
 
 // Mock all page modules to avoid evaluating React components in jsdom.
 // We only need the `metadata` named export from each module.
-vi.mock("@/app/(public)/about/page", () => ({ metadata: { title: "About", description: "Dokushodo is a public reader for translated web novels with owner-controlled ingestion and translation workflows." } }));
-vi.mock("@/app/(public)/privacy/page", () => ({ metadata: { title: "Privacy", description: "Privacy policy for Dokushodo." } }));
-vi.mock("@/app/(public)/terms/page", () => ({ metadata: { title: "Terms", description: "Terms of service for Dokushodo." } }));
-vi.mock("@/app/(public)/dmca/layout", () => ({ metadata: { title: "DMCA", description: "DMCA policy for Dokushodo.", robots: { index: false, follow: false } } }));
-vi.mock("@/app/(public)/contact/layout", () => ({ metadata: { title: "Contact", description: "Contact information for Dokushodo.", robots: { index: false, follow: false } } }));
-vi.mock("@/app/(public)/cookie-policy/page", () => ({ metadata: { title: "Cookie Policy", description: "Cookie policy for Dokushodo." } }));
-vi.mock("@/app/(public)/ranking/page", () => ({ metadata: { title: "Ranking", description: "Ranking page for Dokushodo." } }));
-vi.mock("@/app/(public)/faq/page", () => ({ metadata: { title: "FAQ", description: "Frequently asked questions about Dokushodo." } }));
-vi.mock("@/app/(public)/news/page", () => ({ metadata: { title: "News", description: "Updates and announcements for Dokushodo." } }));
-vi.mock("@/app/(public)/auth/callback/page", () => ({ metadata: { title: "Signing In", description: "OAuth callback page.", robots: { index: false, follow: false } } }));
-vi.mock("@/app/(public)/error/page", () => ({ metadata: { title: "Error", description: "Error page.", robots: { index: false, follow: false } } }));
-vi.mock("@/app/(public)/maintenance/page", () => ({ metadata: { title: "Maintenance", description: "Maintenance page.", robots: { index: false, follow: false } } }));
-vi.mock("@/app/not-found", () => ({ metadata: { title: "Not Found", description: "Page not found.", robots: { index: false, follow: false } } }));
-vi.mock("@/app/(public)/page", () => ({ metadata: { title: "Home", description: "Home page." } }));
-vi.mock("@/app/layout", () => ({ metadata: { title: { template: "%s | Novel AI", default: "Novel AI" }, description: "Novel AI is a web-based Japanese novel crawling, translation, editing, and reader platform.", openGraph: { siteName: "Novel AI" }, twitter: { card: "summary" } } }));
-vi.mock("@/app/(public)/layout", () => ({ metadata: { title: { default: "Dokushodo", template: "%s | Dokushodo" }, description: "Dokushodo public reader.", openGraph: { siteName: "Dokushodo" }, robots: { index: true, follow: true } } }));
-vi.mock("@/app/(public)/account/layout", () => ({ metadata: { title: "Account", description: "Account layout.", robots: { index: false, follow: false } } }));
+vi.mock("@/app/(public)/about/page", () => ({
+  metadata: {
+    title: "About",
+    description:
+      "Dokushodo is a public reader for translated web novels with owner-controlled ingestion and translation workflows.",
+  },
+}));
+vi.mock("@/app/(public)/privacy/page", () => ({
+  metadata: { title: "Privacy", description: "Privacy policy for Dokushodo." },
+}));
+vi.mock("@/app/(public)/terms/page", () => ({
+  metadata: { title: "Terms", description: "Terms of service for Dokushodo." },
+}));
+vi.mock("@/app/(public)/dmca/layout", () => ({
+  metadata: {
+    title: "DMCA",
+    description: "DMCA policy for Dokushodo.",
+    robots: { index: false, follow: false },
+  },
+}));
+vi.mock("@/app/(public)/contact/layout", () => ({
+  metadata: {
+    title: "Contact",
+    description: "Contact information for Dokushodo.",
+    robots: { index: false, follow: false },
+  },
+}));
+vi.mock("@/app/(public)/cookie-policy/page", () => ({
+  metadata: {
+    title: "Cookie Policy",
+    description: "Cookie policy for Dokushodo.",
+  },
+}));
+vi.mock("@/app/(public)/ranking/page", () => ({
+  metadata: { title: "Ranking", description: "Ranking page for Dokushodo." },
+}));
+vi.mock("@/app/(public)/faq/page", () => ({
+  metadata: {
+    title: "FAQ",
+    description: "Frequently asked questions about Dokushodo.",
+  },
+}));
+vi.mock("@/app/(public)/news/page", () => ({
+  metadata: {
+    title: "News",
+    description: "Updates and announcements for Dokushodo.",
+  },
+}));
+vi.mock("@/app/(public)/auth/callback/page", () => ({
+  metadata: {
+    title: "Signing In",
+    description: "OAuth callback page.",
+    robots: { index: false, follow: false },
+  },
+}));
+vi.mock("@/app/(public)/error/page", () => ({
+  metadata: {
+    title: "Error",
+    description: "Error page.",
+    robots: { index: false, follow: false },
+  },
+}));
+vi.mock("@/app/(public)/maintenance/page", () => ({
+  metadata: {
+    title: "Maintenance",
+    description: "Maintenance page.",
+    robots: { index: false, follow: false },
+  },
+}));
+vi.mock("@/app/not-found", () => ({
+  metadata: {
+    title: "Not Found",
+    description: "Page not found.",
+    robots: { index: false, follow: false },
+  },
+}));
+vi.mock("@/app/(public)/page", () => ({
+  metadata: { title: "Home", description: "Home page." },
+}));
+vi.mock("@/app/layout", () => ({
+  metadata: {
+    title: { template: "%s | Novel AI", default: "Novel AI" },
+    description:
+      "Novel AI is a web-based Japanese novel crawling, translation, editing, and reader platform.",
+    openGraph: { siteName: "Novel AI" },
+    twitter: { card: "summary" },
+  },
+}));
+vi.mock("@/app/(public)/layout", () => ({
+  metadata: {
+    title: { default: "Dokushodo", template: "%s | Dokushodo" },
+    description: "Dokushodo public reader.",
+    openGraph: { siteName: "Dokushodo" },
+    robots: { index: true, follow: true },
+  },
+}));
+vi.mock("@/app/(public)/account/layout", () => ({
+  metadata: {
+    title: "Account",
+    description: "Account layout.",
+    robots: { index: false, follow: false },
+  },
+}));
 vi.mock("@/app/(public)/browse-novels/page", () => ({
-  generateMetadata: async ({ searchParams }: { searchParams: Promise<Record<string, string>> }) => {
+  generateMetadata: async ({
+    searchParams,
+  }: {
+    searchParams: Promise<Record<string, string>>;
+  }) => {
     const params = await searchParams;
     const q = (params.q ?? "").trim();
     if (q) {
-      return { title: `Search results for "${q}"`, description: `Search results for ${q} on Dokushodo.` };
+      return {
+        title: `Search results for "${q}"`,
+        description: `Search results for ${q} on Dokushodo.`,
+      };
     }
-    return { title: "Browse Novels", description: "Browse novels on Dokushodo." };
+    return {
+      title: "Browse Novels",
+      description: "Browse novels on Dokushodo.",
+    };
   },
 }));
 
@@ -63,7 +159,9 @@ import { metadata as accountLayoutMeta } from "@/app/(public)/account/layout";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getRobots(m: Metadata): { index?: boolean | null; follow?: boolean | null } | null {
+function getRobots(
+  m: Metadata,
+): { index?: boolean | null; follow?: boolean | null } | null {
   if (!m.robots) return null;
   if (typeof m.robots === "string") return null;
   // m.robots is Robots object
@@ -100,9 +198,16 @@ describe("metadata — site-wide", () => {
 
 describe("metadata — public layout", () => {
   it("public layout has default title and template", () => {
-    const m = publicLayoutMeta as Metadata & { title: { default: string; template: string } };
+    const m = publicLayoutMeta as Metadata & {
+      title: { default: string; template: string };
+    };
     expect(typeof m.title).toBe("object");
-    if (m.title && typeof m.title === "object" && "default" in m.title && "template" in m.title) {
+    if (
+      m.title &&
+      typeof m.title === "object" &&
+      "default" in m.title &&
+      "template" in m.title
+    ) {
       expect(m.title.default).toBe("Dokushodo");
       expect(m.title.template).toBe("%s | Dokushodo");
     }
@@ -130,13 +235,25 @@ describe("metadata — page titles use correct patterns", () => {
     { label: "terms", meta: termsMeta, expectedTitle: "Terms" },
     { label: "dmca", meta: dmcaMeta, expectedTitle: "DMCA" },
     { label: "contact", meta: contactMeta, expectedTitle: "Contact" },
-    { label: "cookie-policy", meta: cookiePolicyMeta, expectedTitle: "Cookie Policy" },
+    {
+      label: "cookie-policy",
+      meta: cookiePolicyMeta,
+      expectedTitle: "Cookie Policy",
+    },
     { label: "ranking", meta: rankingMeta, expectedTitle: "Ranking" },
     { label: "faq", meta: faqMeta, expectedTitle: "FAQ" },
     { label: "news", meta: newsMeta, expectedTitle: "News" },
-    { label: "auth/callback", meta: authCallbackMeta, expectedTitle: "Signing In" },
+    {
+      label: "auth/callback",
+      meta: authCallbackMeta,
+      expectedTitle: "Signing In",
+    },
     { label: "error", meta: errorMeta, expectedTitle: "Error" },
-    { label: "maintenance", meta: maintenanceMeta, expectedTitle: "Maintenance" },
+    {
+      label: "maintenance",
+      meta: maintenanceMeta,
+      expectedTitle: "Maintenance",
+    },
   ];
 
   for (const c of cases) {
@@ -214,12 +331,13 @@ describe("metadata — robots / noindex", () => {
     expect(r?.index).toBe(false);
     expect(r?.follow).toBe(false);
   });
-
 });
 
 describe("metadata — browse-novels", () => {
   it("generateMetadata returns browse title when no query", async () => {
-    const result = await browseGenerateMeta({ searchParams: Promise.resolve({}) });
+    const result = await browseGenerateMeta({
+      searchParams: Promise.resolve({}),
+    });
     expect(result.title).toBe("Browse Novels");
     expect(result.description).toContain("Dokushodo");
   });
@@ -256,10 +374,7 @@ describe("metadata — browse-novels", () => {
 
 describe("metadata — safety and honesty", () => {
   it("no metadata mentions fake ranking availability", () => {
-    const metas = [
-      rankingMeta,
-      aboutMeta,
-    ];
+    const metas = [rankingMeta, aboutMeta];
     for (const m of metas) {
       const desc = (m.description as string)?.toLowerCase() || "";
       expect(desc).not.toContain("daily ranking");
@@ -269,10 +384,7 @@ describe("metadata — safety and honesty", () => {
   });
 
   it("no metadata mentions fake update frequency", () => {
-    const metas = [
-      aboutMeta,
-      publicLayoutMeta,
-    ];
+    const metas = [aboutMeta, publicLayoutMeta];
     for (const m of metas) {
       const desc = (m.description as string)?.toLowerCase() || "";
       // Should not claim regular updates or daily content
@@ -306,30 +418,23 @@ describe("metadata — safety and honesty", () => {
   });
 
   it("contact page copy does not sound like scaffold placeholder", () => {
-    const sourceText = readFileSync(
-      "app/(public)/contact/page.tsx",
-      "utf8"
+    const sourceText = readFileSync("app/(public)/contact/page.tsx", "utf8");
+    expect(sourceText).not.toContain(
+      "confirms where contact information will live",
     );
-    expect(sourceText).not.toContain("confirms where contact information will live");
     expect(sourceText).not.toContain("channels are pending");
     expect(sourceText).toContain("single owner/admin");
     expect(sourceText).toMatch(/takedown\s+requests/);
   });
 
   it("dmca page copy does not sound like scaffold placeholder", () => {
-    const sourceText = readFileSync(
-      "app/(public)/dmca/page.tsx",
-      "utf8"
-    );
+    const sourceText = readFileSync("app/(public)/dmca/page.tsx", "utf8");
     expect(sourceText).not.toContain("pending final policy copy");
     expect(sourceText).toMatch(/single owner\/admin\s+will review/);
   });
 
   it("error page does not describe itself as documentation", () => {
-    const sourceText = readFileSync(
-      "app/(public)/error/page.tsx",
-      "utf8"
-    );
+    const sourceText = readFileSync("app/(public)/error/page.tsx", "utf8");
     expect(sourceText).not.toContain("documents the generic error surface");
     expect(sourceText).not.toContain("app-level error boundary");
     expect(sourceText).toContain("Something went wrong");
@@ -337,10 +442,7 @@ describe("metadata — safety and honesty", () => {
   });
 
   it("not-found page has secondary CTA and icon", () => {
-    const sourceText = readFileSync(
-      "app/not-found.tsx",
-      "utf8"
-    );
+    const sourceText = readFileSync("app/not-found.tsx", "utf8");
     expect(sourceText).toContain("Browse catalog");
     expect(sourceText).toContain("BookOpen");
     expect(sourceText).not.toContain("only /home link without icon");
@@ -349,7 +451,7 @@ describe("metadata — safety and honesty", () => {
   it("settings page does not contain backend jargon", () => {
     const sourceText = readFileSync(
       "app/(public)/account/settings/page.tsx",
-      "utf8"
+      "utf8",
     );
     expect(sourceText.toLowerCase()).not.toContain("backend");
     expect(sourceText).not.toContain("Google OAuth");
@@ -358,16 +460,16 @@ describe("metadata — safety and honesty", () => {
   it("request-novels page does not contain backend or API jargon", () => {
     const sourceText = readFileSync(
       "app/(public)/account/request-novels/page.tsx",
-      "utf8"
+      "utf8",
     );
     expect(sourceText.toLowerCase()).not.toContain("backend");
     expect(sourceText).not.toContain("behavior phase");
   });
 
-  it("contribute page does not contain backend jargon", () => {
+  it("contributions page does not contain backend jargon", () => {
     const sourceText = readFileSync(
-      "app/(public)/contribute/page.tsx",
-      "utf8"
+      "app/(public)/account/contributions/page.tsx",
+      "utf8",
     );
     expect(sourceText.toLowerCase()).not.toContain("backend");
     expect(sourceText).not.toContain("lifecycle");
