@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg-request" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2a1638"/>
+      <stop offset="50%" stop-color="#180e29"/>
+      <stop offset="100%" stop-color="#0c0715"/>
+    </linearGradient>
+    <linearGradient id="glow-purple" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c084fc" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#7e22ce" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="300" fill="url(#bg-request)"/>
+  <circle cx="680" cy="80" r="180" fill="url(#glow-purple)"/>
+  <path d="M0 250 L120 180 L240 220 L380 140 L520 200 L680 120 L800 190 L800 300 L0 300 Z" fill="#130a21" opacity="0.8"/>
+  <path d="M0 270 L180 210 L320 250 L480 180 L620 240 L800 200 L800 300 L0 300 Z" fill="#090410" opacity="0.9"/>
+  <!-- Pagoda Silhouette Accent -->
+  <path d="M640 160 L680 130 L720 160 L710 165 L650 165 Z M655 130 L680 105 L705 130 Z M678 105 L678 85 L682 85 L682 105 Z" fill="#3b1f5c" opacity="0.5"/>
+</svg>

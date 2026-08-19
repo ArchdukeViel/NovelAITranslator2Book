@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import HomePage from "@/app/(public)/home/page";
@@ -7,12 +13,14 @@ import HomePage from "@/app/(public)/home/page";
 const mocks = vi.hoisted(() => ({
   catalogQuery: vi.fn(),
   historyQuery: vi.fn(),
+  rankingQuery: vi.fn(),
   catalogParams: vi.fn(),
   isAuthenticated: false,
 }));
 
 vi.mock("@/hooks/public", async () => {
-  const actual = await vi.importActual<typeof import("@/hooks/public")>("@/hooks/public");
+  const actual =
+    await vi.importActual<typeof import("@/hooks/public")>("@/hooks/public");
   return {
     ...actual,
     useCatalog: (params: unknown) => {
@@ -21,18 +29,26 @@ vi.mock("@/hooks/public", async () => {
     },
     useGenreLabelMap: () => new Map<string, string>(),
     useHistory: () => mocks.historyQuery(),
+    usePublicRankings: () => mocks.rankingQuery(),
     usePublicAuth: () => ({
       isAuthenticated: mocks.isAuthenticated,
       isPending: false,
       isPublicUser: mocks.isAuthenticated,
       isOwner: false,
-      user: mocks.isAuthenticated ? { user_id: 1, email: "reader@example.com" } : null,
+      user: mocks.isAuthenticated
+        ? { user_id: 1, email: "reader@example.com" }
+        : null,
     }),
   };
 });
 
 vi.mock("next/link", () => ({
-  default: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...props}>{children}</a>,
+  default: ({
+    children,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a {...props}>{children}</a>
+  ),
 }));
 
 function novel(overrides: Record<string, unknown> = {}) {
@@ -59,10 +75,26 @@ function novel(overrides: Record<string, unknown> = {}) {
 let queryClient: QueryClient;
 
 beforeEach(() => {
-  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   vi.clearAllMocks();
   mocks.isAuthenticated = false;
-  mocks.historyQuery.mockReturnValue({ data: undefined, isPending: false, isError: false });
+  mocks.historyQuery.mockReturnValue({
+    data: undefined,
+    isPending: false,
+    isError: false,
+  });
+  mocks.rankingQuery.mockReturnValue({
+    data: {
+      available: true,
+      period: "daily",
+      metric: "unique_novel_views",
+      items: [{ rank: 1, unique_views: 3, novel: novel() }],
+    },
+    isPending: false,
+    isError: false,
+  });
   mocks.catalogQuery.mockReturnValue({
     data: { novels: [novel()], total: 1, page: 1, page_size: 8 },
     isPending: false,
@@ -74,30 +106,53 @@ beforeEach(() => {
 afterEach(cleanup);
 
 function renderHome() {
-  return render(<QueryClientProvider client={queryClient}><HomePage /></QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <HomePage />
+    </QueryClientProvider>,
+  );
 }
 
 describe("HomePage states", () => {
   it("renders catalog loading state within full layout", () => {
-    mocks.catalogQuery.mockReturnValue({ data: undefined, isPending: true, isError: false, refetch: vi.fn() });
+    mocks.catalogQuery.mockReturnValue({
+      data: undefined,
+      isPending: true,
+      isError: false,
+      refetch: vi.fn(),
+    });
     renderHome();
     expect(screen.getByText("The Way of Reading")).toBeInTheDocument();
   });
 
   it("renders retryable error state", () => {
     const refetch = vi.fn();
-    mocks.catalogQuery.mockReturnValue({ data: undefined, isPending: false, isError: true, refetch });
+    mocks.catalogQuery.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+      refetch,
+    });
     renderHome();
     fireEvent.click(screen.getByRole("button", { name: "Try reconnecting" }));
     expect(refetch).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("link", { name: /browse catalog/i })).toHaveAttribute("href", "/browse-novels");
+    expect(
+      screen.getByRole("link", { name: /browse catalog/i }),
+    ).toHaveAttribute("href", "/browse-novels");
   });
 
   it("renders honest empty state within the full Stitch layout", () => {
-    mocks.catalogQuery.mockReturnValue({ data: { novels: [], total: 0, page: 1, page_size: 8 }, isPending: false, isError: false, refetch: vi.fn() });
+    mocks.catalogQuery.mockReturnValue({
+      data: { novels: [], total: 0, page: 1, page_size: 8 },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
     renderHome();
-    expect(screen.getByText("Catalog empty — new translations added regularly.")).toBeInTheDocument();
-    expect(screen.getByText("Random Novels")).toBeInTheDocument();
+    expect(
+      screen.getByText("Catalog empty — new translations added regularly."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Random Novel")).toBeInTheDocument();
     expect(screen.getByText("Request Novel")).toBeInTheDocument();
   });
 });
@@ -107,14 +162,30 @@ describe("HomePage honest spotlight", () => {
     renderHome();
     const hero = screen.getByLabelText("Dokushodo spotlight novel");
     expect(within(hero).getByText("Featured Series")).toBeInTheDocument();
-    expect(within(hero).getByRole("link", { name: /start reading/i })).toHaveAttribute("href", "/novels/dragon/chapter/chapter-5");
-    expect(within(hero).queryByRole("link", { name: /view details/i })).not.toBeInTheDocument();
+    expect(
+      within(hero).getByRole("link", { name: /start reading/i }),
+    ).toHaveAttribute("href", "/novels/dragon/chapter/chapter-5");
+    expect(
+      within(hero).queryByRole("link", { name: /view details/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("does not claim a spotlight Start Reading CTA when eligibility is missing", () => {
-    mocks.catalogQuery.mockReturnValue({ data: { novels: [novel({ synopsis: null, latest_chapter_id: null })], total: 1, page: 1, page_size: 8 }, isPending: false, isError: false, refetch: vi.fn() });
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [novel({ synopsis: null, latest_chapter_id: null })],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
     renderHome();
-    expect(screen.queryByRole("link", { name: /start reading/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /start reading/i }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -123,45 +194,106 @@ describe("HomePage rails", () => {
     renderHome();
     const newNovels = screen.getByRole("region", { name: "New releases" });
     expect(
-      within(newNovels).getByRole("link", { name: "See More" })
+      within(newNovels).getByRole("link", { name: "See More" }),
     ).toHaveAttribute("href", "/browse-novels?sort_by=added_at&order=desc");
     const updated = screen.getByRole("region", { name: "Recently updated" });
     expect(
-      within(updated).getByRole("link", { name: "See More" })
+      within(updated).getByRole("link", { name: "See More" }),
     ).toHaveAttribute("href", "/browse-novels?sort_by=updated_at&order=desc");
   });
 
   it("hides the Continue reading region for guests", () => {
     renderHome();
-    expect(screen.queryByRole("region", { name: "Continue reading" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Continue reading" }),
+    ).not.toBeInTheDocument();
   });
 
   it("uses existing history for signed-in Continue Reading", () => {
     mocks.isAuthenticated = true;
-    mocks.historyQuery.mockReturnValue({ data: { items: [{ id: 1, slug: "dragon", chapter_id: "chapter-5", chapter_number: 5, read_at: "2026-07-10" }], next_cursor: null }, isPending: false, isError: false });
+    mocks.historyQuery.mockReturnValue({
+      data: {
+        items: [
+          {
+            id: 1,
+            slug: "dragon",
+            chapter_id: "chapter-5",
+            chapter_number: 5,
+            read_at: "2026-07-10",
+          },
+        ],
+        next_cursor: null,
+      },
+      isPending: false,
+      isError: false,
+    });
     renderHome();
-    const continuation = screen.getByRole("region", { name: "Continue reading" });
-    expect(within(continuation).getByRole("link", { name: "See all" })).toHaveAttribute("href", "/account/history");
+    const continuation = screen.getByRole("region", {
+      name: "Continue reading",
+    });
+    expect(
+      within(continuation).getByRole("link", { name: "See all" }),
+    ).toHaveAttribute("href", "/account/history");
   });
 
   it("derives genre rails from translated catalog composition", () => {
-    mocks.catalogQuery.mockReturnValue({ data: { novels: [novel(), novel({ novel_id: "n2", slug: "magic", title: "Magic", genres: [{ slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" }] }), novel({ novel_id: "n3", slug: "love", title: "Love", genres: [{ slug: "romance", name_ja: "恋愛", name_en: "Romance" }] })], total: 3, page: 1, page_size: 8 }, isPending: false, isError: false, refetch: vi.fn() });
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [
+          novel(),
+          novel({
+            novel_id: "n2",
+            slug: "magic",
+            title: "Magic",
+            genres: [
+              { slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" },
+            ],
+          }),
+          novel({
+            novel_id: "n3",
+            slug: "love",
+            title: "Love",
+            genres: [{ slug: "romance", name_ja: "恋愛", name_en: "Romance" }],
+          }),
+        ],
+        total: 3,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
     renderHome();
     const fantasy = screen.getByRole("region", { name: "Fantasy novels" });
-    expect(within(fantasy).getByRole("link", { name: "See all" })).toHaveAttribute("href", "/genres/fantasy");
+    expect(
+      within(fantasy).getByRole("link", { name: "See all" }),
+    ).toHaveAttribute("href", "/genres/fantasy");
   });
 
-  it("links Surprise Me and the discovery tiles to real routes", () => {
+  it("links discovery shortcuts and community banner to real routes", () => {
     renderHome();
-    expect(screen.getByRole("link", { name: /surprise me/i })).toHaveAttribute("href", "/random");
-    expect(screen.getByRole("link", { name: /random novel/i })).toHaveAttribute("href", "/random");
-    expect(screen.getByRole("link", { name: /request novel/i })).toHaveAttribute("href", "/account/request-novels");
+    const shortcuts = screen.getByRole("region", {
+      name: "Discovery shortcuts",
+    });
+    expect(
+      within(shortcuts).getByRole("link", { name: /browse novels/i }),
+    ).toHaveAttribute("href", "/browse-novels");
+    expect(
+      within(shortcuts).getByRole("link", { name: /ranking/i }),
+    ).toHaveAttribute("href", "/ranking");
+    expect(
+      within(shortcuts).getByRole("link", { name: /random novel/i }),
+    ).toHaveAttribute("href", "/random");
+    expect(
+      screen.getByRole("link", { name: /request translation/i }),
+    ).toHaveAttribute("href", "/account/request-novels");
   });
 
   it("renders honest catalog-derived sidebar widgets", () => {
     renderHome();
     expect(screen.getByText("Novel Ranking")).toBeInTheDocument();
-    expect(screen.getByText("Longest Series")).toBeInTheDocument();
+    expect(screen.getByText("Latest News")).toBeInTheDocument();
     expect(screen.getByText("Trending")).toBeInTheDocument();
   });
 
@@ -174,7 +306,9 @@ describe("HomePage rails", () => {
 
   it("never opts into adult catalog content", () => {
     renderHome();
-    expect(mocks.catalogParams).toHaveBeenCalledWith(expect.not.objectContaining({ include_adult: true }));
+    expect(mocks.catalogParams).toHaveBeenCalledWith(
+      expect.not.objectContaining({ include_adult: true }),
+    );
   });
 });
 
@@ -186,7 +320,7 @@ describe("HomePage editorial hero", () => {
     expect(within(hero).getByText("5/10 ch.")).toBeInTheDocument();
     expect(within(hero).getByText(/Fantasy/)).toBeInTheDocument();
     expect(
-      within(hero).getByRole("link", { name: "Open details for Dragon Road" })
+      within(hero).getByRole("link", { name: "Open details for Dragon Road" }),
     ).toHaveAttribute("href", "/novels/dragon");
   });
 
@@ -199,7 +333,7 @@ describe("HomePage editorial hero", () => {
     });
     renderHome();
     expect(
-      screen.queryByRole("link", { name: /open details for/i })
+      screen.queryByRole("link", { name: /open details for/i }),
     ).not.toBeInTheDocument();
   });
 });
@@ -231,7 +365,12 @@ describe("HomePage honest NEW badge", () => {
 
   it("does not render NEW badges on cards with no added_at", () => {
     mocks.catalogQuery.mockReturnValue({
-      data: { novels: [novel({ added_at: null })], total: 1, page: 1, page_size: 8 },
+      data: {
+        novels: [novel({ added_at: null })],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
       isPending: false,
       isError: false,
       refetch: vi.fn(),
