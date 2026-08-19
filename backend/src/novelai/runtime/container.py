@@ -251,6 +251,7 @@ class Container:
                 scheduler_runtime_state_service=self.scheduler_runtime_state,
                 analytics_service=AnalyticsService(),
                 notification_cleanup=self._cleanup_notifications,
+                contributor_usage_cleanup=self._cleanup_contributor_usage,
             )
         return self._maintenance_service
 
@@ -270,6 +271,14 @@ class Container:
                 .persistence()
                 .cleanup_retention(older_than_days=retention_days, batch_size=batch_size)
             )
+
+    @staticmethod
+    def _cleanup_contributor_usage(retention_days: int) -> int:
+        from novelai.db.engine import session_scope
+        from novelai.services.contributor_credentials import ContributorCredentialService
+
+        with session_scope() as db_session:
+            return ContributorCredentialService(db_session).cleanup_old_usage(ttl_days=retention_days)
 
     @property
     def operator_alert_service(self) -> OperatorAlertService:

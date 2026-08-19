@@ -31,9 +31,13 @@ class GeminiProvider(TranslationProvider):
     def __init__(
         self,
         *,
+        api_key: str | None = None,
         usage_service: UsageService | None = None,
         quota_controller: GeminiQuotaController | None = None,
     ) -> None:
+        # An explicit key is used only by the contributor credential lease.
+        # It is never copied into global preferences or settings.
+        self._explicit_api_key = api_key.strip() if isinstance(api_key, str) and api_key.strip() else None
         self._usage_service = usage_service or UsageService()
         self._quota_controller = quota_controller or get_gemini_quota_controller()
 
@@ -64,6 +68,8 @@ class GeminiProvider(TranslationProvider):
             )
 
     def _api_key_string(self) -> str:
+        if self._explicit_api_key is not None:
+            return self._explicit_api_key
         api_key = settings.PROVIDER_GEMINI_API_KEY
         if not api_key:
             raise ProviderError(

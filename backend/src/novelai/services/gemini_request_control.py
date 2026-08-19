@@ -54,12 +54,18 @@ class GeminiQuotaController:
         base_dir: Path | None = None,
         *,
         clock: Callable[[], datetime] | None = None,
+        rpm_limit: int | None = None,
+        tpm_limit: int | None = None,
+        rpd_limit: int | None = None,
     ) -> None:
         resolved_base = (base_dir or settings.NOVEL_LIBRARY_DIR).resolve()
         self.state_path = resolved_base / "gemini_quota_state.json"
         self.lock_path = self.state_path.with_suffix(".lock")
         self._clock = clock or (lambda: datetime.now(UTC))
         self._mutex = threading.RLock()
+        self._rpm_limit = rpm_limit or settings.GEMINI_RPM_LIMIT
+        self._tpm_limit = tpm_limit or settings.GEMINI_TPM_LIMIT
+        self._rpd_limit = rpd_limit or settings.GEMINI_RPD_LIMIT
 
     def _now(self) -> datetime:
         value = self._clock()
@@ -149,11 +155,7 @@ class GeminiQuotaController:
             now = self._now()
             events = self._prune(self._load_events(), now)
             requests_minute, tokens_minute, requests_today = self._window_totals(events, now)
-            limits = (
-                settings.GEMINI_RPM_LIMIT,
-                settings.GEMINI_TPM_LIMIT,
-                settings.GEMINI_RPD_LIMIT,
-            )
+            limits = (self._rpm_limit, self._tpm_limit, self._rpd_limit)
             if requests_minute + 1 > limits[0]:
                 return QuotaRejection(
                     "rate_limited",
@@ -251,9 +253,9 @@ class GeminiQuotaController:
             requests_minute, tokens_minute, requests_today = self._window_totals(events, now)
             return {
                 "limits": {
-                    "requests_per_minute": settings.GEMINI_RPM_LIMIT,
-                    "tokens_per_minute": settings.GEMINI_TPM_LIMIT,
-                    "requests_per_day": settings.GEMINI_RPD_LIMIT,
+                    "requests_per_minute": self._rpm_limit,
+                    "tokens_per_minute": self._tpm_limit,
+                    "requests_per_day": self._rpd_limit,
                 },
                 "current_minute": {
                     "requests": requests_minute,

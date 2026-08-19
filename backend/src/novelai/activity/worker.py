@@ -457,6 +457,8 @@ class ActivityWorkerService:
         }
         allow_cross_provider_fallback = metadata.get("allow_cross_provider_fallback", True) is not False
         skip_glossary_gate = metadata.get("skip_glossary_gate") is True
+        contribution_mode = metadata.get("contribution_mode")
+        requesting_user_id = metadata.get("requesting_user_id")
 
         summary = await self.orchestrator.translate_chapters(
             self._resolve_translation_source_key(activity),
@@ -471,6 +473,8 @@ class ActivityWorkerService:
             target_language=target_language,
             allow_cross_provider_fallback=allow_cross_provider_fallback,
             skip_glossary_gate=skip_glossary_gate,
+            contribution_mode=contribution_mode if isinstance(contribution_mode, str) else None,
+            requesting_user_id=requesting_user_id if isinstance(requesting_user_id, int) else None,
         )
         result: dict[str, Any] = {
             "chapters": chapters,

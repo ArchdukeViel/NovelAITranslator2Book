@@ -938,6 +938,24 @@ async def test_translate_stage_missing_gemini_key_fails_before_provider_or_stora
 
     assert exc_info.value.provider_error_code == ProviderErrorCode.CONFIGURATION
     assert requested_provider_keys == []
+
+
+def test_translate_stage_contributor_mode_does_not_require_owner_gemini_key(tmp_path):
+    env = _fallback_stage_env(tmp_path)
+    env["prefs"].clear_api_key("gemini")
+    stage = TranslateStage(
+        provider_factory=lambda key: _FallbackContractProvider(key),
+        cache=env["cache"],
+        settings_service=env["prefs"],
+        usage_service=env["usage"],
+        storage=env["storage"],
+    )
+
+    assert stage._resolve_provider_and_model(
+        "gemini",
+        GEMINI_DEFAULT_MODEL,
+        contributor_mode=True,
+    ) == ("gemini", GEMINI_DEFAULT_MODEL)
     assert env["storage"].list_keys_under("runtime/translation") == []
 
 

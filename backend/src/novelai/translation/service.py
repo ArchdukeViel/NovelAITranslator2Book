@@ -69,6 +69,8 @@ class TranslationService:
         raw_text: str | None = None,
         raw_images: list[dict[str, Any]] | None = None,
         paragraph_ids: list[str] | None = None,
+        contribution_mode: str | None = None,
+        requesting_user_id: int | None = None,
     ) -> PipelineResult:
         """Run the translation pipeline for a single chapter.
 
@@ -145,6 +147,10 @@ class TranslationService:
             state.metadata["_prefetched_images"] = raw_images
         if paragraph_ids:
             state.metadata["_paragraph_ids_override"] = [str(pid) for pid in paragraph_ids]
+        if contribution_mode is not None:
+            state.metadata["contribution_mode"] = contribution_mode
+        if requesting_user_id is not None:
+            state.metadata["requesting_user_id"] = requesting_user_id
 
         # Run pipeline
         logger.debug(f"Running pipeline with stages: {[s.__class__.__name__ for s in self.pipeline.stages]}")

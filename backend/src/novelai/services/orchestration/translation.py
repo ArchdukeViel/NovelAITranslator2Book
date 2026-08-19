@@ -950,6 +950,8 @@ async def translate_chapters(
     honorific_policy: str | None = None,
     allow_cross_provider_fallback: bool = True,
     skip_glossary_gate: bool = False,
+    contribution_mode: str | None = None,
+    requesting_user_id: int | None = None,
 ) -> dict[str, Any]:
     """Translate selected chapters through the pipeline.
 
@@ -991,6 +993,7 @@ async def translate_chapters(
         metadata=meta,
         provider_key=provider_key,
         provider_model=provider_model,
+        contributor_mode=contribution_mode == "contributor",
     )
 
     # Read workflow defaults from metadata and apply as fallbacks. The
@@ -1417,6 +1420,8 @@ async def translate_chapters(
                     glossary_revision=glossary_revision,
                     raw_text=raw_text,
                     raw_images=raw_images,
+                    contribution_mode=contribution_mode,
+                    requesting_user_id=requesting_user_id,
                 )
                 translated = result.final_text
                 glossary_injected_term_count = int(result.metadata.get("glossary_injected_term_count", 0) or 0)

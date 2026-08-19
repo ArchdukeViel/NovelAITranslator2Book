@@ -356,7 +356,13 @@ class NovelOrchestrationService:
                 message=f"Translation provider {key!r} could not be created: {type(exc).__name__}.",
             ) from None
 
-    def _assert_special_provider_guards(self, key: str, *, model: str | None = None) -> None:
+    def _assert_special_provider_guards(
+        self,
+        key: str,
+        *,
+        model: str | None = None,
+        contributor_mode: bool = False,
+    ) -> None:
         """Preserve the established fail-closed configuration guards.
 
         Gemini requires a configured API key and ``dummy`` is available only
@@ -364,7 +370,7 @@ class NovelOrchestrationService:
         TranslationRunManifest is created — the pipeline stage never discovers
         these misconfigurations late.
         """
-        if self._provider_requires_api_key(key) and not self._settings.get_api_key(key):
+        if self._provider_requires_api_key(key) and not contributor_mode and not self._settings.get_api_key(key):
             raise ProviderConfigError(
                 ProviderErrorCode.CONFIGURATION,
                 provider_key=key,
@@ -386,6 +392,7 @@ class NovelOrchestrationService:
         metadata: dict[str, Any] | None,
         provider_key: str | None,
         provider_model: str | None,
+        contributor_mode: bool = False,
     ) -> tuple[str, str]:
         """Resolve the authoritative provider/model contract identity for a
         workflow step as ONE validated pair.
@@ -446,7 +453,11 @@ class NovelOrchestrationService:
         #    the model is even chosen, so a manifest is never created for a
         #    provider that does not exist or cannot authenticate.
         provider = self._provider_instance(resolved_provider, for_model=explicit_model)
-        self._assert_special_provider_guards(resolved_provider, model=explicit_model)
+        self._assert_special_provider_guards(
+            resolved_provider,
+            model=explicit_model,
+            contributor_mode=contributor_mode,
+        )
         supported = self._available_models_for(provider)
 
         if resolved_provider == "gemini" and explicit_model is None:

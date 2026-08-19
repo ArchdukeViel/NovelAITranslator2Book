@@ -13,6 +13,10 @@ from novelai.core.errors import PipelineStageError, ProviderConfigError, Provide
 from novelai.prompts.models import TranslationRequest
 from novelai.providers.base import TranslationProvider
 from novelai.providers.model_fallbacks import model_candidates
+from novelai.services.contributor_credentials import (
+    ContributorCredentialLease,
+    ContributorCredentialService,
+)
 from novelai.services.glossary_diagnostics import (
     normalize_glossary_diagnostics,
 )
@@ -149,7 +153,13 @@ class TranslateStage(PipelineStage):
         configured_max_attempts = settings.TRANSLATION_MAX_ATTEMPTS_PER_CHUNK
         self._max_attempts_per_chunk = configured_max_attempts if configured_max_attempts > 0 else 3
 
-    def _resolve_provider_and_model(self, provider_key: str, model: str) -> tuple[str, str]:
+    def _resolve_provider_and_model(
+        self,
+        provider_key: str,
+        model: str,
+        *,
+        contributor_mode: bool = False,
+    ) -> tuple[str, str]:
         if provider_key == "gemini" and model != GEMINI_DEFAULT_MODEL:
             raise ProviderConfigError(
                 ProviderErrorCode.CONFIGURATION,
@@ -158,7 +168,7 @@ class TranslateStage(PipelineStage):
                 message=f"Gemini production model must be {GEMINI_DEFAULT_MODEL}; model fallback is disabled.",
                 details={"expected_model": GEMINI_DEFAULT_MODEL},
             )
-        if provider_key == "gemini" and not self._settings.get_api_key(provider_key):
+        if provider_key == "gemini" and not contributor_mode and not self._settings.get_api_key(provider_key):
             raise ProviderConfigError(
                 ProviderErrorCode.CONFIGURATION,
                 provider_key=provider_key,
@@ -232,6 +242,36 @@ class TranslateStage(PipelineStage):
             # quota, temporary, and 5xx failures are handled by the same
             # model's scheduler state; no alternate model is eligible.
             candidates = [GEMINI_DEFAULT_MODEL]
+        if context.metadata.get("contribution_mode") == "contributor":
+            if provider_key != "gemini":
+                raise ProviderConfigError(
+                    ProviderErrorCode.CONFIGURATION,
+                    provider_key=provider_key,
+                    provider_model=model,
+                    message="Contributor credentials are isolated to Gemini and cannot cross provider boundaries.",
+                )
+            configs = normalize_model_configs(
+                [
+                    {
+                        "provider_key": "gemini",
+                        "provider_model": GEMINI_DEFAULT_MODEL,
+                        "priority_order": 0,
+                        "rpm_limit": settings.CONTRIBUTOR_RPM_LIMIT,
+                        "rpd_limit": settings.CONTRIBUTOR_RPD_LIMIT,
+                    }
+                ],
+                default_provider_key="gemini",
+                default_models=[GEMINI_DEFAULT_MODEL],
+            )
+            context.metadata["provider_lock"] = "gemini"
+            context.metadata["allow_cross_provider_fallback"] = False
+            return TranslationScheduler.from_configs(
+                configs,
+                policy=normalize_policy(
+                    context.metadata.get("scheduler_policy") or settings.TRANSLATION_SCHEDULER_POLICY
+                ),
+                existing_state=context.scheduler_state,
+            )
         policy = normalize_policy(context.metadata.get("scheduler_policy") or settings.TRANSLATION_SCHEDULER_POLICY)
         raw_policy = context.metadata.get("scheduler_models")
         admin_policy_consulted = False
@@ -428,7 +468,11 @@ class TranslateStage(PipelineStage):
         request: TranslationRequest | None,
         glossary_hash: str | None = None,
     ) -> tuple[str, str, str, bool] | None:
-        p_key, p_model = self._resolve_provider_and_model(provider_key, provider_model)
+        p_key, p_model = self._resolve_provider_and_model(
+            provider_key,
+            provider_model,
+            contributor_mode=context.metadata.get("contribution_mode") == "contributor",
+        )
         return cached_translation(
             self._cache,
             self._cache_service,
@@ -456,8 +500,42 @@ class TranslateStage(PipelineStage):
         request: TranslationRequest | None = None,
         glossary_hash: str | None = None,
     ) -> tuple[str, str, str, bool]:
-        provider_key, provider_model = self._resolve_provider_and_model(provider_key, provider_model)
-        provider = self._provider_factory(provider_key)
+        contributor_mode = context.metadata.get("contribution_mode") == "contributor"
+        provider_key, provider_model = self._resolve_provider_and_model(
+            provider_key,
+            provider_model,
+            contributor_mode=contributor_mode,
+        )
+        lease: ContributorCredentialLease | None = None
+        if contributor_mode:
+            lease = ContributorCredentialService.acquire_runtime_lease(
+                provider_key=provider_key,
+                provider_model=provider_model,
+                requesting_user_id=(
+                    context.metadata.get("requesting_user_id")
+                    if isinstance(context.metadata.get("requesting_user_id"), int)
+                    else None
+                ),
+            )
+            if lease is None:
+                raise ProviderConfigError(
+                    ProviderErrorCode.CONFIGURATION,
+                    provider_key=provider_key,
+                    provider_model=provider_model,
+                    message="No active validated contributor credential is available.",
+                )
+            from novelai.providers.gemini_provider import GeminiProvider
+
+            provider: TranslationProvider = GeminiProvider(
+                api_key=lease.api_key,
+                quota_controller=lease.quota_controller,
+                usage_service=self._usage,
+            )
+            context.metadata["credential_id"] = lease.credential_id
+            context.metadata["credential_owner_user_id"] = lease.credential_owner_user_id
+            context.metadata["credential_scope"] = "contributor"
+        else:
+            provider = self._provider_factory(provider_key)
 
         started_at = utc_now_iso()
         try:
@@ -475,10 +553,71 @@ class TranslateStage(PipelineStage):
                         "chunk_id": chunk_id,
                         "retry_attempt": attempt_number,
                         "cache_status": "miss",
+                        "credential_id": lease.credential_id if lease is not None else None,
+                        "credential_owner_user_id": lease.credential_owner_user_id if lease is not None else None,
+                        "requesting_user_id": context.metadata.get("requesting_user_id"),
+                        "credential_scope": "contributor" if lease is not None else "owner",
+                        "contribution_mode": "contributor" if lease is not None else "owner",
                     },
                 ),
             )
+            if lease is not None:
+                usage_metadata = result.get("metadata") if isinstance(result, dict) else None
+                usage = usage_metadata.get("usage") if isinstance(usage_metadata, dict) else None
+                ContributorCredentialService.record_usage(
+                    credential_id=lease.credential_id,
+                    credential_owner_user_id=lease.credential_owner_user_id,
+                    requesting_user_id=(
+                        context.metadata.get("requesting_user_id")
+                        if isinstance(context.metadata.get("requesting_user_id"), int)
+                        else None
+                    ),
+                    provider_key=provider_key,
+                    provider_model=provider_model,
+                    request_id=context.metadata.get("request_id")
+                    if isinstance(context.metadata.get("request_id"), str)
+                    else None,
+                    job_id=context.job_id,
+                    activity_id=context.activity_id,
+                    status="success",
+                    input_tokens=usage.get("input_tokens")
+                    if isinstance(usage, dict) and isinstance(usage.get("input_tokens"), int)
+                    else None,
+                    output_tokens=usage.get("output_tokens")
+                    if isinstance(usage, dict) and isinstance(usage.get("output_tokens"), int)
+                    else None,
+                    total_tokens=usage.get("total_tokens")
+                    if isinstance(usage, dict) and isinstance(usage.get("total_tokens"), int)
+                    else None,
+                    estimated_input_tokens=None,
+                    estimated_output_tokens=None,
+                )
         except ProviderError as exc:
+            if lease is not None:
+                error_code = exc.provider_error_code.value
+                if error_code in {"configuration", "quota_exhausted", "rate_limited"}:
+                    ContributorCredentialService.mark_runtime_unhealthy(lease.credential_id, error_code=error_code)
+                ContributorCredentialService.record_usage(
+                    credential_id=lease.credential_id,
+                    credential_owner_user_id=lease.credential_owner_user_id,
+                    requesting_user_id=context.metadata.get("requesting_user_id")
+                    if isinstance(context.metadata.get("requesting_user_id"), int)
+                    else None,
+                    provider_key=provider_key,
+                    provider_model=provider_model,
+                    request_id=context.metadata.get("request_id")
+                    if isinstance(context.metadata.get("request_id"), str)
+                    else None,
+                    job_id=context.job_id,
+                    activity_id=context.activity_id,
+                    status="failed",
+                    input_tokens=None,
+                    output_tokens=None,
+                    total_tokens=None,
+                    estimated_input_tokens=None,
+                    estimated_output_tokens=None,
+                    error_code=error_code,
+                )
             finished_at = utc_now_iso()
             self._storage.save_provider_request_record(
                 provider_request_record(
@@ -502,6 +641,8 @@ class TranslateStage(PipelineStage):
             )
             raise
         except Exception as exc:
+            if lease is not None:
+                ContributorCredentialService.mark_runtime_unhealthy(lease.credential_id, error_code="unknown")
             finished_at = utc_now_iso()
             provider_error = provider_error_from_generic(exc, provider_key=provider.key, provider_model=provider_model)
             self._storage.save_provider_request_record(
@@ -622,7 +763,11 @@ class TranslateStage(PipelineStage):
             context.metadata["request_id"] = request_id
         provider_key = context.provider_key or self._settings.get_preferred_provider()
         model = context.provider_model or self._settings.get_provider_model()
-        provider_key, model = self._resolve_provider_and_model(provider_key, model)
+        provider_key, model = self._resolve_provider_and_model(
+            provider_key,
+            model,
+            contributor_mode=context.metadata.get("contribution_mode") == "contributor",
+        )
         context.provider_key = provider_key
         context.provider_model = model
         scheduler = self._build_scheduler(context, provider_key=provider_key, model=model)

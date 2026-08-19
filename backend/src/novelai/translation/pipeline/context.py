@@ -140,6 +140,12 @@ class PipelineMetadata(TypedDict, total=False):
     _prefetched_text: str
     _prefetched_images: list[dict[str, Any]]
     _normalized_chapters: list[dict[str, Any]]
+    credential_id: str
+    credential_owner_user_id: int
+    requesting_user_id: int
+    credential_scope: str
+    contribution_mode: str
+    request_id: str
 
 
 @dataclass
@@ -307,12 +313,16 @@ class PipelineState:
             credential_id=self.metadata.get("credential_id")
             if isinstance(self.metadata.get("credential_id"), str)
             else None,
-            credential_owner_user_id=self.metadata.get("credential_owner_user_id")
-            if isinstance(self.metadata.get("credential_owner_user_id"), str)
-            else None,
-            requesting_user_id=self.metadata.get("requesting_user_id")
-            if isinstance(self.metadata.get("requesting_user_id"), str)
-            else None,
+            credential_owner_user_id=(
+                str(self.metadata.get("credential_owner_user_id"))
+                if isinstance(self.metadata.get("credential_owner_user_id"), (str, int))
+                else None
+            ),
+            requesting_user_id=(
+                str(self.metadata.get("requesting_user_id"))
+                if isinstance(self.metadata.get("requesting_user_id"), (str, int))
+                else None
+            ),
             chunk_id=chunk_id,
             stage_name=stage_name,
             status_before=status_before,
