@@ -7,7 +7,7 @@ Design the landing page as a quiet catalog front door: a two-column editorial la
 The site root redirects here. It is the primary discovery surface and the first page most visitors see. The layout replicates the "Dokushodo - Fixed Sidebar & Transparent Logo" Stitch screen (project Minimalist Webnovel Portal, screen `1794eb02d11a407b9b6343d727670125`).
 
 ## Global Visual Snapshot
-Dokushodo is a quiet Japanese literary reading platform for translated web novels inspired by Japanese *Bunko-bon* (pocket-sized paperback) aesthetics. The visual style is Contemporary Minimalism with Tactile Editorial influences: a washi paper (#F9F6F0) background with sumi ink (#1A1A1A) text, EB Garamond serif typography for titles and reading content, Hanken Grotesk sans-serif for UI and metadata, shuji vermillion (#BD3E2C) reserved for primary focal actions and brand markers, and muted obsidian (#212529) for borders and secondary surfaces. Cards use Bunko-style vertical layout with subtle paper borders. The desktop shell pairs a slim top header (hamburger + transparent brand logo, inline nav, search overlay trigger, theme toggle, user menu) with a collapsible fixed left sidebar for site navigation, above a persistent footer with catalog, help, legal, and account links. Mobile features a compact header and a fixed bottom tab bar offering Home, Browse, Search, Library, and Account. Imagery is limited to the transparent brand mark, gradient/bookplate covers generated from title and author, and restrained illustrations for empty, error, and maintenance states. Motion is subtle and short, never decorative. The platform tells the truth: it never invents views, reader counts, ratings, or spender leaderboards. The settled state is calm, legible, tactile, and free of digital clutter.
+Dokushodo is a quiet Japanese literary reading platform for translated web novels. The interface uses a restrained warm-light aesthetic: washi paper, near-black ink, vermillion for the primary action, and muted teal for secondary surfaces. The desktop shell is a fixed 56px header with the brand mark, search, notifications, account controls, and a collapsible navigation panel up to 320px wide; navigation reflects the current Home, News, Library, Browse Novels, Ranking, Random Novel, Request Novels, Contributions, and FAQ surfaces. Mobile uses a compact header and fixed bottom tabs for Home, Browse, Search, Library, and Account. Cards use quiet paper surfaces, thin borders, six-pixel corners, and restrained elevation. Covers use deterministic bookplate or gradient treatments; illustrations are reserved for empty, error, and maintenance states. Serif typography carries titles and reading matter, sans-serif handles interface text, and monospace is reserved for metadata. Motion is brief and functional. The platform presents truthful ranking periods, loading, unavailable, and no-data states, while contribution settings show masked credential lifecycle and usage states without exposing key material. The settled state is calm, legible, tactile, and free of digital clutter.
 
 ## Page Goal
 Move a visitor from first impression to a reading start in one or two clicks.
@@ -26,12 +26,13 @@ Start Reading on the hero spotlight card.
 - Recently Updated list
 - Genre rails, one per major genre
 - Surprise Me callout
-- Right sidebar: Novel Ranking, Longest Series, Most Chapters
+- Right sidebar: Novel Ranking, Latest News, Trending
 - Footer
 
 ## Desktop Composition
 - Wide content column (max ~1600px) split into a 12-column grid: main feed spans 8 columns, sidebar spans 4 (3 at very wide)
-- Fixed left sidebar (240px) hidden by default; it slides in from the header hamburger and is dismissed by the backdrop, the close control, or Escape
+- Fixed left sidebar up to 320px wide, hidden by default; it slides in from the header hamburger and is dismissed by the backdrop, the close control, or Escape
+- Fixed top header adapting to active theme (`bg-background/95`) with auto-hide on scroll down and reveal on scroll up, brand mark and hamburger on left, inline nav links (Browse, Request, Library, Ranking), right-aligned search entry, notification indicator, and profile dropdown menu
 - Hero spotlight card at the top of the feed: eyebrow "Featured Series" in vermillion, serif title, source title (italic, when distinct), an honest metadata row (status and translated/chapter counts from catalog fields), synopsis, up to three genre chips, and a vermillion Start Reading button beside an asymmetric bookplate cover card; subtle palette-wash background, never a stretched portrait image
 - Two half-width discovery banner tiles beneath the hero (Random Novel, Request Novel)
 - New Releases as a 5-column Bunko card grid (2 columns on small screens) under a bordered section header with a "See More" control; cards added within the freshness window carry a small vermillion NEW chip derived only from the real `added_at` catalog field
@@ -63,8 +64,8 @@ Start Reading on the hero spotlight card.
 - Bunko novel card (NEW chip on fresh arrivals only)
 - Banner tile
 - Recent update row
-- Ranked sidebar item
-- Trending/chapters sidebar item
+- API-backed ranked sidebar item with Daily, Weekly, and Monthly tabs
+- Trending sidebar item using the weekly unique-view ranking
 - Fixed sidebar
 - Public header
 - Public footer
@@ -79,8 +80,8 @@ Start Reading on the hero spotlight card.
 - Recently Updated
 - Genre names as rail titles
 - Novel Ranking
-- Longest Series
-- Most Chapters
+- Latest News
+- Trending
 - See More
 - Surprise Me
 - View Full Catalog
@@ -119,7 +120,7 @@ Calm two-column editorial layout; quiet Bunko cards on washi paper; one vermilli
 - The spotlight is derived from the catalog and never labeled as curated
 - Surprise Me behavior
 - Quiet density with no decorative motion
-- No invented metrics: never show views, reader counts, ratings, or spender leaderboards. Sidebar widgets are derived from real catalog fields (translated chapters, chapter count, added date) and use honest labels only.
+- No invented metrics: ranking and Trending show only the API-backed distinct novel-detail-view metric. Other catalog widgets use real catalog fields (translated chapters, chapter count, added date) and honest labels only.
 - NEW chips appear only when `added_at` is inside the freshness window (14 days) and never as a marketing claim
 
 ## Avoid
@@ -127,7 +128,7 @@ Calm two-column editorial layout; quiet Bunko cards on washi paper; one vermilli
 - Fake curation labels or editorial claims
 - Confetti or celebratory graphics
 - More than one vermillion action per card region
-- "Trending", "Top Spenders", "Most Read", or view/rating counts presented as if they were live metrics
+- "Top Spenders", "Most Read", or fabricated view/rating counts presented as if they were live metrics
 - Stretched portrait imagery or invented banner art in the hero
 
 ## Stitch Output Requirements

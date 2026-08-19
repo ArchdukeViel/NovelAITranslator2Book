@@ -7,26 +7,28 @@ Design the personal library with reading-status groups and board and list views.
 Signed-in readers organize saved novels by reading status.
 
 ## Global Visual Snapshot
-Dokushodo is a quiet Japanese literary reading platform for translated web novels. The interface favors a restrained warm-light aesthetic: a washi paper background with near-black ink text, vermillion reserved for the single primary action on a card or screen, and soft teal used only for secondary surfaces. The desktop shell is a slim header with the brand mark on the left, inline navigation, a search overlay trigger, a theme toggle, and a user menu, above a persistent footer with catalog, help, legal, and account links. Mobile replaces the header with a compact bar and a fixed bottom tab bar offering Home, Browse, Search, Library, and Account. Cards are quiet: white paper, thin borders, six pixel corners, no shadow. Imagery is limited to the brand mark, gradient book covers generated from title and author, and three restrained illustrations for empty, error, and maintenance states. Serif typography is reserved for novel titles and reading matter; sans-serif covers interface text; monospace marks metadata such as identifiers and timestamps. Motion is subtle and short, never decorative. The platform tells the truth: unavailable features state that they are unavailable, ranking shows a quiet not-live notice, and empty states point to a clear next step. The settled state is calm, legible, and free of noise.
+Dokushodo is a quiet Japanese literary reading platform for translated web novels. The interface uses a restrained warm-light aesthetic: washi paper, near-black ink, vermillion for the primary action, and muted teal for secondary surfaces. The desktop shell is a fixed 56px header with the brand mark, search, notifications, account controls, and a collapsible navigation panel up to 320px wide; navigation reflects the current Home, News, Library, Browse Novels, Ranking, Random Novel, Request Novels, Contributions, and FAQ surfaces. Mobile uses a compact header and fixed bottom tabs for Home, Browse, Search, Library, and Account. Cards use quiet paper surfaces, thin borders, six-pixel corners, and restrained elevation. Covers use deterministic bookplate or gradient treatments; illustrations are reserved for empty, error, and maintenance states. Serif typography carries titles and reading matter, sans-serif handles interface text, and monospace is reserved for metadata. Motion is brief and functional. The platform presents truthful ranking periods, loading, unavailable, and no-data states, while contribution settings show masked credential lifecycle and usage states without exposing key material. The settled state is calm, legible, tactile, and free of digital clutter.
 
 ## Page Goal
-Show exactly where every saved novel stands and move it between statuses.
+Show personal library with tabs (Library, Updates, History, Followed Folders) and move saved novels between reading statuses.
 
 ## Audience and Access
-Signed-in readers only.
+Publicly viewable; unauthenticated guests see tabbed header with in-page login banner ("You need to login to use Library features"). Signed-in readers access full saved novel lists.
 
 ## Primary Action
-Opening a saved novel or changing its status.
+Opening a saved novel, switching library tab, or changing reading status.
 
 ## Information Hierarchy
 - Page heading Library
+- Top tabs: Library, Updates, History, Followed Folders
+- Unauthenticated banner (if guest) with Sign in CTA
 - Search and sort controls
 - View toggle: board or list
-- Status groups: Reading, Plan to read, Completed, Dropped
+- Status groups (under Library tab): Reading, Plan to read, Completed, Dropped, Unknown
 
 ## Desktop Composition
 - Toolbar with search, sort, and view toggle
-- Board view: four columns, one per status group, each with novel cards
+- Board view: status columns derived from the response, including an explicit Unknown group when needed
 - List view: one table-like list with a status column
 - Status change via a quiet menu on each card
 
@@ -56,7 +58,7 @@ Opening a saved novel or changing its status.
 - Search by title or author
 
 ## Normal Settled State
-Four tidy groups with quiet cards; the current view state is clearly selected.
+Tidy status groups with quiet cards; the current view state is clearly selected and unknown persisted statuses are not silently discarded.
 
 ## Alternate Visual States
 - Empty library with the empty illustration and a browse link
@@ -82,7 +84,7 @@ Four tidy groups with quiet cards; the current view state is clearly selected.
 ## Preserve Exactly
 - Group names exactly as listed
 - Board and list views both available
-- Statuses never invented
+- Unknown statuses remain visibly labeled rather than being invented or dropped
 
 ## Avoid
 - Cover carousels

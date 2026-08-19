@@ -1,13 +1,13 @@
 # Dokushodo - Ranking
 
 ## Design Task
-Design the ranking page with honest unavailable state and period tabs.
+Design the live ranking page with period tabs and truthful data availability states.
 
 ## Product Context
-Rankings are not live yet. The page must look complete while stating plainly that it is not live.
+Rankings are derived from distinct novel-detail viewers retained by privacy-safe analytics. Daily, Weekly, and Monthly are the only periods; All Time is not offered.
 
 ## Global Visual Snapshot
-Dokushodo is a quiet Japanese literary reading platform for translated web novels. The interface favors a restrained warm-light aesthetic: a washi paper background with near-black ink text, vermillion reserved for the single primary action on a card or screen, and soft teal used only for secondary surfaces. The desktop shell is a slim header with the brand mark on the left, inline navigation, a search overlay trigger, a theme toggle, and a user menu, above a persistent footer with catalog, help, legal, and account links. Mobile replaces the header with a compact bar and a fixed bottom tab bar offering Home, Browse, Search, Library, and Account. Cards are quiet: white paper, thin borders, six pixel corners, no shadow. Imagery is limited to the brand mark, gradient book covers generated from title and author, and three restrained illustrations for empty, error, and maintenance states. Serif typography is reserved for novel titles and reading matter; sans-serif covers interface text; monospace marks metadata such as identifiers and timestamps. Motion is subtle and short, never decorative. The platform tells the truth: unavailable features state that they are unavailable, ranking shows a quiet not-live notice, and empty states point to a clear next step. The settled state is calm, legible, and free of noise.
+Dokushodo is a quiet Japanese literary reading platform for translated web novels. The interface uses a restrained warm-light aesthetic: washi paper, near-black ink, vermillion for the primary action, and muted teal for secondary surfaces. The desktop shell is a fixed 56px header with the brand mark, search, notifications, account controls, and a collapsible navigation panel up to 320px wide; navigation reflects the current Home, News, Library, Browse Novels, Ranking, Random Novel, Request Novels, Contributions, and FAQ surfaces. Mobile uses a compact header and fixed bottom tabs for Home, Browse, Search, Library, and Account. Cards use quiet paper surfaces, thin borders, six-pixel corners, and restrained elevation. Covers use deterministic bookplate or gradient treatments; illustrations are reserved for empty, error, and maintenance states. Serif typography carries titles and reading matter, sans-serif handles interface text, and monospace is reserved for metadata. Motion is brief and functional. The platform presents truthful ranking periods, loading, unavailable, and no-data states, while contribution settings show masked credential lifecycle and usage states without exposing key material. The settled state is calm, legible, tactile, and free of digital clutter.
 
 ## Page Goal
 Present the ranking structure without fabricating any data.
@@ -20,19 +20,20 @@ None; the page is informational until rankings go live.
 
 ## Information Hierarchy
 - Page title Ranking
-- Period tabs: Daily, Weekly, Monthly, All Time
-- Quiet not-live notice
-- Empty ranking table placeholders
+- Period tabs: Daily, Weekly, Monthly
+- Metric label: Unique novel-detail views
+- Ranked rows when data exists
+- Loading, unavailable, and no-data states
 
 ## Desktop Composition
-- Title with a quiet badge reading Ranking is not live yet
+- Title with a quiet metric badge reading Unique novel-detail views
 - Tab bar for periods
-- Ranking table with rank, cover, title, and score columns left empty or with placeholders
+- Ranking list with rank, cover, title, and unique-view count
 
 ## Mobile Composition
 - Compact title with the notice below
 - Tabs scroll horizontally
-- Placeholder rows with quiet skeletons
+- Rows show rank, title, cover treatment, and distinct viewer count
 
 ## Page Anatomy
 - Public header
@@ -42,26 +43,28 @@ None; the page is informational until rankings go live.
 - Public footer
 
 ## Key Components
-- Notice badge
+- Metric/status badge
 - Period tabs
-- Ranking table
-- Placeholder rows
+- Ranking list
+- Loading and empty-state treatment
 
 ## Representative Content
 - Ranking
-- Ranking is not live yet
-- Daily, Weekly, Monthly, All Time
+- Unique novel-detail views
+- Daily, Weekly, Monthly
 
 ## Normal Settled State
-A complete-looking page with one honest notice badge and empty table rows; no numbers anywhere.
+A quiet ranked list when analytics has retained data, with counts labeled as distinct novel-detail viewers and no fabricated rows.
 
 ## Alternate Visual States
 - Loading skeleton rows
-- Future live state with real ranked rows
+- Analytics disabled state
+- No retained data state
+- Recoverable service error
 
 ## Interaction Cues
-- Tabs are selectable but all periods show the same honest state
-- No row interactions
+- Tabs request their corresponding 24-hour, 7-day, or 30-day period
+- Ranked rows link to the current plural novel-detail route
 
 ## Accessibility and Legibility
 - WCAG AA contrast in both themes
@@ -75,12 +78,12 @@ A complete-looking page with one honest notice badge and empty table rows; no nu
 - brand-mark.png
 
 ## Preserve Exactly
-- The exact notice wording
-- Period tab labels
-- No fabricated scores or ranks
+- Current period labels and metric wording
+- Empty/unavailable states remain explicit
+- No fabricated scores, ranks, or All Time claims
 
 ## Avoid
-- Fake rankings or placeholder novels
+- Fake rankings, placeholder novels, or chapter-count popularity
 - Cheerful promo copy
 - Charts or sparklines with invented data
 
