@@ -537,3 +537,18 @@ Evidence includes focused contributor, ranking, analytics, translation-pipeline,
 frontend API, route, and honesty tests. The local migration reached the new
 revision but requires a migration role with schema DDL permission in the
 configured database before it can be accepted as applied.
+
+## 2026-08-20 PUBLIC RANKING PERFORMANCE HARDENING
+
+The ranking path now performs one distinct-viewer aggregation joined to the
+published projection, uses composite analytics indexes for authenticated and
+anonymous viewer identities, and avoids per-result storage-backed summary
+enrichment. Successful non-empty responses use a bounded process-local TTL/LRU
+cache with observable hit, miss, and entry metrics; disabled and no-data states
+remain explicit and uncached. Migration `c8d2e4f6a1b3` was applied by the
+Compose migration service and verified as the live database head with both
+ranking indexes present.
+
+Focused ranking, metrics, public-router, and catalog-projection tests passed
+with `157 passed`. Production-volume PostgreSQL query plans, seeded ranking
+latency, and cross-replica cache behavior remain open acceptance work.

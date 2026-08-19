@@ -253,6 +253,23 @@ disabled or the retained set is empty, the API and UI expose an unavailable or
 no-data state; operators must not seed placeholder rows or describe it as All
 Time.
 
+Successful non-empty ranking responses use a bounded process-local TTL/LRU
+cache. The default TTL is 60 seconds and the default bound is 64 entries; the
+cache is an optimization only and is not shared between reader workers or
+replicas. Cache keys include the period, public-projection schema/update
+version, and limit, so publication or projection updates select a new key.
+Disabled analytics, no-data, and unavailable responses are never cached.
+Inspect `novelai_public_ranking_cache_hits_total`,
+`novelai_public_ranking_cache_misses_total`, and
+`novelai_public_ranking_cache_entries` in `/metrics`. If the deployment scales
+to multiple readers, measure duplicate origin work before moving this contract
+to a shared Redis cache.
+
+Migration `c8d2e4f6a1b3` adds the two composite analytics indexes used by the
+ranking predicate and authenticated/anonymous viewer identities. Verify the
+migration head and run a representative PostgreSQL `EXPLAIN (ANALYZE,
+BUFFERS)` before treating ranking latency as production-capacity evidence.
+
 Guest detail views may set the signed `novelai_viewer` first-party cookie. The
 server stores only a digest of the opaque token, never the raw token or an IP
 address. Clear the cookie or disable analytics when investigating identity

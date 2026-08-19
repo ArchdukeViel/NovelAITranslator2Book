@@ -3,7 +3,8 @@
 **Initial audit:** 2026-08-19
 **Phase 0 update:** 2026-08-20
 **Phase 2 update:** 2026-08-20
-**Repository revision:** `8048306` (`perf/debt-079d-public-path-hardening`)
+**Phase 3 update:** 2026-08-20
+**Repository revision:** `615bb0d` (`perf/debt-079d-public-path-hardening`)
 **Scope:** browser-to-Caddy traffic, the public reader API, database access, object storage, Redis/queues, translation workers/providers, and the public Next.js client.
 
 ## Executive conclusion
@@ -14,10 +15,10 @@ The initial runtime was behind the checkout and allowed public storage waterfall
 2. Live projection repair is storage-latency-bound: the bounded reconciliation attempt exceeded 180 seconds, and the current live database still has zero chapter projection rows. Public chapter metadata therefore returns a truthful unavailable response until maintenance succeeds.
 3. Caddy repeatedly attempted stale backend container addresses during container replacement, producing connection-refused errors and making availability look like latency.
 4. The home SSR boundary now hydrates the catalog and weekly ranking, but its local server response was about 2.6 seconds and production-scale TTFB/LCP/INP remain unmeasured. The browser no longer makes duplicate initial catalog/ranking/genre requests.
-5. Rankings and novel summaries can combine database aggregation with per-novel summary/storage calls. The current analytics indexes do not match the ranking filters and distinct-viewer grouping.
+5. Phase 3 now uses one joined ranking/projection query, composite analytics indexes, and a bounded process-local success cache. Focused tests prove distinct-viewer periods, chapter exclusion, bounded SQL work, and cache metrics; production-volume query plans, seeded latency, and cross-replica cache behavior remain unmeasured.
 6. Translation work can occupy a web request for up to the configured 120-second timeout. Provider calls also use blocking SDK calls in worker threads, bounded concurrency, retries, and quota reservation, so provider latency can create sustained backpressure.
 
-The remaining release/operations problem is durable readiness configuration: the application and Caddy are healthy locally only with an explicit two-second probe override because the protected runtime file still carries the one-second budget. Phase 1 projection-only reads and the Phase 2 home request-graph change are complete locally, but chapter projection and production-scale browser budgets remain open.
+The remaining release/operations problem is durable readiness configuration: the application and Caddy are healthy locally only with an explicit two-second probe override because the protected runtime file still carries the one-second budget. Phase 1 projection-only reads, the Phase 2 home request-graph change, and the Phase 3 ranking query/cache implementation are complete locally, but chapter projection, production-scale browser budgets, seeded ranking load, and multi-instance cache behavior remain open.
 
 ## Evidence and confidence rules
 
@@ -130,7 +131,7 @@ Phase 1 implementation is complete in the checkout and the focused backend accep
 
 ## Phase 2 execution update - 2026-08-20
 
-Phase 2 implementation is complete in the checkout and the browser/frontend acceptance checks pass. The phase is **stopped for review before Phase 3**.
+Phase 2 implementation is complete in the checkout and the browser/frontend acceptance checks pass. The phase was **stopped for review before Phase 3**; Phase 3 was subsequently executed and is recorded below.
 
 | Area | Result | Evidence |
 | --- | --- | --- |
@@ -166,6 +167,61 @@ Phase 2 implementation is complete in the checkout and the browser/frontend acce
 
 **Confidence:** One live runtime sample and one browser trace; insufficient for p95 capacity claims.
 
+## Phase 3 execution update - 2026-08-20
+
+Phase 3 implementation is complete in the checkout and the ranking/metrics
+acceptance checks pass. The phase is **stopped for review before Phase 4**.
+
+| Area | Result | Evidence |
+| --- | --- | --- |
+| Distinct-view aggregation | Passed in source and tests | One `CASE` identity expression counts authenticated user ids and signed anonymous viewer digests. The query is limited to `public_novel.view`, excludes chapter events, filters published projection rows, and preserves daily/weekly/monthly windows. |
+| Ranking indexes | Applied locally | Migration `c8d2e4f6a1b3` adds `ix_analytics_events_rank_event_time_novel_user` and `ix_analytics_events_rank_event_time_novel_session`; both names are present in the live PostgreSQL database. Production-volume `EXPLAIN (ANALYZE, BUFFERS)` remains open. |
+| Enrichment fan-out | Passed in source and tests | Ranking joins the published `Novel` projection and uses bounded taxonomy `selectinload` queries. It no longer calls `get_public_novel_summary` once per result and performs no object-storage summary fallback. |
+| Result cache | Passed in source and tests | A bounded process-local TTL/LRU cache keys on period, public projection schema/update version, and limit. It caches successful non-empty responses only; the default is 60 seconds and 64 entries. |
+| Cache observability | Passed | `/metrics` exposes `novelai_public_ranking_cache_hits_total`, `novelai_public_ranking_cache_misses_total`, and `novelai_public_ranking_cache_entries`. |
+| Focused validation | Passed | Ranking, metrics, public-router, and catalog-projection suites passed with `157 passed`; targeted Ruff and Pyright passed. |
+| Live deployment | Passed with honest limitation | Rebuilt backend/reader images were migrated to `c8d2e4f6a1b3`, recreated healthy, and served the weekly ranking through Caddy in about `606 ms`. Analytics is disabled and empty, so the response was `available=false`, `reason=analytics_disabled`, with zero items; no populated ranking latency claim is made. |
+
+### Phase 3 findings and resolutions
+
+### F-27 - P1 - Ranking production plan and cardinality evidence remain open
+
+**Evidence:** SQLite-backed tests prove period boundaries, duplicate-viewer
+deduplication, chapter exclusion, index creation, and a small query count. The
+live deployment has analytics disabled and no retained events, so it cannot
+exercise the PostgreSQL plan at representative event volume.
+
+**Impact:** The implementation removes the known query and enrichment
+waterfalls, but a large raw-event table may still outgrow an online aggregation
+before a rollup is warranted.
+
+**Recommendation:** Seed an isolated representative event set and record
+`EXPLAIN (ANALYZE, BUFFERS)`, p50/p95/p99 latency, pool wait, and distinct-viewer
+cardinality for all three periods. Add a durable rollup/reconciliation path if
+the measured raw-event plan misses the ranking budget.
+
+**Confidence:** Current-source and focused-test corroborated; production
+capacity is unmeasured.
+
+### F-28 - P1 - Ranking cache is process-local and not shared across replicas
+
+**Evidence:** `PublicRankingCache` is a bounded in-process TTL/LRU cache. Its
+key includes the public projection schema/version and latest published-row
+update timestamp, and it never caches disabled or empty responses. Separate
+reader workers therefore have separate hit ratios and may briefly compute the
+same successful result.
+
+**Impact:** The cache bounds repeated work within one process but does not
+provide cross-instance hit sharing or immediate invalidation across workers.
+
+**Recommendation:** Measure the current topology first. If multiple reader
+replicas make ranking origin work material, move the same versioned success-only
+contract to Redis or an equivalent shared cache with explicit TTL and
+invalidation behavior. Do not cache disabled/no-data responses as fabricated
+popularity.
+
+**Confidence:** Current-source corroborated; multi-replica impact is unmeasured.
+
 ## Public request waterfalls
 
 ### Home page
@@ -186,7 +242,7 @@ React Query still revalidates hydrated data after its bounded stale window. The 
 
 ### Ranking page and widget
 
-`frontend/app/(public)/ranking/ranking-client.tsx` requests up to 50 rows for the selected period. The home page starts on weekly so its ranking widget and Trending state share the hydrated weekly query; after a user selects another tab, the selected period and weekly widget can be active together. The ranking API is cacheable for 60 seconds at the HTTP layer, but `PublicRankingService` has no server-side result cache and enriches each result with a public novel summary. A ranking response can therefore be:
+`frontend/app/(public)/ranking/ranking-client.tsx` requests up to 50 rows for the selected period. The home page starts on weekly so its ranking widget and Trending state share the hydrated weekly query; after a user selects another tab, the selected period and weekly widget can be active together. The ranking API is cacheable for 60 seconds at the HTTP layer and now has a bounded success-only process-local result cache. The superseded pre-Phase 3 ranking response was:
 
 ```text
 two distinct-viewer aggregation queries
@@ -194,6 +250,19 @@ two distinct-viewer aggregation queries
   → up to limit public-summary calls
        → database projection or object-storage fallback
 ```
+
+The current cold ranking response is:
+
+```text
+projection-version check
+  -> one distinct-viewer aggregation joined to published projection rows
+       -> bounded taxonomy selectinload queries
+            -> success-only cache write
+```
+
+A cache hit still performs the projection-version check so publish, takedown,
+or projection updates naturally move the request to a new key. The cache is
+process-local, and disabled/no-data responses remain uncached and explicit.
 
 ### Novel detail and chapter list
 
@@ -291,11 +360,13 @@ The owner translation operation in `services/orchestration/operations.py` waits 
 
 ### F-09 — P1 — Ranking aggregation is not aligned with the live indexes
 
-**Evidence:** `PublicRankingService` runs separate authenticated and anonymous distinct-viewer aggregations, filters by event name and time, groups by novel, merges in Python, then enriches results with up to `limit` catalog summaries. Live analytics indexes were single-column indexes; there was no session identity index or composite index covering event name, time, novel, and viewer identity.
+**Phase 3 status:** Resolved locally; production-volume plan and cardinality evidence remain open.
 
-**Impact:** As analytics grows, the database must filter and sort more rows before grouping. Summary enrichment adds storage/database work after aggregation. Current analytics is disabled and empty, so this risk is not visible in the current runtime.
+**Evidence:** Before Phase 3, `PublicRankingService` ran separate authenticated and anonymous distinct-viewer aggregations, merged them in Python, and enriched results with up to `limit` catalog summaries. Phase 3 now uses one `CASE`-based distinct-viewer aggregation joined to published projection rows, and migration `c8d2e4f6a1b3` adds composite indexes for authenticated and anonymous identity fields.
 
-**Recommendation:** Add and validate a composite index matching the actual ranking predicate and grouping, plus an index for the anonymous identity column used by the source. Prefer a rollup table or scheduled hourly/daily aggregates once event volume warrants it. Return unavailable when analytics is disabled, as the current contract requires, and cache successful ranking results for a bounded period.
+**Impact:** The known query and summary/storage fan-out is removed locally, but the raw-event aggregation still needs representative PostgreSQL volume evidence before a rollup table is justified. Current analytics is disabled and empty, so production ranking capacity is not visible in the current runtime.
+
+**Recommendation:** Run seeded PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)` and p50/p95/p99 measurements for all three windows. Prefer a rollup table or scheduled hourly/daily aggregates once event volume warrants it. Keep the current disabled/no-data contract and measure the bounded success-only cache across the deployed reader topology.
 
 **Confidence:** Current-source and live query-plan corroborated.
 
@@ -362,11 +433,13 @@ The owner translation operation in `services/orchestration/operations.py` waits 
 
 ### F-16 — P1 — Server cache headers exist, but result computation is not memoized
 
-**Evidence:** Catalog, ranking, and chapter responses emit short public cache headers. `PublicRankingService` has no service-level cache, and catalog/detail summaries can still compute storage-derived values before the response is cacheable.
+**Phase 3 status:** Origin memoization is implemented locally; shared-cache behavior remains open.
 
-**Impact:** Cache misses and cache revalidation repeatedly pay the full database/storage cost. A 60-second header is not a substitute for a bounded origin cache when the origin path can exceed the request timeout.
+**Evidence:** Catalog, ranking, and chapter responses emit short public cache headers. Before Phase 3, `PublicRankingService` had no service-level result cache; it now has a bounded process-local TTL/LRU cache for successful non-empty rankings, keyed by period, projection version, and limit.
 
-**Recommendation:** Add a small bounded server/Redis cache for immutable or versioned public projections, invalidate on publish/takedown/generation changes, and include projection version in cache keys. Measure hit ratio and origin calls, not just response headers.
+**Impact:** The ranking origin path is now protected within one reader process, but cache entries are not shared across replicas and the cache hit ratio is not yet measured under populated analytics. A 60-second header alone remains insufficient for an unbounded origin path.
+
+**Recommendation:** Measure hit ratio, stale window, origin query count, and reader-worker topology. If multiple replicas make duplicate ranking work material, move the same success-only versioned contract to Redis or another shared cache with explicit invalidation; do not cache disabled/no-data responses.
 
 **Confidence:** Current-source corroborated; cache effectiveness requires deployment measurements.
 
@@ -441,6 +514,8 @@ The budgets should be validated with at least 50 warm and 50 cold requests per r
 
 - The initial live stack was running an older image; the local Phase 0 rerun now uses freshly built images, but no remote/production deployment was validated and local `:local` tags are not immutable revision evidence.
 - Analytics was disabled and contained no events, so ranking latency and cardinality behavior need a seeded benchmark after deployment.
+- Ranking/cache tests use an isolated SQLite dataset and prove bounded query behavior, but no production-volume PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)` or cross-replica cache hit ratio has been measured.
+- The ranking cache is process-local with a bounded 60-second default stale window and 64-entry default limit; shared-cache economics and invalidation across reader replicas remain unverified.
 - The contributor/ranking migration is now applied locally; production-equivalent permissions and deployment migration procedure remain unverified.
 - Readiness and Caddy pass locally only with the explicit 2,000 ms runtime override; the protected `deploy/.env` still contains the one-second value, so a fresh restart can regress until the durable configuration/health implementation is approved.
 - Object-storage timing was measured in the existing deployment, but no destructive or production data operation was performed.

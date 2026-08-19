@@ -482,6 +482,13 @@ and reviews remain future secondary signals.
 
 ### DEBT-120 — Unconnected Backend API Endpoints & Unconsumed Frontend Client Code
 
+Phase 3 also made the ranking path projection-joined and success-cacheable:
+the event aggregation uses the published `Novel` projection and composite
+event-time/viewer indexes, avoids per-result storage summary calls, and exposes
+bounded process-local cache metrics. The cache stores no disabled or empty
+response, and production-volume query plans plus multi-reader cache behavior
+remain acceptance work rather than fabricated completion evidence.
+
 Full-stack audit finding (2026-08-03), remediation (2026-08-03):
 
 1. **Split-Service vs Combined App Topology (RESOLVED)**: Production Compose (`deploy/Caddyfile`) routes `/api/public/*` to port 8001 (`main_reader.py`) and `/api/admin/*`, `/api/auth/*`, `/api/user/*` to port 8000 (`main_admin.py`). Public contact (`/api/public/contact/contact`), DMCA (`/api/public/dmca/dmca`), and analytics ingestion (`/api/public/analytics/*`) were registered in `app.py` but missing from `main_reader.py`; admin analytics/audit/takedown/reviews/users/metrics routers were missing from `main_admin.py`. All are now registered in their owning app. Analytics event ingestion is a public, anonymous, CSRF-free write and lives ONLY in the reader; a duplicate registration previously (and incorrectly) added to `main_admin.py` was removed.

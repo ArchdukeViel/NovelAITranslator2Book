@@ -305,6 +305,15 @@ or there is no retained data, the API returns `available=false` with a truthful
 reason. There is no All Time period because the retention-backed event table
 cannot provide that claim.
 
+Ranking aggregation joins the published `Novel` projection, uses composite
+event-time/novel/viewer indexes, and loads taxonomy with bounded database
+queries rather than per-result storage-backed summaries. Successful non-empty
+responses use a short process-local TTL/LRU cache keyed by period, public
+projection schema/update version, and limit. Disabled, empty, and unavailable
+responses remain explicit and uncached; cache metrics are exposed through
+`/metrics`. A shared cache or durable rollup requires measured multi-reader
+load evidence and an explicit invalidation contract.
+
 ## Operational Contracts
 
 - `/health/live`: process-only, unauthenticated, always 200, no dependencies.

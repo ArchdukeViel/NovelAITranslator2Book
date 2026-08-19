@@ -93,6 +93,8 @@ duration and renewal; do not tune lease below realistic job duration without tes
 - `TRANSLATION_*`: chunking, concurrency, attempts, scheduler/model policy.
 - `PROVIDER_GEMINI_*`: key, default model, fallback models.
 - `TRANSLATION_CACHE_*`: exact cache enablement, TTL, size.
+- `PUBLIC_RANKING_CACHE_*`: successful ranking cache enablement, TTL, and
+  bounded process-local entry count.
 - `MAINTENANCE_*`: schedule and dry-run controls.
 - `HEALTH_*`: bounded probe timeout and disk thresholds.
 - `OPERATOR_ALERT_*`: alert enable, email, failure threshold, cooldown, stale backup hours.
@@ -103,6 +105,24 @@ duration and renewal; do not tune lease below realistic job duration without tes
   `.github/workflows/gitguardian.yaml`. Set in GitHub secrets, never in `.env` files.
 
 Use source defaults unless measured behavior justifies change.
+
+### Public ranking cache
+
+`PUBLIC_RANKING_CACHE_ENABLED` defaults to `true`. The default
+`PUBLIC_RANKING_CACHE_TTL_SECONDS` is `60` and may be set from `1` through
+`300`; `PUBLIC_RANKING_CACHE_MAX_ENTRIES` defaults to `64` and may be set from
+`1` through `1024`. Each backend/reader process owns its bounded TTL/LRU cache;
+the settings do not create a shared Redis cache.
+
+Only successful, non-empty ranking responses are cached. Disabled analytics,
+no retained events, and unavailable responses are never cached. Keys include
+the ranking period, public-projection schema/update version, and requested
+limit, so publication or projection updates naturally select a new entry.
+The cache is an origin optimization, not a popularity source or a data
+durability mechanism. Monitor `novelai_public_ranking_cache_hits_total`,
+`novelai_public_ranking_cache_misses_total`, and
+`novelai_public_ranking_cache_entries`; measure cross-worker duplication before
+introducing a shared cache.
 
 ### Frontend server prefetch
 

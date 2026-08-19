@@ -65,7 +65,7 @@ Remaining gate requiring review:
 - The development overlay is not a valid production-style startup: its frontend bind mount hides the standalone server and causes `MODULE_NOT_FOUND`. The base Compose file was used for the valid current-image check.
 - The local `:local` image tags do not embed an immutable source revision, so a release deployment still needs digest/revision evidence.
 
-The local Phase 0 baseline is signed off: current images, migration, routes, application health, readiness, and one replacement cycle were verified. The durable configuration caveat is carried into Phase 4. Phase 1 and Phase 2 implementation are now complete locally; the Phase 2 review gate is recorded below before Phase 3.
+The local Phase 0 baseline is signed off: current images, migration, routes, application health, readiness, and one replacement cycle were verified. The durable configuration caveat is carried into Phase 4. Phase 1 and Phase 2 implementation are complete locally; Phase 3 execution and review evidence is recorded below.
 
 ## Phase 1 — remove public-read request waterfalls
 
@@ -219,6 +219,28 @@ Actions:
 
 Exit gate: cache hit ratio and stale-data window are observable, and disabled analytics never renders fabricated popularity.
 
+### Phase 3 execution log - 2026-08-20
+
+**Status: implementation and local validation complete; stopped for review before Phase 4.**
+
+Completed in the checkout and the local Compose environment:
+
+- Replaced the two-query authenticated/anonymous ranking merge with one distinct-viewer aggregation joined to the published `Novel` projection. Chapter events remain excluded, and taxonomy is loaded with bounded `selectinload` queries rather than per-result summary/storage calls.
+- Added the two ranking indexes used by the event predicate and viewer identities: `ix_analytics_events_rank_event_time_novel_user` and `ix_analytics_events_rank_event_time_novel_session`, migration `c8d2e4f6a1b3`.
+- Added a bounded process-local ranking cache keyed by period, public projection version, and limit. It stores successful non-empty responses only, uses a 60-second default TTL and 64-entry LRU bound, and exposes hit/miss/entry metrics without exposing ranking contents.
+- Backend implementation committed as `615bb0d` (`perf(public): bound ranking aggregation and cache results`).
+- Preserved truthful disabled and no-data responses. The live analytics-disabled route returned `available=false`, `reason=analytics_disabled`, and zero items; no popularity data was fabricated.
+- Built the current backend and reader images, applied the migration through the Compose migration service, recreated backend and reader with the already documented `HEALTH_PROBE_TIMEOUT_MS=2000` runtime override, and verified all five services healthy. The live database reported migration head `c8d2e4f6a1b3` and both composite indexes present.
+
+Validation:
+
+- Affected backend tests passed: `157 passed` across ranking, metrics, public-router, and catalog-projection suites.
+- Ranking/cache tests passed with bounded database work: the uncached path stayed within four SQL statements and the cached path required only the projection-version check; duplicate authenticated/anonymous viewer and period behavior remain covered.
+- Targeted Ruff and Pyright passed. The full backend suite and unit-only suite each exceeded a 10-minute allowance without returning a result; they are recorded as validation limitations, not passes.
+- Live `/api/public/rankings?period=weekly&limit=10` returned `200` in about `606 ms` through Caddy with the truthful disabled response. `/metrics` exposed the three ranking-cache metrics. This is not a populated ranking latency benchmark because live analytics is disabled and empty.
+
+Phase 3 exit gate status: source-level query-count, privacy, cache-state, index, and focused-test gates passed. Production-volume `EXPLAIN (ANALYZE, BUFFERS)`, seeded ranking latency/cardinality, and cross-replica cache behavior remain open. Review is required before Phase 4.
+
 ## Phase 4 — reduce health and cache amplification
 
 ### 4.1 Make readiness cheap and stable
@@ -348,10 +370,11 @@ Record for every run:
 2. Implement the projection-first catalog/detail path and add request-level object/query-count tests. (Complete locally; chapter projection reconciliation remains open.)
 3. Review Phase 1 evidence; the projection-first read path is complete locally while chapter projection completeness and durable readiness remain open follow-ups.
 4. Add browser cancellation/timeouts and reduce home critical fan-out. (Complete locally in Phase 2.)
-5. Review Phase 2 evidence and approve the ranking/index/cache work before starting Phase 3.
-6. Align ranking indexes, remove summary enrichment fan-out, and add bounded result caching.
-7. Stabilize readiness and decouple analytics writes.
-8. Move translation to enqueue/worker-only execution, then replace file-backed activity/cache hot paths.
-9. Run the full load scenario and update the budgets using measured capacity.
+5. Review Phase 2 evidence and approve the ranking/index/cache work before starting Phase 3. (Complete.)
+6. Align ranking indexes, remove summary enrichment fan-out, and add bounded result caching. (Complete locally in Phase 3; production-volume and multi-replica evidence remain open.)
+7. Review Phase 3 evidence and approve readiness/cache amplification work before starting Phase 4.
+8. Stabilize readiness and decouple analytics writes.
+9. Move translation to enqueue/worker-only execution, then replace file-backed activity/cache hot paths.
+10. Run the full load scenario and update the budgets using measured capacity.
 
 The first practical gate is not a frontend optimization: it is a current-revision deployment with a healthy reader, healthy readiness, current migrations, and a catalog request that cannot fall back to a serial object-storage scan.

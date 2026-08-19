@@ -10,13 +10,13 @@ Rankings are derived from distinct novel-detail viewers retained by privacy-safe
 Dokushodo is a quiet Japanese literary reading platform for translated web novels. The interface uses a restrained warm-light aesthetic: washi paper, near-black ink, vermillion for the primary action, and muted teal for secondary surfaces. The desktop shell is a fixed 56px header with the brand mark, search, notifications, account controls, and a collapsible navigation panel up to 320px wide; navigation reflects the current Home, News, Library, Browse Novels, Ranking, Random Novel, Request Novels, Contributions, and FAQ surfaces. Mobile uses a compact header and fixed bottom tabs for Home, Browse, Search, Library, and Account. Cards use quiet paper surfaces, thin borders, six-pixel corners, and restrained elevation. Covers use deterministic bookplate or gradient treatments; illustrations are reserved for empty, error, and maintenance states. Serif typography carries titles and reading matter, sans-serif handles interface text, and monospace is reserved for metadata. Motion is brief and functional. The platform presents truthful ranking periods, loading, unavailable, and no-data states, while contribution settings show masked credential lifecycle and usage states without exposing key material. The settled state is calm, legible, tactile, and free of digital clutter.
 
 ## Page Goal
-Present the ranking structure without fabricating any data.
+Present API-backed distinct novel-detail-view rankings without fabricating any data.
 
 ## Audience and Access
 All visitors.
 
 ## Primary Action
-None; the page is informational until rankings go live.
+Select Daily, Weekly, or Monthly to request the corresponding ranking window.
 
 ## Information Hierarchy
 - Page title Ranking
@@ -65,6 +65,12 @@ A quiet ranked list when analytics has retained data, with counts labeled as dis
 ## Interaction Cues
 - Tabs request their corresponding 24-hour, 7-day, or 30-day period
 - Ranked rows link to the current plural novel-detail route
+
+## Data Contract
+- The page consumes `GET /api/public/rankings?period=daily|weekly|monthly&limit=...`
+- Rows use the API's `unique_views` metric, representing distinct novel-detail viewers
+- Analytics-disabled, no-data, unavailable, and recoverable-error states remain explicit
+- The weekly result powers the homepage Trending widget; All Time is not offered
 
 ## Accessibility and Legibility
 - WCAG AA contrast in both themes
