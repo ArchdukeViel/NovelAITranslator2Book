@@ -332,6 +332,9 @@ class AppSettings(BaseSettings):
     PUBLIC_RANKING_CACHE_ENABLED: bool = True
     PUBLIC_RANKING_CACHE_TTL_SECONDS: int = Field(default=60, ge=1, le=300)
     PUBLIC_RANKING_CACHE_MAX_ENTRIES: int = Field(default=64, ge=1, le=1024)
+    PUBLIC_PROJECTION_CACHE_ENABLED: bool = True
+    PUBLIC_PROJECTION_CACHE_TTL_SECONDS: int = Field(default=30, ge=1, le=300)
+    PUBLIC_PROJECTION_CACHE_MAX_ENTRIES: int = Field(default=256, ge=1, le=2048)
     USAGE_LOG_MAX_ENTRIES: int = 10_000
 
     # --- Semantic Cache (future feature, disabled by default)
@@ -401,6 +404,8 @@ class AppSettings(BaseSettings):
     )
     HEALTH_CACHE_TTL_SECONDS: int = Field(
         default=5,
+        ge=0,
+        le=300,
         description="Short-TTL cache for readiness results to reduce probe load.",
     )
     HEALTH_DISK_WARNING_FREE_PERCENT: int = Field(
@@ -630,6 +635,12 @@ class AppSettings(BaseSettings):
         ge=1_024,
         le=262_144,
         description="Maximum public analytics ingestion request body size.",
+    )
+    ANALYTICS_ASYNC_QUEUE_SIZE: int = Field(
+        default=1_000,
+        ge=1,
+        le=10_000,
+        description="Bounded process-local queue capacity for asynchronous analytics writes.",
     )
 
     # --- File lock (M2c, DEBT-035)

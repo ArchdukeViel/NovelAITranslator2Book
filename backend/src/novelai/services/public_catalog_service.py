@@ -13,6 +13,7 @@ from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
 from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.public_glossary_annotations import find_annotations, select_public_terms
+from novelai.services.public_projection_cache import public_projection_cache
 from novelai.sources.status import normalize_publication_status
 from novelai.storage.service import StorageService
 
@@ -212,7 +213,19 @@ class PublicCatalogService:
         db_novel = self._load_published_db_novel(slug)
         if db_novel is None:
             return None, None
-        return self._db_novel_summary(db_novel, include_adult=include_adult), db_novel.slug
+        cache_key = (
+            "novel-summary-v1",
+            str(id(self.db_session.get_bind())) if self.db_session is not None else "none",
+            db_novel.slug,
+            str(db_novel.updated_at),
+            str(include_adult),
+        )
+        cached = public_projection_cache.get(cache_key)
+        if isinstance(cached, dict):
+            return cached, db_novel.slug
+        summary = self._db_novel_summary(db_novel, include_adult=include_adult)
+        public_projection_cache.set(cache_key, summary)
+        return summary, db_novel.slug
 
     def build_public_novel_summary(
         self,
@@ -242,9 +255,30 @@ class PublicCatalogService:
         Chapter text remains in storage and is loaded only by the reader
         endpoint after this projection succeeds.
         """
-        db_novel = self._load_published_db_novel(slug)
-        if db_novel is None or self.db_session is None:
+        if self.db_session is None:
             return None
+        db_novel = self._load_published_db_novel(slug)
+        if db_novel is None:
+            return None
+        cache_key = (
+            "chapter-context-v1",
+            str(id(self.db_session.get_bind())),
+            slug,
+            str(db_novel.updated_at),
+        )
+        cached = public_projection_cache.get(cache_key)
+        if isinstance(cached, dict):
+            novel_id = cached.get("novel_id")
+            public_slug = cached.get("public_slug")
+            metadata = cached.get("metadata")
+            chapters = cached.get("chapters")
+            if (
+                isinstance(novel_id, str)
+                and isinstance(public_slug, str)
+                and isinstance(metadata, dict)
+                and isinstance(chapters, list)
+            ):
+                return novel_id, public_slug, metadata, chapters
 
         chapter_rows = (
             self.db_session.query(Chapter)
@@ -288,6 +322,16 @@ class PublicCatalogService:
             "publication_status": db_novel.publication_status,
             "chapters": chapter_metadata,
         }
+        if len(chapter_metadata) <= 1_000:
+            public_projection_cache.set(
+                cache_key,
+                {
+                    "novel_id": db_novel.slug,
+                    "public_slug": str(summary["slug"]),
+                    "metadata": metadata,
+                    "chapters": chapter_metadata,
+                },
+            )
         return db_novel.slug, str(summary["slug"]), metadata, chapter_metadata
 
     def _load_published_db_novel(self, slug: str) -> Novel | None:

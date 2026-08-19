@@ -60,6 +60,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        from novelai.services.analytics_writer import shutdown_analytics_writer
+
+        shutdown_analytics_writer()
         if container.activity_runner.is_running():
             await container.activity_runner.stop()
         if container.scheduler_service.is_running:

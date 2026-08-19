@@ -101,6 +101,9 @@ class TakedownService:
         req.reviewed_at = datetime.now(UTC)
         req.reviewed_by_user_id = reviewed_by_user_id
         self.db.flush()
+        from novelai.services.public_projection_cache import invalidate_public_projection_cache
+
+        invalidate_public_projection_cache()
         logger.info("TakedownRequest #%s → %s", request_id, status)
         return req
 

@@ -172,9 +172,11 @@ def validate_event_name(name: str) -> bool:
 
 
 def record_server_event(event_name: str, **kwargs: Any) -> None:
-    """Record trusted workflow event without affecting its primary action."""
+    """Enqueue trusted workflow event without affecting its primary action."""
     try:
-        AnalyticsService().record_event_best_effort(event_name, **kwargs)
+        from novelai.services.analytics_writer import enqueue_analytics_event
+
+        enqueue_analytics_event(event_name, **kwargs)
     except Exception:
         logger.debug("Analytics server event failed for %s (suppressed)", event_name)
 
@@ -203,21 +205,22 @@ class AnalyticsService:
         novel_id: str | None = None,
         chapter_id: str | None = None,
         metadata: dict[str, Any] | None = None,
+        metadata_json: str | None = None,
         created_at: datetime | None = None,
-    ) -> None:
+    ) -> bool:
         """Record a single analytics event (best-effort).
 
         Returns immediately if analytics are disabled. Logs and suppresses
         exceptions — never raises.
         """
         if not self._enabled:
-            return
+            return False
         if not validate_event_name(event_name):
             logger.debug("Dropped unknown analytics event: %s", event_name)
-            return
+            return False
 
         try:
-            meta_json = sanitize_metadata(event_name, metadata)
+            meta_json = metadata_json if metadata_json is not None else sanitize_metadata(event_name, metadata)
             event = AnalyticsEvent(
                 event_name=event_name,
                 user_id=user_id,
@@ -229,8 +232,10 @@ class AnalyticsService:
             )
             db_session.add(event)
             db_session.flush()
+            return True
         except Exception:
             logger.debug("Analytics record_event failed for %s (suppressed)", event_name)
+            return False
 
     def record_event_best_effort(
         self,

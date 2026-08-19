@@ -144,6 +144,9 @@ class FilesystemBackend(StorageBackend):
     def mkdirs(self, path: str | Path) -> None:
         self._resolve(path).mkdir(parents=True, exist_ok=True)
 
+    def probe_readiness(self) -> bool:
+        return self._root.is_dir()
+
 
 def _try_unlink(path: Path) -> None:
     with contextlib.suppress(OSError):

@@ -28,8 +28,10 @@ from novelai.api.routers.public_contracts import (
     _optional_str,
     _parse_csv_filter,
 )
+from novelai.db.models.novel import Novel
 from novelai.services.analytics_service import record_server_event
 from novelai.services.public_catalog_service import PublicCatalogService
+from novelai.services.public_projection_cache import public_projection_cache
 from novelai.services.takedown_service import TakedownService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -41,8 +43,6 @@ router = APIRouter(prefix="/api/public", tags=["public"])
 
 
 def _published_db_catalog_query(db: Session, *, include_adult: bool):
-    from novelai.db.models.novel import Novel
-
     # Adult/R18 classification affects optional taxonomy projection, not
     # whether an explicitly published novel participates in the catalog.
     _ = include_adult
@@ -220,23 +220,52 @@ async def catalog(
 
     response: PublicCatalogResponse
     source_key_filter = _optional_str(source_key)
-    response = _catalog_from_db_page(
-        service=service,
-        q=q,
-        publication_status=publication_status_filter,
-        source_key=source_key_filter,
-        effective_sort_by=effective_sort_by,
-        min_chapters=min_chapters,
-        max_chapters=max_chapters,
-        genre_include_set=genre_include_set,
-        genre_exclude_set=genre_exclude_set,
-        tag_include_set=tag_include_set,
-        tag_exclude_set=tag_exclude_set,
-        include_adult=include_adult,
-        page=page,
-        page_size=page_size,
-        order=effective_order,
+    cacheable = not any(
+        (
+            q and q.strip(),
+            publication_status_filter,
+            source_key_filter,
+            min_chapters is not None,
+            max_chapters is not None,
+            genre_include_set,
+            genre_exclude_set,
+            tag_include_set,
+            tag_exclude_set,
+            include_adult,
+        )
     )
+    cache_key = (
+        "catalog-v1",
+        str(id(db.get_bind())),
+        str(db.query(func.max(Novel.updated_at)).scalar()),
+        effective_sort_by,
+        effective_order,
+        str(page),
+        str(page_size),
+    )
+    cached = public_projection_cache.get(cache_key) if cacheable else None
+    if isinstance(cached, dict):
+        response = PublicCatalogResponse.model_validate(cached)
+    else:
+        response = _catalog_from_db_page(
+            service=service,
+            q=q,
+            publication_status=publication_status_filter,
+            source_key=source_key_filter,
+            effective_sort_by=effective_sort_by,
+            min_chapters=min_chapters,
+            max_chapters=max_chapters,
+            genre_include_set=genre_include_set,
+            genre_exclude_set=genre_exclude_set,
+            tag_include_set=tag_include_set,
+            tag_exclude_set=tag_exclude_set,
+            include_adult=include_adult,
+            page=page,
+            page_size=page_size,
+            order=effective_order,
+        )
+        if cacheable and response.novels and not response.degraded:
+            public_projection_cache.set(cache_key, response.model_dump(mode="json"))
     if q and q.strip():
         record_server_event(
             "search.performed",

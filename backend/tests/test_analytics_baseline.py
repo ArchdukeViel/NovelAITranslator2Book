@@ -55,6 +55,16 @@ def client(db_session):
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def inline_public_analytics_writer(monkeypatch, db_session) -> None:
+    """Keep ingestion assertions deterministic without using the app database."""
+
+    def enqueue(event_name: str, **kwargs: Any) -> bool:
+        return AnalyticsService().record_event(db_session, event_name, **kwargs)
+
+    monkeypatch.setattr("novelai.api.routers.admin_analytics.enqueue_analytics_event", enqueue)
+
+
 def test_metadata_drops_private_values() -> None:
     metadata = sanitize_metadata(
         "search.performed",
@@ -258,8 +268,7 @@ def test_best_effort_recording_failure_isolated(monkeypatch) -> None:
 async def test_public_novel_hook_does_not_break_response(monkeypatch) -> None:
     monkeypatch.setattr(settings, "ANALYTICS_ENABLED", True)
     monkeypatch.setattr(
-        AnalyticsService,
-        "record_event_best_effort",
+        "novelai.services.analytics_writer.enqueue_analytics_event",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("down")),
     )
 

@@ -39,6 +39,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        from novelai.services.analytics_writer import shutdown_analytics_writer
+
+        shutdown_analytics_writer()
         from novelai.infrastructure.http.fetch_service import get_default_fetch_service
 
         await get_default_fetch_service().aclose()

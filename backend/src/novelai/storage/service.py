@@ -426,6 +426,19 @@ class StorageService:
         finally:
             self._backend.delete(probe_path)
 
+    def probe_readiness(self) -> bool:
+        """Check backend availability without mutating storage.
+
+        Readiness probes run frequently from reverse-proxy health checks, so
+        they must not create and delete objects on every request. The full
+        write/read/delete verification remains available through ``probe``
+        for owner diagnostics and scheduled validation.
+        """
+        probe = getattr(self._backend, "probe_readiness", None)
+        if callable(probe):
+            return bool(probe())
+        return bool(self._backend.exists(self._rel(self.base_dir)))
+
     def _list_dir(self, path: Path) -> list[Path]:
         """List immediate children via storage backend."""
         return sorted(self.base_dir / key for key in self._backend.list_keys(self._rel(path)))

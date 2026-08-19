@@ -91,3 +91,8 @@ class StorageBackend(ABC):
         """Ensure *path* (a directory) exists, creating parents if needed.
         No-op for flat backends (S3).
         """
+
+    def probe_readiness(self) -> bool:
+        """Check backend reachability without mutating or enumerating deeply."""
+        self.list_keys("", recursive=False)
+        return True

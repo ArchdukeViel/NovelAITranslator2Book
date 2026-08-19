@@ -311,6 +311,9 @@ class CatalogService:
             metadata,
             source_key=str(source_key) if source_key else None,
         )
+        from novelai.services.public_projection_cache import invalidate_public_projection_cache
+
+        invalidate_public_projection_cache()
         return novel
 
     # ------------------------------------------------------------------
@@ -569,6 +572,9 @@ class CatalogService:
         changed_fields = [
             field for field in CATALOG_PROJECTION_FIELDS if before is None or before.get(field) != after.get(field)
         ]
+        from novelai.services.public_projection_cache import invalidate_public_projection_cache
+
+        invalidate_public_projection_cache()
         return CatalogProjectionReconciliation(
             novel_id=novel_id,
             created=created,
@@ -697,6 +703,9 @@ class CatalogService:
         novel.is_published = is_published
         self._session.add(novel)
         self._session.flush()
+        from novelai.services.public_projection_cache import invalidate_public_projection_cache
+
+        invalidate_public_projection_cache()
 
         # Adult/R18 classification remains available to taxonomy and source
         # provenance code, but it does not create a separate publication
