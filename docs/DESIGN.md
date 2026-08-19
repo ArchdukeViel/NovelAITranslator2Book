@@ -158,7 +158,7 @@ The frontend App Router overhaul (PR #38) is merged and describes the current im
 - Frontend verification baseline at the merge: 76 test files and 841 tests passed.
 - Novel detail is a reading-first surface: the hero puts the title, source title, author, status, truthful metadata, and one reading CTA before tabbed content. Guest readers can start the first available chapter; signed-in readers with progress can continue from it. Save remains a secondary personalized action.
 - Novel detail chapters consume the public section metadata contract and preserve source order, exact returned episode titles, grouped runs, flat lists, search, ordering, First unread, and Latest. The request form is a closed disclosure at the end of Chapters, and issue reporting is a quiet contact link in Overview.
-- Not implemented: ranking data (the Ranking page intentionally shows an unavailable state), public contribution key management (gated, documented as not available), profile editing, account deletion, and admin-curated featured rotation (the homepage spotlight is derived from catalog data, not owner curation).
+- Implemented current public contracts: ranking data is API-backed by distinct novel-detail views for Daily, Weekly, and Monthly periods; contributor credentials are API-backed with encrypted storage, explicit validation, consent, masking, lifecycle controls, quotas, and usage accounting. Profile editing, account deletion, and admin-curated featured rotation remain unavailable (the homepage spotlight is derived from catalog data, not owner curation).
 - Deferred intentionally: related-novel Recommendations (no bounded public related-novels contract exists), extended locale support, WebGL graphics, and GSAP sequences.
 - Still manually unverified: screen-reader acceptance across NVDA/VoiceOver/TalkBack, forced-colors mode, and 200% zoom reflow. These are tracked as manual acceptance work in `docs/WORK.md` (DEBT-FE-01A). Do not claim hosted or manual visual validation that was not performed.
 
@@ -421,7 +421,7 @@ Rules:
 
 ### 7.3 Shells
 
-- Public shell: sticky header with a hamburger that opens a collapsible fixed left sidebar (Home, Library, Browse Novels, Random Novel, Request Novel, Contributions, theme control), inline links (Home, Browse, Request, Library), search trigger, theme toggle, notification bell, and user menu on `md` and up; compact header plus fixed bottom tab bar (Home, Browse, Search, Library, Account) below `md`. The fixed sidebar is 240px, hidden by default, slides in over a dimming backdrop, and is dismissed by the backdrop, a close control, Escape, or route change. Footer with navigation and legal columns.
+- Public shell: fixed 56px top header adapting to active theme (`bg-background/95 backdrop-blur border-b border-border/40 text-foreground`) with auto-hide on scroll down and reveal on scroll up / top (`transition-transform duration-200`). Left side contains hamburger button that opens a collapsible fixed sidebar (Home, News, Library, Browse Novels, Ranking, Random Novel, Request Novels, Contributions, FAQ, theme control) plus the brand mark. The sidebar is `w-[min(85vw,320px)] sm:w-80`, hidden by default, and is dismissed by the backdrop, a close control, Escape, or route change. Desktop inline links appear at `xl` and include Browse, Request, Library, and Ranking. The right cluster contains search, notifications, and the user menu with Settings, Contributions, and session controls. Below `md`, compact header plus fixed bottom tab bar (Home, Browse, Search, Library, Account). Footer with navigation and legal columns.
 - Account shell: fixed left sidebar (desktop) with Library, History, Notifications, Requests, Reviews, Contributions, Settings, an Unavailable Support entry, theme control, and Sign out; mobile shows a horizontal scrollable sub-navigation bar instead.
 - Admin shell: fixed left sidebar with Home, Add Novel, Library, Activity Log, Scheduler, Maintenance, Analytics, Requests, Reviews, Users, Editor, Credentials, Settings, Audit Log; top bar with breadcrumb and session controls; collapsible drawer on narrow viewports.
 - Reader chrome: on chapter routes the public header, tab bar, and footer are suppressed entirely; only a minimal reader chrome bar and progress line remain.
@@ -595,11 +595,11 @@ Current implementation uses CSS transitions and native browser behavior only. No
 ## 14. Content and Copy
 
 - Voice: public copy is warm, clear, and respectful of the reading experience; admin copy is operational and precise.
-- Protected navigation labels: Home, Browse, Request, Library (public header and tab bar); Account (mobile tab); Ranking, Contribute, FAQ, News, About, Support, Legal, Privacy, Terms, DMCA, Contact, Cookie Policy (footer). Admin sidebar labels: Home, Add Novel, Library, Activity Log, Scheduler, Maintenance, Analytics, Requests, Reviews, Users, Editor, Credentials, Settings, Audit Log.
+- Protected navigation labels: Home, Browse, Request, Library, Ranking, and Contributions (current routes only); Account (mobile tab); Ranking, Contributions, FAQ, News, About, Support, Legal, Privacy, Terms, DMCA, Contact, Cookie Policy (footer). The request route is `/account/request-novels`; singular and legacy aliases are rejected. Admin sidebar labels: Home, Add Novel, Library, Activity Log, Scheduler, Maintenance, Analytics, Requests, Reviews, Users, Editor, Credentials, Settings, Audit Log.
 - CTA consistency: "Start Reading" for the first readable chapter; "Sign In" and "Sign up" as auth actions; "Continue with Google" for OAuth; destructive verbs are explicit ("Remove", "Delete", "Reject", "Clear State").
 - Error copy: safe, no stack traces, no internal paths, no IDs. Generic fallback: "Something went wrong. Please try again later."
 - Empty-state copy: explain why it is empty and give a recovery action.
-- No fake claims: never present simulated numbers, fake reviews, or invented ranking data. Unavailable features say "not available yet".
+- No fake claims: never present simulated numbers, fake reviews, or invented ranking data. Ranking rows come from the public ranking API and label the metric as distinct novel-detail viewers; disabled analytics and no-data states remain explicit. Contributor UI reports API-backed validation, lifecycle, quota, and usage states only.
 - No em dashes or en dashes in generated interface copy.
 - CJK copy wraps safely; Japanese titles display in the literary serif; original Japanese title is secondary to the translated title.
 - Dynamic content slots in briefs use bracketed placeholders such as [Novel title], [Original Japanese title], [Chapter count], [Publication status], [Updated date].
@@ -671,16 +671,14 @@ WTR-Lab is recorded only as a domain reference for the reading experience.
 | Source | `/sources/[sourceKey]` | `public/source.md` | Implemented | Settled filtered grid | Empty |
 | Novel detail | `/novels/[slug]` | `public/novel-detail.md` | Implemented | Overview tab settled | Chapters tab, loading, not found |
 | Chapter reader | `/novels/[slug]/chapter/[chapterId]` | `public/chapter-reader.md` | Implemented | Reading surface | Loading, chapter unavailable |
-| Ranking | `/ranking` | `public/ranking.md` | Implemented (unavailable state) | "Rankings are not live" state | None |
-| Request novel | `/request-novel` | `public/request-novel.md` | Implemented | Settled form | Empty history |
-| Contribute | `/contribute` | `public/contribute.md` | Implemented | Gated informational state | None |
+| Ranking | `/ranking` | `public/ranking.md` | Implemented (API-backed) | Weekly unique-view ranking with Daily, Weekly, Monthly tabs | Analytics disabled, no data, error |
 | Account overview | `/account` | `public/account-overview.md` | Implemented | Settled summary cards | Loading |
 | Account library | `/account/library` | `public/account-library.md` | Implemented | Board view settled | List view, empty, guest prompt |
 | Account history | `/account/history` | `public/account-history.md` | Implemented | Settled list | Empty, error, guest prompt |
 | Account notifications | `/account/notifications` | `public/account-notifications.md` | Implemented | Settled activity list | Empty |
 | Account requests | `/account/request-novels` | `public/account-requests.md` | Implemented | Settled history table | Empty |
 | Account reviews | `/account/reviews` | `public/account-reviews.md` | Implemented | Settled review list | Empty, delete confirmation |
-| Account contributions | `/account/contributions` | `public/account-contributions.md` | Implemented | Gated unavailable state | None |
+| Account contributions | `/account/contributions` | `public/account-contributions.md` | Implemented (API-backed) | Authenticated credential lifecycle and usage | Guest, invalid, paused, revoked, unavailable, error |
 | Account settings | `/account/settings` | `public/account-settings.md` | Implemented | Settled settings panels | None |
 | Login | `/login` | `public/login.md` | Implemented | Sign-in state | Sign-up state, OAuth unavailable |
 | Logout | `/logout` | `public/logout.md` | Implemented | Signing-out state | None |

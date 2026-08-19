@@ -14,8 +14,9 @@ alerting, browser/network acceptance, and rollback evidence remain incomplete.
   monitoring, accessibility, performance, SEO, legal propagation, rollback.
 - `DEBT-FE-01` FE-02+ is non-launch-blocking unless a changed slice touches
   the launch candidate.
-- Deferred work stays disabled until its activation gate passes; no frontend
-  surface is swapped before backend contract evidence exists.
+- Enabled feature slices must retain their backend contract, truthful empty
+  states, and operator evidence; deferred work remains disabled until its own
+  activation gate passes.
 - Every evidence record includes candidate commit, environment, UTC time,
   operator, exact command/URL, sanitized result, blocker, waiver, and expiry.
 - Work closes only after evidence is recorded in `HISTORY.md`; passing local
@@ -135,7 +136,7 @@ The following items from the Stitch design spec `1794eb02d11a407b9b6343d72767012
 | Stitch Design Feature | Current Status & Handling in Code | Backend / Contract Dependency |
 | --- | --- | --- |
 | **User Ticket Leaderboard ("HarvestRam - 4,944 Tickets")** | **Omitted / Deferred**. Replaced by honest `Most Chapters` catalog widget. | Requires user engagement/gamification model (`tickets`, `donations`, `patreon`). Anti-slop rule forbids fake data. |
-| **Reader View Counts ("98.5k readers")** | **Omitted / Deferred**. Replaced with `translated_count` ("X chapters translated"). | Requires analytics/view-tracking database backend (`novel_views`, `chapter_views`). |
+| **Reader View Counts ("98.5k readers")** | **Omitted from detail/catalog surfaces**. Rankings use the implemented privacy-safe distinct novel-detail-view service; catalog cards still show `translated_count` ("X chapters translated") rather than popularity. | A separate detail-level view-count display contract is intentionally not exposed; ranking data is supplied by `public_novel.view` analytics events. |
 | **Manual Admin Spotlight Rotation** | **Catalog Fallback**. Current Spotlight dynamically picks the latest ongoing novel with a synopsis and readable chapter. | Requires `admin_spotlights` or `featured_novels` table + admin curation UI. |
 | **Author Detail Route (`/authors/[slug]`)** | **Deferred**. Author names render inline as text without links. | Requires stable `authors` table with author slug, alias mapping, and backend API endpoints. |
 
@@ -316,7 +317,8 @@ Rules:
 - One slice per PR/change; no slice bundled with unrelated work.
 - No `/authors/[author-slug]` until a stable author-identity/alias backend
   contract is approved.
-- No fake rankings, recommendations, community metrics, or contribution UI.
+- No fake rankings, recommendations, or community metrics. Contributor UI must
+  remain API-backed and truthful; community editing is still out of scope.
 - Preserve `docs/DESIGN.md`; update its status only with owner direction.
 
 #### DEBT-FE-01A manual acceptance checklist (operator-evidence only)
@@ -463,16 +465,20 @@ Plan only; no implementation yet.
 6. Public/community lists require separate owner approval after private-list
    evidence.
 
-### DEBT-RANK-01 — Rankings
+### Completed: public rankings (formerly DEBT-RANK-01)
 
-Keep the honest placeholder until a data contract exists.
+Implemented as the current ranking contract. `GET /api/public/rankings` accepts
+only `daily`, `weekly`, and `monthly`, with 24-hour, 7-day, and 30-day windows.
+It counts distinct authenticated user ids and signed opaque anonymous viewer
+digests from `public_novel.view` only; chapter views, IP addresses, and All Time
+claims are excluded. The homepage tabs, Trending widget, and `/ranking` page
+consume this response and show truthful disabled/no-data states.
 
-1. Approve the ranking formula and eligible events.
-2. Define anti-manipulation and replay/idempotency rules.
-3. Exclude owner/admin/test traffic.
-4. Define update cadence and stale-data display.
-5. Validate against fixtures and abuse cases.
-6. Only then replace the static `/ranking` placeholder.
+Evidence: `PublicRankingService`, `public_rankings.py`, anonymous viewer-token
+tests, distinct-view/period/retention tests in
+`backend/tests/test_public_rankings.py`, and frontend ranking honesty/smoke
+tests. The weekly metric is the first reliable Trending signal; ratings, saves,
+and reviews remain future secondary signals.
 
 ### DEBT-120 — Unconnected Backend API Endpoints & Unconsumed Frontend Client Code
 
@@ -481,7 +487,7 @@ Full-stack audit finding (2026-08-03), remediation (2026-08-03):
 1. **Split-Service vs Combined App Topology (RESOLVED)**: Production Compose (`deploy/Caddyfile`) routes `/api/public/*` to port 8001 (`main_reader.py`) and `/api/admin/*`, `/api/auth/*`, `/api/user/*` to port 8000 (`main_admin.py`). Public contact (`/api/public/contact/contact`), DMCA (`/api/public/dmca/dmca`), and analytics ingestion (`/api/public/analytics/*`) were registered in `app.py` but missing from `main_reader.py`; admin analytics/audit/takedown/reviews/users/metrics routers were missing from `main_admin.py`. All are now registered in their owning app. Analytics event ingestion is a public, anonymous, CSRF-free write and lives ONLY in the reader; a duplicate registration previously (and incorrectly) added to `main_admin.py` was removed.
 2. **Route ownership regression protection (RESOLVED)**: `backend/tests/test_microservice_split.py` now asserts strict ownership — the reader must serve public contact/DMCA/analytics-events, the admin must reject `/api/public/*`, the admin must serve all 26 admin/auth/user-client paths, and the combined app minus (admin ∪ reader) is empty (0 stranded endpoints). Verified: 185 combined endpoints = 175 admin + 12 reader, no `/api/public` in admin, no `/api/admin` in reader; all 26 public/user/auth and 77 admin client paths match deployed topology.
 3. **Dead client code (RESOLVED)**: Removed from `frontend/lib/api.ts` the 12 legacy `api` methods with zero callers in app/components/hooks and no test/docs references (`progress`, `readerNovel`, `readerChapter`, `runNextActivity`, `updateActivityStatus`, `sourceHealthDetail`, `validateProviderApiKey`, `clearProviderApiKey`, `refreshRuntimeState`, `createRequest`, `scrapeNow`, `translateNow`); removed `authApi.csrf` from `frontend/lib/public-api.ts` (internal CSRF path, not the exported method); removed now-unused `ReaderNovel`, `ReaderChapter`, `NovelProgress` from `frontend/lib/api-types.ts` (`ModelState` kept — it is used).
-4. **Audit claims corrected as stale**: The original audit listed `adminApi.analyticsSummary`, `adminApi.updateUserActive`, `adminApi.updateUserRole`, `adminApi.revokeUserSessions`, `userReadingApi.listHistory`, `userReadingApi.recordHistory`, `userReadingApi.listMyReviews`, and hooks `useAuthMe`, `usePublicAuthState`, `useMyReviews`, `useRequests`, `useNotifications`, `useReadAllNotifications`, `useArchiveNotification`, `useReadNotification`, `useUpdateProgress`, `useHistory`, `useRecordHistory`, `useUnreadCount` as unused. Verified current state: all have live UI callers (54 call sites across account/history, account/notifications, account/reviews, account/requests, chapter reader, request-novel, home, admin analytics, admin users pages and shared components). Those entries are not debt.
+4. **Audit claims corrected as stale**: The original audit listed `adminApi.analyticsSummary`, `adminApi.updateUserActive`, `adminApi.updateUserRole`, `adminApi.revokeUserSessions`, `userReadingApi.listHistory`, `userReadingApi.recordHistory`, `userReadingApi.listMyReviews`, and hooks `useAuthMe`, `usePublicAuthState`, `useMyReviews`, `useRequests`, `useNotifications`, `useReadAllNotifications`, `useArchiveNotification`, `useReadNotification`, `useUpdateProgress`, `useHistory`, `useRecordHistory`, `useUnreadCount` as unused. Verified current state: all have live UI callers (54 call sites across account/history, account/notifications, account/reviews, account/requests, chapter reader, account overview, home, admin analytics, admin users pages and shared components). Those entries are not debt.
 
 Completion criteria:
 - ~~Register public contact, DMCA, and analytics endpoints in `main_reader.py`~~ — done, regression-locked.
@@ -489,21 +495,22 @@ Completion criteria:
 - ~~Remove or connect orphaned API wrappers and hooks~~ — verified-orphan wrappers removed; claimed orphans re-verified as consumed.
 - Remaining (not UI debt): 57 admin orchestration backend-only endpoints, 3 admin takedown moderation endpoints, 3 operator/monitoring endpoints, and 58 other backend/CLI/test endpoints have no frontend caller by design — they are invoked by workers, CLI, tests, or operator tooling.
 
-### DEBT-CONTRIB-01 — Contribution credentials
+### Completed: contributor credentials (formerly DEBT-CONTRIB-01)
 
-Do not reuse owner/admin credential flows directly.
+The approved readiness gate is complete for v1. Contributor credentials use a
+separate encrypted domain and one Gemini credential per authenticated user.
+Consent/version checks, explicit-key validation, immediate activation on
+success, invalid-on-failure, ownership isolation, replacement, pause/resume,
+permanent deletion, owner emergency revoke, no-readback masking, provider
+isolation, per-credential RPM/TPM/RPD reservation, and sanitized usage ledger
+accounting are implemented. `credential_owner_user_id` and
+`requesting_user_id` remain separate throughout the translation pipeline.
 
-1. Approve consent, ownership, revocation, quotas, and provider-specific
-   rules.
-2. Add separately encrypted contributor credentials.
-3. Separate `requesting_user_id` from `credential_owner_user_id`.
-4. Enforce provider isolation and least privilege.
-5. Add validation, health, pause, revoke, removal, and deletion.
-6. Add usage ledger, per-owner limits, cost ceilings, and audit.
-7. Prevent raw credential readback.
-8. Add moderation/abuse controls.
-9. Run a security review.
-10. Replace unavailable contribution surfaces only after the gate passes.
+Evidence: migration `a8c4e2f7b901`, `ContributorCredentialService`, user and
+owner routers, translation-stage selection/ledger integration,
+`backend/tests/test_contributor_credentials.py`, focused backend suite, and
+live contribution hook/page tests. Production still requires the configured
+encryption key and the migration role to have schema DDL privileges.
 
 ## Priority Recommendation
 
@@ -517,8 +524,8 @@ Do not reuse owner/admin credential flows directly.
    rollback rehearsal.
 7. `FE-02` — FE-01 manual accessibility/contrast acceptance.
 8. Remaining `DEBT-FE-01` slices.
-9. Deferred specs (`DEBT-SC-01`, `DEBT-QA-01`, `DEBT-REV-01`, `DEBT-COM-01`,
-   `DEBT-RANK-01`, `DEBT-CONTRIB-01`) only after launch blockers close.
+9. Deferred specs (`DEBT-SC-01`, `DEBT-QA-01`, `DEBT-REV-01`, and
+   `DEBT-COM-01`) only after launch blockers close.
 
 Reason: launch blockers first. Deferred features add risk, cost, moderation,
 and security burden without launch value.

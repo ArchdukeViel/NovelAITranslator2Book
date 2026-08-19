@@ -29,7 +29,8 @@ public-reading system.
 | Owner | Crawling, imports, translation, editing, providers, users, requests, takedowns, and operations. |
 | Guest | Public catalog, novel detail, chapter list, and reader. |
 | User | Google OAuth or email/password session; private library, progress, history, reviews, and requests. |
-| Deferred | Contribution credentials, community features, rankings, billing, organizations, and multiple admins. |
+| Enabled | User-owned contributor credentials and public rankings. |
+| Deferred | Community features, billing, organizations, and multiple admins. |
 
 Generated translated-novel downloads are outside scope. Do not add PDF, EPUB,
 HTML, Markdown, manifests, freshness, or downloads without an approved spec.
@@ -230,7 +231,10 @@ fields, fallback readers, compatibility routes, or import shims.
 - `/api/admin/*`: owner operations.
 - `/api/auth/*`: owner and public authentication.
 - `/api/user/*`: session-authenticated user data through admin process.
-- `/api/public/*`: guest-safe reader through reader process.
+- `/api/public/*`: guest-safe reader and rankings through reader process.
+- `/api/user/contributions`: authenticated user-owned contributor credentials
+  through the admin process; identity is session-derived and unsafe methods are
+  CSRF-protected.
 - `/health/*`: liveness/readiness through admin process.
 - `/novels/*`: frontend pages, not backend aliases.
 
@@ -266,9 +270,40 @@ Roles are `guest`, `user`, and exactly one `owner`.
 - Takedowns use exact decoded paths, safe HTTP 451, `no-store`, sitemap
   exclusion, and no complainant/private details.
 
-Contribution credentials stay unavailable until encrypted storage, consent,
-validation, revocation, usage limits/ledger, provider isolation, audit, abuse
-controls, and owner approval exist.
+### Contributor credential contract
+
+Contributor credentials are enabled behind `CONTRIBUTOR_CREDENTIALS_ENABLED`.
+V1 permits one Gemini credential per authenticated user. The submitted key is
+encrypted at rest with `PROVIDER_CREDENTIAL_ENCRYPTION_KEY`; responses expose
+only the credential id, provider/model, last four characters, fingerprint,
+status, consent version, validation state, timestamps, and failure count.
+Raw keys, prompts, authorization headers, and provider responses are never
+stored in the usage ledger, logs, or API responses.
+
+Registration requires the current `CONTRIBUTOR_CONSENT_VERSION`. Validation uses
+the explicit submitted key without hydrating owner preferences. A successful
+validation activates the credential immediately; a failed validation persists
+an invalid state and the key cannot enter the contributor pool. Users may
+replace, pause, resume, and permanently delete their own credential. Owners
+have separate pause, resume, and revoke emergency controls.
+
+Contributor translation selects only active, valid Gemini credentials and uses
+per-credential RPM, TPM, and RPD reservations. The usage ledger records only
+credential/owner/requesting-user identity, provider/model, request/job/activity
+ids, contribution mode, sanitized status, token accounting, estimated cost,
+and timestamps. `credential_owner_user_id` and `requesting_user_id` remain
+distinct. Owner-only jobs never consume contributor credentials.
+
+### Public ranking contract
+
+`GET /api/public/rankings?period=daily|weekly|monthly&limit=...` ranks published
+novels by distinct novel-detail viewers from `public_novel.view` events only:
+24 hours, 7 days, or 30 days. Authenticated user ids and signed opaque
+first-party anonymous viewer-token digests are counted separately; IP addresses
+are never stored. Chapter events do not contribute. When analytics is disabled
+or there is no retained data, the API returns `available=false` with a truthful
+reason. There is no All Time period because the retention-backed event table
+cannot provide that claim.
 
 ## Operational Contracts
 
@@ -322,7 +357,7 @@ controls, and owner approval exist.
 
 ## Forbidden Work
 
-- No contribution/community/ranking features before moderation and security gates.
+- No community features before their separate moderation and security gate.
 - No fake APIs or frontend-only security controls.
 - No raw SQL outside Alembic and explicit `backend/sql/` policy files.
 - No APScheduler.

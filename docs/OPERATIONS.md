@@ -215,3 +215,50 @@ Each `tools/*.ps1` wrapper refuses to run when `.venv\Scripts\python.exe`
 is missing. The readme at `tools/README.md` lists the canonical extras.
 
 Current unresolved operator gates live in [`WORK.md`](WORK.md).
+
+## Contributor Credential Operations
+
+For an enabled contributor deployment, verify:
+
+1. Confirm `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` is present and not the owner
+   bootstrap or session secret.
+2. Confirm the current `CONTRIBUTOR_CONSENT_VERSION` is the version shown by
+   the frontend and record any consent copy change.
+3. Confirm per-credential RPM/TPM/RPD limits and the quota-state directory are
+   writable only by the backend runtime.
+4. Apply Alembic migrations with the elevated migration role before starting
+   the long-running services; the runtime role must have the required DML but
+   should not be granted broad schema-DDL privileges.
+5. Verify the user route returns masked metadata only, unsafe methods reject
+   missing CSRF, and a user cannot read or mutate another user's credential.
+
+Owners may pause or revoke a credential for emergency abuse remediation. A
+revoked credential cannot be resumed by a user. Permanent user deletion removes
+the encrypted credential row but preserves sanitized usage-ledger history for
+accounting and incident review. Do not delete ledger rows as part of ordinary
+credential removal.
+
+Rotation requires a maintenance window: pause contributor work, re-encrypt
+stored credentials, verify fingerprints and validation state, switch the
+configured key, resume only after a masked read and validation check, and
+record the operator/evidence in `HISTORY.md`. If re-encryption cannot complete,
+keep the old key available and fail closed rather than accepting new keys.
+
+## Ranking and Anonymous Viewer Retention
+
+`/api/public/rankings` is based on published novel-detail events retained by
+`ANALYTICS_RETENTION_DAYS`. Daily, Weekly, and Monthly mean 24 hours, 7 days,
+and 30 days from query time. Chapter views are excluded. When analytics is
+disabled or the retained set is empty, the API and UI expose an unavailable or
+no-data state; operators must not seed placeholder rows or describe it as All
+Time.
+
+Guest detail views may set the signed `novelai_viewer` first-party cookie. The
+server stores only a digest of the opaque token, never the raw token or an IP
+address. Clear the cookie or disable analytics when investigating identity
+collection; do not export raw cookie values into logs or incident evidence.
+
+The contributor usage ledger is pruned by the `contributor_usage_cleanup`
+maintenance task according to `CONTRIBUTOR_USAGE_RETENTION_DAYS`. Permanent
+credential deletion preserves rows until that retention task removes them;
+dry-run the task before changing the policy.

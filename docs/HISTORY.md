@@ -516,3 +516,24 @@ Completed the hierarchy-persistence hardening and the docs-first public novel-de
 ### Remaining Scope
 
 Authenticated saved-progress CTA behavior is covered by deterministic frontend tests but was not exercised with credentials. Native screen-reader, forced-colors, hosted, and physical-device acceptance remain outside this local evidence record.
+## 2026-08-19 LIVE CONTRIBUTIONS, RANKINGS & CURRENT PUBLIC ROUTES
+
+Implemented the approved live contributor and ranking contracts while preserving
+the current public route set. Authenticated users can register one encrypted
+Gemini contributor credential, validate it immediately, pause/resume/replace or
+delete it, and inspect masked usage accounting. Contributor translation is
+provider-isolated, quota-reserved, and recorded in a sanitized ledger with
+retention maintenance. Public rankings now use distinct authenticated and
+signed-anonymous novel-detail viewers for Daily, Weekly, and Monthly windows;
+Trending uses Weekly, and no All Time or V2 surface remains.
+
+Removed the obsolete `/contribute` route and design brief. `/request-novel`
+remains absent; `/account/contributions` is the sole contribution surface.
+Active architecture, configuration, operations, translation, design, legal,
+and public page briefs were refreshed, including the first-party anonymous
+viewer-token privacy contract.
+
+Evidence includes focused contributor, ranking, analytics, translation-pipeline,
+frontend API, route, and honesty tests. The local migration reached the new
+revision but requires a migration role with schema DDL permission in the
+configured database before it can be accepted as applied.

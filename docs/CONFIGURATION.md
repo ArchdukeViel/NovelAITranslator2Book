@@ -152,3 +152,32 @@ rotation logs out users; credential-encryption rotation requires re-encryption.
   sharing, R2 scope separation, and restore target isolation.
 - When adding a setting, update `settings.py`, example env files, deployment
   wiring, focused tests, and this file only when operator understanding changes.
+
+## Contributor Credentials and Public Rankings
+
+Contributor credentials are enabled. Startup and storage fail closed when the
+encryption key or required deployment controls are missing:
+
+| Setting | Purpose | Default |
+|---|---|---:|
+| `CONTRIBUTOR_CREDENTIALS_ENABLED` | Enable user-owned Gemini credential intake and contributor jobs | `true` |
+| `CONTRIBUTOR_CONSENT_VERSION` | Consent text/version required on every replacement | `2026-08-19` |
+| `CONTRIBUTOR_MAX_ACTIVE_PER_USER` | Maximum credentials per user in v1 | `1` |
+| `CONTRIBUTOR_RPM_LIMIT` | Per-credential requests per minute | `15` |
+| `CONTRIBUTOR_TPM_LIMIT` | Per-credential tokens per minute | `250000` |
+| `CONTRIBUTOR_RPD_LIMIT` | Per-credential requests per day | `500` |
+| `CONTRIBUTOR_USAGE_RETENTION_DAYS` | Contributor ledger retention window | `365` |
+
+`PROVIDER_CREDENTIAL_ENCRYPTION_KEY` is required before a credential can be
+stored. It is also the encryption boundary for owner-managed provider keys,
+but contributor rows remain isolated by domain, owner, provider, and explicit
+contribution mode. Rotate the key by decrypting and re-encrypting all stored
+credentials in a controlled maintenance window, verify fingerprints before
+removing the old key, and treat an unavailable old key as a fail-closed
+incident. Never put a raw key in `.env` examples, logs, diagnostics, or API
+responses.
+
+Public rankings use `GET /api/public/rankings` with `period=daily|weekly|monthly`
+and a bounded `limit`. Analytics retention is the truth boundary; there is no
+All Time setting. Anonymous ranking identity uses a signed first-party opaque
+cookie and stores only its digest, never an IP address.

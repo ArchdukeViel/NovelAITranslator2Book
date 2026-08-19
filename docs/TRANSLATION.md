@@ -296,3 +296,22 @@ auto-publish findings.
   any output-shaping change.
 
 Deferred semantic-cache and broader advisory-QA work lives in [`WORK.md`](WORK.md).
+
+## Contributor Credential Selection and Usage Accounting
+
+Contributor-backed translation is an explicitly marked execution mode. It
+never falls through to owner preferences and never changes the global provider
+contract. The worker selects only an active, successfully validated Gemini
+credential, decrypts it for the provider call, and keeps the raw key out of
+activity metadata, cache keys, prompts, logs, and responses. Owner-only jobs
+remain owner-scoped even when contributor credentials exist.
+
+The pipeline propagates `credential_id`, `credential_owner_user_id`,
+`requesting_user_id`, `credential_scope`, and `contribution_mode` as safe
+metadata. Each provider attempt reserves the credential's RPM/TPM/RPD capacity
+before calling Gemini. The contributor usage ledger records provider/model,
+request/job/activity ids, status, actual or estimated token accounting, cost,
+and timestamps only. Invalid-key and quota/rate failures pause the credential
+and leave a truthful failed ledger state; successful validation activates the
+credential immediately. Rejected or failed credentials are never added to the
+eligible contributor pool.
