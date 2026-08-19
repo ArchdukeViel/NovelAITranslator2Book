@@ -20,6 +20,7 @@ from novelai.api.routers import (
     admin,
     admin_analytics,
     admin_audit,
+    admin_contributions,
     admin_glossary,
     admin_reviews,
     admin_takedown,
@@ -39,6 +40,7 @@ from novelai.api.routers.health import admin_router as health_admin_router
 from novelai.api.routers.library import NovelSummary, list_novels
 from novelai.api.routers.metrics import router as metrics_router
 from novelai.api.routers.notifications import router as notifications_router
+from novelai.api.routers.user_contributions import router as user_contributions_router
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.config.production_validator import assert_production_config
 from novelai.config.settings import session_cookie_secure, settings
@@ -105,6 +107,7 @@ add_error_handlers(app)
 # Auth routes (login/logout/me)
 app.include_router(auth_router)
 app.include_router(user_data_router)
+app.include_router(user_contributions_router)
 app.include_router(notifications_router)
 
 # Admin orchestration routers
@@ -112,6 +115,7 @@ app.include_router(admin.router, prefix="/api", tags=["admin-api"])
 app.include_router(admin_analytics.router)
 app.include_router(admin_audit.router)
 app.include_router(admin_users.router)
+app.include_router(admin_contributions.router)
 app.include_router(admin_takedown.router)
 app.include_router(admin_reviews.router)
 app.include_router(sources.router, prefix="/api/admin", tags=["admin-api"])

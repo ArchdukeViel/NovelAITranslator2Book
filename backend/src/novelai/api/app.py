@@ -15,6 +15,7 @@ from novelai.api.routers import (
     admin,
     admin_analytics,
     admin_audit,
+    admin_contributions,
     admin_glossary,
     admin_reviews,
     admin_takedown,
@@ -39,6 +40,8 @@ from novelai.api.routers.public_chapter import router as public_chapter_router
 from novelai.api.routers.public_contact import router as public_contact_router
 from novelai.api.routers.public_dmca import router as public_dmca_router
 from novelai.api.routers.public_novel import router as public_novel_router
+from novelai.api.routers.public_rankings import router as public_rankings_router
+from novelai.api.routers.user_contributions import router as user_contributions_router
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.config.production_validator import assert_production_config
 from novelai.config.settings import session_cookie_secure, settings
@@ -116,10 +119,12 @@ def create_app() -> FastAPI:
     app.include_router(public_contact_router)
     app.include_router(public_dmca_router)
     app.include_router(public_novel_router)
+    app.include_router(public_rankings_router)
     app.include_router(public_chapter_router)
 
     # User data routes (authenticated users: library, progress, history, reviews, requests)
     app.include_router(user_data_router)
+    app.include_router(user_contributions_router)
     app.include_router(notifications_router)
 
     app.include_router(admin.router, prefix="/api", tags=["admin-api"])
@@ -127,6 +132,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_analytics.ingestion_router)
     app.include_router(admin_audit.router)
     app.include_router(admin_users.router)
+    app.include_router(admin_contributions.router)
     app.include_router(admin_takedown.router)
     app.include_router(admin_reviews.router)
     app.include_router(sources.router, prefix="/api/admin", tags=["admin-api"])
