@@ -27,10 +27,11 @@ describe("public auth API", () => {
     expect("login" in authApi).toBe(false);
   });
 
-  it("does not restore non-reading public user APIs", () => {
+  it("keeps authenticated contribution APIs separate from auth methods", () => {
     const source = readFileSync("lib/public-api.ts", "utf8");
 
     expect(source).not.toContain("userApi");
-    expect(source).not.toContain("/api/user/contributions");
+    expect(source).toContain("userContributionApi");
+    expect(source).toContain("/api/user/contributions");
   });
 });

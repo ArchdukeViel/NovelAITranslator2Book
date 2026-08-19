@@ -13,6 +13,9 @@ import type { ApiErrorPayload } from "@/lib/api-types";
 import type {
   AuthUser,
   CatalogParams,
+  ContributorListResponse,
+  ContributorUsageResponse,
+  ContributorWriteResponse,
   EmailPasswordAuthInput,
   HistoryListParams,
   HistoryListResponse,
@@ -34,6 +37,8 @@ import type {
   PublicChapterSummary,
   PublicGenreResponse,
   PublicNovelSummary,
+  PublicRankingPeriod,
+  PublicRankingResponse,
   PublicReviewListResponse,
   PublicTagSearchResult,
   RegisterAuthInput,
@@ -194,6 +199,18 @@ async function publicPut<T>(path: string, body: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function publicPatch<T>(path: string, body: unknown): Promise<T> {
+  const response = await publicFetch(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  return response.json() as Promise<T>;
+}
+
 async function publicDelete(path: string): Promise<void> {
   await publicFetch(path, { method: "DELETE" });
 }
@@ -302,6 +319,42 @@ export const publicApi = {
     const qs = search.toString();
     return publicGet<PublicReviewListResponse>(
       `/api/public/novels/${encodeURIComponent(slug)}/reviews${qs ? `?${qs}` : ""}`
+    );
+  },
+
+  rankings(period: PublicRankingPeriod, limit = 10, signal?: AbortSignal): Promise<PublicRankingResponse> {
+    const search = new URLSearchParams({ period, limit: String(limit) });
+    return publicGet<PublicRankingResponse>(`/api/public/rankings?${search.toString()}`, signal);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Contributor API client - authenticated user-owned credentials only
+// ---------------------------------------------------------------------------
+
+export const userContributionApi = {
+  list(): Promise<ContributorListResponse> {
+    return publicGet<ContributorListResponse>("/api/user/contributions");
+  },
+
+  replace(input: { provider_key: "gemini"; api_key: string; consent_version: string }): Promise<ContributorWriteResponse> {
+    return publicPut<ContributorWriteResponse>("/api/user/contributions", input);
+  },
+
+  updateStatus(credentialId: string, status: "active" | "paused"): Promise<ContributorListResponse["credentials"][number]> {
+    return publicPatch<ContributorListResponse["credentials"][number]>(
+      `/api/user/contributions/${encodeURIComponent(credentialId)}`,
+      { status },
+    );
+  },
+
+  remove(credentialId: string): Promise<void> {
+    return publicDelete(`/api/user/contributions/${encodeURIComponent(credentialId)}`);
+  },
+
+  usage(credentialId: string): Promise<ContributorUsageResponse> {
+    return publicGet<ContributorUsageResponse>(
+      `/api/user/contributions/${encodeURIComponent(credentialId)}/usage`,
     );
   },
 };

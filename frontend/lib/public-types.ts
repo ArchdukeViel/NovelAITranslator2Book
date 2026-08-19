@@ -43,6 +43,24 @@ export interface PublicCatalogResponse {
   page_size: number;
 }
 
+export type PublicRankingPeriod = "daily" | "weekly" | "monthly";
+
+export interface PublicRankingItem {
+  rank: number;
+  unique_views: number;
+  novel: PublicNovelSummary;
+}
+
+export interface PublicRankingResponse {
+  period: PublicRankingPeriod;
+  metric: "unique_novel_views" | string;
+  available: boolean;
+  reason: "analytics_disabled" | "no_data" | string | null;
+  retention_days: number;
+  generated_at: string;
+  items: PublicRankingItem[];
+}
+
 export type CatalogSortField = "added_at" | "updated_at" | "title" | "chapter_count";
 export type CatalogOrder = "asc" | "desc";
 
@@ -258,7 +276,7 @@ export interface PublicReviewListResponse {
   next_cursor: string | null;
 }
 
-// ---- Contribution (frontend-designed; backend dependency) ----
+// ---- Legacy contribution compatibility types (not used by the live UI) ----
 
 export type ContributionStatus = "Unchecked" | "Checking" | "Working" | "Failed";
 
@@ -270,6 +288,71 @@ export interface ContributionStatusResponse {
   updated_at?: string | null;
 }
 // NOTE: raw credential is request-only input; never stored client-side (Req 17.6).
+
+// ---- Contributor credentials (from /api/user/contributions) ----
+
+export type ContributorCredentialStatus = "active" | "paused" | "invalid" | "revoked";
+
+export interface ContributorCredential {
+  credential_id: string;
+  provider: string;
+  provider_model: string;
+  last4: string;
+  fingerprint: string;
+  status: ContributorCredentialStatus | string;
+  validation_status: string;
+  validation_message: string | null;
+  consent_version: string;
+  created_at: string | null;
+  updated_at: string | null;
+  last_validated_at: string | null;
+  last_used_at: string | null;
+  failure_count: number;
+}
+
+export interface ContributorLimits {
+  requests_per_minute: number;
+  tokens_per_minute: number;
+  requests_per_day: number;
+}
+
+export interface ContributorListResponse {
+  enabled: boolean;
+  encryption_ready: boolean;
+  consent_version: string;
+  limits: ContributorLimits;
+  credentials: ContributorCredential[];
+}
+
+export interface ContributorWriteResponse {
+  credential: ContributorCredential;
+  validation_ok: boolean;
+}
+
+export interface ContributorUsageEntry {
+  id: number;
+  status: string;
+  provider: string;
+  provider_model: string;
+  request_id: string | null;
+  job_id: string | null;
+  activity_id: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+  estimated_cost_usd: number | null;
+  error_code: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export interface ContributorUsageResponse {
+  credential_id: string;
+  limits: ContributorLimits;
+  current_minute: { requests: number; tokens: number };
+  today: { requests: number; tokens: number };
+  recent: ContributorUsageEntry[];
+}
 
 // ---- Taxonomy (from routers/public.py) ----
 
