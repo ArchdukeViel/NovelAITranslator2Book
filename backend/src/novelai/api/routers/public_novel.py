@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from novelai.api.auth.session import SessionUser, get_current_user
@@ -27,7 +27,8 @@ from novelai.api.routers.public_contracts import (
     _optional_str,
     _public_section_fields,
 )
-from novelai.services.analytics_service import record_server_event
+from novelai.config.settings import settings
+from novelai.services.analytics_service import anonymous_viewer_identity, record_server_event
 from novelai.services.public_catalog_service import PublicCatalogService
 from novelai.services.review_service import ReviewService
 from novelai.services.takedown_service import TakedownService
@@ -48,6 +49,7 @@ async def get_novel(
     user: SessionUser = Depends(get_current_user),
     db: Session = Depends(get_db_session),
     response: Response = None,  # type: ignore[assignment]
+    request: Request = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
     """Public novel detail."""
     # HTTP 451 — Unavailable For Legal Reasons
@@ -61,9 +63,15 @@ async def get_novel(
     if summary is None or novel_id is None:
         raise HTTPException(status_code=404, detail="Novel not found.")
     # Best-effort analytics: record public_novel.view
-    record_server_event("public_novel.view", user_id=user.user_id, novel_id=novel_id)
+    session_id: str | None = None
+    viewer_cookie_created = False
+    if settings.ANALYTICS_ENABLED and user.user_id is None and request is not None and response is not None:
+        session_id, viewer_cookie_created = anonymous_viewer_identity(request, response)
+    record_server_event("public_novel.view", user_id=user.user_id, session_id=session_id, novel_id=novel_id)
     if response is not None:
-        response.headers["Cache-Control"] = "public, max-age=60"
+        # A public cache cannot safely serve an identity-setting/detail-view
+        # response because it would suppress the next viewer's event.
+        response.headers["Cache-Control"] = "private, no-store" if viewer_cookie_created else "private, max-age=60"
     return summary
 
 

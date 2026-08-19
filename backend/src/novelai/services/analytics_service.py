@@ -7,8 +7,11 @@ configurable time windows, and failure isolation (recording never fails primary)
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
+import secrets
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -17,11 +20,44 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import delete, select
 from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session
+from starlette.requests import Request
+from starlette.responses import Response
 
 from novelai.config.settings import settings
 from novelai.db.models.analytics_event import AnalyticsEvent
 
 logger = logging.getLogger(__name__)
+
+ANONYMOUS_VIEWER_COOKIE = "novelai_viewer"
+
+
+def anonymous_viewer_identity(request: Request, response: Response) -> tuple[str, bool]:
+    """Return a signed opaque viewer identity and whether a cookie was created.
+
+    The raw token is never stored in the database.  The analytics event stores
+    only a SHA-256 digest, and no client IP is consulted.
+    """
+    secret = settings.SESSION_SECRET_KEY.encode("utf-8")
+    value = request.cookies.get(ANONYMOUS_VIEWER_COOKIE, "")
+    token, separator, signature = value.partition(".")
+    valid = bool(token and separator and signature) and hmac.compare_digest(
+        hmac.new(secret, token.encode("utf-8"), hashlib.sha256).hexdigest(), signature
+    )
+    created = False
+    if not valid:
+        token = secrets.token_urlsafe(32)
+        signed = f"{token}.{hmac.new(secret, token.encode('utf-8'), hashlib.sha256).hexdigest()}"
+        response.set_cookie(
+            ANONYMOUS_VIEWER_COOKIE,
+            signed,
+            max_age=max(86_400, settings.ANALYTICS_RETENTION_DAYS * 86_400),
+            httponly=True,
+            secure=settings.ENV.strip().lower() == "production",
+            samesite="lax",
+        )
+        created = True
+    return hashlib.sha256(token.encode("utf-8")).hexdigest(), created
+
 
 # ---------------------------------------------------------------------------
 # Event name allowlist (stable, privacy-reviewed)

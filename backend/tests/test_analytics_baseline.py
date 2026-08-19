@@ -13,6 +13,8 @@ from sqlalchemy import DateTime, create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.admin_analytics import ingestion_router, router
@@ -273,3 +275,24 @@ async def test_public_novel_hook_does_not_break_response(monkeypatch) -> None:
         SessionUser(user_id=None, email=None, role="guest"),
     )
     assert result == {"novel_id": "n1"}
+
+
+@pytest.mark.asyncio
+async def test_public_novel_does_not_set_anonymous_cookie_when_analytics_disabled(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "ANALYTICS_ENABLED", False)
+
+    class Service:
+        def get_public_novel_summary(self, _slug: str, *, include_adult: bool = False):
+            return {"novel_id": "n1"}, "n1"
+
+    response = Response()
+    request = Request({"type": "http", "headers": []})
+    await get_novel(
+        "novel",
+        False,
+        cast(Any, Service()),
+        SessionUser(user_id=None, email=None, role="guest"),
+        response=response,
+        request=request,
+    )
+    assert "set-cookie" not in response.headers

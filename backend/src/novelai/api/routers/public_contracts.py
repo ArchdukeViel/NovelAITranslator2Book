@@ -127,6 +127,22 @@ class PublicCatalogResponse(BaseModel):
     degraded: bool = False
 
 
+class PublicRankingItem(BaseModel):
+    rank: int
+    unique_views: int
+    novel: PublicNovelSummary
+
+
+class PublicRankingResponse(BaseModel):
+    period: str
+    metric: str = "unique_novel_views"
+    available: bool
+    reason: str | None = None
+    retention_days: int
+    generated_at: datetime
+    items: list[PublicRankingItem]
+
+
 class PublicGenreResponse(BaseModel):
     slug: str
     name_ja: str
