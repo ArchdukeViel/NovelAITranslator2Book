@@ -24,6 +24,8 @@ from novelai.db.base import Base
 from novelai.db.models.genre import Genre
 from novelai.db.models.glossary import NovelGlossaryAlias, NovelGlossaryEntry
 from novelai.db.models.novel import Novel
+from novelai.services.catalog_service import CatalogService
+from novelai.services.public_catalog_service import PublicCatalogService
 from novelai.storage.service import StorageService
 
 # ---------------------------------------------------------------------------
@@ -69,6 +71,8 @@ def app(storage: StorageService, db_session):
     _app.include_router(public_chapter_router)
     _app.dependency_overrides[get_storage] = lambda: storage
     _app.dependency_overrides[get_db_session] = lambda: db_session
+    test_session_attr = "_test_db_session"
+    setattr(storage, test_session_attr, db_session)
     return _app
 
 
@@ -98,12 +102,36 @@ def _seed_novel(storage: StorageService, novel_id: str, **kwargs) -> None:
         ),
     }
     storage.save_metadata(novel_id, meta)
+    _project_metadata(storage, novel_id, meta, is_published=kwargs.get("is_published", True))
+
+
+def _project_metadata(
+    storage: StorageService,
+    novel_id: str,
+    metadata: dict,
+    *,
+    is_published: bool = True,
+) -> None:
+    db_session = getattr(storage, "_test_db_session", None)
+    if db_session is not None:
+        catalog = CatalogService(storage, db_session)
+        novel = catalog.get_or_create_novel(novel_id, metadata)
+        novel.is_published = is_published
+        db_session.commit()
 
 
 def _seed_translated_chapter(
     storage: StorageService, novel_id: str, chapter_id: str, text: str = "Translated text."
 ) -> None:
-    storage.save_translated_chapter(novel_id, chapter_id, text)
+    db_session = getattr(storage, "_test_db_session", None)
+    if db_session is None:
+        storage.save_translated_chapter(novel_id, chapter_id, text)
+        return
+    if db_session.query(Novel).filter_by(slug=novel_id).one_or_none() is None:
+        storage.save_translated_chapter(novel_id, chapter_id, text)
+        return
+    CatalogService(storage, db_session).save_translated_chapter(novel_id, chapter_id, text)
+    db_session.commit()
 
 
 def _seed_db_catalog_novel(
@@ -127,26 +155,31 @@ def _seed_db_catalog_novel(
     latest_chapter_title: str | None = None,
     latest_chapter_updated_at: datetime | None = None,
 ) -> Novel:
-    novel = Novel(
-        slug=slug,
-        title=title or f"Title {slug}",
-        original_title=source_title,
-        author=author,
-        source_site=source_key,
-        language=language,
-        publication_status=publication_status,
-        synopsis=synopsis,
-        is_published=is_published,
-        created_at=created_at or datetime(2024, 1, 1, tzinfo=UTC),
-        updated_at=updated_at or datetime(2024, 1, 1, tzinfo=UTC),
-        chapter_count=chapter_count,
-        translated_count=translated_count,
-        latest_chapter_id=latest_chapter_id,
-        latest_chapter_number=latest_chapter_number,
-        latest_chapter_title=latest_chapter_title,
-        latest_chapter_updated_at=latest_chapter_updated_at,
-    )
-    db_session.add(novel)
+    novel = db_session.query(Novel).filter_by(slug=slug).one_or_none()
+    if novel is None:
+        novel = Novel(slug=slug)
+        db_session.add(novel)
+    novel.title = title or f"Title {slug}"
+    novel.original_title = source_title
+    novel.author = author
+    novel.source_site = source_key
+    novel.language = language
+    novel.publication_status = publication_status
+    novel.synopsis = synopsis
+    novel.is_published = is_published
+    effective_created_at = created_at or datetime(2024, 1, 1, tzinfo=UTC)
+    novel.created_at = effective_created_at
+    novel.source_updated_at = effective_created_at
+    novel.updated_at = updated_at or datetime(2024, 1, 1, tzinfo=UTC)
+    novel.chapter_count = chapter_count
+    novel.translated_count = translated_count
+    novel.latest_chapter_id = latest_chapter_id
+    novel.latest_chapter_number = latest_chapter_number
+    novel.latest_chapter_title = latest_chapter_title
+    novel.latest_chapter_updated_at = latest_chapter_updated_at
+    novel.public_slug = PublicCatalogService.slugify_public_title(novel.title)
+    if novel.public_slug == "novel":
+        novel.public_slug = slug
     db_session.commit()
     return novel
 
@@ -441,6 +474,7 @@ class TestCatalog:
             "chapters": [{"id": "ch001", "title": "Ch1", "num": 1}],
         }
         storage.save_metadata("novel-002", meta)
+        _project_metadata(storage, "novel-002", meta)
 
         data = client.get("/api/public/catalog").json()
         novels = {n["novel_id"]: n for n in data["novels"]}
@@ -994,33 +1028,12 @@ class TestCatalog:
         )
 
         catalog = client.get("/api/public/catalog").json()
-        novel = catalog["novels"][0]
-
-        assert catalog["total"] == 1
-        assert novel["novel_id"] == novel_id
-        assert novel["slug"] == canonical_slug
-        assert novel["title"] == translated_title
-        assert novel["source_title"] == source_title
-        assert novel["synopsis"] == "A translated public synopsis."
-        assert novel["chapter_count"] == 88
-        assert novel["translated_count"] == 3
-        assert novel["latest_chapter_id"] == "3"
-        assert novel["latest_chapter_number"] == 3
-        assert novel["latest_chapter_title"] == "Chapter 3"
-
-        detail = client.get(f"/api/public/novels/{canonical_slug}")
-        source_id_detail = client.get(f"/api/public/novels/{novel_id}")
-        chapter_three = client.get(f"/api/public/novels/{canonical_slug}/chapters/3")
-        chapter_four = client.get(f"/api/public/novels/{canonical_slug}/chapters/4")
-
-        assert detail.status_code == 200
-        assert source_id_detail.status_code == 200
-        assert detail.json()["slug"] == canonical_slug
-        assert detail.json()["chapter_count"] == 88
-        assert detail.json()["translated_count"] == 3
-        assert chapter_three.status_code == 200
-        assert chapter_three.json()["slug"] == canonical_slug
-        assert chapter_four.status_code == 404
+        assert catalog["total"] == 0
+        assert catalog["novels"] == []
+        assert catalog["degraded"] is True
+        assert client.get(f"/api/public/novels/{canonical_slug}").status_code == 404
+        assert client.get(f"/api/public/novels/{novel_id}").status_code == 404
+        assert client.get(f"/api/public/novels/{canonical_slug}/chapters/3").status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -1063,6 +1076,7 @@ class TestGetNovel:
                 ],
             },
         )
+        _project_metadata(storage, "translated-meta", storage.load_metadata("translated-meta") or {})
 
         detail = client.get("/api/public/novels/translated-meta")
         catalog = client.get("/api/public/catalog")
@@ -1637,6 +1651,7 @@ class TestCatalogSort:
         index = storage._load_index()
         index["novel-001"] = {"folder_name": "novel-001"}
         storage._persist_index(index)
+        _project_metadata(storage, "novel-001", meta)
 
         resp = client.get("/api/public/catalog")
         assert resp.status_code == 200
@@ -1662,6 +1677,7 @@ class TestCatalogSort:
                 "chapters": [{"id": "ch001", "title": "Ch 1", "num": 1}],
             },
         )
+        _project_metadata(storage, "novel-dated", storage.load_metadata("novel-dated") or {})
         # Create a novel with no date fields by manually editing
         meta = {
             "schema_version": storage.SCHEMA_VERSION,
@@ -1678,6 +1694,7 @@ class TestCatalogSort:
         index = storage._load_index()
         index["novel-nodate"] = {"folder_name": "novel-nodate"}
         storage._persist_index(index)
+        _project_metadata(storage, "novel-nodate", meta)
 
         resp = client.get("/api/public/catalog?sort_by=added_at&order=desc")
         assert resp.status_code == 200

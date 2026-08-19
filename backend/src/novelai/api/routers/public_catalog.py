@@ -7,9 +7,6 @@ Chapter reader and tags search are in ``public_chapter.py``.
 
 from __future__ import annotations
 
-import logging
-from typing import Any
-
 from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import and_, func, true
 from sqlalchemy.orm import Session, selectinload
@@ -36,7 +33,6 @@ from novelai.services.public_catalog_service import PublicCatalogService
 from novelai.services.takedown_service import TakedownService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
-logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -71,18 +67,15 @@ def _catalog_from_db_page(
     page: int,
     page_size: int,
     order: str,
-) -> PublicCatalogResponse | None:
+) -> PublicCatalogResponse:
     db = service.db_session
     if db is None:
-        return None
+        return PublicCatalogResponse(novels=[], total=0, page=page, page_size=page_size, degraded=True)
     from novelai.db.models.genre import Genre
     from novelai.db.models.novel import Novel
     from novelai.db.models.tag import Tag
 
-    query = _published_db_catalog_query(db, include_adult=include_adult)
-    has_published_db_catalog = query.count() > 0
-    if not has_published_db_catalog:
-        return None
+    query = _published_db_catalog_query(db, include_adult=include_adult).filter(Novel.title != Novel.slug)
 
     search_text = _optional_str(q)
     if search_text:
@@ -139,8 +132,6 @@ def _catalog_from_db_page(
             )
         )
 
-    total = query.count()
-
     if effective_sort_by == "title":
         order_field = Novel.title
     elif effective_sort_by == "updated_at":
@@ -148,16 +139,32 @@ def _catalog_from_db_page(
     elif effective_sort_by == "chapter_count":
         order_field = Novel.chapter_count
     else:
-        order_field = Novel.created_at
-    order_columns = (order_field.asc(), Novel.id.asc()) if order == "asc" else (order_field.desc(), Novel.id.desc())
+        order_field = Novel.source_updated_at
+    if order == "asc":
+        order_columns = (order_field.asc().nulls_first(), Novel.id.asc())
+    else:
+        order_columns = (order_field.desc().nulls_last(), Novel.id.desc())
     offset = (page - 1) * page_size
-    novels = (
-        query.options(selectinload(Novel.genres), selectinload(Novel.tags))
+    rows = (
+        query.add_columns(func.count(Novel.id).over().label("catalog_total"))
+        .options(selectinload(Novel.genres), selectinload(Novel.tags))
         .order_by(*order_columns)
         .offset(offset)
         .limit(page_size)
         .all()
     )
+    if rows:
+        novels = [row[0] for row in rows]
+        total = int(rows[0][1])
+        degraded = False
+    else:
+        has_published_projection = (
+            db.query(Novel.id).filter(Novel.is_published.is_(True), Novel.title != Novel.slug).limit(1).first()
+            is not None
+        )
+        novels = []
+        total = 0
+        degraded = not has_published_projection
     return PublicCatalogResponse(
         novels=[
             PublicNovelSummary(**service._db_novel_summary(novel, include_adult=include_adult)) for novel in novels
@@ -165,77 +172,7 @@ def _catalog_from_db_page(
         total=total,
         page=page,
         page_size=page_size,
-    )
-
-
-def _catalog_from_storage(
-    *,
-    service: PublicCatalogService,
-    q: str | None,
-    publication_status: str | None,
-    source_key: str | None,
-    effective_sort_by: str,
-    reverse: bool,
-    min_chapters: int | None,
-    max_chapters: int | None,
-    genre_include_set: set[str],
-    genre_exclude_set: set[str],
-    tag_include_set: set[str],
-    tag_exclude_set: set[str],
-    include_adult: bool,
-    page: int,
-    page_size: int,
-) -> PublicCatalogResponse:
-    novels: list[dict[str, Any]] = []
-    for novel_id in service.storage.list_novels():
-        if not service._db_row_allows_storage_catalog_entry(novel_id):
-            continue
-        meta = service.storage.load_metadata(novel_id) or {}
-        if q and not service.novel_matches_search(meta, q):
-            continue
-        if publication_status and service.publication_status_from_metadata(meta) != publication_status:
-            continue
-        if source_key and _optional_str(meta.get("source_key")) != source_key:
-            continue
-        genres, tags, _is_adult = service._load_taxonomy_for_novel(novel_id, include_adult=include_adult)
-        novel_genre_set = {g["slug"] for g in genres}
-        novel_tag_set = {t["name"] for t in tags}
-        if genre_include_set and not genre_include_set.issubset(novel_genre_set):
-            continue
-        if genre_exclude_set and novel_genre_set.intersection(genre_exclude_set):
-            continue
-        if tag_include_set and not set(tag_include_set).issubset(novel_tag_set):
-            continue
-        if tag_exclude_set and novel_tag_set.intersection(tag_exclude_set):
-            continue
-        summary = service._novel_summary(novel_id, meta, genres=genres, tags=tags)
-        if min_chapters is not None and summary["chapter_count"] < min_chapters:
-            continue
-        if max_chapters is not None and summary["chapter_count"] > max_chapters:
-            continue
-        novels.append(summary)
-
-    def _sort_key(novel: dict[str, Any]) -> str | int:
-        if effective_sort_by == "title":
-            return (novel.get("title") or "").lower()
-        if effective_sort_by == "updated_at":
-            return novel.get("latest_chapter_updated_at") or novel.get("added_at") or ""
-        if effective_sort_by == "chapter_count":
-            return novel.get("chapter_count", 0)
-        if novel.get("added_at"):
-            return novel["added_at"]
-        return "" if reverse else "9999-12-31T23:59:59"
-
-    novels.sort(key=_sort_key, reverse=reverse)
-
-    total = len(novels)
-    start = (page - 1) * page_size
-    return PublicCatalogResponse(
-        novels=[PublicNovelSummary(**n) for n in novels[start : start + page_size]],
-        total=total,
-        page=page,
-        page_size=page_size,
-        degraded=True,
+        degraded=degraded,
     )
 
 
@@ -276,8 +213,6 @@ async def catalog(
 
     effective_sort_by = sort_by if sort_by and sort_by in VALID_SORT_FIELDS else DEFAULT_SORT_BY
     effective_order = order if order and order in VALID_ORDER_VALUES else DEFAULT_ORDER
-    reverse = effective_order == "desc"
-
     genre_include_set = set(_parse_csv_filter(genre_include))
     genre_exclude_set = set(_parse_csv_filter(genre_exclude))
     tag_include_set = set(_parse_csv_filter(tag_include))
@@ -285,63 +220,23 @@ async def catalog(
 
     response: PublicCatalogResponse
     source_key_filter = _optional_str(source_key)
-    if service.is_db_catalog_base_request(sort_by=sort_by):
-        db_response = _catalog_from_db_page(
-            service=service,
-            q=q,
-            publication_status=publication_status_filter,
-            source_key=source_key_filter,
-            effective_sort_by=effective_sort_by,
-            min_chapters=min_chapters,
-            max_chapters=max_chapters,
-            genre_include_set=genre_include_set,
-            genre_exclude_set=genre_exclude_set,
-            tag_include_set=tag_include_set,
-            tag_exclude_set=tag_exclude_set,
-            include_adult=include_adult,
-            page=page,
-            page_size=page_size,
-            order=effective_order,
-        )
-        if db_response is not None:
-            response = db_response
-        else:
-            logger.warning("DB catalog fell back to storage scan — no DB projection found")
-            response = _catalog_from_storage(
-                service=service,
-                q=q,
-                publication_status=publication_status_filter,
-                source_key=source_key_filter,
-                effective_sort_by=effective_sort_by,
-                reverse=reverse,
-                min_chapters=min_chapters,
-                max_chapters=max_chapters,
-                genre_include_set=genre_include_set,
-                genre_exclude_set=genre_exclude_set,
-                tag_include_set=tag_include_set,
-                tag_exclude_set=tag_exclude_set,
-                include_adult=include_adult,
-                page=page,
-                page_size=page_size,
-            )
-    else:
-        response = _catalog_from_storage(
-            service=service,
-            q=q,
-            publication_status=publication_status_filter,
-            source_key=source_key_filter,
-            effective_sort_by=effective_sort_by,
-            reverse=reverse,
-            min_chapters=min_chapters,
-            max_chapters=max_chapters,
-            genre_include_set=genre_include_set,
-            genre_exclude_set=genre_exclude_set,
-            tag_include_set=tag_include_set,
-            tag_exclude_set=tag_exclude_set,
-            include_adult=include_adult,
-            page=page,
-            page_size=page_size,
-        )
+    response = _catalog_from_db_page(
+        service=service,
+        q=q,
+        publication_status=publication_status_filter,
+        source_key=source_key_filter,
+        effective_sort_by=effective_sort_by,
+        min_chapters=min_chapters,
+        max_chapters=max_chapters,
+        genre_include_set=genre_include_set,
+        genre_exclude_set=genre_exclude_set,
+        tag_include_set=tag_include_set,
+        tag_exclude_set=tag_exclude_set,
+        include_adult=include_adult,
+        page=page,
+        page_size=page_size,
+        order=effective_order,
+    )
     if q and q.strip():
         record_server_event(
             "search.performed",

@@ -21,11 +21,13 @@ if TYPE_CHECKING:
     from novelai.db.models.tag import Tag
 
 
-GLOSSARY_STATUS_VALUES: frozenset[str] = frozenset({
-    "glossary_pending",
-    "glossary_ready",
-    "glossary_skipped",
-})
+GLOSSARY_STATUS_VALUES: frozenset[str] = frozenset(
+    {
+        "glossary_pending",
+        "glossary_ready",
+        "glossary_skipped",
+    }
+)
 
 
 def _utcnow() -> datetime:
@@ -49,6 +51,7 @@ class Novel(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    public_slug: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     original_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
     author: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -69,12 +72,8 @@ class Novel(Base):
     synopsis: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     is_published: Mapped[bool] = mapped_column(nullable=False, default=False)
-    glossary_status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="glossary_pending"
-    )
-    glossary_revision: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
+    glossary_status: Mapped[str] = mapped_column(String(32), nullable=False, default="glossary_pending")
+    glossary_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -90,9 +89,7 @@ class Novel(Base):
     )
 
     # Relationships
-    chapters: Mapped[list[Chapter]] = relationship(
-        "Chapter", back_populates="novel", cascade="all, delete-orphan"
-    )
+    chapters: Mapped[list[Chapter]] = relationship("Chapter", back_populates="novel", cascade="all, delete-orphan")
     genres: Mapped[list[Genre]] = relationship(
         "Genre",
         secondary="novel_genres",
@@ -107,10 +104,7 @@ class Novel(Base):
     @validates("glossary_status")
     def _validate_glossary_status(self, key: str, value: str) -> str:
         if value not in GLOSSARY_STATUS_VALUES:
-            raise ValueError(
-                f"Invalid glossary_status {value!r}. "
-                f"Must be one of {sorted(GLOSSARY_STATUS_VALUES)}."
-            )
+            raise ValueError(f"Invalid glossary_status {value!r}. Must be one of {sorted(GLOSSARY_STATUS_VALUES)}.")
         return value
 
     def __repr__(self) -> str:

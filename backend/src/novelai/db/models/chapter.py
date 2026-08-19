@@ -44,6 +44,11 @@ class Chapter(Base):
     source_episode_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     sequence_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    translated_section_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    section_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    section_source_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    section_ordinal: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    section_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Storage keys — paths/keys into file or object storage

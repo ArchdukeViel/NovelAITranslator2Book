@@ -309,6 +309,213 @@ def test_public_novel_detail_zero_remote_storage_io_when_db_fed(tmp_path):
     mock_backend.has_keys.assert_not_called()
 
 
+def test_public_catalog_returns_bounded_degraded_response_without_projection(tmp_path):
+    """A missing catalog projection never triggers a storage-wide fallback scan."""
+    from unittest.mock import MagicMock
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from novelai.api.routers.public_catalog import catalog
+    from novelai.db.base import Base
+    from novelai.storage.service import StorageService
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    db_session = sessionmaker(bind=engine)()
+    storage = StorageService(tmp_path / "lib")
+    storage.list_novels = MagicMock(side_effect=AssertionError("public reads must not scan storage"))
+    service = PublicCatalogService(storage=storage, db_session=db_session)
+    user = MagicMock(user_id=None)
+
+    import asyncio
+
+    result = asyncio.run(
+        catalog(
+            request=MagicMock(),
+            response_headers=MagicMock(),
+            page=1,
+            page_size=24,
+            sort_by="added_at",
+            order="desc",
+            min_chapters=None,
+            max_chapters=None,
+            source_key=None,
+            genre_include=None,
+            genre_exclude=None,
+            tag_include=None,
+            tag_exclude=None,
+            publication_status=None,
+            include_adult=False,
+            q=None,
+            service=service,
+            user=user,
+            db=db_session,
+        )
+    )
+
+    assert result.novels == []
+    assert result.total == 0
+    assert result.degraded is True
+    storage.list_novels.assert_not_called()
+
+
+def test_public_read_context_requires_complete_chapter_projection(tmp_path):
+    """An underfed published row is unavailable rather than storage-hydrated."""
+    from unittest.mock import MagicMock
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from novelai.db.base import Base
+    from novelai.db.models.novel import Novel
+    from novelai.storage.service import StorageService
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    db_session = sessionmaker(bind=engine)()
+    db_session.add(Novel(slug="test-novel", title="Test Novel", chapter_count=1, is_published=True))
+    db_session.commit()
+    storage = StorageService(tmp_path / "lib")
+    storage.list_novels = MagicMock(side_effect=AssertionError("public reads must not scan storage"))
+
+    context = PublicCatalogService(storage=storage, db_session=db_session).get_public_read_context("test-novel")
+
+    assert context is None
+    storage.list_novels.assert_not_called()
+
+
+def test_public_chapter_list_uses_projected_chapters_without_storage(tmp_path):
+    """Chapter metadata and translation availability come from DB projection rows."""
+    from unittest.mock import MagicMock
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from novelai.api.routers.public_novel import list_chapters
+    from novelai.db.base import Base
+    from novelai.db.models.chapter import Chapter
+    from novelai.db.models.novel import Novel
+    from novelai.storage.service import StorageService
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    db_session = sessionmaker(bind=engine)()
+    novel = Novel(slug="test-novel", title="Test Novel", chapter_count=2, translated_count=1, is_published=True)
+    db_session.add(novel)
+    db_session.flush()
+    db_session.add_all(
+        [
+            Chapter(
+                novel_id=novel.id,
+                logical_chapter_id="ch001",
+                chapter_number=1,
+                sequence_number=1,
+                title="Chapter 1",
+                translation_status="translated",
+            ),
+            Chapter(
+                novel_id=novel.id,
+                logical_chapter_id="ch002",
+                chapter_number=2,
+                sequence_number=2,
+                title="Chapter 2",
+                translation_status="pending",
+            ),
+        ]
+    )
+    db_session.commit()
+    storage = StorageService(tmp_path / "lib")
+    storage.list_novels = MagicMock(side_effect=AssertionError("public reads must not scan storage"))
+    response = MagicMock()
+
+    import asyncio
+
+    result = asyncio.run(
+        list_chapters(
+            slug="test-novel",
+            response=response,
+            service=PublicCatalogService(storage=storage, db_session=db_session),
+            db=db_session,
+        )
+    )
+
+    assert [chapter.chapter_id for chapter in result] == ["ch001", "ch002"]
+    assert [chapter.translated for chapter in result] == [True, False]
+    storage.list_novels.assert_not_called()
+
+
+def test_catalog_projection_reconciles_public_slug_sections_and_chapters(tmp_path):
+    """Reconciliation persists the metadata needed by DB-only public reads."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from novelai.db.base import Base
+    from novelai.db.models.chapter import Chapter
+    from novelai.services.catalog_service import CatalogService
+    from novelai.storage.service import StorageService
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    db_session = sessionmaker(bind=engine)()
+    storage = StorageService(tmp_path / "lib")
+    storage.save_metadata(
+        "test-novel",
+        {
+            "title": "Original Title",
+            "translated_title": "Readable Title",
+            "publication_status": "ongoing",
+            "chapters": [
+                {
+                    "id": "ch001",
+                    "title": "Episode One",
+                    "translated_title": "Chapter One",
+                    "num": 1,
+                    "section_title": "Part One",
+                    "translated_section_title": "Part One EN",
+                    "section_source_id": "section-1",
+                    "section_ordinal": 1,
+                    "section_level": 2,
+                }
+            ],
+        },
+    )
+
+    service = CatalogService(storage, db_session)
+    novel = service.get_or_create_novel("test-novel", storage.load_metadata("test-novel") or {})
+    novel.is_published = True
+    db_session.commit()
+
+    row = db_session.query(Chapter).one()
+    assert novel.public_slug == "readable-title"
+    assert row.title == "Chapter One"
+    assert row.section_title == "Part One"
+    assert row.translated_section_title == "Part One EN"
+    assert row.section_source_id == "section-1"
+    assert row.section_ordinal == 1
+    assert row.section_level == 2
+
+
 def test_public_slug_separates_storage_alias_from_db_identity(tmp_path):
     """The public slug is stable across DB-first and storage-backed reads."""
     from sqlalchemy import create_engine
