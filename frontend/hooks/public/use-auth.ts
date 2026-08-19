@@ -11,10 +11,15 @@ import type {
 
 const AUTH_ME_KEY = ["auth", "me"] as const;
 
-export function useAuthMe() {
+export interface PublicAuthQueryOptions {
+  enabled?: boolean;
+}
+
+export function useAuthMe(options: PublicAuthQueryOptions = {}) {
   return useQuery({
     queryKey: AUTH_ME_KEY,
     queryFn: () => authApi.me(),
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -29,8 +34,8 @@ export function usePublicAuthState(): PublicAuthState | null {
   };
 }
 
-export function usePublicAuth() {
-  const query = useAuthMe();
+export function usePublicAuth(options: PublicAuthQueryOptions = {}) {
+  const query = useAuthMe(options);
   const authState = useMemo<PublicAuthState | null>(() => {
     if (!query.data) {
       return null;

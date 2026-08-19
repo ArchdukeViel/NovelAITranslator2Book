@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useDeferredValue, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -20,11 +20,16 @@ import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
 import { NovelRail } from "@/components/public/novel-rail";
 import {
   useCatalog,
-  useGenreLabelMap,
   useHistory,
   usePublicAuth,
   usePublicRankings,
 } from "@/hooks/public";
+import { isPublicRequestAbortError } from "@/lib/public-api";
+import {
+  HOME_CATALOG_PARAMS,
+  HOME_RANKING_LIMIT,
+  HOME_RANKING_PERIOD,
+} from "@/lib/public-home-data";
 import { publicChapterHref, publicNovelHref } from "@/lib/public-routes";
 import type { PublicNovelSummary, PublicRankingItem } from "@/lib/public-types";
 import { cn } from "@/lib/utils";
@@ -413,11 +418,7 @@ function WidgetCard({
 /* ------------------------------------ page ----------------------------------- */
 
 export default function HomePage() {
-  const { data, isPending, isError, refetch } = useCatalog({
-    sort_by: "added_at",
-    order: "desc",
-    page_size: 100,
-  });
+  const { data, isPending, isError, error, refetch } = useCatalog(HOME_CATALOG_PARAMS);
 
   const novels = data?.novels ?? [];
   const spotlightNovels = novels.filter((novel) =>
@@ -426,14 +427,18 @@ export default function HomePage() {
   const spotlightNovel = spotlightNovels[0];
   const [heroIndex, setHeroIndex] = useState(0);
   const [rankingTab, setRankingTab] = useState<"daily" | "weekly" | "monthly">(
-    "daily",
+    HOME_RANKING_PERIOD,
   );
-  const rankingQuery = usePublicRankings(rankingTab, 5);
-  const trendingQuery = usePublicRankings("weekly", 5);
+  const rankingQuery = usePublicRankings(rankingTab, HOME_RANKING_LIMIT);
+  const trendingQuery = usePublicRankings(HOME_RANKING_PERIOD, HOME_RANKING_LIMIT, {
+    enabled: rankingTab !== HOME_RANKING_PERIOD,
+  });
   const currentSpotlight = spotlightNovels[heroIndex] ?? spotlightNovel;
 
-  const genreLabels = useGenreLabelMap();
-  const { isAuthenticated } = usePublicAuth();
+  // Keep personalization out of the first render. The server-hydrated catalog
+  // and weekly ranking are useful to guests before auth/history are needed.
+  const personalizationEnabled = useDeferredValue(!isPending);
+  const { isAuthenticated } = usePublicAuth({ enabled: personalizationEnabled });
   const heroSourceTitle = currentSpotlight
     ? usefulSourceTitle(currentSpotlight.source_title, currentSpotlight.title)
     : null;
@@ -441,7 +446,10 @@ export default function HomePage() {
   const heroReadableHref = currentSpotlight
     ? readableChapterHref(currentSpotlight)
     : null;
-  const history = useHistory({ limit: 12 });
+  const history = useHistory(
+    { limit: 12 },
+    { enabled: personalizationEnabled },
+  );
   const historyItems = history.data?.items ?? [];
   const historyBySlug = new Map(historyItems.map((item) => [item.slug, item]));
   const continueNovels = isAuthenticated
@@ -457,7 +465,14 @@ export default function HomePage() {
   );
   const newReleases = novels.slice(0, 12);
   const ranked = rankingQuery.data?.items ?? [];
-  const trending = trendingQuery.data?.items ?? [];
+  const trending =
+    rankingTab === HOME_RANKING_PERIOD
+      ? ranked
+      : trendingQuery.data?.items ?? [];
+  const trendingPending =
+    rankingTab === HOME_RANKING_PERIOD
+      ? rankingQuery.isPending
+      : trendingQuery.isPending;
 
   const genreCounts = new Map<string, { count: number; label: string }>();
   for (const novel of novels.filter((item) => item.translated_count > 0)) {
@@ -486,7 +501,9 @@ export default function HomePage() {
           {isError && (
             <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-primary">
               <span>
-                Could not connect to catalog backend. Showing layout preview.
+                {isPublicRequestAbortError(error)
+                  ? "Catalog request was cancelled or timed out. Showing an empty layout."
+                  : "Could not connect to catalog backend. Showing layout preview."}
               </span>
               <button
                 type="button"
@@ -1032,7 +1049,7 @@ export default function HomePage() {
                 ))
               ) : (
                 <li className="py-4 text-center text-xs text-muted-foreground">
-                  {trendingQuery.isPending ? "Loading ranking data…" : "Ranking data unavailable"}
+                  {trendingPending ? "Loading ranking data…" : "Ranking data unavailable"}
                 </li>
               )}
             </ul>

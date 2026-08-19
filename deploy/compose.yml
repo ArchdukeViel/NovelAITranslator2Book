@@ -69,6 +69,11 @@ services:
       NODE_ENV: production
       NEXT_PUBLIC_API_BASE_URL: /api
       BACKEND_API_URL: http://backend:8000
+      READER_API_URL: http://reader:8001
+      BACKEND_API_HOST: ${BACKEND_API_HOST:-${SITE_DOMAIN:-localhost}}
+    depends_on:
+      reader:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
       interval: 30s

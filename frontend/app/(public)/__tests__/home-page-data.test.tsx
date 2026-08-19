@@ -29,7 +29,11 @@ vi.mock("@/hooks/public", async () => {
     },
     useGenreLabelMap: () => new Map<string, string>(),
     useHistory: () => mocks.historyQuery(),
-    usePublicRankings: () => mocks.rankingQuery(),
+    usePublicRankings: (...args: unknown[]) => {
+      const result = mocks.rankingQuery(...args);
+      const options = args[2] as { enabled?: boolean } | undefined;
+      return options?.enabled === false ? { ...result, data: undefined } : result;
+    },
     usePublicAuth: () => ({
       isAuthenticated: mocks.isAuthenticated,
       isPending: false,
@@ -295,6 +299,15 @@ describe("HomePage rails", () => {
     expect(screen.getByText("Novel Ranking")).toBeInTheDocument();
     expect(screen.getByText("Latest News")).toBeInTheDocument();
     expect(screen.getByText("Trending")).toBeInTheDocument();
+  });
+
+  it("reuses the hydrated weekly ranking for Trending", () => {
+    renderHome();
+    expect(mocks.rankingQuery).toHaveBeenCalledWith("weekly", 5);
+    expect(mocks.rankingQuery).toHaveBeenCalledWith("weekly", 5, {
+      enabled: false,
+    });
+    expect(screen.queryByText("Ranking data unavailable")).not.toBeInTheDocument();
   });
 
   it("removes Reading Paths and duplicate browse utility boxes", () => {

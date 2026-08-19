@@ -7,8 +7,8 @@ export {
   useRegister,
   useStartGoogleOAuth,
 } from "./use-auth";
-export { useCatalog } from "./use-catalog";
-export { usePublicRankings } from "./use-rankings";
+export { catalogQueryKey, useCatalog } from "./use-catalog";
+export { rankingQueryKey, usePublicRankings } from "./use-rankings";
 export {
   useContributionUsage,
   useContributions,

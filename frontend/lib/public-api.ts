@@ -53,7 +53,32 @@ import type {
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
 const DEFAULT_PUBLIC_RETURN_TO = "/";
 const CSRF_HEADER_NAME = "X-CSRF-Token";
+export const PUBLIC_REQUEST_TIMEOUT_MS = 10_000;
 let csrfTokenPromise: Promise<string> | null = null;
+
+export type PublicRequestAbortReason = "caller" | "timeout";
+
+/** A bounded public request ended before a response was available. */
+export class PublicRequestAbortError extends Error {
+  readonly reason: PublicRequestAbortReason;
+  readonly path: string;
+
+  constructor(reason: PublicRequestAbortReason, path: string, options?: ErrorOptions) {
+    super(
+      reason === "timeout"
+        ? `Public request timed out: ${path}`
+        : `Public request was cancelled: ${path}`,
+      options,
+    );
+    this.name = "AbortError";
+    this.reason = reason;
+    this.path = path;
+  }
+}
+
+export function isPublicRequestAbortError(error: unknown): error is PublicRequestAbortError {
+  return error instanceof PublicRequestAbortError;
+}
 
 // ---------------------------------------------------------------------------
 // Error parsing (mirrors lib/api.ts responseError logic, reuses ApiError class)
@@ -142,15 +167,65 @@ export async function publicFetch(
   if (unsafeMethod && path !== "/api/auth/csrf" && !headers.has(CSRF_HEADER_NAME)) {
     headers.set(CSRF_HEADER_NAME, await getCsrfToken());
   }
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers,
-    credentials: "include",
-  });
-  if (!response.ok) {
-    throw await responseError(response);
+
+  const requestSignal = createRequestSignal(init?.signal ?? undefined);
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      headers,
+      credentials: "include",
+      signal: requestSignal.signal,
+    });
+    if (!response.ok) {
+      throw await responseError(response);
+    }
+    return response;
+  } catch (error) {
+    if (requestSignal.signal.aborted) {
+      throw new PublicRequestAbortError(requestSignal.reason, path, { cause: error });
+    }
+    throw error;
+  } finally {
+    requestSignal.cleanup();
   }
-  return response;
+}
+
+function createRequestSignal(callerSignal?: AbortSignal): {
+  signal: AbortSignal;
+  reason: PublicRequestAbortReason;
+  cleanup: () => void;
+} {
+  const controller = new AbortController();
+  let reason: PublicRequestAbortReason = "caller";
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const abort = (nextReason: PublicRequestAbortReason) => {
+    if (controller.signal.aborted) return;
+    reason = nextReason;
+    controller.abort(nextReason);
+  };
+
+  const onCallerAbort = () => abort("caller");
+  if (callerSignal?.aborted) {
+    abort("caller");
+  } else if (callerSignal) {
+    callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+  }
+
+  if (!controller.signal.aborted) {
+    timeoutId = setTimeout(() => abort("timeout"), PUBLIC_REQUEST_TIMEOUT_MS);
+  }
+
+  return {
+    signal: controller.signal,
+    get reason() {
+      return reason;
+    },
+    cleanup: () => {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+      callerSignal?.removeEventListener("abort", onCallerAbort);
+    },
+  };
 }
 
 async function getCsrfToken(): Promise<string> {
@@ -271,21 +346,24 @@ export const publicApi = {
     );
   },
 
-  novel(slug: string): Promise<PublicNovelSummary> {
+  novel(slug: string, signal?: AbortSignal): Promise<PublicNovelSummary> {
     return publicGet<PublicNovelSummary>(
-      `/api/public/novels/${encodeURIComponent(slug)}`
+      `/api/public/novels/${encodeURIComponent(slug)}`,
+      signal,
     );
   },
 
-  chapters(slug: string): Promise<PublicChapterSummary[]> {
+  chapters(slug: string, signal?: AbortSignal): Promise<PublicChapterSummary[]> {
     return publicGet<PublicChapterSummary[]>(
-      `/api/public/novels/${encodeURIComponent(slug)}/chapters`
+      `/api/public/novels/${encodeURIComponent(slug)}/chapters`,
+      signal,
     );
   },
 
-  chapter(slug: string, chapterId: string): Promise<PublicChapterDetail> {
+  chapter(slug: string, chapterId: string, signal?: AbortSignal): Promise<PublicChapterDetail> {
     return publicGet<PublicChapterDetail>(
-      `/api/public/novels/${encodeURIComponent(slug)}/chapters/${encodeURIComponent(chapterId)}`
+      `/api/public/novels/${encodeURIComponent(slug)}/chapters/${encodeURIComponent(chapterId)}`,
+      signal,
     );
   },
 

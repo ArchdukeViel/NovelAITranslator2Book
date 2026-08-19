@@ -8,7 +8,7 @@ import type {
   HistoryRecordInput,
   ProgressInput,
 } from "@/lib/public-types";
-import { usePublicAuth } from "./use-auth";
+import { usePublicAuth, type PublicAuthQueryOptions } from "./use-auth";
 
 const libraryKeys = {
   all: ["user-reading", "library"] as const,
@@ -23,10 +23,10 @@ const historyKeys = {
   all: ["user-reading", "history"] as const,
 };
 
-function useCanUseReadingState() {
-  const { isAuthenticated, isPending } = usePublicAuth();
+function useCanUseReadingState(options: PublicAuthQueryOptions = {}) {
+  const { isAuthenticated, isPending } = usePublicAuth(options);
   return {
-    canUseReadingState: isAuthenticated,
+    canUseReadingState: (options.enabled ?? true) && isAuthenticated,
     authPending: isPending,
   };
 }
@@ -97,8 +97,11 @@ export function useUpdateProgress(slug: string) {
   });
 }
 
-export function useHistory(params: HistoryListParams = {}) {
-  const { canUseReadingState } = useCanUseReadingState();
+export function useHistory(
+  params: HistoryListParams = {},
+  options: PublicAuthQueryOptions = {},
+) {
+  const { canUseReadingState } = useCanUseReadingState(options);
   return useQuery({
     queryKey: [...historyKeys.all, params],
     queryFn: () => userReadingApi.listHistory(params),
