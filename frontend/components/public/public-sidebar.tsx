@@ -5,11 +5,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
 import {
+  BarChart3,
   BookOpen,
   HandHeart,
+  HelpCircle,
   Home,
   Library,
   Menu,
+  Newspaper,
   FilePlus2,
   Shuffle,
   X,
@@ -19,20 +22,21 @@ const subscribeToNothing = () => () => {};
 const getClientMounted = () => true;
 const getServerMounted = () => false;
 
-import { PublicThemeToggle } from "@/components/public/public-theme-toggle";
+import { PublicThemeSegmentedControl } from "@/components/public/public-theme-toggle";
+import { PublicBrand } from "@/components/public/public-brand";
 import { usePublicAuth } from "@/hooks/public/use-auth";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/home", label: "Home", icon: Home },
+  { href: "/news", label: "News", icon: Newspaper },
   { href: "/account/library", label: "Library", icon: Library },
   { href: "/browse-novels", label: "Browse Novels", icon: BookOpen },
-] as const;
-
-const SECONDARY_ITEMS = [
+  { href: "/ranking", label: "Ranking", icon: BarChart3 },
   { href: "/random", label: "Random Novel", icon: Shuffle },
   { href: "/account/request-novels", label: "Request Novels", icon: FilePlus2 },
-  { href: "/contribute", label: "Contributions", icon: HandHeart },
+  { href: "/account/contributions", label: "Contributions", icon: HandHeart },
+  { href: "/faq", label: "FAQ", icon: HelpCircle },
 ] as const;
 
 /**
@@ -45,7 +49,11 @@ export function PublicSidebar() {
   const pathname = usePathname();
   const { isAuthenticated } = usePublicAuth();
   const [openPathname, setOpenPathname] = useState<string | null>(null);
-  const mounted = useSyncExternalStore(subscribeToNothing, getClientMounted, getServerMounted);
+  const mounted = useSyncExternalStore(
+    subscribeToNothing,
+    getClientMounted,
+    getServerMounted,
+  );
   const open = openPathname === pathname;
 
   // Lock body scroll while open and support Escape.
@@ -83,7 +91,7 @@ export function PublicSidebar() {
         onClick={() => setOpenPathname(null)}
         className={cn(
           "fixed inset-0 z-50 bg-foreground/40 transition-opacity duration-300",
-          open ? "opacity-100" : "pointer-events-none opacity-0"
+          open ? "opacity-100" : "pointer-events-none opacity-0",
         )}
       />
       {/* Sidebar */}
@@ -91,12 +99,12 @@ export function PublicSidebar() {
         id="public-sidebar"
         aria-label="Site navigation"
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[240px] flex-col overflow-y-auto border-r border-border/30 bg-background py-4 transition-transform duration-300 ease-out",
-          open ? "translate-x-0" : "-translate-x-full"
+          "fixed inset-y-0 left-0 z-50 flex w-[min(85vw,320px)] sm:w-80 flex-col overflow-y-auto border-r border-border/30 bg-background py-4 transition-transform duration-300 ease-out",
+          open ? "translate-x-0" : "-translate-x-full",
         )}
       >
         <div className="mb-2 flex items-center justify-between px-4">
-          <span className="font-literary text-sm font-semibold text-foreground">Menu</span>
+          <PublicBrand className="text-lg" />
           <button
             type="button"
             onClick={() => setOpenPathname(null)}
@@ -117,46 +125,22 @@ export function PublicSidebar() {
                 href={resolveHref(item.href)}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors",
+                  "flex items-center gap-3 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors",
                   active
                     ? "bg-muted text-primary"
-                    : "text-muted-foreground hover:bg-muted/60 hover:text-primary"
+                    : "text-muted-foreground hover:bg-muted/60 hover:text-primary",
                 )}
               >
-                <Icon className="h-5 w-5" aria-hidden="true" />
-                {item.label}
-              </Link>
-            );
-          })}
-
-          <div className="mx-2 my-2 h-px bg-border/70" aria-hidden="true" />
-
-          {SECONDARY_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const active = isActive(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-muted text-primary"
-                    : "text-muted-foreground hover:bg-muted/60 hover:text-primary"
-                )}
-              >
-                <Icon className="h-5 w-5" aria-hidden="true" />
-                {item.label}
+                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
         <div className="mt-auto flex flex-col gap-2 px-4 pt-4">
-          <div className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2">
-            <span className="text-xs font-medium text-muted-foreground">Theme</span>
-            <PublicThemeToggle />
+          <div className="border-t border-border/40 pt-3">
+            <PublicThemeSegmentedControl />
           </div>
         </div>
       </aside>
@@ -167,7 +151,9 @@ export function PublicSidebar() {
     <>
       <button
         type="button"
-        onClick={() => setOpenPathname((current) => (current === pathname ? null : pathname))}
+        onClick={() =>
+          setOpenPathname((current) => (current === pathname ? null : pathname))
+        }
         aria-label="Open navigation menu"
         aria-expanded={open}
         aria-controls="public-sidebar"

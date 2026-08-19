@@ -1,40 +1,68 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, BookOpen, FileText, Library } from "lucide-react";
+import { BookOpen, FileText, Library, BarChart3 } from "lucide-react";
 
 import { NotificationIndicator } from "@/components/public/notification-indicator";
 import { SearchEntry } from "@/components/public/search-entry";
 import { CurrentUserIndicator } from "@/components/public/current-user-indicator";
 import { PublicBrand } from "@/components/public/public-brand";
 import { PublicSidebar } from "@/components/public/public-sidebar";
-import { PublicThemeToggle } from "@/components/public/public-theme-toggle";
 import { cn } from "@/lib/utils";
 
-// Ranking and Contribute are excluded from the primary header nav per the
-// DESIGN.md honesty principle — they have no live data yet. They remain
-// reachable from the Account/More hub (mobile) and the footer (desktop).
-// Add them to the header when they ship real data or a real action.
 const desktopNavItems = [
   { href: "/browse-novels", label: "Browse", icon: BookOpen },
   { href: "/account/request-novels", label: "Request", icon: FileText },
   { href: "/account/library", label: "Library", icon: Library },
+  { href: "/ranking", label: "Ranking", icon: BarChart3 },
 ];
 
 export function PublicHeader() {
   const pathname = usePathname();
+  const [isVisible, setIsVisible] = useState(true);
+
+  // Auto-hide header on scroll down, reveal on scroll up or at top
+  useEffect(() => {
+    let lastScrollY = window.scrollY;
+
+    function handleScroll() {
+      const currentScrollY = window.scrollY;
+      const scrollDifference = currentScrollY - lastScrollY;
+
+      // Always show at or near top
+      if (currentScrollY <= 20) {
+        setIsVisible(true);
+      } else if (scrollDifference > 10 && currentScrollY > 60) {
+        // Scrolling down
+        setIsVisible(false);
+      } else if (scrollDifference < -10) {
+        // Scrolling up
+        setIsVisible(true);
+      }
+
+      lastScrollY = currentScrollY;
+    }
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   return (
-    <header className="sticky top-0 z-30 bg-background/95 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
-        <PublicSidebar />
-        <PublicBrand className="shrink-0" />
+    <header
+      className={cn(
+        "fixed inset-x-0 top-0 z-40 border-b border-border/40 bg-background/95 backdrop-blur transition-transform duration-200",
+        isVisible ? "translate-y-0" : "-translate-y-full",
+      )}
+    >
+      <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-3 sm:px-6 lg:px-8">
+        <div className="flex items-center gap-2 shrink-0">
+          <PublicSidebar />
+          <PublicBrand className="shrink-0" />
+        </div>
 
-        <nav
-          aria-label="Primary"
-          className="hidden flex-1 items-center gap-1 xl:flex"
-        >
+        <nav aria-label="Primary" className="hidden items-center gap-1 xl:flex">
           {desktopNavItems.map((item) => {
             const isActive =
               pathname === item.href ||
@@ -59,14 +87,8 @@ export function PublicHeader() {
           })}
         </nav>
 
-        <div className="flex flex-1 justify-center">
+        <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
           <SearchEntry />
-        </div>
-
-        <div className="ml-auto flex items-center gap-1 sm:gap-2">
-          <div className="hidden sm:block">
-            <PublicThemeToggle />
-          </div>
           <NotificationIndicator />
           <CurrentUserIndicator />
         </div>

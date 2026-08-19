@@ -20,10 +20,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       {/* Skip link — first focusable element for keyboard users */}
-      <a
-        href="#main-content"
-        className="skip-link"
-      >
+      <a href="#main-content" className="skip-link">
         Skip to main content
       </a>
 
@@ -32,6 +29,8 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
           <Suspense fallback={null}>
             <PublicHeader />
           </Suspense>
+          {/* Header spacer since PublicHeader is fixed */}
+          <div className="h-14 shrink-0" aria-hidden="true" />
           {!isNovelDetailRoute && (
             <Suspense fallback={null}>
               <MobileTabBar />

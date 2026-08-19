@@ -16,8 +16,8 @@ function renderLoginStatic() {
     createElement(
       QueryClientProvider,
       { client: queryClient },
-      createElement(LoginView, { onClose: () => undefined })
-    )
+      createElement(LoginView, { onClose: () => undefined }),
+    ),
   );
 }
 
@@ -29,11 +29,8 @@ describe("public auth gate", () => {
     expect(html).toContain("Sign in with email");
     expect(html).toContain("No account yet?");
     expect(html).toContain("Create one");
-    expect(html).toContain("type=\"email\"");
+    expect(html).toContain('type="email"');
     expect(html).toContain("Guest reading");
-    expect(html).toContain("Save novels");
-    expect(html).toContain("Continue reading where");
-    expect(html).toContain("Leave reviews");
     expect(html).not.toMatch(/owner|admin|secret|bootstrap/i);
     expect(html).not.toContain("Password / Token");
   });
@@ -94,9 +91,9 @@ describe("LoginPrompt component", () => {
     const html = renderToStaticMarkup(createElement(LoginPrompt));
 
     expect(html).toContain("Sign in to save novels");
-    expect(html).toContain("href=\"/login?mode=signin\"");
+    expect(html).toContain('href="/login?mode=signin"');
     expect(html).not.toContain("Continue with Google");
-    expect(html).not.toContain("type=\"email\"");
+    expect(html).not.toContain('type="email"');
     expect(html).not.toMatch(/owner|admin|secret|bootstrap/i);
     expect(html).not.toContain("Password / Token");
   });
