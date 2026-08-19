@@ -214,6 +214,22 @@ class PublicCatalogService:
             return None, None
         return self._db_novel_summary(db_novel, include_adult=include_adult), db_novel.slug
 
+    def build_public_novel_summary(
+        self,
+        novel: Novel,
+        *,
+        include_adult: bool = False,
+    ) -> dict[str, Any] | None:
+        """Build a summary from an already-loaded published projection row.
+
+        Ranking requests use this seam after joining the analytics aggregate to
+        ``Novel``. It preserves the public summary contract without resolving
+        each slug again or consulting object storage.
+        """
+        if novel.is_published is not True or self.db_title_is_placeholder(novel):
+            return None
+        return self._db_novel_summary(novel, include_adult=include_adult)
+
     def get_public_read_context(
         self,
         slug: str,

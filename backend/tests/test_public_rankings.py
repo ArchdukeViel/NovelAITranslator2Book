@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 from fastapi import Request
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.orm import sessionmaker
 from starlette.responses import Response
 
@@ -17,6 +17,8 @@ from novelai.db.base import Base
 from novelai.db.models.analytics_event import AnalyticsEvent
 from novelai.db.models.novel import Novel
 from novelai.services.analytics_service import anonymous_viewer_identity
+from novelai.services.public_catalog_service import PublicCatalogService
+from novelai.services.public_ranking_cache import clear_public_ranking_cache, public_ranking_cache_stats
 from novelai.services.public_ranking_service import PublicRankingService
 
 
@@ -58,6 +60,7 @@ def test_anonymous_viewer_identity_is_signed_opaque_and_does_not_use_ip(monkeypa
 
 def test_rankings_count_distinct_novel_detail_viewers_and_periods(db_session, monkeypatch) -> None:
     monkeypatch.setattr(settings, "ANALYTICS_ENABLED", True)
+    clear_public_ranking_cache(reset_stats=True)
     now = datetime.now(UTC)
     alpha = Novel(slug="alpha", title="Alpha", language="ja", is_published=True)
     beta = Novel(slug="beta", title="Beta", language="ja", is_published=True)
@@ -82,11 +85,7 @@ def test_rankings_count_distinct_novel_detail_viewers_and_periods(db_session, mo
     db_session.add_all(events)
     db_session.commit()
 
-    catalog = Mock()
-    catalog.get_public_novel_summary.side_effect = lambda slug, include_adult=False: (
-        {"novel_id": slug, "slug": slug, "title": slug.title()},
-        slug,
-    )
+    catalog = PublicCatalogService(storage=Mock(), db_session=db_session)
     service = PublicRankingService(db_session=db_session, catalog_service=catalog)
 
     weekly = cast(dict[str, Any], service.list_rankings(period="weekly", limit=10))
@@ -101,6 +100,54 @@ def test_rankings_count_distinct_novel_detail_viewers_and_periods(db_session, mo
     monthly_items = cast(list[dict[str, Any]], monthly["items"])
     assert monthly_items[0]["unique_views"] == 4
     assert monthly_items[1]["unique_views"] == 2
+
+
+def test_ranking_indexes_and_cache_bound_database_work(db_session, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "ANALYTICS_ENABLED", True)
+    clear_public_ranking_cache(reset_stats=True)
+    novel = Novel(slug="cached", title="Cached Novel", language="ja", is_published=True)
+    db_session.add(novel)
+    db_session.flush()
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            AnalyticsEvent(event_name="public_novel.view", novel_id="cached", user_id=1, created_at=now),
+            AnalyticsEvent(event_name="public_novel.view", novel_id="cached", session_id="anon", created_at=now),
+        ]
+    )
+    db_session.commit()
+
+    index_names = {index["name"] for index in inspect(db_session.bind).get_indexes("analytics_events")}
+    assert "ix_analytics_events_rank_event_time_novel_user" in index_names
+    assert "ix_analytics_events_rank_event_time_novel_session" in index_names
+
+    statements: list[str] = []
+
+    def _record_query(_connection, _cursor, statement, _parameters, _context, _executemany) -> None:
+        statements.append(statement)
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", _record_query)
+    try:
+        service = PublicRankingService(
+            db_session=db_session,
+            catalog_service=PublicCatalogService(storage=Mock(), db_session=db_session),
+        )
+        first = service.list_rankings(period="weekly", limit=10)
+        first_query_count = len(statements)
+        statements.clear()
+        second = service.list_rankings(period="weekly", limit=10)
+        second_query_count = len(statements)
+    finally:
+        event.remove(engine, "before_cursor_execute", _record_query)
+
+    assert first["items"] == second["items"]
+    assert first_query_count <= 4
+    assert second_query_count == 1
+    stats = public_ranking_cache_stats()
+    assert stats.hits == 1
+    assert stats.misses == 1
+    assert stats.entries == 1
 
 
 def test_rankings_report_disabled_and_empty_states(db_session, monkeypatch) -> None:

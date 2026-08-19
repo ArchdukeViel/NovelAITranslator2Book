@@ -5,16 +5,18 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy import String, case, cast, func, or_
+from sqlalchemy.orm import Session, selectinload
 
 from novelai.config.settings import settings
 from novelai.db.models.analytics_event import AnalyticsEvent
 from novelai.db.models.novel import Novel
 from novelai.services.public_catalog_service import PublicCatalogService
+from novelai.services.public_ranking_cache import RankingCacheKey, public_ranking_cache
 
 RankingPeriod = Literal["daily", "weekly", "monthly"]
 PERIOD_DAYS: dict[str, int] = {"daily": 1, "weekly": 7, "monthly": 30}
+PUBLIC_PROJECTION_SCHEMA_VERSION = "public-projection-v1"
 
 
 class PublicRankingService:
@@ -30,59 +32,66 @@ class PublicRankingService:
             return self._response(period, generated_at, [], reason="analytics_disabled")
 
         cutoff = generated_at - timedelta(days=PERIOD_DAYS[period])
-        # Authenticated and anonymous identities are mutually exclusive at
-        # ingestion time. Counting each separately prevents a raw request
-        # count from inflating a ranking when a reader navigates repeatedly.
-        user_rows = (
-            self.db.query(
-                AnalyticsEvent.novel_id,
-                func.count(func.distinct(AnalyticsEvent.user_id)).label("viewers"),
-            )
+        cache_key: RankingCacheKey | None = None
+        if settings.PUBLIC_RANKING_CACHE_ENABLED:
+            cache_key = self._cache_key(period=period, limit=limit)
+            cached = public_ranking_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
+        # The trusted detail-view path stores either user_id or the signed,
+        # opaque anonymous session digest. A single CASE expression therefore
+        # counts distinct viewers without counting chapter navigation or raw
+        # repeated requests. The two viewer namespaces are mutually exclusive
+        # at ingestion time and no IP address participates in this query.
+        viewer_identity = case(
+            (AnalyticsEvent.user_id.isnot(None), cast(AnalyticsEvent.user_id, String)),
+            else_=AnalyticsEvent.session_id,
+        )
+        unique_views = func.count(func.distinct(viewer_identity)).label("unique_views")
+        ranking_rows = (
+            self.db.query(Novel, unique_views)
+            .join(AnalyticsEvent, AnalyticsEvent.novel_id == Novel.slug)
+            .options(selectinload(Novel.genres), selectinload(Novel.tags))
             .filter(
+                Novel.is_published.is_(True),
+                Novel.title != Novel.slug,
                 AnalyticsEvent.event_name == "public_novel.view",
                 AnalyticsEvent.created_at >= cutoff,
-                AnalyticsEvent.novel_id.isnot(None),
-                AnalyticsEvent.user_id.isnot(None),
+                or_(AnalyticsEvent.user_id.isnot(None), AnalyticsEvent.session_id.isnot(None)),
             )
-            .group_by(AnalyticsEvent.novel_id)
+            .group_by(Novel.id)
+            .order_by(unique_views.desc(), func.lower(Novel.title).asc(), Novel.slug.asc())
+            .limit(limit)
             .all()
         )
-        anonymous_rows = (
-            self.db.query(
-                AnalyticsEvent.novel_id,
-                func.count(func.distinct(AnalyticsEvent.session_id)).label("viewers"),
-            )
-            .filter(
-                AnalyticsEvent.event_name == "public_novel.view",
-                AnalyticsEvent.created_at >= cutoff,
-                AnalyticsEvent.novel_id.isnot(None),
-                AnalyticsEvent.session_id.isnot(None),
-            )
-            .group_by(AnalyticsEvent.novel_id)
-            .all()
-        )
-        counts: dict[str, int] = {}
-        for novel_id, viewers in [*user_rows, *anonymous_rows]:
-            if novel_id:
-                counts[str(novel_id)] = counts.get(str(novel_id), 0) + int(viewers or 0)
-        if not counts:
+
+        if not ranking_rows:
             return self._response(period, generated_at, [], reason="no_data")
 
-        novels = self.db.query(Novel).filter(Novel.is_published.is_(True), Novel.slug.in_(list(counts))).all()
-        novels.sort(key=lambda novel: (-counts.get(novel.slug, 0), novel.title.casefold(), novel.slug))
         items: list[dict[str, object]] = []
-        for novel in novels[:limit]:
-            summary, _ = self.catalog.get_public_novel_summary(novel.slug, include_adult=False)
+        for novel, viewers in ranking_rows:
+            summary = self.catalog.build_public_novel_summary(novel, include_adult=False)
             if summary is None:
                 continue
             items.append(
                 {
                     "rank": len(items) + 1,
-                    "unique_views": counts[novel.slug],
+                    "unique_views": int(viewers or 0),
                     "novel": summary,
                 }
             )
-        return self._response(period, generated_at, items, reason=None if items else "no_data")
+        result = self._response(period, generated_at, items, reason=None if items else "no_data")
+        if cache_key is not None:
+            public_ranking_cache.set(cache_key, result)
+        return result
+
+    def _cache_key(self, *, period: RankingPeriod, limit: int) -> RankingCacheKey:
+        latest_projection_update = (
+            self.db.query(func.max(Novel.updated_at)).filter(Novel.is_published.is_(True)).scalar()
+        )
+        projection_version = latest_projection_update.isoformat() if latest_projection_update is not None else "empty"
+        return (period, f"{PUBLIC_PROJECTION_SCHEMA_VERSION}:{projection_version}", limit)
 
     @staticmethod
     def _response(

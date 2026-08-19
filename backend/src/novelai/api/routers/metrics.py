@@ -9,6 +9,8 @@ from collections import Counter
 from fastapi import APIRouter
 from fastapi.responses import Response
 
+from novelai.services.public_ranking_cache import public_ranking_cache_stats
+
 router = APIRouter()
 
 _START_TIME = time.time()
@@ -84,6 +86,7 @@ def get_metrics() -> Response:
     gc_objects = len(gc.get_objects())
 
     activity_counts = _activity_counts()
+    ranking_cache = public_ranking_cache_stats()
     pending = activity_counts.get("pending", 0)
     queued = activity_counts.get("queued", 0)
     running = activity_counts.get("running", 0)
@@ -131,6 +134,15 @@ def get_metrics() -> Response:
         "# HELP novelai_activity_cancelled_count Activities that were cancelled",
         "# TYPE novelai_activity_cancelled_count gauge",
         f"novelai_activity_cancelled_count {cancelled}",
+        "# HELP novelai_public_ranking_cache_hits_total Successful public ranking cache lookups",
+        "# TYPE novelai_public_ranking_cache_hits_total counter",
+        f"novelai_public_ranking_cache_hits_total {ranking_cache.hits}",
+        "# HELP novelai_public_ranking_cache_misses_total Public ranking cache misses",
+        "# TYPE novelai_public_ranking_cache_misses_total counter",
+        f"novelai_public_ranking_cache_misses_total {ranking_cache.misses}",
+        "# HELP novelai_public_ranking_cache_entries Current public ranking cache entries",
+        "# TYPE novelai_public_ranking_cache_entries gauge",
+        f"novelai_public_ranking_cache_entries {ranking_cache.entries}",
     ]
 
     for source_key, count in sorted(_activity_failures_per_source().items()):

@@ -329,6 +329,9 @@ class AppSettings(BaseSettings):
     TRANSLATION_CACHE_ENABLED: bool = True
     TRANSLATION_CACHE_MAX_ENTRIES: int = 100_000
     TRANSLATION_CACHE_TTL_SECONDS: int = 0
+    PUBLIC_RANKING_CACHE_ENABLED: bool = True
+    PUBLIC_RANKING_CACHE_TTL_SECONDS: int = Field(default=60, ge=1, le=300)
+    PUBLIC_RANKING_CACHE_MAX_ENTRIES: int = Field(default=64, ge=1, le=1024)
     USAGE_LOG_MAX_ENTRIES: int = 10_000
 
     # --- Semantic Cache (future feature, disabled by default)
