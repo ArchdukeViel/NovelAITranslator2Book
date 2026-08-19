@@ -519,6 +519,25 @@ owner routers, translation-stage selection/ledger integration,
 live contribution hook/page tests. Production still requires the configured
 encryption key and the migration role to have schema DDL privileges.
 
+### Completed: public performance Phase 4
+
+Readiness now uses a short configured TTL with single-flight refresh and a
+non-mutating storage reachability probe. Full storage write/read/delete and S3
+usage checks remain in owner diagnostics. Safe public catalog, summary, and
+chapter projections use bounded process-local TTL/LRU caching with
+version-aware keys and publish/reconciliation/takedown invalidation. Public
+and server analytics events use a sanitized bounded asynchronous writer with
+explicit queue-drop and worker-failure metrics; public content requests no
+longer open a synchronous analytics database session.
+
+Evidence: commit `33c5c05`, focused health/analytics/cache/public-route tests,
+Ruff, Pyright, fresh backend/reader images, and live Caddy readiness with the
+one-second probe configuration and no temporary override. Production percentile
+readiness, slow-writer loss, populated ranking load, and multi-reader/shared
+cache economics remain open acceptance work. The older storage-only
+`test_public_reader_availability.py` fixture remains a Phase 1 projection
+test gap and is not counted as a passing full-suite result.
+
 ## Priority Recommendation
 
 1. `OWN-001` — assign owners (unblocks every evidence record).

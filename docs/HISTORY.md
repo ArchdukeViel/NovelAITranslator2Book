@@ -552,3 +552,24 @@ ranking indexes present.
 Focused ranking, metrics, public-router, and catalog-projection tests passed
 with `157 passed`. Production-volume PostgreSQL query plans, seeded ranking
 latency, and cross-replica cache behavior remain open acceptance work.
+
+## 2026-08-20 PUBLIC READINESS, PROJECTION CACHE & ANALYTICS PATH HARDENING
+
+Phase 4 made public readiness bounded and stable: readiness results use the
+configured short TTL with single-flight refresh, public storage checks are
+non-mutating, and full storage write/read/delete plus S3 usage diagnostics
+remain owner-only or scheduled. Fresh backend/reader images passed Caddy
+readiness with the protected one-second probe setting and no temporary
+two-second override.
+
+Safe catalog pages, novel summaries, and chapter metadata now use a bounded
+process-local TTL/LRU projection cache with version-aware keys and
+publish/reconciliation/takedown invalidation. Public/server analytics events
+are sanitized before admission to a bounded asynchronous writer; queue drops
+and worker failures are explicit metrics, and raw IPs/prompts/authorization
+headers never cross the queue.
+
+Focused Phase 4 source tests passed, including health single-flight,
+analytics backpressure, projection-cache copy/invalidation, public routes,
+rankings, and metrics. Production percentile readiness, slow-writer loss,
+populated ranking load, and multi-reader/shared-cache economics remain open.

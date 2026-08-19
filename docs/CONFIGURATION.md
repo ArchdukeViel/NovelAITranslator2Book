@@ -95,8 +95,12 @@ duration and renewal; do not tune lease below realistic job duration without tes
 - `TRANSLATION_CACHE_*`: exact cache enablement, TTL, size.
 - `PUBLIC_RANKING_CACHE_*`: successful ranking cache enablement, TTL, and
   bounded process-local entry count.
+- `PUBLIC_PROJECTION_CACHE_*`: safe catalog/summary/chapter-projection cache
+  enablement, TTL, and bounded process-local entry count.
 - `MAINTENANCE_*`: schedule and dry-run controls.
-- `HEALTH_*`: bounded probe timeout and disk thresholds.
+- `HEALTH_*`: bounded probe timeout, readiness TTL, and disk thresholds.
+- `ANALYTICS_ASYNC_QUEUE_SIZE`: bounded process-local analytics writer
+  capacity and explicit drop-on-full backpressure.
 - `OPERATOR_ALERT_*`: alert enable, email, failure threshold, cooldown, stale backup hours.
 - `PRODUCTION_BASE_URL`: GitHub Actions secret (not a process env var) feeding the
   best-effort five-minute external HTTPS monitor. Set in GitHub secrets, never
@@ -123,6 +127,49 @@ durability mechanism. Monitor `novelai_public_ranking_cache_hits_total`,
 `novelai_public_ranking_cache_misses_total`, and
 `novelai_public_ranking_cache_entries`; measure cross-worker duplication before
 introducing a shared cache.
+
+### Public projection cache
+
+`PUBLIC_PROJECTION_CACHE_ENABLED` defaults to `true`.
+`PUBLIC_PROJECTION_CACHE_TTL_SECONDS` defaults to `30` and accepts
+`1..300`; `PUBLIC_PROJECTION_CACHE_MAX_ENTRIES` defaults to `256` and
+accepts `1..2048`. Each process owns a bounded TTL/LRU cache for
+non-personalized, JSON-safe catalog pages, novel summaries, and chapter
+metadata. Search query text, user identity, progress, history, cookies, and
+raw chapter text are never stored in this cache.
+
+Catalog keys include the current published projection timestamp. Novel-summary
+and chapter-context keys include the current novel timestamp. Publish,
+unpublish/reconciliation, and approved takedown review invalidate the
+projection cache. The cache is an optimization only; a miss recomputes from
+the database projection and does not restore request-time object-storage
+enumeration. Monitor
+`novelai_public_projection_cache_hits_total`,
+`novelai_public_projection_cache_misses_total`,
+`novelai_public_projection_cache_entries`, and
+`novelai_public_projection_cache_invalidations_total` from the owning
+operator metrics process.
+
+### Readiness cache and analytics writer
+
+`HEALTH_CACHE_TTL_SECONDS` defaults to `5` seconds and accepts `0..300`;
+`0` disables result reuse while retaining one in-flight refresh. Public
+`/health/ready` is process-safe and redacted: it checks database, lightweight
+storage reachability, worker, and disk. Full storage write/read/delete and S3
+usage diagnostics are owner-only or scheduled checks. `/health/live` remains
+process-only and does not use the cache.
+
+`ANALYTICS_ASYNC_QUEUE_SIZE` defaults to `1000` and accepts `1..10000`.
+Public analytics events are sanitized before admission to a bounded
+process-local worker queue. `recorded` means accepted by the queue;
+`dropped` means the queue was full or unavailable. Queue drops and worker
+failures are observable through
+`novelai_analytics_writer_accepted_total`,
+`novelai_analytics_writer_dropped_total`,
+`novelai_analytics_writer_processed_total`,
+`novelai_analytics_writer_failures_total`, and
+`novelai_analytics_writer_queue_depth`. The queue never stores raw IP
+addresses, prompts, authorization headers, or unsanitized metadata.
 
 ### Frontend server prefetch
 

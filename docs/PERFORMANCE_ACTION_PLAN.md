@@ -278,6 +278,43 @@ Actions:
 
 Exit gate: disabling analytics or slowing the analytics writer does not change public content latency beyond the agreed budget.
 
+## Phase 4 execution log - 2026-08-20
+
+**Status: implementation and local validation complete; stopped for review before Phase 5.**
+
+Completed in the local checkout and Compose environment:
+
+- Wired the existing five-second health-cache setting into a single-flight
+  readiness cache. Public readiness now performs only database, lightweight
+  storage reachability, worker, and disk checks; the full storage
+  write/read/delete probe and S3 usage scan remain owner diagnostics.
+- Added bounded process-local public projection caching for safe catalog pages,
+  DB-backed summaries, and chapter metadata. The default is a 30-second TTL
+  with 256 entries. Database/projection version keys and publish/reconcile/
+  takedown invalidation prevent normal stale-publication reuse. Identity,
+  progress, raw query text, and analytics cookies remain outside the cache.
+- Replaced synchronous public analytics ingestion with a sanitized bounded
+  asynchronous writer. Queue-full events are dropped and counted, worker
+  failures are suppressed and counted, and lifecycle shutdown drains briefly.
+- Added readiness, projection-cache, and analytics-writer metrics plus explicit
+  Compose/example settings.
+- Built fresh backend/reader images and recreated the stack without the former
+  `HEALTH_PROBE_TIMEOUT_MS=2000` override. Caddy readiness passed with the
+  one-second setting: `0.559 s` cold and `0.046 s` warm. Weekly ranking and
+  catalog routes returned `200`; analytics remained honestly disabled/empty.
+- Focused changed-path validation passed: 209 tests in the public/health/
+  ranking/cache group and 161 tests in storage, split-topology, health,
+  analytics, and cache groups. Ruff and Pyright passed.
+
+Phase 4 exit gate status: the source, focused-test, no-override readiness, and
+redaction gates passed locally. Percentile readiness under delayed storage,
+slow-writer loss behavior, populated ranking load, and multi-reader/shared
+cache economics remain open. The older
+`backend/tests/test_public_reader_availability.py` fixture still seeds
+storage without the required Phase 1 DB projection and has 21 truthful
+`Novel not found` failures; it must be repaired before the Phase 5 full-suite
+gate without restoring request-time storage fallback.
+
 ## Phase 5 — isolate worker and provider latency
 
 ### 5.1 Return an activity immediately for long translations
@@ -372,9 +409,10 @@ Record for every run:
 4. Add browser cancellation/timeouts and reduce home critical fan-out. (Complete locally in Phase 2.)
 5. Review Phase 2 evidence and approve the ranking/index/cache work before starting Phase 3. (Complete.)
 6. Align ranking indexes, remove summary enrichment fan-out, and add bounded result caching. (Complete locally in Phase 3; production-volume and multi-replica evidence remain open.)
-7. Review Phase 3 evidence and approve readiness/cache amplification work before starting Phase 4.
-8. Stabilize readiness and decouple analytics writes.
-9. Move translation to enqueue/worker-only execution, then replace file-backed activity/cache hot paths.
-10. Run the full load scenario and update the budgets using measured capacity.
+7. Review Phase 3 evidence and approve readiness/cache amplification work before starting Phase 4. (Complete.)
+8. Stabilize readiness, cache safe public projections, and decouple analytics writes. (Complete locally in Phase 4; percentile, populated-load, and shared-cache evidence remain open.)
+9. Review Phase 4 evidence and approve worker/provider isolation before starting Phase 5.
+10. Move translation to enqueue/worker-only execution, then replace file-backed activity/cache hot paths.
+11. Run the full load scenario and update the budgets using measured capacity.
 
 The first practical gate is not a frontend optimization: it is a current-revision deployment with a healthy reader, healthy readiness, current migrations, and a catalog request that cannot fall back to a serial object-storage scan.

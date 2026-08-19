@@ -4,7 +4,8 @@
 **Phase 0 update:** 2026-08-20
 **Phase 2 update:** 2026-08-20
 **Phase 3 update:** 2026-08-20
-**Repository revision:** `615bb0d` (`perf/debt-079d-public-path-hardening`)
+**Phase 4 update:** 2026-08-20
+**Repository revision:** `33c5c05` (`perf/debt-079d-public-path-hardening`)
 **Scope:** browser-to-Caddy traffic, the public reader API, database access, object storage, Redis/queues, translation workers/providers, and the public Next.js client.
 
 ## Executive conclusion
@@ -16,9 +17,10 @@ The initial runtime was behind the checkout and allowed public storage waterfall
 3. Caddy repeatedly attempted stale backend container addresses during container replacement, producing connection-refused errors and making availability look like latency.
 4. The home SSR boundary now hydrates the catalog and weekly ranking, but its local server response was about 2.6 seconds and production-scale TTFB/LCP/INP remain unmeasured. The browser no longer makes duplicate initial catalog/ranking/genre requests.
 5. Phase 3 now uses one joined ranking/projection query, composite analytics indexes, and a bounded process-local success cache. Focused tests prove distinct-viewer periods, chapter exclusion, bounded SQL work, and cache metrics; production-volume query plans, seeded latency, and cross-replica cache behavior remain unmeasured.
-6. Translation work can occupy a web request for up to the configured 120-second timeout. Provider calls also use blocking SDK calls in worker threads, bounded concurrency, retries, and quota reservation, so provider latency can create sustained backpressure.
+6. Phase 4 now makes readiness cacheable/single-flight, removes the mutating storage probe from public readiness, adds bounded origin projection caching, and queues analytics writes off the request path. The local one-second probe configuration now passes without an override; populated analytics load and cross-replica cache behavior remain unmeasured.
+7. Translation work can occupy a web request for up to the configured 120-second timeout. Provider calls also use blocking SDK calls in worker threads, bounded concurrency, retries, and quota reservation, so provider latency can create sustained backpressure.
 
-The remaining release/operations problem is durable readiness configuration: the application and Caddy are healthy locally only with an explicit two-second probe override because the protected runtime file still carries the one-second budget. Phase 1 projection-only reads, the Phase 2 home request-graph change, and the Phase 3 ranking query/cache implementation are complete locally, but chapter projection, production-scale browser budgets, seeded ranking load, and multi-instance cache behavior remain open.
+The remaining release/operations problems are chapter-projection completeness, production-scale browser/ranking budgets, and multi-instance cache economics. Phase 4 source and Compose defaults now make public readiness cheap and cached, preserve a full owner diagnostic path, cache only safe public projections, and apply explicit bounded analytics loss semantics. The live local stack passed the one-second readiness configuration without a temporary override.
 
 ## Evidence and confidence rules
 
@@ -222,6 +224,100 @@ popularity.
 
 **Confidence:** Current-source corroborated; multi-replica impact is unmeasured.
 
+## Phase 4 execution update - 2026-08-20
+
+Phase 4 implementation is complete in the checkout and local Compose validation
+passed. The phase was stopped for review before Phase 5.
+
+| Area | Result | Evidence |
+| --- | --- | --- |
+| Readiness cache | Passed in source/tests | `HealthService` now uses the configured `HEALTH_CACHE_TTL_SECONDS` (default 5 seconds), deep-copies cached public-safe results, and single-flights concurrent refreshes. Admin diagnostics remain fresh and uncached. |
+| Readiness storage work | Passed in source/tests | Public readiness uses a non-mutating backend reachability probe and no longer runs S3/storage-usage work. Full write/read/delete verification and storage-usage checks remain in owner diagnostics. Liveness remains process-only. |
+| Public projection cache | Passed in source/tests | Catalog base pages, DB-backed novel summaries, and bounded chapter metadata use a process-local TTL/LRU cache with a 30-second default TTL and 256-entry bound. Keys include the database/projection version where applicable; catalog publication/reconciliation and takedown review invalidate the cache. User identity, progress, raw query text, and analytics cookies are excluded. |
+| Analytics ingestion | Passed in source/tests | Public/server events now enqueue sanitized fields to a bounded asynchronous writer (default queue size 1,000). Queue-full events are counted as dropped; worker database failures are counted and suppressed. Shutdown drains briefly. No raw IP, prompt, authorization header, or unsanitized metadata crosses the queue boundary. |
+| Focused backend validation | Passed | `tools/pytest.ps1` changed-path suites passed with `209 passed`; storage/backend, microservice split, health, analytics, and cache suites passed with `161 passed`. Ruff and Pyright passed. |
+| Live readiness without override | Passed | Fresh backend/reader images were rebuilt and recreated without `HEALTH_PROBE_TIMEOUT_MS=2000`. With `Host: localhost`, Caddy readiness returned `200` in `0.559 s` cold and `0.046 s` warm; the public response contained only database, storage, worker, and disk statuses and no `storage_usage` check. |
+| Live public routes | Passed with honest limitation | Through Caddy with the configured host, weekly rankings returned `200` in `0.072 s` with the existing `analytics_disabled` state; catalog returned `200` in `0.490 s` cold and `0.222 s` warm. No populated ranking latency claim is made. |
+| Metrics and images | Passed | Direct backend `/metrics` exposed readiness-cache, projection-cache, and analytics-writer metrics. Current app image tags are `novelai-admin:local` (`dd80e37c1202`), `novelai-reader:local` (`fdf702bc9be4`), and the existing `novelai-frontend:local` (`d4c87ff798c9`); no older tagged Novel AI app images were retained. |
+
+### Phase 4 findings and resolutions
+
+### F-29 - P1 - Readiness probe amplification is resolved locally; percentile evidence remains open
+
+**Evidence:** Public readiness now has a short process-local TTL and one in-flight
+refresh, uses a non-mutating storage reachability probe, and excludes the
+expensive S3 usage scan. The live one-second configuration passed without the
+previous two-second process override. The two measured Caddy samples were
+`0.559 s` cold and `0.046 s` warm.
+
+**Impact:** Reverse-proxy health checks no longer create a storage object on
+every readiness request or repeat the full storage-usage scan. A delayed
+storage provider can still make the cached result unhealthy until the next
+refresh, which is visible and bounded rather than hidden.
+
+**Remaining work:** Measure p50/p95/p99 readiness under concurrent storage delay,
+container replacement, and multi-process deployment. Keep the full diagnostic
+probe scheduled/owner-only and alert on sustained unhealthy results.
+
+**Confidence:** Source, focused tests, fresh images, and live no-override route.
+
+### F-30 - P1 - Safe public projections are cached per process, not shared
+
+**Evidence:** Catalog pages, novel summaries, and chapter metadata now use the
+bounded `PublicProjectionCache`; ranking uses the existing bounded ranking
+cache. Cache values are copied, disabled/empty catalog results are not stored,
+and publication/reconciliation/takedown paths invalidate the projection cache.
+The reader process does not expose the admin `/metrics` route, so populated
+reader-side cache ratios still need a direct operator telemetry path.
+
+**Impact:** Warm reads avoid repeated projection assembly and chapter metadata
+queries within one process, but separate reader workers can duplicate origin
+work and the current local analytics-disabled dataset cannot measure a useful
+ranking hit ratio.
+
+**Remaining work:** Run a populated multi-reader benchmark and decide whether
+Redis/shared origin caching is justified. Preserve versioned keys and explicit
+invalidation if that migration is made.
+
+**Confidence:** Source and focused tests; live route behavior is measured but
+not a populated cache-ratio benchmark.
+
+### F-31 - P1 - Analytics writes no longer share the public request session
+
+**Evidence:** The public ingestion route no longer depends on `get_db_session`.
+It sanitizes metadata before enqueue, returns `recorded` for accepted queue
+items and `dropped` for queue-full/worker-unavailable admission, and the
+worker owns a fresh transaction. Server-side novel/chapter events use the same
+bounded writer. Writer lifecycle is wired into monolith, admin, and reader
+lifespans.
+
+**Impact:** Analytics database latency or failure no longer holds the public
+detail/chapter request open. Events can be intentionally lost under sustained
+backpressure; the drop counter and queue depth make that policy observable.
+
+**Remaining work:** Measure enqueue overhead and event loss under a deliberately
+slow database, then tune queue size and worker count from evidence. Do not turn
+the queue into an unbounded memory buffer.
+
+**Confidence:** Source and focused tests; slow-writer live load remains open.
+
+### F-32 - P2 - One Phase 1 reader test fixture still seeds storage without projection rows
+
+**Evidence:** `backend/tests/test_public_reader_availability.py` currently seeds
+only `StorageService` metadata while the approved Phase 1 public reader contract
+requires a published `Novel`/`Chapter` projection. Its 21 failures report the
+truthful `Novel not found` response before chapter-policy assertions run. The
+Phase 4 changed-path suites pass independently.
+
+**Impact:** The stale fixture obscures chapter-policy regression coverage and
+must not be counted as a full backend-suite pass.
+
+**Remaining work:** Update that fixture to create/reconcile the DB projection
+before the Phase 5 full-suite gate. Do not restore request-time storage fallback
+to make the fixture pass.
+
+**Confidence:** Focused test output and current Phase 1 source contract.
+
 ## Public request waterfalls
 
 ### Home page
@@ -266,7 +362,7 @@ process-local, and disabled/no-data responses remain uncached and explicit.
 
 ### Novel detail and chapter list
 
-`frontend/app/(public)/novels/[slug]/page.tsx` requests the novel summary, chapter list, taxonomy, and authenticated progress. The detail handler records an analytics event and deliberately uses private caching for a newly issued anonymous identity. The chapter-list handler resolves the novel, checks takedown state, lists translated chapters in object storage, and maps metadata. This is a storage-bound path even when the page itself is mostly metadata.
+`frontend/app/(public)/novels/[slug]/page.tsx` requests the novel summary, chapter list, taxonomy, and authenticated progress. The detail handler records an analytics event and deliberately uses private caching for a newly issued anonymous identity. The chapter-list handler resolves the published DB projection, checks takedown state, and maps cached chapter metadata; it does not enumerate object storage. Chapter text/version/raw-layout reads remain storage-backed only after the projection succeeds.
 
 ### Chapter reader
 
@@ -370,13 +466,31 @@ The owner translation operation in `services/orchestration/operations.py` waits 
 
 **Confidence:** Current-source and live query-plan corroborated.
 
-### F-10 — P1 — Readiness performs a storage write/read/delete probe without an effective cache
+### F-10 — P1 — Readiness performed a storage write/read/delete probe without an effective cache
 
-**Evidence:** `HealthService` contains cache fields but the current implementation does not use them to cache the readiness result. `StorageService.probe()` writes a random health-check object, reads it back, compares it, and deletes it through object storage. During Phase 0, ten isolated probes all returned true in roughly `486–640 ms`, but the actual concurrent health run timed the storage probe out at its `1,000 ms` per-probe limit while storage-usage work took about `1,559 ms`; the readiness endpoint returned `503`. With an explicit `HEALTH_PROBE_TIMEOUT_MS=2000` process override during the Phase 1 runtime check, readiness returned `200` and Caddy became healthy; the protected one-second configuration remains a restart-regression risk.
+**Phase 4 status:** Resolved locally for public readiness; the full diagnostic
+probe remains intentionally available to owner health and scheduled checks.
+
+**Updated evidence:** Phase 4 wires `HEALTH_CACHE_TTL_SECONDS` into a
+single-flight readiness cache, uses a non-mutating backend reachability probe
+for public readiness, and moves `StorageService.probe()` plus S3
+storage-usage work to owner diagnostics. Fresh images passed the protected
+one-second probe configuration: Caddy readiness returned `200` in
+`0.559 s` cold and `0.046 s` warm, with only database, storage, worker,
+and disk in the public checks.
+
+**Historical evidence:** Before Phase 4, `HealthService` contained unused
+cache fields and `StorageService.probe()` ran a random write/read/delete
+object check. During Phase 0, ten isolated probes all returned true in roughly
+`486–640 ms`, but the concurrent health run timed storage out at its
+`1,000 ms` per-probe limit while storage-usage work took about `1,559 ms`;
+the readiness endpoint returned `503`. The two-second override was the
+temporary pre-Phase-4 workaround.
+
 
 **Impact:** A transient object-store delay can make readiness fail and can also consume storage operations on every probe. Proxy health checks then amplify the issue. A slow provider or storage service can cause deploy/restart churn.
 
-**Recommendation:** Treat this as a Phase 0 release gate and Phase 4 implementation item: persist a readiness budget that covers the observed concurrent storage work, cache readiness for a short bounded TTL, avoid running two expensive storage operations in the same readiness window, use a cheap bounded probe for liveness/readiness, and keep the full write/read/delete diagnostic in an owner-only or scheduled diagnostic path. Preserve the 3-second total budget and expose the last-known state with a timestamp internally, without leaking paths or credentials. The 2,000 ms runtime override made the current local gate pass, but the protected `deploy/.env` still requires an operator-approved durable update.
+**Recommendation:** Retain the short cache and cheap probe, measure percentile behavior under delayed storage and multi-process replacement, and alert on sustained unhealthy cached results. Preserve the 3-second total budget and keep internal timestamps/metrics redacted. Do not move the full write/read/delete probe back onto the public readiness path.
 
 **Confidence:** Measured and current-source corroborated.
 
@@ -431,15 +545,28 @@ The owner translation operation in `services/orchestration/operations.py` waits 
 
 **Confidence:** Current-source corroborated.
 
-### F-16 — P1 — Server cache headers exist, but result computation is not memoized
+### F-16 — P1 — Server cache headers existed without origin memoization
 
-**Phase 3 status:** Origin memoization is implemented locally; shared-cache behavior remains open.
+**Phase 4 status:** Safe catalog, summary, and chapter-projection memoization is
+implemented locally; shared-reader behavior and populated hit ratios remain
+open.
 
-**Evidence:** Catalog, ranking, and chapter responses emit short public cache headers. Before Phase 3, `PublicRankingService` had no service-level result cache; it now has a bounded process-local TTL/LRU cache for successful non-empty rankings, keyed by period, projection version, and limit.
+**Evidence:** Catalog base pages, DB-backed novel summaries, and bounded chapter
+metadata now use `PublicProjectionCache`, while ranking uses its own bounded
+success-only cache. Projection keys include the current database/projection
+version where a response can become stale; publication/reconciliation and
+takedown review invalidate the projection cache. Private identity/progress
+responses remain outside shared caching.
 
-**Impact:** The ranking origin path is now protected within one reader process, but cache entries are not shared across replicas and the cache hit ratio is not yet measured under populated analytics. A 60-second header alone remains insufficient for an unbounded origin path.
+**Impact:** Warm public projection reads avoid repeated assembly and metadata
+work within one process, but cache entries are not shared across replicas and
+the cache hit ratio is not yet measured under populated analytics. HTTP headers
+alone remain insufficient for an unbounded origin path.
 
-**Recommendation:** Measure hit ratio, stale window, origin query count, and reader-worker topology. If multiple replicas make duplicate ranking work material, move the same success-only versioned contract to Redis or another shared cache with explicit invalidation; do not cache disabled/no-data responses.
+**Recommendation:** Measure hit ratio, stale window, origin query count, and
+reader-worker topology. If multiple replicas make duplicate work material,
+move the same bounded, versioned contract to Redis or another shared cache with
+explicit invalidation; do not cache disabled/no-data responses.
 
 **Confidence:** Current-source corroborated; cache effectiveness requires deployment measurements.
 
@@ -517,7 +644,8 @@ The budgets should be validated with at least 50 warm and 50 cold requests per r
 - Ranking/cache tests use an isolated SQLite dataset and prove bounded query behavior, but no production-volume PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)` or cross-replica cache hit ratio has been measured.
 - The ranking cache is process-local with a bounded 60-second default stale window and 64-entry default limit; shared-cache economics and invalidation across reader replicas remain unverified.
 - The contributor/ranking migration is now applied locally; production-equivalent permissions and deployment migration procedure remain unverified.
-- Readiness and Caddy pass locally only with the explicit 2,000 ms runtime override; the protected `deploy/.env` still contains the one-second value, so a fresh restart can regress until the durable configuration/health implementation is approved.
+- Phase 4 readiness and Caddy passed locally with the protected one-second probe value and no process override. Percentile behavior under concurrent delayed storage and multi-process replacement remains unmeasured.
+- `backend/tests/test_public_reader_availability.py` still has 21 stale storage-only fixture failures because the Phase 1 contract requires DB projection rows; this is recorded as F-32 and is not counted as a Phase 4 pass.
 - Object-storage timing was measured in the existing deployment, but no destructive or production data operation was performed.
 - The browser check with the wrong host was intentionally treated as invalid for API performance; only configured-host proxy timings were used.
 - No claim is made here about provider-side latency without a controlled provider workload and provider telemetry.

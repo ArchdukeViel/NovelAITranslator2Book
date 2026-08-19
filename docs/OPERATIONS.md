@@ -7,12 +7,25 @@ Solo-owner runbook for health, maintenance, backup, recovery, incidents, and rea
 | Endpoint | Expected behavior |
 |---|---|
 | `GET /health/live` | Process-only, unauthenticated, always 200; no dependency calls. |
-| `GET /health/ready` | Bounded DB/storage/worker/disk probes; 503 when any probe is unhealthy. |
+| `GET /health/ready` | Redacted, short-TTL cached/single-flight DB/lightweight-storage/worker/disk probes; 503 when the cached result is unhealthy. |
 | `GET /api/admin/health` | Owner-only detailed but redacted probe status and latency. |
 
 States: `healthy`, `degraded`, `unhealthy`. Investigate stale worker heartbeat,
-DB connectivity, storage writes/capacity, and disk before restart. Public health
-output never includes paths, hosts, credentials, or traces.
+DB connectivity, storage reachability/capacity, and disk before restart. Public
+readiness does not perform a mutating storage probe or S3 usage enumeration;
+`/api/admin/health` remains the fresh owner diagnostic for those checks.
+Public health output never includes paths, hosts, credentials, or traces.
+
+Readiness defaults to a five-second cache (`HEALTH_CACHE_TTL_SECONDS`). The
+first request after expiry performs one bounded probe run and concurrent
+requests join it. Inspect
+`novelai_readiness_cache_hits_total`,
+`novelai_readiness_cache_misses_total`,
+`novelai_readiness_cache_entries`, and
+`novelai_readiness_cache_age_seconds` in the owning backend metrics. A
+healthy cache result is not proof that storage remains healthy after its
+timestamp; investigate repeated refresh failures rather than disabling the
+cache or increasing probe timeouts blindly.
 
 ## Worker, Scheduler, and Maintenance
 
@@ -269,6 +282,31 @@ Migration `c8d2e4f6a1b3` adds the two composite analytics indexes used by the
 ranking predicate and authenticated/anonymous viewer identities. Verify the
 migration head and run a representative PostgreSQL `EXPLAIN (ANALYZE,
 BUFFERS)` before treating ranking latency as production-capacity evidence.
+
+### Public projection cache and analytics writer
+
+Catalog base pages, DB-backed summaries, and chapter metadata use a bounded
+30-second/256-entry process-local projection cache. Publication/reconciliation
+and approved takedown review invalidate it; versioned keys also prevent normal
+projection updates from reusing an older payload. Monitor
+`novelai_public_projection_cache_hits_total`,
+`novelai_public_projection_cache_misses_total`,
+`novelai_public_projection_cache_entries`, and
+`novelai_public_projection_cache_invalidations_total`. The reader process
+does not expose the admin metrics route by default, so collect these metrics
+from the owning operator process or add an approved reader telemetry path
+before using them for capacity claims.
+
+Public analytics writes use a bounded asynchronous queue (default 1,000). A
+request response with `recorded` means queue admission, not durable commit;
+`dropped` reports queue-full or unavailable admission. Monitor
+`novelai_analytics_writer_accepted_total`,
+`novelai_analytics_writer_dropped_total`,
+`novelai_analytics_writer_processed_total`,
+`novelai_analytics_writer_failures_total`, and
+`novelai_analytics_writer_queue_depth`. Sustained drops require capacity
+investigation; do not make the queue unbounded. The writer stores only
+sanitized fields and never stores raw IP addresses.
 
 Guest detail views may set the signed `novelai_viewer` first-party cookie. The
 server stores only a digest of the opaque token, never the raw token or an IP

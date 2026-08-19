@@ -314,12 +314,34 @@ responses remain explicit and uncached; cache metrics are exposed through
 `/metrics`. A shared cache or durable rollup requires measured multi-reader
 load evidence and an explicit invalidation contract.
 
+Safe public catalog pages, novel summaries, and chapter metadata also use a
+bounded process-local `PublicProjectionCache`. Catalog keys include the
+published projection timestamp; novel-summary and chapter-context keys include
+the current novel timestamp. Catalog publication/reconciliation and approved
+takedown review invalidate the projection cache. Search text, identity,
+progress, history, cookies, and chapter text are never cached. This cache is
+an origin optimization and does not restore request-time object-storage
+enumeration.
+
+Public detail, chapter, and approved frontend analytics events cross a bounded
+asynchronous writer. Metadata is sanitized before queue admission; the queue
+contains only canonical event fields and no raw IP, prompt, authorization
+header, or unsanitized payload. Queue-full events are dropped and counted,
+worker failures are suppressed and counted, and each worker event uses its own
+database transaction. Writer shutdown drains briefly during app lifespan
+shutdown. The signed anonymous viewer digest and retention policy remain
+unchanged.
+
 ## Operational Contracts
 
 - `/health/live`: process-only, unauthenticated, always 200, no dependencies.
-- `/health/ready`: bounded DB/storage/worker/disk probes; 503 when unhealthy.
+- `/health/ready`: redacted, cached/single-flight DB/lightweight-storage/
+  worker/disk probes; 503 when the cached result is unhealthy.
 - `/api/admin/health`: owner-only detailed but redacted diagnostics.
 - Probe states: `healthy`, `degraded`, `unhealthy`.
+- Public readiness does not run full storage write/read/delete or S3 usage
+  scans. Those remain owner-only or scheduled diagnostics so reverse-proxy
+  health checks do not amplify object-storage latency.
 - Scheduled backup, maintenance, and database dumps use renewable PostgreSQL
   leases plus local file locks where needed.
 - Each registered maintenance task writes start/success/failure transitions to
