@@ -115,6 +115,24 @@ class AppSettings(BaseSettings):
     )
     JOB_WORKER_ENABLED: bool = False
     JOB_WORKER_POLL_SECONDS: float = 2.0
+    ACTIVITY_HISTORY_MAX_ENTRIES: int = Field(
+        default=10_000,
+        ge=100,
+        le=1_000_000,
+        description="Maximum activity history returned by bounded operator/list queries.",
+    )
+    ACTIVITY_METADATA_MAX_BYTES: int = Field(
+        default=256_000,
+        ge=4_096,
+        le=4_000_000,
+        description="Maximum serialized progress/result metadata stored on one activity.",
+    )
+    ACTIVITY_RETRY_HISTORY_MAX_ENTRIES: int = Field(
+        default=100,
+        ge=1,
+        le=10_000,
+        description="Maximum retry snapshots retained inside one activity metadata record.",
+    )
 
     # --- Outbound fetch hardening (bounded redirects, streaming size limits)
     HTTP_MAX_REDIRECTS: int = Field(default=5, ge=1, le=20)
@@ -247,6 +265,14 @@ class AppSettings(BaseSettings):
     TRANSLATION_ALLOW_MULTI_CHAPTER_BUNDLES: bool = True
     TRANSLATION_MAX_CHAPTERS_PER_BUNDLE: int = 3
     TRANSLATION_MAX_ATTEMPTS_PER_CHUNK: int = 3
+    TRANSLATION_PROVIDER_DEADLINE_SECONDS: int = Field(
+        default=600,
+        ge=1,
+        le=86_400,
+        description="Maximum provider/retry time for one translation chunk before failing fast.",
+    )
+    TRANSLATION_PROVIDER_RETRY_BACKOFF_BASE_SECONDS: float = Field(default=1.0, ge=0.0, le=60.0)
+    TRANSLATION_PROVIDER_RETRY_BACKOFF_MAX_SECONDS: float = Field(default=30.0, ge=0.0, le=300.0)
     TRANSLATION_METADATA_CHAPTER_TITLE_BATCH_SIZE: int = 25
     TRANSLATION_GLOSSARY_BATCH_SIZE: int = Field(default=25, ge=1, le=100)
     TRANSLATION_ADAPTIVE_CHUNKING_ENABLED: bool = True
@@ -274,6 +300,24 @@ class AppSettings(BaseSettings):
     GEMINI_RPM_LIMIT: int = Field(default=15, ge=1)
     GEMINI_TPM_LIMIT: int = Field(default=250_000, ge=1)
     GEMINI_RPD_LIMIT: int = Field(default=500, ge=1)
+    GEMINI_CONCURRENCY_LIMIT: int = Field(
+        default=4,
+        ge=1,
+        le=256,
+        description="Global in-flight Gemini request limit shared by all processes using the owner key.",
+    )
+    CONTRIBUTOR_CONCURRENCY_LIMIT: int = Field(
+        default=2,
+        ge=1,
+        le=256,
+        description="Global in-flight request limit per contributor credential.",
+    )
+    PROVIDER_RESERVATION_TTL_SECONDS: int = Field(
+        default=900,
+        ge=60,
+        le=86_400,
+        description="Maximum age of a provider admission reservation before it stops counting as in-flight.",
+    )
     GEMINI_ESTIMATED_OUTPUT_TOKENS: int = Field(default=1024, ge=1)
 
     # --- Database

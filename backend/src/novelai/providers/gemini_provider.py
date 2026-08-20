@@ -5,6 +5,8 @@ import contextlib
 import hashlib
 import importlib
 import json
+import threading
+import time
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -20,11 +22,12 @@ from novelai.services.gemini_request_control import (
     estimate_gemini_tokens,
     get_gemini_quota_controller,
 )
+from novelai.services.provider_metrics import record_provider_timing
 from novelai.services.usage_service import UsageService
 
 
 class GeminiProvider(TranslationProvider):
-    """Google Gemini translation provider using a per-request client instance."""
+    """Google Gemini provider with isolated credentials and reusable clients."""
 
     DEFAULT_TEXT_MODEL = GEMINI_DEFAULT_MODEL
 
@@ -40,6 +43,8 @@ class GeminiProvider(TranslationProvider):
         self._explicit_api_key = api_key.strip() if isinstance(api_key, str) and api_key.strip() else None
         self._usage_service = usage_service or UsageService()
         self._quota_controller = quota_controller or get_gemini_quota_controller()
+        self._client: Any | None = None
+        self._client_lock = threading.Lock()
 
     @property
     def key(self) -> str:
@@ -87,6 +92,13 @@ class GeminiProvider(TranslationProvider):
         except ImportError:
             return None
         return getattr(genai_module, "Client", None)
+
+    def _get_client(self, client_type: Any, api_key: str) -> Any:
+        """Create one client per provider instance without sharing credential state."""
+        with self._client_lock:
+            if self._client is None:
+                self._client = client_type(api_key=api_key)
+            return self._client
 
     @staticmethod
     def _extract_text(response: Any) -> str:
@@ -349,6 +361,9 @@ class GeminiProvider(TranslationProvider):
         cache_status: Any = None,
         error: ProviderError | None = None,
         request_made: bool = True,
+        provider_wait_ms: float | None = None,
+        provider_execution_ms: float | None = None,
+        quota_reservation_ms: float | None = None,
     ) -> None:
         input_tokens = self._int_usage(usage.get("input_tokens")) if isinstance(usage, Mapping) else None
         if input_tokens is None and isinstance(usage, Mapping):
@@ -368,8 +383,9 @@ class GeminiProvider(TranslationProvider):
                     total_tokens=total_tokens,
                     success=success,
                 )
+        usage_write_ms: float | None = None
         with contextlib.suppress(Exception):
-            self._usage_service.record_provider_request(
+            usage_write_ms = self._usage_service.record_provider_request(
                 timestamp=self._utc_now_iso(),
                 provider_key=self.key,
                 provider_model=model_name,
@@ -386,7 +402,19 @@ class GeminiProvider(TranslationProvider):
                 cache_status=cache_status,
                 error_code=error.provider_error_code.value if error is not None else None,
                 request_made=request_made,
+                provider_wait_ms=provider_wait_ms,
+                provider_execution_ms=provider_execution_ms,
+                quota_reservation_ms=quota_reservation_ms,
+                usage_write_ms=None,
             )
+        record_provider_timing(
+            wait_ms=provider_wait_ms,
+            execution_ms=provider_execution_ms,
+            quota_reservation_ms=quota_reservation_ms,
+            usage_write_ms=usage_write_ms,
+            retry_attempt=retry_attempt,
+            success=success,
+        )
 
     def _reserve_request(
         self,
@@ -546,6 +574,8 @@ class GeminiProvider(TranslationProvider):
             max_output_tokens=max_tokens,
         )
         reservation: QuotaReservation | None = None
+        quota_reservation_ms: float | None = None
+        quota_started = time.perf_counter()
         try:
             api_key_str = self._api_key_string()
             reservation = self._reserve_request(
@@ -554,7 +584,9 @@ class GeminiProvider(TranslationProvider):
                 estimated_input_tokens=input_estimate,
                 estimated_output_tokens=output_estimate,
             )
+            quota_reservation_ms = (time.perf_counter() - quota_started) * 1000
         except ProviderError as exc:
+            quota_reservation_ms = (time.perf_counter() - quota_started) * 1000
             self._record_request(
                 purpose=purpose,
                 model_name=model_name,
@@ -569,6 +601,8 @@ class GeminiProvider(TranslationProvider):
                 cache_status=cache_status,
                 error=exc,
                 request_made=reservation is not None,
+                provider_wait_ms=quota_reservation_ms,
+                quota_reservation_ms=quota_reservation_ms,
             )
             raise
 
@@ -594,6 +628,8 @@ class GeminiProvider(TranslationProvider):
                 cache_status=cache_status,
                 error=error,
                 request_made=False,
+                provider_wait_ms=quota_reservation_ms,
+                quota_reservation_ms=quota_reservation_ms,
             )
             raise error
 
@@ -618,7 +654,7 @@ class GeminiProvider(TranslationProvider):
             audit_config["system_instruction_sha256"] = hashlib.sha256(system_instruction.encode("utf-8")).hexdigest()
 
         def _invoke() -> Any:
-            client = Client(api_key=api_key_str)
+            client = self._get_client(Client, api_key_str)
             generate_kwargs: dict[str, Any] = {
                 "model": model_name,
                 "contents": contents,
@@ -627,9 +663,13 @@ class GeminiProvider(TranslationProvider):
                 generate_kwargs["config"] = config_payload
             return client.models.generate_content(**generate_kwargs)
 
+        execution_started = time.perf_counter()
+        execution_ms: float | None = None
         try:
             response = await asyncio.to_thread(_invoke)
+            execution_ms = (time.perf_counter() - execution_started) * 1000
         except ProviderError as exc:
+            execution_ms = (time.perf_counter() - execution_started) * 1000
             self._record_request(
                 purpose=purpose,
                 model_name=model_name,
@@ -644,9 +684,13 @@ class GeminiProvider(TranslationProvider):
                 cache_status=cache_status,
                 error=exc,
                 request_made=True,
+                provider_wait_ms=quota_reservation_ms,
+                provider_execution_ms=execution_ms,
+                quota_reservation_ms=quota_reservation_ms,
             )
             raise
         except Exception as exc:
+            execution_ms = (time.perf_counter() - execution_started) * 1000
             error = self._provider_error_from_exception(exc, model_name=model_name)
             self._record_request(
                 purpose=purpose,
@@ -662,6 +706,9 @@ class GeminiProvider(TranslationProvider):
                 cache_status=cache_status,
                 error=error,
                 request_made=True,
+                provider_wait_ms=quota_reservation_ms,
+                provider_execution_ms=execution_ms,
+                quota_reservation_ms=quota_reservation_ms,
             )
             raise error from exc
         text = self._extract_text(response)
@@ -689,6 +736,9 @@ class GeminiProvider(TranslationProvider):
                 cache_status=cache_status,
                 error=response_error,
                 request_made=True,
+                provider_wait_ms=quota_reservation_ms,
+                provider_execution_ms=execution_ms,
+                quota_reservation_ms=quota_reservation_ms,
             )
             raise response_error
         self._record_request(
@@ -703,6 +753,9 @@ class GeminiProvider(TranslationProvider):
             chapter_id=chapter_id,
             chunk_id=chunk_id,
             cache_status=cache_status,
+            provider_wait_ms=quota_reservation_ms,
+            provider_execution_ms=execution_ms,
+            quota_reservation_ms=quota_reservation_ms,
         )
         return {
             "text": text,
@@ -725,6 +778,8 @@ class GeminiProvider(TranslationProvider):
         model_name = model or self.DEFAULT_TEXT_MODEL
         input_estimate, output_estimate = estimate_gemini_tokens("ping", max_output_tokens=32)
         reservation: QuotaReservation | None = None
+        quota_reservation_ms: float | None = None
+        execution_ms: float | None = None
         try:
             self._validate_model_name(model_name)
             api_key_str = self._api_key_string()
@@ -736,22 +791,26 @@ class GeminiProvider(TranslationProvider):
                     provider_model=model_name,
                     message="google-genai package required; install it to enable Gemini provider support.",
                 )
+            quota_started = time.perf_counter()
             reservation = self._reserve_request(
                 purpose="provider_validation",
                 model_name=model_name,
                 estimated_input_tokens=input_estimate,
                 estimated_output_tokens=output_estimate,
             )
+            quota_reservation_ms = (time.perf_counter() - quota_started) * 1000
 
             def _invoke() -> Any:
-                client = Client(api_key=api_key_str)
+                client = self._get_client(Client, api_key_str)
                 return client.models.generate_content(
                     model=model_name,
                     contents="ping",
                     config={"temperature": 0.0, "max_output_tokens": 32},
                 )
 
+            execution_started = time.perf_counter()
             response = await asyncio.to_thread(_invoke)
+            execution_ms = (time.perf_counter() - execution_started) * 1000
             response_error = self._response_error(
                 response,
                 text=self._extract_text(response),
@@ -770,6 +829,9 @@ class GeminiProvider(TranslationProvider):
                 success=True,
                 retry_attempt=0,
                 request_made=True,
+                provider_wait_ms=quota_reservation_ms,
+                provider_execution_ms=execution_ms,
+                quota_reservation_ms=quota_reservation_ms,
             )
         except Exception as exc:
             error = (
@@ -788,6 +850,9 @@ class GeminiProvider(TranslationProvider):
                 retry_attempt=0,
                 error=error,
                 request_made=reservation is not None,
+                provider_wait_ms=quota_reservation_ms,
+                provider_execution_ms=execution_ms,
+                quota_reservation_ms=quota_reservation_ms,
             )
             return False, error.message
 

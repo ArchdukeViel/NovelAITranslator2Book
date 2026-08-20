@@ -11,6 +11,7 @@ from fastapi.responses import Response
 
 from novelai.services.analytics_writer import analytics_writer_stats
 from novelai.services.health_service import HealthCacheStats
+from novelai.services.provider_metrics import provider_runtime_stats
 from novelai.services.public_projection_cache import public_projection_cache_stats
 from novelai.services.public_ranking_cache import public_ranking_cache_stats
 
@@ -62,6 +63,36 @@ def _activity_counts() -> dict[str, int]:
     return dict(counts)
 
 
+def _activity_queue_stats() -> dict[str, object]:
+    activity_log = _load_container_activity_log()
+    if activity_log is None:
+        return {}
+    try:
+        stats = activity_log.queue_stats()
+    except Exception:
+        return {}
+    return stats if isinstance(stats, dict) else {}
+
+
+def _queue_age_seconds(stats: dict[str, object]) -> float:
+    value = stats.get("queue_age_seconds")
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
+
+
+def _queue_operation_total_ms(stats: dict[str, object]) -> float:
+    operations = stats.get("operations")
+    if not isinstance(operations, dict):
+        return 0.0
+    total = 0.0
+    for operation in operations.values():
+        if not isinstance(operation, dict):
+            continue
+        value = operation.get("total_ms")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            total += float(value)
+    return total
+
+
 def _activity_failures_per_source() -> dict[str, int]:
     """Count failed activities by ``source_key`` (low cardinality, safe label)."""
     counts: Counter[str] = Counter()
@@ -102,6 +133,8 @@ def get_metrics() -> Response:
     ranking_cache = public_ranking_cache_stats()
     projection_cache = public_projection_cache_stats()
     analytics_writer = analytics_writer_stats()
+    activity_queue = _activity_queue_stats()
+    provider_runtime = provider_runtime_stats()
     health_service = _load_container_health_service()
     health_cache = (
         health_service.health_cache_stats()
@@ -155,6 +188,33 @@ def get_metrics() -> Response:
         "# HELP novelai_activity_cancelled_count Activities that were cancelled",
         "# TYPE novelai_activity_cancelled_count gauge",
         f"novelai_activity_cancelled_count {cancelled}",
+        "# HELP novelai_activity_queue_age_seconds Age of the oldest pending activity",
+        "# TYPE novelai_activity_queue_age_seconds gauge",
+        f"novelai_activity_queue_age_seconds {_queue_age_seconds(activity_queue):.3f}",
+        "# HELP novelai_activity_queue_operation_total_ms Total activity queue operation time",
+        "# TYPE novelai_activity_queue_operation_total_ms gauge",
+        f"novelai_activity_queue_operation_total_ms {_queue_operation_total_ms(activity_queue):.3f}",
+        "# HELP novelai_provider_calls_total Provider calls observed by this process",
+        "# TYPE novelai_provider_calls_total counter",
+        f"novelai_provider_calls_total {provider_runtime.calls}",
+        "# HELP novelai_provider_failures_total Provider call failures observed by this process",
+        "# TYPE novelai_provider_failures_total counter",
+        f"novelai_provider_failures_total {provider_runtime.failures}",
+        "# HELP novelai_provider_retries_total Provider retry attempts observed by this process",
+        "# TYPE novelai_provider_retries_total counter",
+        f"novelai_provider_retries_total {provider_runtime.retries}",
+        "# HELP novelai_provider_wait_ms_total Provider admission wait time",
+        "# TYPE novelai_provider_wait_ms_total counter",
+        f"novelai_provider_wait_ms_total {provider_runtime.wait_ms_total:.3f}",
+        "# HELP novelai_provider_execution_ms_total Provider execution time",
+        "# TYPE novelai_provider_execution_ms_total counter",
+        f"novelai_provider_execution_ms_total {provider_runtime.execution_ms_total:.3f}",
+        "# HELP novelai_provider_quota_reservation_ms_total Provider quota reservation time",
+        "# TYPE novelai_provider_quota_reservation_ms_total counter",
+        f"novelai_provider_quota_reservation_ms_total {provider_runtime.quota_reservation_ms_total:.3f}",
+        "# HELP novelai_provider_usage_write_ms_total Provider usage-ledger write time",
+        "# TYPE novelai_provider_usage_write_ms_total counter",
+        f"novelai_provider_usage_write_ms_total {provider_runtime.usage_write_ms_total:.3f}",
         "# HELP novelai_public_ranking_cache_hits_total Successful public ranking cache lookups",
         "# TYPE novelai_public_ranking_cache_hits_total counter",
         f"novelai_public_ranking_cache_hits_total {ranking_cache.hits}",

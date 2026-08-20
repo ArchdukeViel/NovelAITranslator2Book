@@ -196,6 +196,7 @@ class ContributorCredentialService:
             rpm_limit=settings.CONTRIBUTOR_RPM_LIMIT,
             tpm_limit=settings.CONTRIBUTOR_TPM_LIMIT,
             rpd_limit=settings.CONTRIBUTOR_RPD_LIMIT,
+            concurrency_limit=settings.CONTRIBUTOR_CONCURRENCY_LIMIT,
         )
 
     async def validate_and_activate(self, credential: ContributorCredential, api_key: str) -> tuple[bool, str]:

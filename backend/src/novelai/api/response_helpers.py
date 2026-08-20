@@ -40,6 +40,9 @@ def activity_record_response(item: dict[str, Any]) -> ActivityRecordResponse:
     # Lease credentials are internal worker-coordination state, not API fields.
     normalized.pop("lease_id", None)
     normalized.pop("lease_expires_at", None)
+    # Idempotency keys are internal request-coordination state; callers only
+    # need the durable activity identifier and current status.
+    normalized.pop("idempotency_key", None)
     metadata = _metadata_dict(normalized)
     progress = _progress_dict(metadata)
     normalized["provider_key"] = normalized.get("provider_key") or metadata.get("provider_key")

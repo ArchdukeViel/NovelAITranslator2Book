@@ -57,6 +57,7 @@ class GeminiQuotaController:
         rpm_limit: int | None = None,
         tpm_limit: int | None = None,
         rpd_limit: int | None = None,
+        concurrency_limit: int | None = None,
     ) -> None:
         resolved_base = (base_dir or settings.NOVEL_LIBRARY_DIR).resolve()
         self.state_path = resolved_base / "gemini_quota_state.json"
@@ -66,6 +67,10 @@ class GeminiQuotaController:
         self._rpm_limit = rpm_limit or settings.GEMINI_RPM_LIMIT
         self._tpm_limit = tpm_limit or settings.GEMINI_TPM_LIMIT
         self._rpd_limit = rpd_limit or settings.GEMINI_RPD_LIMIT
+        # Explicit production factories pass a limit. Directly constructed
+        # controllers remain quota-only for compatibility with maintenance and
+        # unit-test callers that intentionally exercise RPM/TPM/RPD in isolation.
+        self._concurrency_limit = concurrency_limit
 
     def _now(self) -> datetime:
         value = self._clock()
@@ -124,6 +129,16 @@ class GeminiQuotaController:
                 tokens_minute += self._int_value(event.get("total_tokens"))
         return requests_minute, tokens_minute, requests_today
 
+    def _inflight_count(self, events: list[dict[str, Any]], now: datetime) -> int:
+        cutoff = now - timedelta(seconds=settings.PROVIDER_RESERVATION_TTL_SECONDS)
+        return sum(
+            1
+            for event in events
+            if event.get("status") == "reserved"
+            and (timestamp := self._timestamp(event)) is not None
+            and timestamp >= cutoff
+        )
+
     def _retry_after_for_window(self, events: list[dict[str, Any]], now: datetime, *, tokens: bool) -> int:
         cutoff = now - timedelta(seconds=60)
         candidates: list[datetime] = []
@@ -155,7 +170,19 @@ class GeminiQuotaController:
             now = self._now()
             events = self._prune(self._load_events(), now)
             requests_minute, tokens_minute, requests_today = self._window_totals(events, now)
+            inflight = self._inflight_count(events, now)
             limits = (self._rpm_limit, self._tpm_limit, self._rpd_limit)
+            if self._concurrency_limit is not None and inflight >= self._concurrency_limit:
+                return QuotaRejection(
+                    "rate_limited",
+                    1,
+                    "concurrency",
+                    requests_minute,
+                    tokens_minute,
+                    requests_today,
+                    estimated_input_tokens,
+                    estimated_output_tokens,
+                )
             if requests_minute + 1 > limits[0]:
                 return QuotaRejection(
                     "rate_limited",
@@ -256,11 +283,13 @@ class GeminiQuotaController:
                     "requests_per_minute": self._rpm_limit,
                     "tokens_per_minute": self._tpm_limit,
                     "requests_per_day": self._rpd_limit,
+                    "concurrency": self._concurrency_limit,
                 },
                 "current_minute": {
                     "requests": requests_minute,
                     "tokens": tokens_minute,
                 },
+                "in_flight": self._inflight_count(events, now),
                 "today": {"requests": requests_today},
             }
 
@@ -274,6 +303,6 @@ def get_gemini_quota_controller() -> GeminiQuotaController:
     with _CONTROLLERS_LOCK:
         controller = _CONTROLLERS.get(path.parent)
         if controller is None:
-            controller = GeminiQuotaController(path.parent)
+            controller = GeminiQuotaController(path.parent, concurrency_limit=settings.GEMINI_CONCURRENCY_LIMIT)
             _CONTROLLERS[path.parent] = controller
         return controller

@@ -88,7 +88,7 @@ async def _run_worker_once() -> None:
     if activity is None:
         print("No pending job.")
         return
-    print(f"Processed job {activity.get('id')} -> {activity.get('status')}")
+    print(f"Processed job {activity.get('activity_id')} -> {activity.get('status')}")
 
 
 async def _run_worker_forever(poll_seconds: float | None) -> None:
@@ -104,7 +104,7 @@ async def _run_worker_forever(poll_seconds: float | None) -> None:
         if activity is None:
             await asyncio.sleep(runner.poll_seconds)
         else:
-            print(f"Processed job {activity.get('id')} -> {activity.get('status')}")
+            print(f"Processed job {activity.get('activity_id')} -> {activity.get('status')}")
 
 
 def _frontend_url(

@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
 
 from novelai.activity.queue import ActivityQueueService
 from novelai.config.settings import settings
-from novelai.core.errors import TranslationInProgressError
 from novelai.services.catalog_service import CatalogService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.orchestration.operations_helpers import (
     OperationError,
-    get_novel_translation_lock,
     require_novel_meta,
 )
 from novelai.services.orchestration.preliminary import (
@@ -278,39 +278,95 @@ class OperationsService:
         target_language: str | None,
         allow_cross_provider_fallback: bool = True,
         skip_glossary_gate: bool = False,
-    ) -> dict[str, str]:
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
         # Guard: novel must exist before translation (REQ-3.1, REQ-3.2)
         require_novel_meta(self.storage, novel_id)
 
-        # Novel-level concurrency guard
-        novel_lock = get_novel_translation_lock(novel_id)
-        if novel_lock.locked():
-            raise OperationError(409, f"Translation already in progress for novel {novel_id}")
-        await novel_lock.acquire()
-
-        try:
-            await asyncio.wait_for(
-                self.orchestrator.translate_chapters(
-                    source_key,
-                    novel_id,
-                    chapters,
-                    provider_key=provider_key,
-                    provider_model=provider_model,
-                    force=force,
-                    source_language=source_language,
-                    target_language=target_language or settings.TRANSLATION_TARGET_LANGUAGE,
-                    allow_cross_provider_fallback=allow_cross_provider_fallback,
-                    skip_glossary_gate=skip_glossary_gate,
-                ),
-                timeout=settings.WEB_REQUEST_TIMEOUT_SECONDS,
+        normalized_target = target_language or settings.TRANSLATION_TARGET_LANGUAGE
+        request_key = self._translation_idempotency_key(
+            supplied=idempotency_key,
+            kind="translate",
+            novel_id=novel_id,
+            source_key=source_key,
+            chapters=chapters,
+            provider_key=provider_key,
+            provider_model=provider_model,
+            force=force,
+            source_language=source_language,
+            target_language=normalized_target,
+            allow_cross_provider_fallback=allow_cross_provider_fallback,
+            skip_glossary_gate=skip_glossary_gate,
+        )
+        existing = self.activity_log.find_active_translation(
+            novel_id=novel_id,
+            kind="translate",
+            chapters=chapters,
+            provider_key=provider_key,
+            provider_model=provider_model,
+            idempotency_key=request_key,
+        )
+        activity = existing
+        if activity is None:
+            activity = self.activity_log.create_translation_activity(
+                novel_id=novel_id,
+                source_key=source_key,
+                kind="translate",
+                chapters=chapters,
+                provider_key=provider_key,
+                provider_model=provider_model,
+                idempotency_key=request_key,
+                metadata={
+                    "activity_subtype": "translation",
+                    "activity_phase": "translate_novel",
+                    "operation": "translate_novel",
+                    "force": force,
+                    "source_language": source_language,
+                    "target_language": normalized_target,
+                    "allow_cross_provider_fallback": allow_cross_provider_fallback,
+                    "skip_glossary_gate": skip_glossary_gate,
+                    "idempotency_key_version": 1,
+                },
             )
-        except TimeoutError as exc:
-            raise OperationError(504, "Operation timed out") from exc
-        except TranslationInProgressError as exc:
-            raise OperationError(409, str(exc)) from exc
-        finally:
-            novel_lock.release()
-        return {"novel_id": novel_id, "status": "ok"}
+        return {
+            "novel_id": novel_id,
+            "activity_id": activity.get("activity_id"),
+            "status": activity.get("status", "pending"),
+        }
+
+    @staticmethod
+    def _translation_idempotency_key(
+        *,
+        supplied: str | None,
+        kind: str,
+        novel_id: str,
+        source_key: str | None,
+        chapters: str,
+        provider_key: str | None,
+        provider_model: str | None,
+        force: bool,
+        source_language: str | None,
+        target_language: str | None,
+        allow_cross_provider_fallback: bool,
+        skip_glossary_gate: bool,
+    ) -> str:
+        if isinstance(supplied, str) and supplied.strip():
+            return supplied.strip()[:255]
+        payload = {
+            "kind": kind,
+            "novel_id": novel_id,
+            "source_key": source_key,
+            "chapters": chapters,
+            "provider_key": provider_key,
+            "provider_model": provider_model,
+            "force": force,
+            "source_language": source_language,
+            "target_language": target_language,
+            "allow_cross_provider_fallback": allow_cross_provider_fallback,
+            "skip_glossary_gate": skip_glossary_gate,
+        }
+        canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return f"translate:v1:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"
 
     def get_translation_status(
         self,
@@ -569,18 +625,43 @@ class OperationsService:
             }
 
         chapters_str = ",".join(sorted(target_ids, key=int))
-        await self.orchestrator.translate_chapters(
-            source_key,
-            novel_id,
-            chapters_str,
+        idempotency_key = self._translation_idempotency_key(
+            supplied=None,
+            kind="batch_retranslate",
+            novel_id=novel_id,
+            source_key=source_key,
+            chapters=chapters_str,
             provider_key=provider_key,
             provider_model=provider_model,
             force=True,
+            source_language=None,
+            target_language=settings.TRANSLATION_TARGET_LANGUAGE,
+            allow_cross_provider_fallback=True,
+            skip_glossary_gate=False,
+        )
+        activity = self.activity_log.create_translation_activity(
+            novel_id=novel_id,
+            source_key=source_key,
+            kind="batch_retranslate",
+            chapters=chapters_str,
+            provider_key=provider_key,
+            provider_model=provider_model,
+            idempotency_key=idempotency_key,
+            metadata={
+                "activity_subtype": "translation",
+                "activity_phase": "retranslate_stale",
+                "operation": "retranslate_stale",
+                "chapter_ids": target_ids,
+                "force": True,
+                "target_language": settings.TRANSLATION_TARGET_LANGUAGE,
+                "allow_cross_provider_fallback": True,
+            },
         )
 
         return {
             "novel_id": novel_id,
             "stale_chapter_count": len(stale_chapter_ids),
             "scheduled_chapter_count": len(target_ids),
-            "activity_id": None,
+            "activity_id": activity.get("activity_id"),
+            "status": activity.get("status", "pending"),
         }

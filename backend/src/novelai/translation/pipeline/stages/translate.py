@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import time
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -499,6 +500,7 @@ class TranslateStage(PipelineStage):
         chunk: str,
         request: TranslationRequest | None = None,
         glossary_hash: str | None = None,
+        deadline: float | None = None,
     ) -> tuple[str, str, str, bool]:
         contributor_mode = context.metadata.get("contribution_mode") == "contributor"
         provider_key, provider_model = self._resolve_provider_and_model(
@@ -540,7 +542,7 @@ class TranslateStage(PipelineStage):
         started_at = utc_now_iso()
         try:
             logger.debug("Translating chunk %s (len=%s) with %s/%s", chunk_id, len(chunk), provider.key, provider_model)
-            result = await provider.translate(
+            provider_call = provider.translate(
                 prompt=chunk,
                 model=provider_model,
                 **_provider_kwargs(
@@ -561,6 +563,13 @@ class TranslateStage(PipelineStage):
                     },
                 ),
             )
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("Translation provider deadline exceeded")
+                result = await asyncio.wait_for(provider_call, timeout=remaining)
+            else:
+                result = await provider_call
             if lease is not None:
                 usage_metadata = result.get("metadata") if isinstance(result, dict) else None
                 usage = usage_metadata.get("usage") if isinstance(usage_metadata, dict) else None
@@ -592,6 +601,59 @@ class TranslateStage(PipelineStage):
                     estimated_input_tokens=None,
                     estimated_output_tokens=None,
                 )
+        except TimeoutError as exc:
+            if lease is not None:
+                ContributorCredentialService.mark_runtime_unhealthy(lease.credential_id, error_code="timeout")
+                ContributorCredentialService.record_usage(
+                    credential_id=lease.credential_id,
+                    credential_owner_user_id=lease.credential_owner_user_id,
+                    requesting_user_id=context.metadata.get("requesting_user_id")
+                    if isinstance(context.metadata.get("requesting_user_id"), int)
+                    else None,
+                    provider_key=provider_key,
+                    provider_model=provider_model,
+                    request_id=context.metadata.get("request_id")
+                    if isinstance(context.metadata.get("request_id"), str)
+                    else None,
+                    job_id=context.job_id,
+                    activity_id=context.activity_id,
+                    status="failed",
+                    input_tokens=None,
+                    output_tokens=None,
+                    total_tokens=None,
+                    estimated_input_tokens=None,
+                    estimated_output_tokens=None,
+                    error_code="timeout",
+                )
+            finished_at = utc_now_iso()
+            provider_error = ProviderError(
+                ProviderErrorCode.TIMEOUT,
+                provider_key=provider.key,
+                provider_model=provider_model,
+                message="Translation provider deadline exceeded",
+                details={"deadline_seconds": settings.TRANSLATION_PROVIDER_DEADLINE_SECONDS},
+            )
+            self._storage.save_provider_request_record(
+                provider_request_record(
+                    context,
+                    chunk_id=chunk_id,
+                    chunk_text=chunk,
+                    request=request,
+                    provider_key=provider.key,
+                    provider_model=provider_model,
+                    glossary_hash=glossary_hash,
+                    chapter_ids=chapter_ids,
+                    paragraph_ids=paragraph_ids,
+                    attempt_number=attempt_number,
+                    scheduler_policy=scheduler_policy,
+                    selection_reason=selection_reason,
+                    started_at=started_at,
+                    finished_at=finished_at,
+                    success=False,
+                    error=provider_error,
+                )
+            )
+            raise provider_error from exc
         except ProviderError as exc:
             if lease is not None:
                 error_code = exc.provider_error_code.value
@@ -645,6 +707,28 @@ class TranslateStage(PipelineStage):
                 ContributorCredentialService.mark_runtime_unhealthy(lease.credential_id, error_code="unknown")
             finished_at = utc_now_iso()
             provider_error = provider_error_from_generic(exc, provider_key=provider.key, provider_model=provider_model)
+            if lease is not None:
+                ContributorCredentialService.record_usage(
+                    credential_id=lease.credential_id,
+                    credential_owner_user_id=lease.credential_owner_user_id,
+                    requesting_user_id=context.metadata.get("requesting_user_id")
+                    if isinstance(context.metadata.get("requesting_user_id"), int)
+                    else None,
+                    provider_key=provider_key,
+                    provider_model=provider_model,
+                    request_id=context.metadata.get("request_id")
+                    if isinstance(context.metadata.get("request_id"), str)
+                    else None,
+                    job_id=context.job_id,
+                    activity_id=context.activity_id,
+                    status="failed",
+                    input_tokens=None,
+                    output_tokens=None,
+                    total_tokens=None,
+                    estimated_input_tokens=None,
+                    estimated_output_tokens=None,
+                    error_code=provider_error.provider_error_code.value,
+                )
             self._storage.save_provider_request_record(
                 provider_request_record(
                     context,
@@ -902,8 +986,21 @@ class TranslateStage(PipelineStage):
                 )
                 last_provider_error_code: str | None = None
                 last_provider_error_message: str | None = None
+                chunk_deadline = time.monotonic() + settings.TRANSLATION_PROVIDER_DEADLINE_SECONDS
                 try:
                     while True:
+                        if time.monotonic() >= chunk_deadline:
+                            timeout_error = ProviderError(
+                                ProviderErrorCode.TIMEOUT,
+                                provider_key=provider_key,
+                                provider_model=model,
+                                message="Translation provider deadline exceeded",
+                                details={
+                                    "deadline_seconds": settings.TRANSLATION_PROVIDER_DEADLINE_SECONDS,
+                                    "retry_budget_exhausted": True,
+                                },
+                            )
+                            raise timeout_error
                         async with scheduler_lock:
                             recorder = SchedulerDecisionRecorder(
                                 request_id=context.metadata.get("request_id"),
@@ -1143,6 +1240,7 @@ class TranslateStage(PipelineStage):
                                 chunk=chunk_text,
                                 request=request,
                                 glossary_hash=prompt_glossary_hash,
+                                deadline=chunk_deadline,
                             )
                         except ProviderError as exc:
                             last_provider_error_code = exc.provider_error_code.value
@@ -1187,6 +1285,32 @@ class TranslateStage(PipelineStage):
                                 ProviderErrorCode.TEMPORARY,
                                 ProviderErrorCode.TIMEOUT,
                             }:
+                                remaining = chunk_deadline - time.monotonic()
+                                if remaining <= 0:
+                                    raise ProviderError(
+                                        ProviderErrorCode.TIMEOUT,
+                                        provider_key=exc.provider_key,
+                                        provider_model=exc.provider_model,
+                                        message="Translation provider deadline exceeded",
+                                        details={
+                                            "deadline_seconds": settings.TRANSLATION_PROVIDER_DEADLINE_SECONDS,
+                                            "last_error_code": exc.provider_error_code.value,
+                                        },
+                                    ) from exc
+                                base_backoff = max(
+                                    0.0,
+                                    float(settings.TRANSLATION_PROVIDER_RETRY_BACKOFF_BASE_SECONDS),
+                                )
+                                max_backoff = max(
+                                    base_backoff,
+                                    float(settings.TRANSLATION_PROVIDER_RETRY_BACKOFF_MAX_SECONDS),
+                                )
+                                exponential = base_backoff * (2 ** max(0, attempt_number - 1))
+                                provider_retry_after = exc.retry_after_seconds or 0
+                                delay = min(max_backoff, max(exponential, float(provider_retry_after)))
+                                delay = min(delay, remaining)
+                                if delay > 0:
+                                    await asyncio.sleep(delay)
                                 continue
                             raise
 

@@ -4,6 +4,7 @@ import builtins
 import json
 import logging
 import threading
+import time
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -43,16 +44,24 @@ class UsageService:
         with _USAGE_LOCK, InterProcessFileLock(self.lock_path):
             self._data = self._load()
 
-    def record(self, entry: dict[str, Any]) -> None:
+    def record(self, entry: dict[str, Any], *, measure_write: bool = False) -> float | None:
         """Add a usage entry. The entry should already include timestamp."""
         with _USAGE_LOCK, InterProcessFileLock(self.lock_path):
             # Providers may be constructed independently from the runtime
             # container. Reload before appending so one instance cannot
             # overwrite another instance's accounting entries.
             self._data = self._load()
-            self._data.append(dict(entry))
+            stored_entry = dict(entry)
+            self._data.append(stored_entry)
             self._evict_if_needed()
+            started = time.perf_counter()
             self._persist()
+            if not measure_write:
+                return None
+            duration_ms = round(max(0.0, (time.perf_counter() - started) * 1000), 3)
+            stored_entry["usage_write_ms"] = duration_ms
+            self._persist()
+            return duration_ms
 
     def record_provider_request(
         self,
@@ -73,7 +82,11 @@ class UsageService:
         cache_status: str | None = None,
         error_code: str | None = None,
         request_made: bool = True,
-    ) -> None:
+        provider_wait_ms: float | None = None,
+        provider_execution_ms: float | None = None,
+        quota_reservation_ms: float | None = None,
+        usage_write_ms: float | None = None,
+    ) -> float | None:
         """Persist sanitized per-request accounting without prompt contents."""
 
         def _safe(value: Any, limit: int = 255) -> str | None:
@@ -82,7 +95,12 @@ class UsageService:
             text = str(value).strip()
             return text[:limit] or None
 
-        self.record(
+        def _duration(value: float | None) -> float | None:
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                return None
+            return round(max(0.0, float(value)), 3)
+
+        return self.record(
             {
                 "entry_type": "provider_request",
                 "timestamp": timestamp,
@@ -102,7 +120,12 @@ class UsageService:
                 "cache_status": _safe(cache_status, 32),
                 "error_code": _safe(error_code, 64),
                 "request_made": bool(request_made),
-            }
+                "provider_wait_ms": _duration(provider_wait_ms),
+                "provider_execution_ms": _duration(provider_execution_ms),
+                "quota_reservation_ms": _duration(quota_reservation_ms),
+                "usage_write_ms": _duration(usage_write_ms),
+            },
+            measure_write=True,
         )
 
     def provider_request_summary(self) -> dict[str, Any]:
