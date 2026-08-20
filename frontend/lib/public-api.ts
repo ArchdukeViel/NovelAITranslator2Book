@@ -190,6 +190,51 @@ export async function publicFetch(
   }
 }
 
+export type PublicServerFetchOptions = {
+  baseUrl: string;
+  host?: string;
+  revalidateSeconds?: number;
+  signal?: AbortSignal;
+};
+
+/**
+ * Fetch a public reader resource from a server-side Next.js boundary.
+ *
+ * Server prefetches use an internal reader base URL and optional Host header,
+ * so they cannot use the browser-oriented `publicFetch` base URL. Keeping the
+ * transport here preserves the single public API-client boundary while still
+ * allowing Next.js revalidation and caller-owned cancellation.
+ */
+export async function publicServerFetch(
+  path: string,
+  options: PublicServerFetchOptions,
+): Promise<Response> {
+  const headers = new Headers({ Accept: "application/json" });
+  if (options.host) headers.set("Host", options.host);
+
+  const response = await fetch(`${options.baseUrl.replace(/\/+$/, "")}${path}`, {
+    headers,
+    next:
+      options.revalidateSeconds === undefined
+        ? undefined
+        : { revalidate: options.revalidateSeconds },
+    signal: options.signal,
+  });
+  if (!response.ok) {
+    throw await responseError(response);
+  }
+  return response;
+}
+
+export async function publicServerGet<T>(
+  path: string,
+  options: PublicServerFetchOptions,
+): Promise<T> {
+  const response = await publicServerFetch(path, options);
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
+
 function createRequestSignal(callerSignal?: AbortSignal): {
   signal: AbortSignal;
   reason: PublicRequestAbortReason;

@@ -6,6 +6,7 @@ import type {
   PublicRankingResponse,
 } from "@/lib/public-types";
 import { catalogQueryKey, rankingQueryKey } from "@/lib/public-query-keys";
+import { publicServerGet } from "@/lib/public-api";
 
 /** The first home view needs enough rows for its visible rails, not the full catalog. */
 export const HOME_CATALOG_PARAMS = {
@@ -46,20 +47,15 @@ async function fetchServerPublicJson<T>(path: string): Promise<T> {
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), HOME_SERVER_PREFETCH_TIMEOUT_MS);
-  const headers = new Headers({ Accept: "application/json" });
   const backendHost = process.env.BACKEND_API_HOST?.trim() || process.env.SITE_DOMAIN?.trim();
-  if (backendHost) headers.set("Host", backendHost);
 
   try {
-    const response = await fetch(`${backendUrl.replace(/\/+$/, "")}${path}`, {
-      headers,
-      next: { revalidate: HOME_QUERY_STALE_TIME_MS / 1000 },
+    return await publicServerGet<T>(path, {
+      baseUrl: backendUrl,
+      host: backendHost,
+      revalidateSeconds: HOME_QUERY_STALE_TIME_MS / 1000,
       signal: controller.signal,
     });
-    if (!response.ok) {
-      throw new Error(`Server public API returned ${response.status}`);
-    }
-    return (await response.json()) as T;
   } finally {
     clearTimeout(timeoutId);
   }
