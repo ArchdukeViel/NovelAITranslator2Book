@@ -407,6 +407,8 @@ async def _run_workload(args: argparse.Namespace) -> dict[str, Any]:
     encoded_slug = quote(slug, safe="")
     chapter_path = f"/api/public/novels/{encoded_slug}/chapters/{quote(args.chapter_id, safe='')}"
     public_headers = {"User-Agent": "novelai-phase6-acceptance/1"}
+    if args.host_header:
+        public_headers["Host"] = args.host_header
     cookie = os.environ.get(args.session_cookie_env, "").strip() if args.session_cookie_env else ""
     csrf = os.environ.get(args.csrf_token_env, "").strip() if args.csrf_token_env else ""
     authenticated_headers = dict(public_headers)
@@ -532,6 +534,11 @@ def _parse_args() -> argparse.Namespace:
     workload.add_argument("--translation-samples", type=int, default=8)
     workload.add_argument("--translation-concurrency", type=int, default=2)
     workload.add_argument("--timeout-seconds", type=float, default=10.0)
+    workload.add_argument(
+        "--host-header",
+        default=None,
+        help="Optional Host header for internal proxy targets such as http://caddy.",
+    )
     workload.add_argument("--insecure", action="store_true")
     workload.add_argument("--session-cookie-env", default=None)
     workload.add_argument("--csrf-token-env", default=None)
