@@ -624,6 +624,14 @@ were removed and the base Compose stack was restored healthy. R2/S3 telemetry,
 production pooler/query-plan evidence, and worker/provider capacity remain
 open.
 
+The focused production-configuration validator suite passes `34` tests. The
+current direct-mode check still calculates only two web pools as
+`2 * (DB_POOL_SIZE + DB_MAX_OVERFLOW)`; it does not enforce the dedicated
+worker, one-shot migration, or operator reserve. This is a passing source test
+for the existing contract, not evidence that the deployment-wide budget is
+safe. No protected database mode, budget, secret, or runtime environment was
+changed during this continuation.
+
 ### Phase 6 gate status
 
 The harness, public route, seeded analytics, proxy-health, provider-failure,
