@@ -5,6 +5,7 @@
 **Phase 2 update:** 2026-08-20
 **Phase 3 update:** 2026-08-20
 **Phase 4 update:** 2026-08-20
+**Phase 6 update:** 2026-08-20
 **Baseline revision before Phase 6:** `0f9c82b` (`docs(perf): record phase five worker evidence`)
 **Scope:** browser-to-Caddy traffic, the public reader API, database access, object storage, Redis/queues, translation workers/providers, and the public Next.js client.
 
@@ -499,6 +500,41 @@ The rebuilt frontend has zero application console errors on all four checked
 routes, and the focused home suite passes 29 tests. The deprecated
 performance-entry warnings were emitted by the measurement script, not by the
 application.
+
+### Phase 6 continuation: current-image public rerun
+
+A fresh rerun used the current `novelai-admin:local`, `novelai-reader:local`,
+and `novelai-frontend:local` images with an isolated named filesystem volume.
+The namespaced fixture seeded 48 published novels, 1,428 projected chapters,
+and 1,200 privacy-safe authenticated/anonymous view events. Five samples per
+route at concurrency 8 returned `200` for every public route with zero client
+timeouts and zero transport errors. The measured p95 values were:
+
+| Route | p95 | Result |
+| --- | ---: | --- |
+| `/health/live` | 281.925 ms | `200` |
+| `/health/ready` | 19.736 ms | `200` |
+| `/api/public/catalog` | 1,348.466 ms | `200` |
+| public novel detail | 1,708.672 ms | `200` |
+| public chapter | 1,844.762 ms | `200` |
+| public search | 1,172.054 ms | `200` |
+| daily ranking | 30.516 ms | `200` |
+| weekly ranking | 24.123 ms | `200` |
+| monthly ranking | 28.468 ms | `200` |
+| `/home` | 400.261 ms | `200` |
+
+While the fixture was present, populated local PostgreSQL plans measured the
+projection catalog page at `1.528 ms` with 8 shared-hit blocks and 24 rows,
+and the weekly distinct-view ranking at `2.704 ms` with 22 shared-hit blocks
+and 10 rows. The ranking result therefore exercised seeded data rather than
+only the analytics-disabled empty path. Translation enqueue was intentionally
+skipped because no disposable authenticated owner session and CSRF token were
+supplied for this rerun; it does not add provider or worker-capacity evidence.
+The fixture cleanup returned zero remaining novels, chapters, and analytics
+events, the temporary volume and containers were removed, and the base Compose
+stack was restored healthy. These are current-image local measurements only;
+R2/S3 telemetry, production pooler/query-plan evidence, and representative
+worker/provider capacity remain open.
 
 ### Phase 6 gate status and remaining work
 

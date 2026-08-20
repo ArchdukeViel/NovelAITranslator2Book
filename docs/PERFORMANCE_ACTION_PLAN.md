@@ -2,6 +2,7 @@
 
 **Prepared:** 2026-08-19
 **Companion report:** `docs/PERFORMANCE_AUDIT.md`
+**Phase 6 update:** 2026-08-20
 **Objective:** make the deployed stack measurable, responsive, and resilient under public-read traffic while keeping the existing privacy, credential-isolation, ranking, and artifact-preservation contracts.
 
 ## How to use this plan
@@ -599,6 +600,29 @@ A second safe connection snapshot reported `max_connections=60`,
 direct-mode theoretical ceilings remain ten connections each for backend,
 reader, and worker against budget `20`, and the validator still checks only the
 two web pools.
+
+### Phase 6 continuation: current-image public rerun
+
+A fresh run used the current application images and an isolated named
+filesystem volume. It seeded 48 published novels, 1,428 projected chapters,
+and 1,200 privacy-safe authenticated/anonymous view events. Five samples per
+route at concurrency 8 returned `200` for every public route with zero
+timeouts or transport errors. The p95 values were `281.925 ms` for liveness,
+`19.736 ms` for readiness, `1,348.466 ms` for catalog, `1,708.672 ms` for
+detail, `1,844.762 ms` for chapter, `1,172.054 ms` for search, `30.516 ms`,
+`24.123 ms`, and `28.468 ms` for daily/weekly/monthly ranking, and
+`400.261 ms` for home.
+
+The populated local PostgreSQL plans measured the projection catalog page at
+`1.528 ms` with 8 shared-hit blocks and 24 rows, and weekly distinct-view
+ranking at `2.704 ms` with 22 shared-hit blocks and 10 rows. This closes the
+local seeded-query-plan gap for the current-image sample, not the production
+capacity gate. Translation enqueue was skipped because no disposable owner
+session and CSRF token were supplied. Cleanup verified zero remaining fixture
+novels, chapters, and analytics events; the temporary volume and containers
+were removed and the base Compose stack was restored healthy. R2/S3 telemetry,
+production pooler/query-plan evidence, and worker/provider capacity remain
+open.
 
 ### Phase 6 gate status
 
