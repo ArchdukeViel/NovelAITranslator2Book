@@ -558,10 +558,34 @@ migration, healthy production Compose recreation, route/Markdown audit, and
 Graphify refresh. The full backend command timed out after `904 s`; the full
 frontend Vitest command timed out after about `243 s`; and the contract subset
 still has two known public-reader projection fixture failures. Phase 5 is
-stopped for review before Phase 6: enqueue p95 under concurrent public probes
-and production-like provider load/failure behavior remain runtime acceptance
-work. The known projection fixture gap above remains open and is not hidden by
-this implementation.
+complete locally, while enqueue p95 under concurrent public probes and
+production-like provider load/failure behavior remain runtime acceptance work.
+The known projection fixture gap above remains open and is not hidden by this
+implementation.
+
+### Phase 6 acceptance: repeatable local sample, review gate open
+
+The Phase 6 harness (`backend/tests/run_phase6_acceptance.py`) seeded and
+cleaned a namespaced local fixture with 48 published novels, 1,428 chapters,
+and 1,200 authenticated/anonymous novel-view events. Concurrent Caddy-routed
+public samples returned `200` for health, catalog, detail, chapter, search,
+ranking, and home routes with zero transport timeouts/errors. Caddy recorded no
+`502`, connection-refused, or `5xx` events. A deliberately missing provider
+configuration produced a durable sanitized failed activity with the expected
+provider configuration error.
+
+Browser verification covered guest home/ranking/detail/chapter routes and a
+disposable authenticated public contribution page session. The first home
+browser run found a clock-dependent React hydration error; the page now uses a
+hydration-aware timestamp, and the rebuilt routes report zero application
+console errors. Focused home tests pass (`29 tests`).
+
+Phase 6 remains open for review. Owner-authenticated concurrent enqueue,
+controlled storage-delay injection, production-equivalent R2/S3 telemetry,
+PostgreSQL slowest-query/query-count evidence, and representative
+worker/provider capacity have not been claimed. Temporary Phase 6 fixture data
+and the isolated storage volume are cleaned up after each run; the base Compose
+stack remains the runtime baseline.
 
 ## Priority Recommendation
 

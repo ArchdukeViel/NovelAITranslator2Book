@@ -489,6 +489,66 @@ Record for every run:
 | Capacity | Aggregate database connections and provider concurrency are budgeted across all processes. |
 | Documentation | Architecture, configuration, operations, translation, privacy/legal, route inventory, and public design briefs describe the measured implementation. |
 
+## Phase 6 execution log - 2026-08-20
+
+**Status: repeatable local acceptance executed; stopped for review with the
+runtime gate open.**
+
+The new `backend/tests/run_phase6_acceptance.py` harness creates a namespaced,
+reversible local fixture and runs public traffic through Caddy. The executed
+fixture contained 48 published novels, 1,428 chapters, and 1,200 seeded
+authenticated/anonymous novel-view events. One novel contained 300 chapters;
+the remaining 47 contained 24 chapters each. The run used 20 samples per
+route at concurrency 8, with a warmup request before each route.
+
+Measured p50/p95/p99 results were:
+
+| Route | p50 | p95 | p99 | Status |
+| --- | ---: | ---: | ---: | --- |
+| liveness | 6.220 ms | 293.287 ms | 293.595 ms | 20 `200` |
+| readiness | 24.444 ms | 55.197 ms | 55.519 ms | 20 `200` |
+| catalog | 1,099.367 ms | 1,951.122 ms | 2,071.137 ms | 20 `200` |
+| detail | 1,541.714 ms | 1,829.161 ms | 2,007.659 ms | 20 `200` |
+| chapter | 2,312.717 ms | 3,053.049 ms | 3,801.925 ms | 20 `200` |
+| search | 1,970.445 ms | 2,660.428 ms | 2,765.409 ms | 20 `200` |
+| daily ranking | 117.895 ms | 292.914 ms | 322.484 ms | 20 `200` |
+| weekly ranking | 125.517 ms | 355.838 ms | 367.510 ms | 20 `200` |
+| monthly ranking | 149.160 ms | 298.064 ms | 343.298 ms | 20 `200` |
+| home | 259.181 ms | 659.779 ms | 668.904 ms | 20 `200` |
+
+The table values are ordered `p50 / p95 / p99`; all routes had zero client
+timeouts and zero transport errors. Caddy recorded zero `502`, connection
+refused, and `5xx` events during the sample. A deliberately missing provider
+configuration produced a durable failed activity with the expected sanitized
+provider configuration error and one retry. A disposable public authenticated
+browser session loaded `/account/contributions` and was deleted after the
+check.
+
+The browser sample measured home LCP `2,012 ms`, ranking LCP `196 ms`, detail
+LCP `1,288 ms`, chapter LCP `740 ms`, CLS `0` on all pages, and an 80-88 ms
+ranking-tab interaction event sample. The first home run exposed a hydration
+error caused by `Date.now()`-derived labels; the home page now uses a stable
+hydration-aware timestamp, and the rebuilt browser routes report zero
+application console errors. Focused home tests pass (`29 tests`).
+
+The following acceptance items were not safely claimed: owner-authenticated
+concurrent translation enqueue, controlled storage-delay injection,
+production R2/S3 call/latency/byte telemetry, PostgreSQL slowest-query and
+query-count statistics (`pg_stat_statements` was unavailable), and
+multi-worker/provider capacity. Public `/metrics` is not routed through Caddy;
+internal backend metrics were collected separately. The base Compose stack is
+restored after cleanup, and no Phase 6 overlay or fixture data is part of the
+deployment configuration.
+
+### Phase 6 gate status
+
+The harness, public route, seeded analytics, proxy-health, provider-failure,
+browser, hydration, focused frontend, and cleanup checks pass for the local
+sample. Phase 6 remains open for review because the missing fault-injection,
+owner enqueue, storage telemetry, database query-plan, and representative
+worker/provider evidence are capacity-signoff requirements. Do not convert
+these local p95 values into production SLOs.
+
 ## Suggested implementation sequence
 
 1. Complete Phase 0 and rerun the same runtime probes against the current revision. (Complete.)
@@ -501,6 +561,10 @@ Record for every run:
 8. Stabilize readiness, cache safe public projections, and decouple analytics writes. (Complete locally in Phase 4; percentile, populated-load, and shared-cache evidence remain open.)
 9. Review Phase 4 evidence and approve worker/provider isolation before starting Phase 5.
 10. Move translation to enqueue/worker-only execution, then replace file-backed activity/cache hot paths.
-11. Run the full load scenario and update the budgets using measured capacity.
+11. Run the repeatable Phase 6 load scenario and update the budgets using
+    measured capacity. (Local sample executed; review gate remains open.)
+12. Add safe owner-session and storage-delay fault-injection coverage, then
+    rerun Phase 6 with production-equivalent object storage and worker/provider
+    telemetry before launch sign-off.
 
 The first practical gate is not a frontend optimization: it is a current-revision deployment with a healthy reader, healthy readiness, current migrations, and a catalog request that cannot fall back to a serial object-storage scan.

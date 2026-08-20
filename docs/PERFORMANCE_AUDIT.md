@@ -5,12 +5,12 @@
 **Phase 2 update:** 2026-08-20
 **Phase 3 update:** 2026-08-20
 **Phase 4 update:** 2026-08-20
-**Repository revision:** `33c5c05` (`perf/debt-079d-public-path-hardening`)
+**Baseline revision before Phase 6:** `0f9c82b` (`docs(perf): record phase five worker evidence`)
 **Scope:** browser-to-Caddy traffic, the public reader API, database access, object storage, Redis/queues, translation workers/providers, and the public Next.js client.
 
 ## Executive conclusion
 
-The initial runtime was behind the checkout and allowed public storage waterfalls. Phase 0 rebuilt and deployed the current checkout locally; Phase 1 made the public catalog/detail metadata path projection-first; Phase 2 now server-hydrates the guest home view and bounds public browser reads. The current local runtime is healthy with the documented readiness override, but the live serving projection still needs storage-backed chapter reconciliation. The largest remaining risks are:
+The initial runtime was behind the checkout and allowed public storage waterfalls. Phase 0 rebuilt and deployed the current checkout locally; Phase 1 made the public catalog/detail metadata path projection-first; Phase 2 now server-hydrates the guest home view and bounds public browser reads. The current local runtime is healthy with the base Compose configuration, but the live serving projection still needs storage-backed chapter reconciliation. The largest remaining risks are:
 
 1. The original runtime was older than the checkout; the local Phase 0 deployment now uses freshly built local images, but those tags do not carry an immutable source revision.
 2. Live projection repair is storage-latency-bound: the bounded reconciliation attempt exceeded 180 seconds, and the current live database still has zero chapter projection rows. Public chapter metadata therefore returns a truthful unavailable response until maintenance succeeds.
@@ -19,8 +19,9 @@ The initial runtime was behind the checkout and allowed public storage waterfall
 5. Phase 3 now uses one joined ranking/projection query, composite analytics indexes, and a bounded process-local success cache. Focused tests prove distinct-viewer periods, chapter exclusion, bounded SQL work, and cache metrics; production-volume query plans, seeded latency, and cross-replica cache behavior remain unmeasured.
 6. Phase 4 now makes readiness cacheable/single-flight, removes the mutating storage probe from public readiness, adds bounded origin projection caching, and queues analytics writes off the request path. The local one-second probe configuration now passes without an override; populated analytics load and cross-replica cache behavior remain unmeasured.
 7. Translation work can occupy a web request for up to the configured 120-second timeout. Provider calls also use blocking SDK calls in worker threads, bounded concurrency, retries, and quota reservation, so provider latency can create sustained backpressure.
+8. Phase 6 now has a repeatable local fixture and measured public/browser sample. Catalog, detail, chapter, and search p95 values were still above the proposed warm budgets in this small local run; owner enqueue, controlled storage delay, production object-storage telemetry, and provider-capacity evidence remain unmeasured, so no runtime sign-off is claimed.
 
-The remaining release/operations problems are chapter-projection completeness, production-scale browser/ranking budgets, and multi-instance cache economics. Phase 4 source and Compose defaults now make public readiness cheap and cached, preserve a full owner diagnostic path, cache only safe public projections, and apply explicit bounded analytics loss semantics. The live local stack passed the one-second readiness configuration without a temporary override.
+The remaining release/operations problems are chapter-projection completeness, production-scale browser/ranking budgets, and multi-instance cache economics. Phase 4 source and Compose defaults now make public readiness cheap and cached, preserve a full owner diagnostic path, cache only safe public projections, and apply explicit bounded analytics loss semantics. The live local stack passed the base Compose readiness check without a temporary override.
 
 ## Evidence and confidence rules
 
@@ -353,6 +354,120 @@ The remaining Phase 4 fixture issue F-32 is still open. Its 21 stale public
 reader tests must be repaired against the published `Novel`/`Chapter`
 projection before the full backend-suite gate. The fixture will not be made to
 pass by restoring request-time storage fallback.
+
+## Phase 6 execution update - 2026-08-20
+
+Phase 6 was executed against an isolated local Compose overlay and is **stopped
+for review with the runtime gate open**. The source and acceptance harness are
+repeatable, but the run does not claim production-scale capacity or complete
+the provider/storage fault matrix. The temporary overlay, fixture rows, and
+temporary storage volume are removed after the run; the base Compose topology
+is restored.
+
+### Fixture and HTTP workload
+
+`backend/tests/run_phase6_acceptance.py` seeds and removes only the
+`phase6-load-` namespace. The run used 48 published novels, 1,428 projected
+chapters (one novel with 300 chapters and 47 novels with 24 chapters each),
+and 1,200 privacy-safe `public_novel.view` events across authenticated and
+anonymous viewer identities. Storage used an isolated filesystem volume for
+the run so the existing object-storage data was not touched. Each route had
+20 measured samples at concurrency 8 after a per-route warmup request.
+
+| Route | p50 | p95 | p99 | Result |
+| --- | ---: | ---: | ---: | --- |
+| `/health/live` | 6.220 ms | 293.287 ms | 293.595 ms | 20/20 `200` |
+| `/health/ready` | 24.444 ms | 55.197 ms | 55.519 ms | 20/20 `200` |
+| `/api/public/catalog` | 1,099.367 ms | 1,951.122 ms | 2,071.137 ms | 20/20 `200` |
+| public novel detail | 1,541.714 ms | 1,829.161 ms | 2,007.659 ms | 20/20 `200` |
+| public chapter | 2,312.717 ms | 3,053.049 ms | 3,801.925 ms | 20/20 `200` |
+| public search | 1,970.445 ms | 2,660.428 ms | 2,765.409 ms | 20/20 `200` |
+| daily ranking | 117.895 ms | 292.914 ms | 322.484 ms | 20/20 `200` |
+| weekly ranking | 125.517 ms | 355.838 ms | 367.510 ms | 20/20 `200` |
+| monthly ranking | 149.160 ms | 298.064 ms | 343.298 ms | 20/20 `200` |
+| `/home` | 259.181 ms | 659.779 ms | 668.904 ms | 20/20 `200` |
+
+All measured routes had zero client timeouts and zero transport errors. The
+workload's optional owner translation enqueue was skipped because no safe
+owner session/CSRF material was available to the harness. A disposable public
+`role=user` browser session did load `/account/contributions` with `200` and
+was removed after the check; this validates authenticated browser state, not
+owner translation enqueue.
+
+### Proxy, database, queue, and provider evidence
+
+- Caddy remained healthy during the run. Recent logs contained zero `502`
+  responses, zero connection-refused events, and zero `5xx` responses.
+- Backend `/metrics` was available only on the internal admin boundary;
+  public `/metrics` correctly returned `404` through Caddy. The backend sample
+  recorded readiness cache hits/misses and no provider calls because no owner
+  translation was submitted. Reader-process cache counters therefore cannot be
+  inferred from this endpoint.
+- PostgreSQL reported 22 active connections, pool size 5, no pool overflow
+  (`overflow=-5` means the pool was below its configured ceiling), and zero
+  checked-out connections at the sample point. The broad PostgreSQL
+  `waiting_connections` value included non-checkout wait events, so it is not
+  reported as pool checkout wait. `pg_stat_statements` query statistics were
+  unavailable in this local profile; slowest-query and query-count evidence
+  remain open.
+- Redis remained healthy, but the public workload created no queue keys and
+  did not materially exercise the translation worker. Worker CPU was idle in
+  this guest-only sample, so queue depth/job age/provider throughput are not
+  capacity evidence.
+- A namespaced durable activity with a deliberately missing provider
+  configuration failed truthfully with `status=failed`,
+  `provider_error_code=provider_configuration_error`, and `retry_count=1`.
+  No provider key, prompt, authorization header, or response secret was used.
+- No storage-delay fault was injected, and the filesystem overlay does not
+  represent production R2/S3 latency. Object-storage call count, operation
+  latency, bytes, and fallback count therefore remain unmeasured.
+
+### Browser evidence and hydration correction
+
+Playwright verified the guest `/home`, `/ranking?period=weekly`, seeded novel
+detail, and seeded chapter routes. The measured navigation/LCP/CLS samples
+were:
+
+| Page | Navigation end | LCP | INP sample | CLS | Resources / transfer |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `/home` | 1,388 ms | 2,012 ms | 80-88 ms tab click | 0 | 61 / 3,243,473 bytes |
+| `/ranking?period=weekly` | 169 ms | 196 ms | 80-88 ms tab click | 0 | 58 / 45,990 bytes |
+| novel detail | 174 ms | 1,288 ms | not exercised | 0 | 67 / 86,610 bytes |
+| chapter reader | 165 ms | 740 ms | not exercised | 0 | 27 / 16,552 bytes |
+
+The first browser run found React hydration error `#418` on `/home`. Source
+review identified `Date.now()` in relative-time and freshness rendering. The
+home page now uses a hydration-aware cached client timestamp via
+`useSyncExternalStore`; the initial server/client markup is deterministic.
+The rebuilt frontend has zero application console errors on all four checked
+routes, and the focused home suite passes 29 tests. The deprecated
+performance-entry warnings were emitted by the measurement script, not by the
+application.
+
+### Phase 6 gate status and remaining work
+
+The fixture, route, proxy-health, seeded-analytics, provider-failure,
+guest/authenticated-browser, hydration, and focused frontend gates pass for
+this local sample. The Phase 6 runtime gate remains open because it lacks an
+owner-authenticated concurrent enqueue run, a controlled storage-delay event,
+production object-storage telemetry, PostgreSQL query-plan statistics, and a
+representative multi-worker/provider workload. The existing F-32 stale
+projection fixture failures and the earlier full-suite timeouts also remain
+open; this run does not conceal them.
+
+### F-33 - P1 - Home clock-dependent labels caused a hydration mismatch
+
+**Evidence:** The first Phase 6 browser check reported React error `#418`.
+`frontend/app/(public)/home/page.tsx` used `Date.now()` during the initial
+render for relative timestamps and `New` badges.
+
+**Resolution:** The home page now supplies a stable server snapshot and a
+cached client timestamp through `useSyncExternalStore`. Lint, typecheck,
+focused home tests, production build, and the post-rebuild browser check pass
+with zero application console errors.
+
+**Confidence:** Source review, focused tests, production build, and browser
+verification.
 
 ## Public request waterfalls
 
