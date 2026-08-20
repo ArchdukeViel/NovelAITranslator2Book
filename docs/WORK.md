@@ -605,9 +605,12 @@ A safe base-database snapshot reported `max_connections=60`,
 `superuser_reserved_connections=3`, `active_connections=19`, and
 `application_connections=13`; `pg_stat_statements` is unavailable. Compose
 has backend, reader, and worker pool processes with ten-connection theoretical
-ceilings, but the configured aggregate budget is `20` and the current source
-validator checks only the two web pools. Worker/migration/operator reserve
-therefore remains an explicit Phase 6 review gate.
+ceilings, but that snapshot's configured aggregate budget was `20`. The source
+validator now enforces the explicit process-count and migration/readiness/
+operator-reserve calculation for direct/session mode. The protected base
+runtime was rebuilt and restarted with direct-mode budget `32`; the actual
+managed pooler and production storage/provider telemetry remain explicit Phase
+6 review gates.
 
 ### Phase 6 continuation: F-32 resolved
 

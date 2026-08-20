@@ -326,6 +326,22 @@ class AppSettings(BaseSettings):
     DB_CONNECTION_MODE: Literal["direct", "session", "transaction"] = "direct"
     DB_POOL_SIZE: int = Field(default=5, ge=1)
     DB_MAX_OVERFLOW: int = Field(default=5, ge=0)
+    DB_POOL_PROCESS_COUNT: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Number of long-lived processes/replicas that can own a configured "
+            "database pool in the deployment topology."
+        ),
+    )
+    DB_CONNECTION_RESERVE: int = Field(
+        default=2,
+        ge=0,
+        description=(
+            "Connections reserved for migration, readiness, and emergency "
+            "operator access outside long-lived application pool ceilings."
+        ),
+    )
     DB_CONNECTION_BUDGET: int = Field(default=20, ge=1)
     DB_POOL_TIMEOUT_SECONDS: int = Field(default=30, ge=1)
     DB_POOL_RECYCLE_SECONDS: int = Field(default=1800, ge=0)

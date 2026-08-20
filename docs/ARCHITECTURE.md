@@ -83,9 +83,14 @@ The production topology is the target.
     either long-running API process starts.
 - **Database**: managed PostgreSQL (Supabase / RDS / Cloud SQL) with:
   - TLS required, connection pool with transaction-level budgeting.
-  - `DB_CONNECTION_BUDGET` reviewed across backend, reader, worker, migration,
-    and operator processes; per-process pool settings alone do not prove the
-    aggregate managed-pooler limit.
+  - `DB_POOL_PROCESS_COUNT` explicitly counts long-lived backend, reader,
+    worker, and replica pool owners; `DB_CONNECTION_RESERVE` accounts for
+    migration, readiness, and operator access.
+  - In direct/session mode, startup fails closed unless
+    `DB_POOL_PROCESS_COUNT * (DB_POOL_SIZE + DB_MAX_OVERFLOW) +
+    DB_CONNECTION_RESERVE` fits within `DB_CONNECTION_BUDGET`. This source
+    guard does not replace verification against the managed pooler. Transaction
+    mode uses `NullPool` and still requires measured pooler concurrency review.
   - Dedicated direct-database role (not ``anon``/``authenticated``) used by
     backend SQLAlchemy connections. It owns application tables or has the
     audited privileges required to operate while RLS denies Data API roles.

@@ -23,9 +23,16 @@ web-process setting. Account for every backend, reader, worker, migration, and
 operator process using `DB_POOL_SIZE + DB_MAX_OVERFLOW`, then reserve capacity
 for readiness and emergency access. Verify the resulting aggregate against the
 managed pooler before changing `DB_CONNECTION_MODE` or scaling a service.
-The current startup validator covers the two web pools; verify the dedicated
-worker and any migration/operator processes separately until the deployment
-topology is explicitly budgeted.
+Set `DB_POOL_PROCESS_COUNT` to the number of long-lived pool owners and
+`DB_CONNECTION_RESERVE` to the migration/readiness/operator reserve. Direct and
+session startup now fails closed when
+`DB_POOL_PROCESS_COUNT * (DB_POOL_SIZE + DB_MAX_OVERFLOW) +
+DB_CONNECTION_RESERVE` exceeds `DB_CONNECTION_BUDGET`. The current split
+Compose example therefore requires `32` for three processes with pools of
+`5 + 5` and a reserve of `2`; change the count and budget together when
+scaling or changing topology. Transaction mode still requires direct pooler
+concurrency verification because `NullPool` removes the fixed SQLAlchemy pool
+ceiling rather than proving a managed-pooler limit.
 
 When a recognized SQLAlchemy pool/server-capacity failure occurs, the API
 returns `503 DATABASE_CAPACITY_EXHAUSTED` with sanitized retryable details.

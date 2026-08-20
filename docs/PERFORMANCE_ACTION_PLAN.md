@@ -582,9 +582,10 @@ A safe database snapshot from the restored base reported
 `active_connections=19`, and `application_connections=13`; `pg_stat_statements`
 is unavailable in this profile. Compose has three long-running pool processes
 (backend, reader, worker), each with a theoretical ten-connection ceiling,
-while the current budget is `20`. The source validator still accounts for only
-the two web pools, so the worker/migration/operator aggregate remains an
-operator review item rather than a proven invariant.
+while the snapshot's configured budget was `20`. At that checkpoint, the
+deployed validator still accounted for only the two web pools, so the
+worker/migration/operator aggregate remained an operator review item rather
+than a proven invariant.
 
 The rebuilt migration image then applied `d9f3a1b7c5e2 -> e5f7a9c1d3b2`; the
 live local schema contains the per-novel reader-policy projection and both
@@ -598,8 +599,8 @@ A second safe connection snapshot reported `max_connections=60`,
 `superuser_reserved_connections=3`, `active_connections=1`, and
 `application_connections=7`. Point-in-time activity is not a capacity proof:
 direct-mode theoretical ceilings remain ten connections each for backend,
-reader, and worker against budget `20`, and the validator still checks only the
-two web pools.
+reader, and worker against budget `20`; this remains historical runtime
+evidence, not a substitute for the explicit source guard or pooler verification.
 
 ### Phase 6 continuation: current-image public rerun
 
@@ -624,13 +625,18 @@ were removed and the base Compose stack was restored healthy. R2/S3 telemetry,
 production pooler/query-plan evidence, and worker/provider capacity remain
 open.
 
-The focused production-configuration validator suite passes `34` tests. The
-current direct-mode check still calculates only two web pools as
-`2 * (DB_POOL_SIZE + DB_MAX_OVERFLOW)`; it does not enforce the dedicated
-worker, one-shot migration, or operator reserve. This is a passing source test
-for the existing contract, not evidence that the deployment-wide budget is
-safe. No protected database mode, budget, secret, or runtime environment was
-changed during this continuation.
+The focused production-configuration validator suite now passes `38` tests.
+The source guard computes
+`DB_POOL_PROCESS_COUNT * (DB_POOL_SIZE + DB_MAX_OVERFLOW) +
+DB_CONNECTION_RESERVE` for direct/session mode and fails closed when it exceeds
+`DB_CONNECTION_BUDGET`. The committed split-topology examples use three pool
+owners, a two-connection reserve, and budget `32`. The rebuilt admin/worker and
+reader images now run in the local base Compose stack with that direct-mode
+budget. Configuration-only validation of the real production environment passes
+for both admin and reader roles with zero fatal issues and one backup warning;
+the real production database and object storage were not contacted by that
+probe. Production pooler verification, R2/S3 telemetry, and provider capacity
+remain open.
 
 ### Phase 6 gate status
 
@@ -638,11 +644,11 @@ The harness, public route, seeded analytics, proxy-health, provider-failure,
 browser, hydration, focused frontend, cleanup, controlled storage-delay, and
 classified-capacity-response checks pass for the local sample. Transaction
 mode provides a tested local mitigation for the direct-mode database-session
-failure, but the base runtime still needs an operator-approved
-connection-mode/budget change and production pooler verification. Phase 6
-remains open because production storage telemetry, database query-plan
-evidence, and representative worker/provider capacity remain sign-off
-requirements. Do not convert these local p95 values into production SLOs.
+failure, and the local base runtime now uses the explicit direct-mode budget of
+`32`. Production pooler verification remains open. Phase 6 remains open because
+production storage telemetry, database query-plan evidence, and representative
+worker/provider capacity remain sign-off requirements. Do not convert these
+local p95 values into production SLOs.
 
 ### Phase 6 continuation: projection-fixture and policy repair
 

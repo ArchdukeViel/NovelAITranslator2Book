@@ -26,6 +26,9 @@ def _make_prod_settings(**overrides: Any) -> AppSettings:
         HSTS_MAX_AGE_SECONDS=0,
         STORAGE_BACKEND="filesystem",
         DATABASE_URL="postgresql+psycopg://example.invalid/postgres",
+        DB_POOL_PROCESS_COUNT=3,
+        DB_CONNECTION_RESERVE=2,
+        DB_CONNECTION_BUDGET=32,
         DB_SSL_MODE="require",
         DATABASE_RESTORE_VERIFICATION_ENABLED=False,
     )
@@ -41,6 +44,30 @@ class TestProductionConfigValidator:
     def test_database_tls_is_required(self):
         result = validate_production_config(_make_prod_settings(DB_SSL_MODE="prefer"))
         assert any(i.category == "database" for i in result.fatals)
+
+    def test_database_pool_topology_must_fit_budget(self):
+        result = validate_production_config(_make_prod_settings(DB_CONNECTION_BUDGET=31))
+        assert any("Aggregate database pool ceiling" in i.message for i in result.fatals)
+
+    def test_database_pool_topology_can_declare_smaller_deployment(self):
+        result = validate_production_config(
+            _make_prod_settings(
+                DB_POOL_PROCESS_COUNT=2,
+                DB_CONNECTION_RESERVE=2,
+                DB_CONNECTION_BUDGET=22,
+            )
+        )
+        assert not any(i.category == "database" for i in result.fatals)
+
+    def test_database_connection_reserve_must_fit_budget(self):
+        result = validate_production_config(_make_prod_settings(DB_CONNECTION_RESERVE=33, DB_CONNECTION_BUDGET=32))
+        assert any("DB_CONNECTION_RESERVE" in i.message for i in result.fatals)
+
+    def test_transaction_mode_skips_fixed_pool_ceiling(self):
+        result = validate_production_config(
+            _make_prod_settings(DB_CONNECTION_MODE="transaction", DB_CONNECTION_BUDGET=20)
+        )
+        assert not any(i.category == "database" for i in result.fatals)
 
     def test_non_production_env_fatal(self):
         result = validate_production_config(_make_prod_settings(ENV="development"))

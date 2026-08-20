@@ -443,9 +443,10 @@ transport errors. A disposable public `role=user` browser session also loaded
   `application_connections=13`; `pg_stat_statements` is not installed in this
   profile. Compose still has three long-running SQLAlchemy pool processes
   (backend, reader, worker), each configured for a theoretical ten connections,
-  while the current budget is `20`. The production validator currently checks
-  only the two web pools, so worker/migration/operator reserve is a documented
-  review item rather than an enforced aggregate invariant.
+  while the snapshot's configured budget was `20`. At that checkpoint, the
+  deployed validator checked only the two web pools, so worker/migration/
+  operator reserve was a documented review item rather than an enforced
+  aggregate invariant.
 - The rebuilt migration image then applied `d9f3a1b7c5e2 -> e5f7a9c1d3b2`.
   The live local schema contains `novels.public_reader_unavailable_policy` and
   both ranking indexes. Sanitized `EXPLAIN (ANALYZE, BUFFERS)` samples measured
@@ -458,8 +459,9 @@ transport errors. A disposable public `role=user` browser session also loaded
   `superuser_reserved_connections=3`, `active_connections=1`, and
   `application_connections=7`. Point-in-time activity does not change the
   capacity conclusion: direct-mode theoretical ceilings remain ten each for
-  backend, reader, and worker against budget `20`, while the validator still
-  checks only the two web pools.
+  backend, reader, and worker against budget `20`; this remains historical
+  runtime evidence, not a substitute for the explicit source guard or pooler
+  verification.
 - Redis remained healthy, but the public workload created no queue keys and
   did not materially exercise the translation worker. Worker CPU was idle in
   this guest-only sample, so queue depth/job age/provider throughput are not
@@ -536,13 +538,18 @@ stack was restored healthy. These are current-image local measurements only;
 R2/S3 telemetry, production pooler/query-plan evidence, and representative
 worker/provider capacity remain open.
 
-The focused production-configuration validator suite passes `34` tests. Its
-current direct-mode check still calculates only two web pools as
-`2 * (DB_POOL_SIZE + DB_MAX_OVERFLOW)`; it does not enforce the dedicated
-worker, one-shot migration, or operator reserve. This is a passing source test
-for the existing contract, not evidence that the deployment-wide budget is
-safe. No protected database mode, budget, secret, or runtime environment was
-changed during this continuation.
+The focused production-configuration validator suite now passes `38` tests.
+The source guard computes
+`DB_POOL_PROCESS_COUNT * (DB_POOL_SIZE + DB_MAX_OVERFLOW) +
+DB_CONNECTION_RESERVE` for direct/session mode and fails closed when it exceeds
+`DB_CONNECTION_BUDGET`. The committed split-topology examples use three pool
+owners, a two-connection reserve, and budget `32`. The rebuilt admin/worker and
+reader images now run in the local base Compose stack with that direct-mode
+budget. Configuration-only validation of the real production environment passes
+for both admin and reader roles with zero fatal issues and one backup warning;
+the real production database and object storage were not contacted by that
+probe. Production pooler verification, R2/S3 telemetry, and provider capacity
+remain open.
 
 ### Phase 6 gate status and remaining work
 
@@ -550,10 +557,11 @@ The fixture, route, proxy-health, seeded-analytics, provider-failure,
 guest/authenticated-browser, hydration, focused frontend, controlled
 storage-delay, and classified-capacity-response gates pass for this local
 sample. The protected base runtime still needs an operator-approved
-connection-mode/budget change and production pooler verification. The Phase 6
-runtime gate remains open because production object-storage telemetry,
-PostgreSQL query-plan statistics, and representative multi-worker/provider
-capacity evidence are still missing. The earlier full-suite timeouts remain
+connection-mode/budget change and production pooler verification. The local
+base budget is now `32` for three pool owners plus reserve; the Phase 6 runtime
+gate remains open because production object-storage telemetry, PostgreSQL
+query-plan statistics, and representative multi-worker/provider capacity
+evidence are still missing. The earlier full-suite timeouts remain
 open; the former F-32 projection-fixture failures were repaired in the current
 continuation and are no longer counted as current failures.
 
