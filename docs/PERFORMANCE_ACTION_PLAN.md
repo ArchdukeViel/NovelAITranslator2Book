@@ -585,6 +585,21 @@ while the current budget is `20`. The source validator still accounts for only
 the two web pools, so the worker/migration/operator aggregate remains an
 operator review item rather than a proven invariant.
 
+The rebuilt migration image then applied `d9f3a1b7c5e2 -> e5f7a9c1d3b2`; the
+live local schema contains the per-novel reader-policy projection and both
+ranking indexes. Sanitized `EXPLAIN (ANALYZE, BUFFERS)` samples measured the
+projection catalog page at `0.041 ms` with three shared-hit blocks and the
+weekly distinct-view ranking at `1.36 ms` with ten shared-hit blocks. Analytics
+is disabled and the ranking result was empty, so this validates query shape and
+the honest empty path only, not production-volume ranking capacity.
+
+A second safe connection snapshot reported `max_connections=60`,
+`superuser_reserved_connections=3`, `active_connections=1`, and
+`application_connections=7`. Point-in-time activity is not a capacity proof:
+direct-mode theoretical ceilings remain ten connections each for backend,
+reader, and worker against budget `20`, and the validator still checks only the
+two web pools.
+
 ### Phase 6 gate status
 
 The harness, public route, seeded analytics, proxy-health, provider-failure,

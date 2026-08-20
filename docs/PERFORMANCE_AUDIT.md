@@ -445,6 +445,20 @@ transport errors. A disposable public `role=user` browser session also loaded
   while the current budget is `20`. The production validator currently checks
   only the two web pools, so worker/migration/operator reserve is a documented
   review item rather than an enforced aggregate invariant.
+- The rebuilt migration image then applied `d9f3a1b7c5e2 -> e5f7a9c1d3b2`.
+  The live local schema contains `novels.public_reader_unavailable_policy` and
+  both ranking indexes. Sanitized `EXPLAIN (ANALYZE, BUFFERS)` samples measured
+  the projection catalog page at `0.041 ms` with three shared-hit blocks and
+  two rows, and the weekly distinct-view ranking at `1.36 ms` with ten
+  shared-hit blocks and zero rows. Analytics is disabled and the ranking result
+  was empty, so this is query-shape and honest-empty-path evidence, not
+  populated production ranking capacity.
+- A second safe connection snapshot reported `max_connections=60`,
+  `superuser_reserved_connections=3`, `active_connections=1`, and
+  `application_connections=7`. Point-in-time activity does not change the
+  capacity conclusion: direct-mode theoretical ceilings remain ten each for
+  backend, reader, and worker against budget `20`, while the validator still
+  checks only the two web pools.
 - Redis remained healthy, but the public workload created no queue keys and
   did not materially exercise the translation worker. Worker CPU was idle in
   this guest-only sample, so queue depth/job age/provider throughput are not
