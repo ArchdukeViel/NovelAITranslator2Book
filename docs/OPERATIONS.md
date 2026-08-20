@@ -23,6 +23,9 @@ web-process setting. Account for every backend, reader, worker, migration, and
 operator process using `DB_POOL_SIZE + DB_MAX_OVERFLOW`, then reserve capacity
 for readiness and emergency access. Verify the resulting aggregate against the
 managed pooler before changing `DB_CONNECTION_MODE` or scaling a service.
+The current startup validator covers the two web pools; verify the dedicated
+worker and any migration/operator processes separately until the deployment
+topology is explicitly budgeted.
 
 When a recognized SQLAlchemy pool/server-capacity failure occurs, the API
 returns `503 DATABASE_CAPACITY_EXHAUSTED` with sanitized retryable details.

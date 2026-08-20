@@ -601,6 +601,14 @@ and three configured `429` responses and zero capacity `500`s. This resolves
 the unhandled application error path, but deployment-wide pooler budgeting and
 production storage/query/provider evidence remain open.
 
+A safe base-database snapshot reported `max_connections=60`,
+`superuser_reserved_connections=3`, `active_connections=19`, and
+`application_connections=13`; `pg_stat_statements` is unavailable. Compose
+has backend, reader, and worker pool processes with ten-connection theoretical
+ceilings, but the configured aggregate budget is `20` and the current source
+validator checks only the two web pools. Worker/migration/operator reserve
+therefore remains an explicit Phase 6 review gate.
+
 ## Priority Recommendation
 
 1. `OWN-001` — assign owners (unblocks every evidence record).

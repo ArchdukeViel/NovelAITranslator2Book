@@ -576,6 +576,15 @@ internal backend metrics were collected separately. The base Compose stack is
 restored after cleanup, and no Phase 6 overlay or fixture data is part of the
 deployment configuration.
 
+A safe database snapshot from the restored base reported
+`max_connections=60`, `superuser_reserved_connections=3`,
+`active_connections=19`, and `application_connections=13`; `pg_stat_statements`
+is unavailable in this profile. Compose has three long-running pool processes
+(backend, reader, worker), each with a theoretical ten-connection ceiling,
+while the current budget is `20`. The source validator still accounts for only
+the two web pools, so the worker/migration/operator aggregate remains an
+operator review item rather than a proven invariant.
+
 ### Phase 6 gate status
 
 The harness, public route, seeded analytics, proxy-health, provider-failure,

@@ -439,6 +439,14 @@ transport errors. A disposable public `role=user` browser session also loaded
   configured translation-limit `429` responses, with zero capacity `500`s.
   Unrelated database errors remain generic `500` responses. Deployment-wide
   pooler budget verification is still open.
+- A later safe database snapshot reported `max_connections=60`,
+  `superuser_reserved_connections=3`, `active_connections=19`, and
+  `application_connections=13`; `pg_stat_statements` is not installed in this
+  profile. Compose still has three long-running SQLAlchemy pool processes
+  (backend, reader, worker), each configured for a theoretical ten connections,
+  while the current budget is `20`. The production validator currently checks
+  only the two web pools, so worker/migration/operator reserve is a documented
+  review item rather than an enforced aggregate invariant.
 - Redis remained healthy, but the public workload created no queue keys and
   did not materially exercise the translation worker. Worker CPU was idle in
   this guest-only sample, so queue depth/job age/provider throughput are not

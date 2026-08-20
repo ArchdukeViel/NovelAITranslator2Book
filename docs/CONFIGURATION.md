@@ -97,7 +97,9 @@ duration and renewal; do not tune lease below realistic job duration without tes
   worker, migration, and operator processes, while reserving capacity for
   readiness and emergency access. The Phase 6 local burst showed that a
   nominal per-process setting is not production pooler evidence; verify the
-  aggregate budget against the target pooler before launch.
+  aggregate budget against the target pooler before launch. The current
+  production validator checks the two web pools; worker, migration, and
+  operator-process capacity still requires explicit deployment review.
 - `WEB_RATE_LIMITER_BACKEND=memory|redis`: memory only for single instance.
 - `REDIS_URL`: shared rate limiting and distributed queue where enabled.
 - `TRUSTED_PROXY_CIDRS`: exact reverse-proxy CIDRs allowed to supply
