@@ -126,30 +126,42 @@ def e2e_test_client(
     # glossary.py aliases it as ``_session_scope``
     monkeypatch_session.setattr(_glossary_svc, "_session_scope", _patched_session_scope)
 
-    # Step 3: Build the noop refresh and patch on catalog_service
-    # BEFORE any module that imports it from module level.
-    def _noop_refresh(*args, **kwargs):
-        return True
+    # Step 3: Keep projection refreshes inside the isolated in-memory
+    # database. The production helper's default session-scope factory was
+    # captured before the fixture patch, so pass an explicitly scoped test
+    # session instead of allowing an e2e write to touch PostgreSQL.
+    _real_refresh = _catalog_svc.safely_refresh_catalog_projection_after_storage_write
+
+    def _e2e_refresh(
+        novel_id: str,
+        storage: Any,
+        *,
+        context: str,
+        session: Session | None = None,
+    ) -> bool:
+        if session is not None:
+            return _real_refresh(novel_id, storage, context=context, session=session)
+        with _patched_session_scope() as scoped_session:
+            return _real_refresh(novel_id, storage, context=context, session=scoped_session)
 
     monkeypatch_session.setattr(
         _catalog_svc,
         "safely_refresh_catalog_projection_after_storage_write",
-        _noop_refresh,
+        _e2e_refresh,
     )
 
     # Step 4: Import novel_orchestration_service — its module-level
-    # ``from catalog_service import safely_refresh…`` catches the noop.
+    # ``from catalog_service import safely_refresh…`` catches the wrapper.
     import novelai.services.novel_orchestration_service as _orch_svc
 
     monkeypatch_session.setattr(
         _orch_svc,
         "safely_refresh_catalog_projection_after_storage_write",
-        _noop_refresh,
+        _e2e_refresh,
     )
 
-    # Step 5: Propagate the safely_refresh noop to every other module
-    # that imports it (crawler, translation already done via noop above
-    # but we re-assert here).
+    # Step 5: Propagate the isolated safely_refresh wrapper to every other
+    # module that imports it (crawler and translation are reasserted here).
     import novelai.services.backup_manager as _backup
     import novelai.services.checkpoint_manager as _checkpoint
     import novelai.services.editor_service as _editor_service
@@ -167,7 +179,7 @@ def e2e_test_client(
         monkeypatch_session.setattr(
             _mod,
             "safely_refresh_catalog_projection_after_storage_write",
-            _noop_refresh,
+            _e2e_refresh,
         )
 
     # Step 6: Patch translation model policy to include the mock provider.
