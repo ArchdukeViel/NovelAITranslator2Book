@@ -63,3 +63,41 @@ async def test_resume_onboarding_returns_queued_activity(tmp_path) -> None:
     assert queued is not None
     assert queued["kind"] == "chapters"
     orchestrator.scrape_chapters.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_translate_novel_enqueues_and_deduplicates_activity(tmp_path) -> None:
+    storage = StorageService(tmp_path / "storage")
+    storage.save_metadata("novel-1", {"source_key": "source", "chapters": [{"id": "1"}]})
+    activity_log = ActivityQueueService(tmp_path / "jobs")
+    orchestrator = MagicMock()
+    orchestrator.translate_chapters = AsyncMock()
+    service = OperationsService(orchestrator=orchestrator, activity_log=activity_log, storage=storage)
+
+    first = await service.translate_novel(
+        novel_id="novel-1",
+        source_key="source",
+        chapters="all",
+        provider_key="gemini",
+        provider_model="model",
+        force=False,
+        source_language="ja",
+        target_language="en",
+        idempotency_key="translate-request-1",
+    )
+    second = await service.translate_novel(
+        novel_id="novel-1",
+        source_key="source",
+        chapters="all",
+        provider_key="gemini",
+        provider_model="model",
+        force=False,
+        source_language="ja",
+        target_language="en",
+        idempotency_key="translate-request-1",
+    )
+
+    assert first["status"] == "pending"
+    assert second["activity_id"] == first["activity_id"]
+    assert len(activity_log.list_activity(activity_type="translation")) == 1
+    orchestrator.translate_chapters.assert_not_awaited()

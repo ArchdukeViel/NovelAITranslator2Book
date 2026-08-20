@@ -9,6 +9,7 @@ from novelai.config.settings import settings
 from novelai.services.gemini_request_control import (
     GeminiQuotaController,
     QuotaRejection,
+    QuotaReservation,
     estimate_gemini_tokens,
 )
 
@@ -61,6 +62,20 @@ def test_sixteenth_request_is_rejected_by_rpm(tmp_path: Path, quota_limits: None
 
     clock.advance(seconds=61)
     assert not isinstance(_reserve(controller), QuotaRejection)
+
+
+def test_concurrency_reservation_is_released_after_reconcile(tmp_path: Path, quota_limits: None) -> None:
+    controller = GeminiQuotaController(tmp_path, concurrency_limit=1)
+    first = _reserve(controller)
+    assert isinstance(first, QuotaReservation)
+
+    rejected = _reserve(controller)
+    assert isinstance(rejected, QuotaRejection)
+    assert rejected.dimension == "concurrency"
+
+    controller.reconcile(first, input_tokens=1, output_tokens=1, success=True)
+    second = _reserve(controller)
+    assert isinstance(second, QuotaReservation)
 
 
 def test_tpm_exhaustion_uses_estimate_before_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

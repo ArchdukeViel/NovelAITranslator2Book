@@ -79,8 +79,8 @@ def _refresh_catalog(client: TestClient, auth: dict[str, str], novel_id: str = N
     assert resp.status_code == 200, f"Refresh catalog failed: {resp.status_code} {resp.text}"
 
 
-def _translate_novel(client: TestClient, auth: dict[str, str], novel_id: str = NOVEL_ID) -> None:
-    """Translate all chapters."""
+def _translate_novel(client: TestClient, auth: dict[str, str], novel_id: str = NOVEL_ID) -> dict[str, object]:
+    """Queue all chapters, then execute the activity through the worker seam."""
     resp = client.post(
         f"/api/admin/novels/{novel_id}/translate",
         json={
@@ -95,8 +95,11 @@ def _translate_novel(client: TestClient, auth: dict[str, str], novel_id: str = N
         },
         headers=auth,
     )
-    # Accept 200 (full) or 207 (partial) — both mean translation completed
-    assert resp.status_code in (200, 207), f"Translate failed: {resp.status_code} {resp.text}"
+    assert resp.status_code == 202, f"Translate enqueue failed: {resp.status_code} {resp.text}"
+    activity_id = resp.json()["activity_id"]
+    run_resp = client.post(f"/api/admin/activity/{activity_id}/run", headers=auth)
+    assert run_resp.status_code == 200, f"Translation worker failed: {run_resp.status_code} {run_resp.text}"
+    return run_resp.json()
 
 
 def _publish_novel(client: TestClient, auth: dict[str, str], novel_id: str = NOVEL_ID) -> None:
@@ -204,7 +207,8 @@ def test_pipeline_handles_provider_failure(
     # Inject failure so the second chunk translation fails
     mock_provider._fail_at = 2
 
-    # Translate — should still return 200 (partial success)
+    # Translate — enqueue and execute; partial provider outcomes are recorded
+    # on the durable activity rather than returned from the enqueue request.
     resp = client.post(
         f"/api/admin/novels/{nid}/translate",
         json={
@@ -219,9 +223,10 @@ def test_pipeline_handles_provider_failure(
         },
         headers=auth,
     )
-    # The endpoint may return 502 (PROVIDER_ERROR bubbles up through error handler)
-    # or 200/207 (if partial success reporting is active).
-    assert resp.status_code in (200, 207, 502), f"Translate failed: {resp.status_code} {resp.text}"
+    assert resp.status_code == 202, f"Translate enqueue failed: {resp.status_code} {resp.text}"
+    run_resp = client.post(f"/api/admin/activity/{resp.json()['activity_id']}/run", headers=auth)
+    assert run_resp.status_code == 200, f"Translation worker failed: {run_resp.status_code} {run_resp.text}"
+    assert run_resp.json()["status"] in ("completed", "failed")
 
     # At least one translation call was made before/despite the failure
     assert mock_provider.get_call_count() >= 1
@@ -268,7 +273,8 @@ def test_pipeline_idempotent_retranslate(
         },
         headers=auth,
     )
-    assert resp.status_code == 200, f"Second translate failed: {resp.status_code} {resp.text}"
+    assert resp.status_code == 202, f"Second translate enqueue failed: {resp.status_code} {resp.text}"
+    assert resp.json()["status"] == "completed"
 
     # No new calls should have been made (already-translated chunks skip)
     assert mock_provider.get_call_count() == first_count, (
@@ -379,8 +385,8 @@ def test_pipeline_empty_novel(
     )
     assert resp.status_code == 200, f"Refresh catalog failed: {resp.status_code} {resp.text}"
 
-    # Translate — metadata exists (create_novel saves it), but no chapters.
-    # Preflight fails with empty_selection → TRANSLATION_PREFLIGHT_FAILED (400).
+    # Translate — metadata exists, so the request is accepted. The worker
+    # records the empty-selection failure on the activity.
     resp = client.post(
         f"/api/admin/novels/{empty_id}/translate",
         json={
@@ -394,9 +400,10 @@ def test_pipeline_empty_novel(
         },
         headers=auth,
     )
-    assert resp.status_code in (400, 404, 429), (
-        f"Translate empty novel should fail, got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code == 202, f"Translate enqueue failed: {resp.status_code}: {resp.text}"
+    run_resp = client.post(f"/api/admin/activity/{resp.json()['activity_id']}/run", headers=auth)
+    assert run_resp.status_code == 200, f"Empty translation worker failed: {run_resp.status_code} {run_resp.text}"
+    assert run_resp.json()["status"] == "failed"
 
     # Publish — empty novel has no translated chapters, so publish returns 400
     resp = client.post(
