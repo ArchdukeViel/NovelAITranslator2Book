@@ -704,6 +704,17 @@ not define `SITE_DOMAIN`, so Caddy uses its documented `localhost` fallback;
 this is local routing evidence only. Supply and recheck the production
 hostname before public launch.
 
+The final Compose recheck found the `worker` service restarting with exit code
+`1` (`23` restarts observed). It runs as `novelai` UID/GID `100:101`, but the
+mounted `/app/storage/novel_library` root is `root:root` mode `755`, so the
+worker cannot create `activity_log` or temporary provider credential-hydration
+files. Exactly three current Novel AI application images remain; no older
+application-tagged image was removed or retained. No storage contents or
+permissions were changed during this audit. Phase 6 runtime sign-off is open
+until a writable `NOVEL_LIBRARY_HOST_DIR` is supplied or the mounted directory
+is granted to the container user, followed by worker recreation and a health
+recheck.
+
 ## Suggested implementation sequence
 
 1. Complete Phase 0 and rerun the same runtime probes against the current revision. (Complete.)

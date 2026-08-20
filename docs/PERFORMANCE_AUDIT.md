@@ -611,6 +611,18 @@ so Caddy correctly uses its documented `localhost` fallback. This proves the
 local proxy path only; a production hostname must be supplied and rechecked
 before public launch.
 
+The final Compose recheck found the `worker` service restarting with exit code
+`1` (`23` restarts observed). Its container runs as `novelai` UID/GID `100:101`,
+while the mounted `/app/storage/novel_library` root is `root:root` mode `755`;
+the worker therefore cannot create `activity_log` or its temporary provider
+credential-hydration files. The three current Novel AI application images are
+present with no older application-tagged image, so this is a storage-mount
+ownership gate rather than an image-retention problem. No storage contents or
+permissions were changed during this audit. Phase 6 runtime sign-off remains
+open until the operator supplies a writable `NOVEL_LIBRARY_HOST_DIR` or grants
+the mounted directory to the container user, then recreates and rechecks the
+worker.
+
 ### F-33 - P1 - Home clock-dependent labels caused a hydration mismatch
 
 **Evidence:** The first Phase 6 browser check reported React error `#418`.
