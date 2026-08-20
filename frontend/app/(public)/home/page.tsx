@@ -1,6 +1,10 @@
 "use client";
 
-import { useDeferredValue, useState } from "react";
+import {
+  useDeferredValue,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -66,11 +70,15 @@ function readableChapterHref(novel: PublicNovelSummary): string | null {
   return null;
 }
 
-function relativeTime(iso: string | null | undefined): string | null {
+function relativeTime(
+  iso: string | null | undefined,
+  nowMs: number | null,
+): string | null {
   if (!iso) return null;
+  if (nowMs === null) return null;
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return null;
-  const diffMs = Date.now() - then;
+  const diffMs = nowMs - then;
   if (diffMs < 0) return "just now";
   const minutes = Math.floor(diffMs / 60000);
   if (minutes < 1) return "just now";
@@ -93,12 +101,14 @@ function chapterLabel(number: number | null | undefined): string | null {
 /** Honest freshness flag derived from the real added_at catalog field. */
 function isNewlyAdded(
   iso: string | null | undefined,
+  nowMs: number | null,
   withinDays = 14,
 ): boolean {
   if (!iso) return false;
+  if (nowMs === null) return false;
   const added = new Date(iso).getTime();
   if (Number.isNaN(added)) return false;
-  return Date.now() - added <= withinDays * 24 * 60 * 60 * 1000;
+  return nowMs - added <= withinDays * 24 * 60 * 60 * 1000;
 }
 
 function NewBadge() {
@@ -120,13 +130,26 @@ const CARD_SURFACE = "bg-card shadow-card dark:ring-1 dark:ring-white/5";
 const CARD_LIFT =
   "transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-raised";
 
+const CLIENT_NOW_MS = Date.now();
+const EMPTY_SUBSCRIBE = () => () => {};
+
+function useHydratedNow(): number | null {
+  return useSyncExternalStore(
+    EMPTY_SUBSCRIBE,
+    () => CLIENT_NOW_MS,
+    () => null,
+  );
+}
+
 /* ------------------------------- rail novel card ------------------------------ */
 
 function RailCard({
   novel,
   lastReadChapter,
+  nowMs,
 }: {
   novel: PublicNovelSummary;
+  nowMs: number | null;
   lastReadChapter?: {
     chapter_number?: number | null;
     chapter_id?: string | null;
@@ -140,7 +163,8 @@ function RailCard({
     <article role="listitem" className="w-44 shrink-0 snap-start">
       <Link href={targetHref} className="group block">
         <div className="relative overflow-hidden rounded-md bg-card p-1.5 shadow-card transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-raised hover:ring-1 hover:ring-primary/40">
-          {isNewlyAdded(novel.added_at) && !lastReadChapter && <NewBadge />}
+          {isNewlyAdded(novel.added_at, nowMs) &&
+            !lastReadChapter && <NewBadge />}
           {lastReadChapter && (
             <span className="absolute left-2 top-2 z-10 rounded-sm bg-primary px-1.5 py-0.5 font-metadata text-[10px] font-bold uppercase tracking-wider text-primary-foreground shadow-sm">
               {lastReadChapter.chapter_number
@@ -244,8 +268,14 @@ function ImageBannerTile({
 
 /* ------------------------------ recent update item ---------------------------- */
 
-function RecentUpdateItem({ novel }: { novel: PublicNovelSummary }) {
-  const when = relativeTime(latestActivityAt(novel));
+function RecentUpdateItem({
+  novel,
+  nowMs,
+}: {
+  novel: PublicNovelSummary;
+  nowMs: number | null;
+}) {
+  const when = relativeTime(latestActivityAt(novel), nowMs);
   const chapterNum = novel.latest_chapter_number;
   const chapterTitle = novel.latest_chapter_title?.trim() || null;
   const chapterText =
@@ -429,6 +459,7 @@ export default function HomePage() {
   const [rankingTab, setRankingTab] = useState<"daily" | "weekly" | "monthly">(
     HOME_RANKING_PERIOD,
   );
+  const nowMs = useHydratedNow();
   const rankingQuery = usePublicRankings(rankingTab, HOME_RANKING_LIMIT);
   const trendingQuery = usePublicRankings(HOME_RANKING_PERIOD, HOME_RANKING_LIMIT, {
     enabled: rankingTab !== HOME_RANKING_PERIOD,
@@ -687,6 +718,7 @@ export default function HomePage() {
                 <RailCard
                   key={novel.novel_id}
                   novel={novel}
+                  nowMs={nowMs}
                   lastReadChapter={historyBySlug.get(novel.slug)}
                 />
               ))}
@@ -796,7 +828,7 @@ export default function HomePage() {
                     )}
                   >
                     <div className="relative aspect-[2/3] w-full overflow-hidden rounded-sm bg-muted">
-                      {isNewlyAdded(novel.added_at) && <NewBadge />}
+                      {isNewlyAdded(novel.added_at, nowMs) && <NewBadge />}
                       <FallbackCover
                         title={novel.title}
                         sourceTitle={novel.source_title}
@@ -823,7 +855,7 @@ export default function HomePage() {
                         </span>
                       </div>
                       <p className="mt-1 font-metadata text-[10px] text-muted-foreground">
-                        Added {relativeTime(novel.added_at) ?? "recently"}
+                        Added {relativeTime(novel.added_at, nowMs) ?? "recently"}
                       </p>
                     </div>
                   </Link>
@@ -857,7 +889,11 @@ export default function HomePage() {
                 recentlyUpdated
                   .slice(0, 6)
                   .map((novel) => (
-                    <RecentUpdateItem key={novel.novel_id} novel={novel} />
+                    <RecentUpdateItem
+                      key={novel.novel_id}
+                      novel={novel}
+                      nowMs={nowMs}
+                    />
                   ))
               ) : (
                 <div className="p-6 text-center text-sm text-muted-foreground">
@@ -881,7 +917,11 @@ export default function HomePage() {
                 )
                 .slice(0, 12)
                 .map((novel) => (
-                  <RailCard key={novel.novel_id} novel={novel} />
+                  <RailCard
+                    key={novel.novel_id}
+                    novel={novel}
+                    nowMs={nowMs}
+                  />
                 ))}
             </NovelRail>
           ))}
