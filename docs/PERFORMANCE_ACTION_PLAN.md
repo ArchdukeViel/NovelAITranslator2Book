@@ -518,11 +518,19 @@ Measured p50/p95/p99 results were:
 
 The table values are ordered `p50 / p95 / p99`; all routes had zero client
 timeouts and zero transport errors. Caddy recorded zero `502`, connection
-refused, and `5xx` events during the sample. A deliberately missing provider
-configuration produced a durable failed activity with the expected sanitized
-provider configuration error and one retry. A disposable public authenticated
-browser session loaded `/account/contributions` and was deleted after the
-check.
+refused, and `5xx` events during the public sample. A temporary local owner
+session was generated inside the backend container, refreshed through the CSRF
+endpoint, and never printed or persisted as test output. An eight-request
+concurrent translation enqueue burst returned two `202`, four configured
+translation-rate-limit `429` responses, and two `500` responses. Backend logs
+classified the `500` responses as managed database session-capacity failures
+while checking for active translation work. After restarting only the
+temporary backend process to clear its in-memory limiter, a concurrency-3
+control returned `3/3` `202` responses with p50 `1,008.526 ms` and maximum
+`1,210.110 ms`. A deliberately missing provider configuration then produced
+durable failed activities with the expected sanitized provider-configuration
+error and one retry. A disposable public authenticated browser session loaded
+`/account/contributions` and was deleted after the check.
 
 The browser sample measured home LCP `2,012 ms`, ranking LCP `196 ms`, detail
 LCP `1,288 ms`, chapter LCP `740 ms`, CLS `0` on all pages, and an 80-88 ms
@@ -531,23 +539,26 @@ error caused by `Date.now()`-derived labels; the home page now uses a stable
 hydration-aware timestamp, and the rebuilt browser routes report zero
 application console errors. Focused home tests pass (`29 tests`).
 
-The following acceptance items were not safely claimed: owner-authenticated
-concurrent translation enqueue, controlled storage-delay injection,
+The owner-authenticated enqueue path is now exercised, but a safe
+concurrency-8 capacity result is not claimed because the burst reproduced two
+database-capacity `500` responses. Controlled storage-delay injection,
 production R2/S3 call/latency/byte telemetry, PostgreSQL slowest-query and
 query-count statistics (`pg_stat_statements` was unavailable), and
-multi-worker/provider capacity. Public `/metrics` is not routed through Caddy;
-internal backend metrics were collected separately. The base Compose stack is
-restored after cleanup, and no Phase 6 overlay or fixture data is part of the
-deployment configuration.
+multi-worker/provider capacity remain unmeasured. Public `/metrics` is not
+routed through Caddy; internal backend metrics were collected separately. The
+base Compose stack is restored after cleanup, and no Phase 6 overlay or
+fixture data is part of the deployment configuration.
 
 ### Phase 6 gate status
 
 The harness, public route, seeded analytics, proxy-health, provider-failure,
 browser, hydration, focused frontend, and cleanup checks pass for the local
-sample. Phase 6 remains open for review because the missing fault-injection,
-owner enqueue, storage telemetry, database query-plan, and representative
-worker/provider evidence are capacity-signoff requirements. Do not convert
-these local p95 values into production SLOs.
+sample. Owner enqueue is proven at concurrency 3 but the concurrency-8 burst
+exposed an unresolved aggregate database-session capacity failure. Phase 6
+remains open because storage-delay injection, storage telemetry, database
+query-plan evidence, and representative worker/provider capacity remain
+capacity-signoff requirements. Do not convert these local p95 values into
+production SLOs.
 
 ## Suggested implementation sequence
 
@@ -563,8 +574,9 @@ these local p95 values into production SLOs.
 10. Move translation to enqueue/worker-only execution, then replace file-backed activity/cache hot paths.
 11. Run the repeatable Phase 6 load scenario and update the budgets using
     measured capacity. (Local sample executed; review gate remains open.)
-12. Add safe owner-session and storage-delay fault-injection coverage, then
-    rerun Phase 6 with production-equivalent object storage and worker/provider
-    telemetry before launch sign-off.
+12. Resolve and budget the aggregate database-session cap exposed by the owner
+    burst, add safe owner-session and storage-delay fault-injection coverage,
+    then rerun Phase 6 with production-equivalent object storage and
+    worker/provider telemetry before launch sign-off.
 
 The first practical gate is not a frontend optimization: it is a current-revision deployment with a healthy reader, healthy readiness, current migrations, and a catalog request that cannot fall back to a serial object-storage scan.
