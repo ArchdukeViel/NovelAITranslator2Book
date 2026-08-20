@@ -38,6 +38,7 @@ CATALOG_PROJECTION_FIELDS = (
     "original_title",
     "synopsis",
     "publication_status",
+    "public_reader_unavailable_policy",
     "source_updated_at",
     "chapter_count",
     "translated_count",
@@ -290,6 +291,7 @@ class CatalogService:
                 source_url=metadata.get("source_url"),
                 language=metadata.get("language", "ja"),
                 publication_status=publication_status,
+                public_reader_unavailable_policy=_optional_string(metadata.get("public_reader_unavailable_policy")),
                 source_updated_at=source_updated_at,
                 synopsis=_metadata_public_synopsis(metadata),
             )
@@ -460,6 +462,7 @@ class CatalogService:
                 metadata.get("author")
             )
             novel.synopsis = _metadata_public_synopsis(metadata)
+            novel.public_reader_unavailable_policy = _optional_string(metadata.get("public_reader_unavailable_policy"))
         novel.public_slug = _public_slug_from_title(novel.title, novel.slug)
         novel.chapter_count = chapter_count
         novel.translated_count = translated_count

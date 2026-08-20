@@ -59,6 +59,7 @@ class Novel(Base):
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     language: Mapped[str] = mapped_column(String(32), nullable=False, default="ja")
     publication_status: Mapped[str] = mapped_column(String(64), nullable=False, default="unknown")
+    public_reader_unavailable_policy: Mapped[str | None] = mapped_column(String(32), nullable=True)
     source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     chapter_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     translated_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

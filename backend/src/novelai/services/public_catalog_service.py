@@ -322,6 +322,8 @@ class PublicCatalogService:
             "publication_status": db_novel.publication_status,
             "chapters": chapter_metadata,
         }
+        if db_novel.public_reader_unavailable_policy is not None:
+            metadata["public_reader_unavailable_policy"] = db_novel.public_reader_unavailable_policy
         if len(chapter_metadata) <= 1_000:
             public_projection_cache.set(
                 cache_key,
