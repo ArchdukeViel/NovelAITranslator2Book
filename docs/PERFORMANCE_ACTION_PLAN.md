@@ -491,8 +491,8 @@ Record for every run:
 
 ## Phase 6 execution log - 2026-08-20
 
-**Status: repeatable local acceptance executed; stopped for review with the
-runtime gate open.**
+**Status: repeatable local acceptance and continuation controls executed; the
+runtime gate remains open.**
 
 The new `backend/tests/run_phase6_acceptance.py` harness creates a namespaced,
 reversible local fixture and runs public traffic through Caddy. The executed
@@ -532,6 +532,22 @@ durable failed activities with the expected sanitized provider-configuration
 error and one retry. A disposable public authenticated browser session loaded
 `/account/contributions` and was deleted after the check.
 
+The Phase 6 continuation tested the measured connection-capacity mitigation in
+an isolated transaction-mode overlay. An eight-request owner burst returned
+five `202` and three configured translation-limit `429` responses, with no
+database-capacity `500` responses; p50 was `3,139.887 ms` and maximum
+`3,196.577 ms`. A five-sample public workload at concurrency 8 returned `200`
+for every route with zero timeouts or transport errors. The harness now accepts
+an explicit `--host-header` for internal Caddy targets; no-host internal proxy
+responses were rejected as invalid because they had empty `200` bodies.
+
+Controlled storage fault injection used a local in-memory S3-protocol stub with
+a 1.2-second delay. Ten concurrent readiness requests returned `503` with
+`storage=unhealthy`; p50 was `1,351.488 ms`, p95 `1,382.913 ms`, and maximum
+`1,541.684 ms`. The application containers stayed running and the base Compose
+stack was restored afterward. This does not substitute for production R2/S3
+telemetry.
+
 The browser sample measured home LCP `2,012 ms`, ranking LCP `196 ms`, detail
 LCP `1,288 ms`, chapter LCP `740 ms`, CLS `0` on all pages, and an 80-88 ms
 ranking-tab interaction event sample. The first home run exposed a hydration
@@ -539,26 +555,27 @@ error caused by `Date.now()`-derived labels; the home page now uses a stable
 hydration-aware timestamp, and the rebuilt browser routes report zero
 application console errors. Focused home tests pass (`29 tests`).
 
-The owner-authenticated enqueue path is now exercised, but a safe
-concurrency-8 capacity result is not claimed because the burst reproduced two
-database-capacity `500` responses. Controlled storage-delay injection,
-production R2/S3 call/latency/byte telemetry, PostgreSQL slowest-query and
-query-count statistics (`pg_stat_statements` was unavailable), and
-multi-worker/provider capacity remain unmeasured. Public `/metrics` is not
-routed through Caddy; internal backend metrics were collected separately. The
-base Compose stack is restored after cleanup, and no Phase 6 overlay or
-fixture data is part of the deployment configuration.
+The direct-mode owner burst reproduced two database-capacity `500` responses;
+the transaction-mode control avoided them, but the protected base runtime
+configuration remains direct and was not changed. Production R2/S3
+call/latency/byte telemetry, PostgreSQL slowest-query and query-count
+statistics (`pg_stat_statements` was unavailable), and multi-worker/provider
+capacity remain unmeasured. Public `/metrics` is not routed through Caddy;
+internal backend metrics were collected separately. The base Compose stack is
+restored after cleanup, and no Phase 6 overlay or fixture data is part of the
+deployment configuration.
 
 ### Phase 6 gate status
 
 The harness, public route, seeded analytics, proxy-health, provider-failure,
-browser, hydration, focused frontend, and cleanup checks pass for the local
-sample. Owner enqueue is proven at concurrency 3 but the concurrency-8 burst
-exposed an unresolved aggregate database-session capacity failure. Phase 6
-remains open because storage-delay injection, storage telemetry, database
-query-plan evidence, and representative worker/provider capacity remain
-capacity-signoff requirements. Do not convert these local p95 values into
-production SLOs.
+browser, hydration, focused frontend, cleanup, and controlled storage-delay
+checks pass for the local sample. Transaction mode provides a tested local
+mitigation for the direct-mode database-session failure, but the base runtime
+still needs an operator-approved connection-mode/budget change and production
+pooler verification. Phase 6 remains open because production storage
+telemetry, database query-plan evidence, and representative worker/provider
+capacity remain sign-off requirements. Do not convert these local p95 values
+into production SLOs.
 
 ## Suggested implementation sequence
 
@@ -574,9 +591,8 @@ production SLOs.
 10. Move translation to enqueue/worker-only execution, then replace file-backed activity/cache hot paths.
 11. Run the repeatable Phase 6 load scenario and update the budgets using
     measured capacity. (Local sample executed; review gate remains open.)
-12. Resolve and budget the aggregate database-session cap exposed by the owner
-    burst, add safe owner-session and storage-delay fault-injection coverage,
-    then rerun Phase 6 with production-equivalent object storage and
-    worker/provider telemetry before launch sign-off.
+12. Apply and verify the transaction-mode/aggregate connection budget against
+    the target pooler, then rerun Phase 6 with production-equivalent object
+    storage and worker/provider telemetry before launch sign-off.
 
 The first practical gate is not a frontend optimization: it is a current-revision deployment with a healthy reader, healthy readiness, current migrations, and a catalog request that cannot fall back to a serial object-storage scan.

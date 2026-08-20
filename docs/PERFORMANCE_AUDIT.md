@@ -19,7 +19,7 @@ The initial runtime was behind the checkout and allowed public storage waterfall
 5. Phase 3 now uses one joined ranking/projection query, composite analytics indexes, and a bounded process-local success cache. Focused tests prove distinct-viewer periods, chapter exclusion, bounded SQL work, and cache metrics; production-volume query plans, seeded latency, and cross-replica cache behavior remain unmeasured.
 6. Phase 4 now makes readiness cacheable/single-flight, removes the mutating storage probe from public readiness, adds bounded origin projection caching, and queues analytics writes off the request path. The local one-second probe configuration now passes without an override; populated analytics load and cross-replica cache behavior remain unmeasured.
 7. Translation work can occupy a web request for up to the configured 120-second timeout. Provider calls also use blocking SDK calls in worker threads, bounded concurrency, retries, and quota reservation, so provider latency can create sustained backpressure.
-8. Phase 6 now has a repeatable local fixture and measured public/browser sample. Catalog, detail, chapter, and search p95 values were still above the proposed warm budgets in this small local run. Owner enqueue is measured at lower concurrency, but a burst exposed an unresolved aggregate database-session capacity failure; controlled storage delay, production object-storage telemetry, and provider-capacity evidence remain unmeasured, so no runtime sign-off is claimed.
+8. Phase 6 now has a repeatable local fixture and measured public/browser sample. Catalog, detail, chapter, and search p95 values were still above the proposed warm budgets in this small local run. Direct-mode owner enqueue exposed an aggregate database-session capacity failure; transaction mode avoided it in an isolated control, and controlled storage delay produced visible bounded degradation. Production object-storage telemetry and provider-capacity evidence remain unmeasured, so no runtime sign-off is claimed.
 
 The remaining release/operations problems are chapter-projection completeness, production-scale browser/ranking budgets, and multi-instance cache economics. Phase 4 source and Compose defaults now make public readiness cheap and cached, preserve a full owner diagnostic path, cache only safe public projections, and apply explicit bounded analytics loss semantics. The live local stack passed the base Compose readiness check without a temporary override.
 
@@ -357,12 +357,13 @@ pass by restoring request-time storage fallback.
 
 ## Phase 6 execution update - 2026-08-20
 
-Phase 6 was executed against an isolated local Compose overlay and is **stopped
-for review with the runtime gate open**. The source and acceptance harness are
-repeatable, but the run does not claim production-scale capacity or complete
-the provider/storage fault matrix. The temporary overlay, fixture rows, and
-temporary storage volume are removed after the run; the base Compose topology
-is restored.
+The initial Phase 6 run was executed against an isolated local Compose overlay
+and stopped for review with the runtime gate open. A continuation run then
+tested transaction-mode connection mitigation and controlled delayed storage.
+The source and acceptance harness are repeatable, but the combined evidence
+does not claim production-scale capacity or complete the provider/storage fault
+matrix. Temporary overlays, fixture rows, and volumes are removed after each
+run; the base Compose topology is restored.
 
 ### Fixture and HTTP workload
 
@@ -398,13 +399,22 @@ translation limiter is five requests per 60 seconds per client in this local
 configuration. After restarting only the temporary backend process to clear
 that in-memory limiter, a lower-concurrency control returned `3/3` `202`
 responses at concurrency 3, with p50 `1,008.526 ms` and maximum
-`1,210.110 ms`. A disposable public `role=user` browser session also loaded
+`1,210.110 ms`. A follow-up transaction-mode overlay control sent the same
+owner burst at concurrency 8 and returned five `202` responses and three
+configured translation-limit `429` responses, with no database-capacity `500`
+responses; p50 was `3,139.887 ms` and the maximum was `3,196.577 ms`. A
+five-sample public workload at concurrency 8 through the corrected internal
+proxy `Host` header returned `200` for every route with zero timeouts and
+transport errors. A disposable public `role=user` browser session also loaded
 `/account/contributions` with `200` and was removed after the check.
 
 ### Proxy, database, queue, and provider evidence
 
-- Caddy remained healthy during the run. Recent logs contained zero `502`
-  responses, zero connection-refused events, and zero `5xx` responses.
+- Caddy remained healthy during the initial public run. Recent logs contained
+  zero `502` responses, zero connection-refused events, and zero `5xx`
+  responses. The delayed-storage control intentionally made Caddy's readiness
+  check unhealthy without causing a container restart loop; the base stack was
+  restored and healthy afterward.
 - Backend `/metrics` was available only on the internal admin boundary;
   public `/metrics` correctly returned `404` through Caddy. The backend sample
   recorded readiness cache hits/misses and no provider calls because no owner
@@ -416,10 +426,12 @@ responses at concurrency 3, with p50 `1,008.526 ms` and maximum
   `waiting_connections` value included non-checkout wait events, so it is not
   reported as pool checkout wait. `pg_stat_statements` query statistics were
   unavailable in this local profile; slowest-query and query-count evidence
-  remain open. During the owner burst, the managed session pool rejected a
-  connection because its aggregate client cap was reached. This produced the
-  two API `500` responses above; the lower-concurrency control did not reproduce
-  the error.
+  remain open. During the direct-mode owner burst, the managed session pool
+  rejected a connection because its aggregate client cap was reached. This
+  produced the two API `500` responses above. A transaction-mode overlay using
+  the same database and workload avoided those `500`s, but the protected base
+  runtime configuration remains `DB_CONNECTION_MODE=direct` and was not
+  changed.
 - Redis remained healthy, but the public workload created no queue keys and
   did not materially exercise the translation worker. Worker CPU was idle in
   this guest-only sample, so queue depth/job age/provider throughput are not
@@ -431,9 +443,13 @@ responses at concurrency 3, with p50 `1,008.526 ms` and maximum
   control samples reached the same expected provider-configuration failure
   path with `retry_count=1`. No provider key, prompt, authorization header, or
   response secret was used.
-- No storage-delay fault was injected, and the filesystem overlay does not
-  represent production R2/S3 latency. Object-storage call count, operation
-  latency, bytes, and fallback count therefore remain unmeasured.
+- The controlled storage-delay run used an in-memory S3-protocol stub with a
+  1.2-second response delay and no production credentials or bucket. Ten
+  concurrent `/health/ready` requests returned `503` with
+  `storage=unhealthy`; p50 was `1,351.488 ms`, p95 `1,382.913 ms`, and maximum
+  `1,541.684 ms`. This proves bounded, visible degradation behavior only;
+  production R2/S3 call count, operation latency, bytes, and fallback count
+  remain unmeasured.
 
 ### Browser evidence and hydration correction
 
@@ -460,12 +476,12 @@ application.
 ### Phase 6 gate status and remaining work
 
 The fixture, route, proxy-health, seeded-analytics, provider-failure,
-guest/authenticated-browser, hydration, and focused frontend gates pass for
-this local sample. Owner-authenticated enqueue is now measured, including a
-successful lower-concurrency control, but the concurrency-8 burst exposed an
-unresolved aggregate database-session capacity failure. The Phase 6 runtime
-gate remains open because storage-delay injection, production object-storage
-telemetry, PostgreSQL query-plan statistics, and representative
+guest/authenticated-browser, hydration, focused frontend, and controlled
+storage-delay gates pass for this local sample. Transaction mode avoided the
+direct-mode enqueue capacity failure, but the protected base runtime still
+needs an operator-approved connection-mode/budget change and a production
+pooler verification. The Phase 6 runtime gate remains open because production
+object-storage telemetry, PostgreSQL query-plan statistics, and representative
 multi-worker/provider capacity evidence are still missing. The existing F-32
 stale projection fixture failures and the earlier full-suite timeouts also
 remain open; this run does not conceal them.

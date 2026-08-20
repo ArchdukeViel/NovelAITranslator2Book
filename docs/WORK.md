@@ -580,17 +580,17 @@ browser run found a clock-dependent React hydration error; the page now uses a
 hydration-aware timestamp, and the rebuilt routes report zero application
 console errors. Focused home tests pass (`29 tests`).
 
-Phase 6 remains open for review. Owner-authenticated enqueue is now measured:
-an eight-request burst returned two `202`, four configured translation-limit
-`429` responses, and two database-capacity `500` responses; a concurrency-3
-control returned `3/3` `202` responses with p50 `1,008.526 ms` and maximum
-`1,210.110 ms`. The burst therefore exposed an unresolved aggregate database
-session budget rather than proving safe higher concurrency. Controlled
-storage-delay injection, production-equivalent R2/S3 telemetry, PostgreSQL
-slowest-query/query-count evidence, and representative worker/provider
-capacity remain unclaimed. Temporary Phase 6 fixture data and the isolated
-storage volume are cleaned up after each run; the base Compose stack remains
-the runtime baseline.
+Phase 6 remains open for review. Direct-mode owner enqueue produced two
+database-capacity `500` responses in an eight-request burst, while an isolated
+transaction-mode control returned five `202` and three configured
+translation-limit `429` responses with no database-capacity `500`s. A
+controlled 1.2-second S3-protocol delay made ten concurrent readiness requests
+return `503` with `storage=unhealthy` (p50 `1,351.488 ms`, p95 `1,382.913 ms`).
+The protected base runtime remains `DB_CONNECTION_MODE=direct` and was not
+changed. Production-equivalent R2/S3 telemetry, PostgreSQL slowest-query/
+query-count evidence, and representative worker/provider capacity remain
+unclaimed. Temporary Phase 6 fixture data, overlays, and isolated volumes are
+cleaned up after each run; the base Compose stack remains the runtime baseline.
 
 ## Priority Recommendation
 
