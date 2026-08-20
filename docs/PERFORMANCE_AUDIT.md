@@ -69,9 +69,9 @@ Phase 0 was executed against the local Compose environment and is **complete as 
 | Storage probe diagnosis | Failed at readiness budget, not at storage correctness | Ten isolated `StorageService.probe()` calls all returned true in roughly `486–640 ms`. The actual concurrent `HealthService._run_probes()` run returned `storage: Probe timed out` at `1,000 ms`, while storage-usage work took about `1,559 ms`. |
 | Development overlay | Failed for production-style startup | The development bind mount replaced the frontend standalone bundle, causing `node /app/frontend/server.js` to fail. The base Compose file was used for the valid current-image verification. |
 
-The final local baseline rerun used an explicit `HEALTH_PROBE_TIMEOUT_MS=2000` process override because `deploy/.env` explicitly contains the old one-second value and was intentionally not edited. With that override, Caddy became healthy; readiness returned `200` in about `1.29 s`, liveness returned `200` in about `7 ms`, rankings returned `200` in about `25 ms`, and the ten-item catalog returned `200` in about `425 ms`. This proves the immediate Phase 0 failure is the readiness timeout budget, not an unavailable storage backend.
+At the Phase 0 checkpoint, the final local baseline rerun used an explicit `HEALTH_PROBE_TIMEOUT_MS=2000` process override because `deploy/.env` still contained the protected one-second value and was intentionally not edited. With that override, Caddy became healthy; readiness returned `200` in about `1.29 s`, liveness returned `200` in about `7 ms`, rankings returned `200` in about `25 ms`, and the ten-item catalog returned `200` in about `425 ms`. This proved the immediate Phase 0 failure was the readiness timeout budget, not an unavailable storage backend. Phase 4 subsequently made the one-second setting pass without an override; Phase 6 did not change the health timeout values.
 
-The current local deployment therefore proves that the migration and current public routes can run, and that the catalog path is fast for the present nine-novel dataset. It does not prove production-scale catalog behavior. A durable deployment/configuration change is still required so a restart does not revert to the one-second readiness failure.
+The Phase 0 local deployment therefore proved that the migration and current public routes could run, and that the catalog path was fast for the present nine-novel dataset. It did not prove production-scale catalog behavior. The restart-regression risk was subsequently addressed by the Phase 4 readiness implementation and its no-override validation.
 
 ## Phase 1 execution update — 2026-08-20
 
@@ -570,6 +570,34 @@ are still missing. The earlier full-suite timeouts remain
 open; the former F-32 projection-fixture failures were repaired in the current
 continuation and are no longer counted as current failures.
 
+### Phase 6 continuation: current contract audit - 2026-08-20
+
+The broader contract audit found and resolved several current-checkout
+failures. The production environment example now contains the same non-secret
+setting order as the development examples, including ranking/projection cache,
+readiness, translation-limit, contributor-limit, and activity-bound settings.
+The home server-prefetch transport now goes through the approved public API
+client while retaining the internal reader base URL, Host header, revalidation,
+and bounded cancellation behavior. The projection-first review fixture now
+implements the same summary seam as the production service, raw-chapter writes
+preserve authoritative or existing ordering through projection recomputation,
+and catalog reconciliation now accepts numeric source chapter IDs through the
+canonical chapter-ID normalizer. The E2E fixture refreshes the real projection
+inside the isolated SQLite database rather than bypassing it.
+
+The full frontend suite passed `857` tests across `78` files; frontend lint,
+typecheck, and production build also passed. The repaired backend contract
+tests and the full public-review/PR41 files passed `56` tests. The complete E2E
+file passed `5` tests, and the full slow shard passed `302` tests with `19`
+skipped. A full four-worker backend run reached `3,240 passed, 26 skipped,
+29 failed`; every failure was in the shared-state `test_web_api.py` module and
+included activity-lock contention. The same file passes serially (`163 passed`
+in `64.04 s`). A retry with `--dist=loadfile` timed out after `904.2 s` without
+a summary, so the backend collection contains `3,295` tests (`2,974`
+non-slow and `321` slow) but does not have a full-suite sign-off. Production
+pooler/query-plan and representative worker/provider capacity evidence remain
+the external Phase 6 gates.
+
 ### F-33 - P1 - Home clock-dependent labels caused a hydration mismatch
 
 **Evidence:** The first Phase 6 browser check reported React error `#418`.
@@ -681,7 +709,7 @@ The owner translation operation in `services/orchestration/operations.py` waits 
 
 ### F-02 — P0 — Caddy can retain stale backend addresses during container replacement
 
-**Evidence:** The initial run showed repeated connection-refused attempts to old backend container addresses while backend containers were replaced, and Caddy had a large failing streak. After the Phase 0/1 base-Compose recreation, no matching recent connection-refused/upstream errors were observed and Caddy is healthy when the explicit two-second health-probe override is present. A fresh restart with the protected one-second runtime value can still regress.
+**Evidence:** The initial run showed repeated connection-refused attempts to old backend container addresses while backend containers were replaced, and Caddy had a large failing streak. At that Phase 0/1 checkpoint, no matching recent connection-refused/upstream errors were observed after recreation, but the protected one-second runtime value could still regress readiness. Phase 4 subsequently made the one-second readiness path pass without an override; the current Phase 6 base stack is healthy, although restart/replace acceptance remains a single local sample.
 
 **Impact:** Requests fail as `502` or wait through connection retries. This is an availability failure that users experience as a slow page or an intermittent API, and it can obscure the application bottleneck behind proxy errors.
 

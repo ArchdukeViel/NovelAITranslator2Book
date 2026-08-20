@@ -62,11 +62,11 @@ Completed in the local Compose environment:
 Remaining gate requiring review:
 
 - The original `/health/ready` failure was reproduced at the configured `1,000 ms` per-probe limit. Ten isolated storage probes succeeded in roughly `486–640 ms`, but the real concurrent health run timed out storage while storage-usage work took about `1,559 ms`.
-- `deploy/.env` explicitly contains the one-second value and was intentionally not edited because it is a protected runtime/secrets file. A durable operator-approved configuration or Phase 4 health implementation is still required to prevent regression on restart.
+- At this Phase 0 checkpoint, `deploy/.env` explicitly contained the one-second value and was intentionally not edited because it was a protected runtime/secrets file. The later Phase 4 health implementation resolved the restart regression without changing that timeout value.
 - The development overlay is not a valid production-style startup: its frontend bind mount hides the standalone server and causes `MODULE_NOT_FOUND`. The base Compose file was used for the valid current-image check.
 - The local `:local` image tags do not embed an immutable source revision, so a release deployment still needs digest/revision evidence.
 
-The local Phase 0 baseline is signed off: current images, migration, routes, application health, readiness, and one replacement cycle were verified. The durable configuration caveat is carried into Phase 4. Phase 1 and Phase 2 implementation are complete locally; Phase 3 execution and review evidence is recorded below.
+The local Phase 0 baseline is signed off: current images, migration, routes, application health, readiness, and one replacement cycle were verified. The timeout caveat was carried into Phase 4, where the no-override readiness path was validated. Phase 1 and Phase 2 implementation are complete locally; Phase 3 execution and review evidence is recorded below.
 
 ## Phase 1 — remove public-read request waterfalls
 
@@ -251,7 +251,7 @@ Phase 3 exit gate status: source-level query-count, privacy, cache-state, index,
 
 Actions:
 
-- Carry forward the Phase 0 finding: the current explicit one-second per-probe setting fails under concurrent storage checks; do not rely on a temporary runtime override as the release configuration.
+- Carry forward the Phase 0 finding as the pre-Phase 4 diagnosis: the explicit one-second per-probe setting failed under concurrent storage checks; the Phase 4 cache/single-flight implementation then removed the need for a temporary runtime override.
 - Implement the intended short readiness cache with an explicit TTL and timestamp.
 - Keep liveness process-only.
 - Use a bounded readiness storage check; move full write/read/delete verification to a scheduled or owner-only diagnostic.
@@ -666,11 +666,38 @@ published `Novel`/`Chapter` projection through `CatalogService` and pass all
 local stale-fixture gate, but does not close the separate production storage,
 database-plan, pooler-budget, or worker/provider-capacity gates.
 
+### Phase 6 continuation: current contract audit - 2026-08-20
+
+The broader contract audit resolved several current-checkout failures. The
+production environment example now matches the other environment templates in
+non-secret setting order and includes the cache, readiness, translation-limit,
+contributor-limit, and activity-bound settings. The home server-prefetch path
+now uses the approved public API client while preserving its internal reader
+base URL, Host header, revalidation, and bounded cancellation. The review test
+fixture now matches the projection-first summary seam, raw-chapter writes
+preserve authoritative or existing ordering through projection recomputation,
+and catalog reconciliation now accepts numeric source chapter IDs through the
+canonical chapter-ID normalizer. The E2E fixture refreshes the real projection
+inside the isolated SQLite database rather than bypassing it.
+
+The full frontend suite passed `857` tests across `78` files; frontend lint,
+typecheck, and production build passed. The repaired backend contract tests and
+public-review/PR41 files passed `56` tests. The complete E2E file passed `5`
+tests, and the full slow shard passed `302` tests with `19` skipped. A full
+four-worker backend run reached `3,240 passed, 26 skipped, 29 failed`; every
+failure was in the shared-state `test_web_api.py` module and included
+activity-lock contention. The same file passes serially (`163 passed` in
+`64.04 s`). A retry with `--dist=loadfile` timed out after `904.2 s` without a
+summary, so the backend collection contains `3,295` tests (`2,974` non-slow
+and `321` slow) but does not have a full-suite sign-off. Production
+pooler/query-plan and representative worker/provider capacity evidence remain
+the external Phase 6 gates.
+
 ## Suggested implementation sequence
 
 1. Complete Phase 0 and rerun the same runtime probes against the current revision. (Complete.)
-2. Implement the projection-first catalog/detail path and add request-level object/query-count tests. (Complete locally; chapter projection reconciliation remains open.)
-3. Review Phase 1 evidence; the projection-first read path is complete locally while chapter projection completeness and durable readiness remain open follow-ups.
+2. Implement the projection-first catalog/detail path and add request-level object/query-count tests. (Complete locally; numeric chapter-ID reconciliation and the isolated E2E projection fixture are now covered.)
+3. Review Phase 1 evidence; the projection-first read path and local chapter projection completeness are now covered, while durable readiness remains an open follow-up.
 4. Add browser cancellation/timeouts and reduce home critical fan-out. (Complete locally in Phase 2.)
 5. Review Phase 2 evidence and approve the ranking/index/cache work before starting Phase 3. (Complete.)
 6. Align ranking indexes, remove summary enrichment fan-out, and add bounded result caching. (Complete locally in Phase 3; production-volume and multi-replica evidence remain open.)
