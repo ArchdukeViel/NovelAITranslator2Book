@@ -159,6 +159,7 @@ The frontend App Router overhaul (PR #38) is merged and describes the current im
 - Novel detail is a reading-first surface: the hero puts the title, source title, author, status, truthful metadata, and one reading CTA before tabbed content. Guest readers can start the first available chapter; signed-in readers with progress can continue from it. Save remains a secondary personalized action.
 - Novel detail chapters consume the public section metadata contract and preserve source order, exact returned episode titles, grouped runs, flat lists, search, ordering, First unread, and Latest. The request form is a closed disclosure at the end of Chapters, and issue reporting is a quiet contact link in Overview.
 - Implemented current public contracts: ranking data is API-backed by distinct novel-detail views for Daily, Weekly, and Monthly periods; contributor credentials are API-backed with encrypted storage, explicit validation, consent, masking, lifecycle controls, quotas, and usage accounting. Profile editing, account deletion, and admin-curated featured rotation remain unavailable (the homepage spotlight is derived from catalog data, not owner curation).
+- Implemented current runtime contracts: crawl and translation submissions return durable activity identifiers and remain API-visible through pending, running, paused, completed, failed, retry, and unavailable states. Production provider execution belongs to the dedicated worker process; web shells do not imply that a request is still running, and activity records never expose idempotency keys, lease tokens, prompts, credentials, or provider secrets.
 - Deferred intentionally: related-novel Recommendations (no bounded public related-novels contract exists), extended locale support, WebGL graphics, and GSAP sequences.
 - Still manually unverified: screen-reader acceptance across NVDA/VoiceOver/TalkBack, forced-colors mode, and 200% zoom reflow. These are tracked as manual acceptance work in `docs/WORK.md` (DEBT-FE-01A). Do not claim hosted or manual visual validation that was not performed.
 
@@ -702,9 +703,9 @@ WTR-Lab is recorded only as a domain reference for the reading experience.
 
 | Page | Route(s) | Stitch brief | Availability | Primary state | Alternate visual states |
 |---|---|---|---|---|---|
-| Dashboard | `/admin/dashboard` | `admin/dashboard.md` | Implemented | Settled metrics and worker panel | Worker error |
-| Activity log | `/admin/activity` | `admin/activity.md` | Implemented | Settled grouped table | Empty, delete confirmation |
-| Activity detail | `/admin/activity/[activityId]` | `admin/activity-detail.md` | Implemented | Settled phase table | Loading |
+| Dashboard | `/admin/dashboard` | `admin/dashboard.md` | Implemented | Settled metrics and worker/queue panel | Worker unavailable, queue error |
+| Activity log | `/admin/activity` | `admin/activity.md` | Implemented (durable queue) | Settled grouped table | Empty, pending, paused, failed, delete confirmation |
+| Activity detail | `/admin/activity/[activityId]` | `admin/activity-detail.md` | Implemented (durable queue) | Settled phase table | Loading, lease recovery, retry history |
 | Analytics | `/admin/analytics` | `admin/analytics.md` | Implemented | Settled counts | Unavailable groups |
 | Audit log | `/admin/audit` | `admin/audit.md` | Implemented | Settled events table | Empty, detail drawer |
 | Crawler | `/admin/crawler` | `admin/crawler.md` | Implemented | Settled panels | Run progress dialog, error dialog |
@@ -717,7 +718,7 @@ WTR-Lab is recorded only as a domain reference for the reading experience.
 | Reviews | `/admin/reviews` | `admin/reviews.md` | Implemented | Settled moderation table | Empty, confirmation |
 | Settings | `/admin/settings` | `admin/settings.md` | Implemented | Settled runtime table | Confirmation |
 | Takedowns | `/admin/takedowns` | `admin/takedowns.md` | Implemented | Settled notice cards | Empty, error |
-| Scheduler health | `/admin/translation` | `admin/translation.md` | Implemented | Settled models table | Empty |
+| Scheduler health | `/admin/translation` | `admin/translation.md` | Implemented | Settled models, provider-budget, and worker-health table | Empty, unavailable |
 | Users | `/admin/users` | `admin/users.md` | Implemented | Settled users table | Empty |
 | User detail | `/admin/users/[userId]` | `admin/user-detail.md` | Implemented | Settled summary panels | Invalid user |
 

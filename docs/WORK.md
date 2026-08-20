@@ -538,6 +538,31 @@ cache economics remain open acceptance work. The older storage-only
 `test_public_reader_availability.py` fixture remains a Phase 1 projection
 test gap and is not counted as a passing full-suite result.
 
+### Completed locally: public performance Phase 5
+
+Long-running owner translation requests now enqueue durable translation
+activities and return `202` with an activity id; the dedicated Compose worker
+owns provider-backed execution while web services keep the in-process runner
+disabled. Activity state, leases, claims, idempotency, retry state, and bounded
+metadata now use the `activity_records` database table, with one-time legacy
+queue import. Gemini owner/contributor admission has global in-flight and
+token/request budgets, bounded deadline/backoff behavior, isolated reusable
+clients, and sanitized provider timing/usage accounting. Translation-cache
+maintenance uses an indexed SQLite WAL sidecar instead of recursive scans.
+
+Evidence: migration `d9f3a1b7c5e2`, `ActivityDatabaseBackend`, dedicated worker
+Compose service, provider/quota/cache implementations, `102` expanded focused
+backend tests, `69` activity/router/health tests, `40` focused frontend tests,
+Ruff, Pyright, frontend lint/typecheck/build, successful local PostgreSQL
+migration, healthy production Compose recreation, route/Markdown audit, and
+Graphify refresh. The full backend command timed out after `904 s`; the full
+frontend Vitest command timed out after about `243 s`; and the contract subset
+still has two known public-reader projection fixture failures. Phase 5 is
+stopped for review before Phase 6: enqueue p95 under concurrent public probes
+and production-like provider load/failure behavior remain runtime acceptance
+work. The known projection fixture gap above remains open and is not hidden by
+this implementation.
+
 ## Priority Recommendation
 
 1. `OWN-001` — assign owners (unblocks every evidence record).

@@ -13,7 +13,9 @@ The admin console is a dense, quiet, data-first workspace for operating Dokushod
 Answer what is running, what needs attention, and what changed, in one screen.
 
 ## Audience and Access
-Owner and admin roles only.
+Owner and admin roles only. The dashboard reads durable activity and queue
+health. In production, provider-backed execution is owned by the dedicated
+worker service; the web-process runner is disabled by the Compose topology.
 
 ## Primary Action
 Drilling into the panel that needs attention.
@@ -23,12 +25,13 @@ Drilling into the panel that needs attention.
 - Activity panel
 - Requests panel
 - Worker status card
+- Queue age, pending count, and provider timing summary when available
 
 ## Desktop Composition
 - Four metric cards with number and label
 - Activity panel with a recent events table
 - Requests panel with pending requests and quick approve and reject actions
-- Worker status card with state and Start, Stop, and Run Once controls using play, square, and refresh icons
+- Worker status card with truthful running, unavailable, and external-worker states; local Start, Stop, and Run Once controls are explicit owner/local overrides, while the dedicated worker remains the production execution path
 
 ## Mobile Composition
 - Metrics stack in two columns

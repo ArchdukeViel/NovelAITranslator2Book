@@ -42,12 +42,15 @@ historical generated files.
 - `novelai.api.app:app`: monolith.
 - `novelai.main_admin:app`: owner/user control plane, port 8000.
 - `novelai.main_reader:app`: public reader, port 8001.
+- `novelaibook worker`: dedicated provider-backed crawl/translation worker;
+  it claims durable database activities and is not exposed through Caddy.
 - `DEPLOY_MODE=monolith|split` selects topology.
 - Next.js serves admin and public pages on port 3000.
 - PostgreSQL owns relational state; filesystem or S3/R2 owns chapter content.
 - Redis provides distributed queueing, rate limiting, and coordination.
 - Scheduler loops, long translation jobs, and restore verification need
-  always-on compute; the backend runs in the always-on Docker services.
+  always-on compute; provider-backed activities run in the dedicated worker
+  service so web processes do not consume their event loops for translation.
 
 ## Deployment Topologies
 
@@ -258,6 +261,9 @@ Roles are `guest`, `user`, and exactly one `owner`.
 - Public login never calls owner bootstrap `/api/auth/login`.
 - Identity comes from session, never client-supplied `user_id`.
 - Cookie-authenticated mutations require CSRF protection.
+- **Worker process** (``admin.Dockerfile``) claims database-backed crawl and
+  translation activities through ``novelaibook worker``. It has no public port
+  and does not run an in-process web worker.
 - Disabled users cannot log in or continue sessions.
 - Never log or return keys, cookies, auth headers, encryption keys, database
   URLs, bootstrap secrets, private paths, or raw traces.
@@ -288,11 +294,30 @@ replace, pause, resume, and permanently delete their own credential. Owners
 have separate pause, resume, and revoke emergency controls.
 
 Contributor translation selects only active, valid Gemini credentials and uses
-per-credential RPM, TPM, and RPD reservations. The usage ledger records only
+per-credential RPM, TPM, RPD, and in-flight concurrency reservations. The usage ledger records only
 credential/owner/requesting-user identity, provider/model, request/job/activity
 ids, contribution mode, sanitized status, token accounting, estimated cost,
-and timestamps. `credential_owner_user_id` and `requesting_user_id` remain
+timing fields, and timestamps. `credential_owner_user_id` and `requesting_user_id` remain
 distinct. Owner-only jobs never consume contributor credentials.
+
+### Durable translation activity contract
+
+`POST /api/admin/{novel_id}/translate` is an enqueue operation and returns
+`202 Accepted` with `activity_id` and `status=pending`. The optional
+`Idempotency-Key` is stored only as a bounded opaque request key; when omitted,
+the service derives a stable hash from non-secret operation parameters. The
+database-backed `activity_records` table owns status, leases, heartbeats,
+retry count, provider/model, and sanitized progress metadata. Claims use row
+locking and `skip_locked` where supported, expired leases are recovered, and
+history/list queries are bounded. The legacy JSON queue is imported once for
+compatibility but is not the production control plane.
+
+The worker passes the activity id as both `job_id` and `activity_id` to the
+translation pipeline. Provider calls are globally bounded per owner key or
+contributor credential, have a deadline and bounded exponential retry delay,
+and write sanitized provider timing/usage records. The worker is the normal
+execution owner; direct operator execution remains an explicit single-activity
+recovery path.
 
 ### Public ranking contract
 
@@ -372,6 +397,19 @@ unchanged.
   durable status is polled through the activity API. A failed activity must
   leave the previous active generation visible; a staged generation is only
   reader-visible after complete-snapshot validation and pointer activation.
+- Translation activities use the database queue rather than full-file JSON
+  rewrites. `ACTIVITY_HISTORY_MAX_ENTRIES`, metadata-size, and retry-history
+  limits bound durable state; queue metrics expose pending age and claim,
+  heartbeat, list, and update timings.
+- Gemini admission reserves request/token/day quota plus a global in-flight
+  limit. `TRANSLATION_PROVIDER_DEADLINE_SECONDS` and bounded retry backoff
+  limit provider work. Provider runtime metrics and the sanitized usage ledger
+  record wait, execution, retry, quota-reservation, and usage-write duration
+  without prompts, keys, authorization headers, or response secrets.
+- Translation cache entries remain file-backed but metadata is indexed in a
+  SQLite WAL sidecar. Invalidation, statistics, and LRU eviction use indexed
+  rows; the recursive directory scan is limited to one migration/backfill and
+  never runs on the request path.
 
 ## Reader Contracts
 

@@ -315,3 +315,32 @@ and timestamps only. Invalid-key and quota/rate failures pause the credential
 and leave a truthful failed ledger state; successful validation activates the
 credential immediately. Rejected or failed credentials are never added to the
 eligible contributor pool.
+
+## Translation activity and provider bounds
+
+Owner translation requests are enqueue operations: the API returns `202` with
+an activity id and the worker performs the staged translation under a durable
+lease. An optional `Idempotency-Key` makes client retries safe; omitted keys
+are derived from non-secret operation parameters. The activity id is propagated
+as both `job_id` and `activity_id`, and progress/status is polled from the
+activity API.
+
+The production queue is the `activity_records` database table, not a full-file
+JSON rewrite. Claims use row locks, expired leases are recovered, retries and
+metadata are bounded, and queue age/claim/heartbeat/update timings are
+observable. The legacy queue file may be imported during migration but is not
+the normal control plane.
+
+Gemini admission reserves RPM, TPM, RPD, and in-flight capacity globally for
+the owner key or per contributor credential. Each chunk has a configured
+provider deadline and bounded exponential retry delay. Provider clients are
+reused only inside their credential-isolated provider instance; explicit
+contributor keys are never placed in owner preferences or shared clients.
+Sanitized usage records and runtime metrics capture provider wait, execution,
+retry, quota-reservation, and usage-ledger write duration without prompts,
+keys, authorization headers, or response secrets.
+
+Accepted translation cache entries remain file-backed, while a SQLite WAL
+sidecar indexes key, novel, access time, and size metadata. Invalidation,
+statistics, and eviction use that index; only the initialization backfill may
+walk existing cache JSON files.

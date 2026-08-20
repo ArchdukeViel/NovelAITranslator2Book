@@ -84,14 +84,27 @@ duration and renewal; do not tune lease below realistic job duration without tes
 
 ## Runtime Groups
 
-- `JOB_WORKER_ENABLED`: in-process activity worker.
+- `JOB_WORKER_ENABLED`: legacy/in-process activity runner switch. Production
+  Compose keeps this `false` for web services; the dedicated `worker` service
+  runs `novelaibook worker` against the database queue.
 - `WEB_RATE_LIMITER_BACKEND=memory|redis`: memory only for single instance.
 - `REDIS_URL`: shared rate limiting and distributed queue where enabled.
 - `TRUSTED_PROXY_CIDRS`: exact reverse-proxy CIDRs allowed to supply
   `X-Forwarded-For`; leave empty when clients connect directly. Do not trust
   forwarded headers from arbitrary public clients.
-- `TRANSLATION_*`: chunking, concurrency, attempts, scheduler/model policy.
+- `TRANSLATION_*`: chunking, concurrency, attempts, scheduler/model policy,
+  provider deadline, and bounded retry backoff.
+- `ACTIVITY_HISTORY_MAX_ENTRIES`, `ACTIVITY_METADATA_MAX_BYTES`, and
+  `ACTIVITY_RETRY_HISTORY_MAX_ENTRIES`: durable queue history and metadata
+  bounds. The queue is database-backed in production; the legacy JSON file is
+  imported only as a compatibility path.
 - `PROVIDER_GEMINI_*`: key, default model, fallback models.
+- `GEMINI_RPM_LIMIT`, `GEMINI_TPM_LIMIT`, `GEMINI_RPD_LIMIT`, and
+  `GEMINI_CONCURRENCY_LIMIT`: owner-key request/token/day and in-flight bounds.
+- `CONTRIBUTOR_RPM_LIMIT`, `CONTRIBUTOR_TPM_LIMIT`, `CONTRIBUTOR_RPD_LIMIT`,
+  and `CONTRIBUTOR_CONCURRENCY_LIMIT`: per-contributor credential bounds.
+- `PROVIDER_RESERVATION_TTL_SECONDS`: expiry for abandoned provider admission
+  reservations so crashed workers do not hold concurrency forever.
 - `TRANSLATION_CACHE_*`: exact cache enablement, TTL, size.
 - `PUBLIC_RANKING_CACHE_*`: successful ranking cache enablement, TTL, and
   bounded process-local entry count.
@@ -248,6 +261,7 @@ encryption key or required deployment controls are missing:
 | `CONTRIBUTOR_RPM_LIMIT` | Per-credential requests per minute | `15` |
 | `CONTRIBUTOR_TPM_LIMIT` | Per-credential tokens per minute | `250000` |
 | `CONTRIBUTOR_RPD_LIMIT` | Per-credential requests per day | `500` |
+| `CONTRIBUTOR_CONCURRENCY_LIMIT` | Per-credential in-flight provider calls | `2` |
 | `CONTRIBUTOR_USAGE_RETENTION_DAYS` | Contributor ledger retention window | `365` |
 
 `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` is required before a credential can be
@@ -263,3 +277,18 @@ Public rankings use `GET /api/public/rankings` with `period=daily|weekly|monthly
 and a bounded `limit`. Analytics retention is the truth boundary; there is no
 All Time setting. Anonymous ranking identity uses a signed first-party opaque
 cookie and stores only its digest, never an IP address.
+
+### Translation worker and cache bounds
+
+Long translation requests return an activity id immediately. In Compose, web
+services keep `JOB_WORKER_ENABLED=false`; the `worker` service runs
+`novelaibook worker` and claims the database-backed `activity_records` queue.
+`ACTIVITY_HISTORY_MAX_ENTRIES` bounds list/history reads,
+`ACTIVITY_METADATA_MAX_BYTES` bounds one progress envelope, and
+`ACTIVITY_RETRY_HISTORY_MAX_ENTRIES` bounds retained retry snapshots.
+
+The file-backed translation cache maintains a SQLite WAL metadata index at
+`translation_cache_index.sqlite3`. A one-time backfill may scan existing JSON
+entries; subsequent get, invalidate, statistics, and eviction operations use
+indexed rows. Do not delete the sidecar while the cache is live; rebuild it
+only through a controlled cache maintenance window.

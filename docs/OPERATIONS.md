@@ -63,6 +63,38 @@ background runner claims it. A request/network timeout applies to each
 individual outbound operation, while the activity lease and heartbeat govern
 the total crawl duration.
 
+### Long-running translation
+
+`POST /api/admin/{novel_id}/translate` returns `202 Accepted` with
+`activity_id` and `status=pending`; it never waits for provider calls or
+translation artifact commits. Supply an `Idempotency-Key` when a client may
+retry the enqueue request. Without one, the server derives a stable key from
+the non-secret operation parameters. Poll
+`GET /api/admin/activity/{activity_id}` and use the existing activity run,
+cancel, retry, and lease status controls.
+
+The Compose `worker` service is the normal execution owner. Keep
+`JOB_WORKER_ENABLED=false` on web services so the admin/reader processes do
+not duplicate provider work. The activity queue is backed by the
+`activity_records` table; claims are row-locked, expired leases are recovered,
+and bounded history/metadata limits prevent queue state from growing without
+control. Monitor `novelai_activity_queue_age_seconds`,
+`novelai_activity_queue_operation_total_ms`, and the activity status gauges.
+
+Provider overload should surface as queue age, bounded retry delay, or a
+truthful paused/failed activity—not as an unbounded web request. Owner Gemini
+uses global RPM/TPM/RPD and in-flight limits. Contributor credentials use the
+same dimensions per credential and remain isolated from owner-only jobs.
+Provider timing counters include admission wait, execution, retries, quota
+reservation, and usage-ledger write time; they intentionally contain no
+prompt or credential data.
+
+The translation cache's JSON entries are indexed by a SQLite WAL sidecar.
+Only initialization/backfill may scan the cache directory. Invalidation,
+statistics, and eviction operate on indexed metadata. If the sidecar is
+corrupt, stop the worker, preserve the JSON entries, and rebuild it during a
+maintenance window rather than deleting cache data blindly.
+
 Owner maintenance status:
 
 ```text

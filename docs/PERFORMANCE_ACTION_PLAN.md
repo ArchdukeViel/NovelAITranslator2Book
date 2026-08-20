@@ -362,6 +362,94 @@ Actions:
 
 Exit gate: cache maintenance has a bounded schedule and does not increase translation or public-read p95 as cache size grows.
 
+## Phase 5 execution log - 2026-08-20
+
+**Status: implementation and focused local validation complete; stopped for
+review before Phase 6.**
+
+### 5.1 result
+
+- Owner translation requests now validate the novel, create a durable
+  translation activity, and return `202 Accepted` with `activity_id` and
+  `status=pending`; they no longer await provider-backed orchestration.
+- `Idempotency-Key` is accepted on the enqueue route. Without a supplied key,
+  the service derives a stable hash from non-secret operation parameters.
+- Compose now has a dedicated `worker` service running `novelaibook worker`.
+  Web services keep `JOB_WORKER_ENABLED=false`; the reader already has no
+  in-process activity runner. Existing credential isolation, usage ledger,
+  quota, revocation, and activity cancellation paths remain worker-owned.
+
+### 5.2 result
+
+- Added `activity_records` and migration `d9f3a1b7c5e2`. The production queue
+  uses row-locked status/lease transitions, expired-lease recovery,
+  `skip_locked` claims where supported, idempotency uniqueness, bounded list
+  queries, retry state, and sanitized metadata size/history limits.
+- The legacy `queue.json` is imported once when the database backend starts;
+  explicit file-backed instances remain available for isolated tests and
+  maintenance compatibility.
+- Queue operation timing, pending age, and status gauges are available through
+  the metrics boundary. A two-queue test proved that a second worker cannot
+  claim an already-running activity.
+
+### 5.3 result
+
+- Gemini quota admission now supports global in-flight limits in addition to
+  RPM/TPM/RPD reservation. Owner and contributor controllers receive separate
+  limits, and abandoned reservations expire after the configured TTL.
+- Provider calls use reusable credential-isolated Gemini clients, per-chunk
+  deadlines, bounded exponential retry delay, and truthful timeout/quota
+  failure transitions. Provider timing counters and sanitized usage records
+  capture wait, execution, retries, quota reservation, and usage-ledger write
+  duration without prompts or secrets.
+
+### 5.4 result
+
+- `TranslationCacheService` now maintains an SQLite WAL metadata sidecar for
+  key, novel, access-time, and size indexes. Invalidation, statistics, and LRU
+  eviction use indexed rows. A recursive JSON scan is limited to one
+  initialization/backfill and is not used on request-path maintenance.
+
+### Focused evidence
+
+- `tools/ruff.ps1 check .`: passed.
+- `tools/pyright.ps1`: passed with zero errors.
+- The affected queue, operation, provider, cache, usage, metrics, and quota
+  suites passed (`63 passed` in the pre-Phase-5 regression set).
+- New durable-queue, enqueue/idempotency, cache-index, and quota-concurrency
+  tests passed (`12 passed`).
+- The expanded Phase 5 backend set passed (`102 passed` in `13.63 s`), and
+  activity-router, admin-translation, split-topology, and health coverage
+  passed (`69 passed` in `12.22 s`).
+- The contract set passed `40` tests; its two failures are the known stale
+  public-reader projection fixture failures in `test_full_pipeline.py`, not
+  enqueue, idempotency, or worker failures.
+- Frontend lint, typecheck, production build, and focused route/ranking/admin
+  coverage passed. The focused Vitest run passed `40 tests` across `5 files`
+  in `14.32 s`.
+- The targeted migration smoke upgraded `c8d2e4f6a1b3` to
+  `d9f3a1b7c5e2` and downgraded back successfully. The real local PostgreSQL
+  migration profile applied the new migration successfully, and the final
+  production Compose topology reported healthy backend, reader, frontend,
+  Redis, Caddy, and running worker services.
+- The all-Markdown route audit found no active `/contribute`, `/request-novel`,
+  or singular `/novel/...` references. Remaining matches are intentional
+  current routes, historical notes, the truthful absence of All Time ranking,
+  or the unrelated `TableOfContentsV2` source identifier.
+- `graphify update . --no-cluster` refreshed the graph after the implementation
+  edits.
+
+### Phase 5 gate status
+
+The source, focused-test, migration, Compose, and route/document gates pass.
+The full backend command timed out after `904 s` without returning a result;
+the full frontend Vitest command timed out after about `243 s`. The contract
+subset still has the two known projection-fixture failures described above.
+Enqueue p95 under concurrent public probes and production-like multi-worker/
+provider load evidence remain unavailable. Do not treat this section as Phase
+6 approval; review the completed implementation and these runtime limitations
+first.
+
 ## Phase 6 — load testing and operational acceptance
 
 Create a repeatable scenario with:

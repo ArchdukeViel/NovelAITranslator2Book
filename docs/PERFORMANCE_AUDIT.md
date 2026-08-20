@@ -318,6 +318,42 @@ to make the fixture pass.
 
 **Confidence:** Focused test output and current Phase 1 source contract.
 
+## Phase 5 execution update - 2026-08-20
+
+Phase 5 implementation and focused local validation are complete in the
+checkout. Work is stopped for review before Phase 6. This phase resolves the
+request-path and file-control-plane findings F-12 through F-15 in source and
+tests; runtime percentile/load evidence remains an explicit limitation.
+
+| Area | Result | Evidence |
+| --- | --- | --- |
+| Translation enqueue | Passed in source/tests | `POST /api/admin/{novel_id}/translate` now creates a durable translation activity and returns `202` with `activity_id`/`pending`; optional `Idempotency-Key` and deterministic non-secret fallback prevent duplicate active work. |
+| Worker isolation | Passed in source/Compose | Added the dedicated `worker` service running `novelaibook worker`; web services keep `JOB_WORKER_ENABLED=false`, and the public reader has no activity-runner lifespan. |
+| Activity control plane | Passed in source/tests | Added `activity_records`, migration `d9f3a1b7c5e2`, row-locked claims, lease recovery, idempotency uniqueness, bounded metadata/retry history, and queue timing/age metrics. Two queue instances passed the no-double-claim test. |
+| Provider bounds | Passed in source/tests | Owner/contributor Gemini admission has separate in-flight limits plus RPM/TPM/RPD budgets; provider deadlines, bounded retry backoff, reusable credential-isolated clients, sanitized usage timing, and runtime metrics are implemented. |
+| Translation cache maintenance | Passed in source/tests | SQLite WAL metadata sidecar indexes entries for invalidation, statistics, and LRU eviction. Only initialization backfill scans JSON files; request-path maintenance does not recurse through the directory. |
+| Focused validation | Passed | `tools/ruff.ps1 check .`, `tools/pyright.ps1`, the prior affected set (`63 passed`), the expanded Phase 5 set (`102 passed`), activity/router/health coverage (`69 passed`), and focused frontend coverage (`40 passed` across 5 files) all passed. |
+| Frontend release checks | Passed with full-suite limitation | `npm run lint`, `npm run typecheck`, and `npm run build` passed. The full `npm run test` command timed out after about `243 s`; the focused route/ranking/admin Vitest set passed. |
+| Migration and Compose | Passed locally | Targeted SQLite upgrade/downgrade passed; the real local PostgreSQL migration profile applied `d9f3a1b7c5e2`. Fresh admin/reader/frontend images built, the production Compose stack was recreated, and backend, reader, frontend, Redis, Caddy, and worker were healthy/running. |
+| Route and Markdown audit | Passed | No active `/contribute`, `/request-novel`, or singular `/novel/...` references remain. Current request route, historical notes, truthful All Time exclusions, and `TableOfContentsV2` source identifier are intentional. |
+| Runtime gate | Open | The full backend command timed out after `904 s`; the contract subset has two known stale public-reader projection fixture failures. Enqueue p95 under concurrent public probes and production-like provider failure/load evidence remain unmeasured. |
+
+### Phase 5 finding resolutions
+
+F-12 is resolved locally: translation no longer waits inside the owner web
+request, and the worker receives the activity id as both `job_id` and
+`activity_id`. F-13 is resolved locally for admission and retry policy: global
+provider/credential reservations, deadlines, bounded backoff, and timing
+metrics are present; real provider-volume capacity is not claimed. F-14 is
+resolved locally: the database owns activity state and leases, with a one-time
+legacy queue import. F-15 is resolved locally: indexed cache metadata replaces
+recursive maintenance scans; the one-time backfill is visible in cache stats.
+
+The remaining Phase 4 fixture issue F-32 is still open. Its 21 stale public
+reader tests must be repaired against the published `Novel`/`Chapter`
+projection before the full backend-suite gate. The fixture will not be made to
+pass by restoring request-time storage fallback.
+
 ## Public request waterfalls
 
 ### Home page
