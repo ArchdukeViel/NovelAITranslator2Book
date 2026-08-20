@@ -104,7 +104,7 @@ def _force_remove_tree(path: Path) -> None:
             capture_output=True,
             check=False,
         )
-    except (subprocess.TimeoutExpired, Exception):
+    except subprocess.TimeoutExpired, Exception:
         shutil.rmtree(path, onerror=on_error, ignore_errors=True)
 
 
@@ -635,11 +635,12 @@ def cleanup_pytest_cache():
 
 
 def _configure_catalog_projection_db(data_dir, monkeypatch):
-    database_url = f"sqlite:///file:proj_{uuid4().hex}?mode=memory&cache=shared"
+    database_path = (data_dir / "catalog.sqlite3").resolve()
+    database_url = f"sqlite:///{database_path.as_posix()}"
     monkeypatch.setattr(settings, "DATABASE_URL", database_url)
     engine = create_engine(
         database_url,
-        connect_args={"check_same_thread": False, "uri": True},
+        connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)

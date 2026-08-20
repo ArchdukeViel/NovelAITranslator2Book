@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from collections import defaultdict
 from collections.abc import Sequence
@@ -61,7 +62,8 @@ from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from novelai.storage.service import StorageService
 
-_TMP = Path(__file__).resolve().parent / ".tmp" / "web_api"
+_XDIST_WORKER_ID = os.environ.get("PYTEST_XDIST_WORKER", "master")
+_TMP = Path(__file__).resolve().parent / ".tmp" / "web_api" / _XDIST_WORKER_ID
 
 
 # ---------------------------------------------------------------------------
