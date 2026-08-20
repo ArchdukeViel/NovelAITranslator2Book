@@ -592,6 +592,15 @@ query-count evidence, and representative worker/provider capacity remain
 unclaimed. Temporary Phase 6 fixture data, overlays, and isolated volumes are
 cleaned up after each run; the base Compose stack remains the runtime baseline.
 
+The database-capacity error path is now classified locally: recognized
+SQLAlchemy pool/server-capacity failures return sanitized retryable
+`503 DATABASE_CAPACITY_EXHAUSTED` responses, while unrelated database errors
+remain generic `500`s. After rebuilding the admin and reader images, a direct
+filesystem control repeated the eight-request enqueue burst with five `202`
+and three configured `429` responses and zero capacity `500`s. This resolves
+the unhandled application error path, but deployment-wide pooler budgeting and
+production storage/query/provider evidence remain open.
+
 ## Priority Recommendation
 
 1. `OWN-001` — assign owners (unblocks every evidence record).

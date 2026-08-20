@@ -16,6 +16,22 @@ readiness does not perform a mutating storage probe or S3 usage enumeration;
 `/api/admin/health` remains the fresh owner diagnostic for those checks.
 Public health output never includes paths, hosts, credentials, or traces.
 
+### Database connection capacity
+
+Treat `DB_CONNECTION_BUDGET` as a deployment-wide limit, not only a single
+web-process setting. Account for every backend, reader, worker, migration, and
+operator process using `DB_POOL_SIZE + DB_MAX_OVERFLOW`, then reserve capacity
+for readiness and emergency access. Verify the resulting aggregate against the
+managed pooler before changing `DB_CONNECTION_MODE` or scaling a service.
+
+When a recognized SQLAlchemy pool/server-capacity failure occurs, the API
+returns `503 DATABASE_CAPACITY_EXHAUSTED` with sanitized retryable details.
+Unrelated database errors remain internal failures. A capacity response is a
+signal to reduce admission or correct the pooler budget; do not hide it by
+raising pool timeouts or enabling unbounded overflow. Record the affected
+service, UTC window, status counts, and sanitized pooler evidence without
+recording connection URLs, credentials, cookies, or raw traces.
+
 Readiness defaults to a five-second cache (`HEALTH_CACHE_TTL_SECONDS`). The
 first request after expiry performs one bounded probe run and concurrent
 requests join it. Inspect

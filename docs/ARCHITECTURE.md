@@ -83,6 +83,9 @@ The production topology is the target.
     either long-running API process starts.
 - **Database**: managed PostgreSQL (Supabase / RDS / Cloud SQL) with:
   - TLS required, connection pool with transaction-level budgeting.
+  - `DB_CONNECTION_BUDGET` reviewed across backend, reader, worker, migration,
+    and operator processes; per-process pool settings alone do not prove the
+    aggregate managed-pooler limit.
   - Dedicated direct-database role (not ``anon``/``authenticated``) used by
     backend SQLAlchemy connections. It owns application tables or has the
     audited privileges required to operate while RLS denies Data API roles.
@@ -362,6 +365,10 @@ unchanged.
 - `/health/live`: process-only, unauthenticated, always 200, no dependencies.
 - `/health/ready`: redacted, cached/single-flight DB/lightweight-storage/
   worker/disk probes; 503 when the cached result is unhealthy.
+- Recognized SQLAlchemy pool/server-capacity failures return a sanitized
+  retryable `503 DATABASE_CAPACITY_EXHAUSTED`; unrelated database errors remain
+  internal failures. This response classification does not replace
+  deployment-wide pooler-budget verification.
 - `/api/admin/health`: owner-only detailed but redacted diagnostics.
 - Probe states: `healthy`, `degraded`, `unhealthy`.
 - Public readiness does not run full storage write/read/delete or S3 usage

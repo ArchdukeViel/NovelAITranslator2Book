@@ -19,7 +19,7 @@ The initial runtime was behind the checkout and allowed public storage waterfall
 5. Phase 3 now uses one joined ranking/projection query, composite analytics indexes, and a bounded process-local success cache. Focused tests prove distinct-viewer periods, chapter exclusion, bounded SQL work, and cache metrics; production-volume query plans, seeded latency, and cross-replica cache behavior remain unmeasured.
 6. Phase 4 now makes readiness cacheable/single-flight, removes the mutating storage probe from public readiness, adds bounded origin projection caching, and queues analytics writes off the request path. The local one-second probe configuration now passes without an override; populated analytics load and cross-replica cache behavior remain unmeasured.
 7. Translation work can occupy a web request for up to the configured 120-second timeout. Provider calls also use blocking SDK calls in worker threads, bounded concurrency, retries, and quota reservation, so provider latency can create sustained backpressure.
-8. Phase 6 now has a repeatable local fixture and measured public/browser sample. Catalog, detail, chapter, and search p95 values were still above the proposed warm budgets in this small local run. Direct-mode owner enqueue exposed an aggregate database-session capacity failure; transaction mode avoided it in an isolated control, and controlled storage delay produced visible bounded degradation. Production object-storage telemetry and provider-capacity evidence remain unmeasured, so no runtime sign-off is claimed.
+8. Phase 6 now has a repeatable local fixture and measured public/browser sample. Catalog, detail, chapter, and search p95 values were still above the proposed warm budgets in this small local run. Direct-mode owner enqueue exposed an aggregate database-session capacity failure; recognized capacity failures are now classified as sanitized retryable responses, transaction mode avoided them in an isolated control, and controlled storage delay produced visible bounded degradation. Production object-storage telemetry and provider-capacity evidence remain unmeasured, so no runtime sign-off is claimed.
 
 The remaining release/operations problems are chapter-projection completeness, production-scale browser/ranking budgets, and multi-instance cache economics. Phase 4 source and Compose defaults now make public readiness cheap and cached, preserve a full owner diagnostic path, cache only safe public projections, and apply explicit bounded analytics loss semantics. The live local stack passed the base Compose readiness check without a temporary override.
 
@@ -432,6 +432,13 @@ transport errors. A disposable public `role=user` browser session also loaded
   the same database and workload avoided those `500`s, but the protected base
   runtime configuration remains `DB_CONNECTION_MODE=direct` and was not
   changed.
+- After that run, recognized SQLAlchemy DBAPI pool/server-capacity failures
+  were classified as sanitized retryable responses. The rebuilt admin and
+  reader images were exercised in a direct-mode filesystem control: an
+  eight-request authenticated enqueue burst returned five `202` and three
+  configured translation-limit `429` responses, with zero capacity `500`s.
+  Unrelated database errors remain generic `500` responses. Deployment-wide
+  pooler budget verification is still open.
 - Redis remained healthy, but the public workload created no queue keys and
   did not materially exercise the translation worker. Worker CPU was idle in
   this guest-only sample, so queue depth/job age/provider throughput are not
@@ -476,15 +483,15 @@ application.
 ### Phase 6 gate status and remaining work
 
 The fixture, route, proxy-health, seeded-analytics, provider-failure,
-guest/authenticated-browser, hydration, focused frontend, and controlled
-storage-delay gates pass for this local sample. Transaction mode avoided the
-direct-mode enqueue capacity failure, but the protected base runtime still
-needs an operator-approved connection-mode/budget change and a production
-pooler verification. The Phase 6 runtime gate remains open because production
-object-storage telemetry, PostgreSQL query-plan statistics, and representative
-multi-worker/provider capacity evidence are still missing. The existing F-32
-stale projection fixture failures and the earlier full-suite timeouts also
-remain open; this run does not conceal them.
+guest/authenticated-browser, hydration, focused frontend, controlled
+storage-delay, and classified-capacity-response gates pass for this local
+sample. The protected base runtime still needs an operator-approved
+connection-mode/budget change and production pooler verification. The Phase 6
+runtime gate remains open because production object-storage telemetry,
+PostgreSQL query-plan statistics, and representative multi-worker/provider
+capacity evidence are still missing. The existing F-32 stale projection
+fixture failures and the earlier full-suite timeouts also remain open; this
+run does not conceal them.
 
 ### F-33 - P1 - Home clock-dependent labels caused a hydration mismatch
 
@@ -521,9 +528,10 @@ database-pooler sessions.
 **Recommendation:** Set and verify one aggregate connection budget across all
 Compose services and managed-pooler modes, reserve capacity for readiness and
 operator traffic, and add a burst test that asserts no database-capacity `500`
-responses. If capacity is exhausted, return a classified retryable response
-and preserve the enqueue/worker boundary rather than exposing an unhandled
-database exception.
+responses. If capacity is exhausted, keep returning a classified retryable
+response and preserve the enqueue/worker boundary rather than exposing an
+unhandled database exception. The local application classification is now in
+place; deployment-wide budget verification remains open.
 
 **Confidence:** Direct local runtime logs and repeated control run; the
 production pooler limit and multi-instance budget remain unverified.

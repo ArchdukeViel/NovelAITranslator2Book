@@ -45,7 +45,7 @@ Generate secrets with `python -c "import secrets; print(secrets.token_hex(32))"`
 | Area | Required contract |
 |---|---|
 | Runtime | `ENV=production`; `DEPLOY_MODE=monolith|split`. |
-| Database | `DATABASE_URL` uses `postgresql+psycopg://`; TLS mode and connection budget reviewed. |
+| Database | `DATABASE_URL` uses `postgresql+psycopg://`; TLS mode and deployment-wide connection budget are reviewed across backend, reader, worker, migrations, and operator reserve. |
 | Sessions | Strong `SESSION_SECRET_KEY`, `OWNER_BOOTSTRAP_SECRET`, HTTPS cookie behavior. |
 | Public URL | HTTPS `PUBLIC_FRONTEND_URL`; exact OAuth redirect when OAuth enabled. |
 | Origins | Explicit `WEB_CORS_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, `ALLOWED_HOSTS`; no wildcard with credentials. |
@@ -87,6 +87,17 @@ duration and renewal; do not tune lease below realistic job duration without tes
 - `JOB_WORKER_ENABLED`: legacy/in-process activity runner switch. Production
   Compose keeps this `false` for web services; the dedicated `worker` service
   runs `novelaibook worker` against the database queue.
+- `DB_CONNECTION_MODE=direct|session|transaction`: selects the PostgreSQL
+  connection topology. `transaction` uses transaction-pooler-safe
+  `NullPool`; `direct` and `session` use the configured SQLAlchemy pool.
+- `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT_SECONDS`, and
+  `DB_CONNECTION_BUDGET`: bound per-process pool behavior and declare the
+  deployment-wide connection budget. Review
+  `processes * (DB_POOL_SIZE + DB_MAX_OVERFLOW)` across backend, reader,
+  worker, migration, and operator processes, while reserving capacity for
+  readiness and emergency access. The Phase 6 local burst showed that a
+  nominal per-process setting is not production pooler evidence; verify the
+  aggregate budget against the target pooler before launch.
 - `WEB_RATE_LIMITER_BACKEND=memory|redis`: memory only for single instance.
 - `REDIS_URL`: shared rate limiting and distributed queue where enabled.
 - `TRUSTED_PROXY_CIDRS`: exact reverse-proxy CIDRs allowed to supply

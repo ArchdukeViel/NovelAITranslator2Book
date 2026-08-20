@@ -548,6 +548,16 @@ a 1.2-second delay. Ten concurrent readiness requests returned `503` with
 stack was restored afterward. This does not substitute for production R2/S3
 telemetry.
 
+The application-side capacity response was then implemented and rebuilt into
+the admin and reader images. A direct-mode filesystem control repeated the
+eight-request authenticated enqueue burst and returned five `202` responses
+and three configured translation-limit `429` responses, with zero capacity
+`500`s. Recognized SQLAlchemy DBAPI pool/server-capacity failures now return a
+sanitized `503 DATABASE_CAPACITY_EXHAUSTED`; unrelated database errors remain
+generic `500`s. The web API regression file passes in full (`163 passed`).
+This closes the local unhandled-error path, while deployment-wide pooler and
+production capacity evidence remain open.
+
 The browser sample measured home LCP `2,012 ms`, ranking LCP `196 ms`, detail
 LCP `1,288 ms`, chapter LCP `740 ms`, CLS `0` on all pages, and an 80-88 ms
 ranking-tab interaction event sample. The first home run exposed a hydration
@@ -555,8 +565,9 @@ error caused by `Date.now()`-derived labels; the home page now uses a stable
 hydration-aware timestamp, and the rebuilt browser routes report zero
 application console errors. Focused home tests pass (`29 tests`).
 
-The direct-mode owner burst reproduced two database-capacity `500` responses;
-the transaction-mode control avoided them, but the protected base runtime
+The original direct-mode owner burst reproduced two database-capacity `500`
+responses before the application classification change. The rebuilt runtime
+control now returns no capacity `500`s, but the protected base runtime
 configuration remains direct and was not changed. Production R2/S3
 call/latency/byte telemetry, PostgreSQL slowest-query and query-count
 statistics (`pg_stat_statements` was unavailable), and multi-worker/provider
@@ -568,14 +579,14 @@ deployment configuration.
 ### Phase 6 gate status
 
 The harness, public route, seeded analytics, proxy-health, provider-failure,
-browser, hydration, focused frontend, cleanup, and controlled storage-delay
-checks pass for the local sample. Transaction mode provides a tested local
-mitigation for the direct-mode database-session failure, but the base runtime
-still needs an operator-approved connection-mode/budget change and production
-pooler verification. Phase 6 remains open because production storage
-telemetry, database query-plan evidence, and representative worker/provider
-capacity remain sign-off requirements. Do not convert these local p95 values
-into production SLOs.
+browser, hydration, focused frontend, cleanup, controlled storage-delay, and
+classified-capacity-response checks pass for the local sample. Transaction
+mode provides a tested local mitigation for the direct-mode database-session
+failure, but the base runtime still needs an operator-approved
+connection-mode/budget change and production pooler verification. Phase 6
+remains open because production storage telemetry, database query-plan
+evidence, and representative worker/provider capacity remain sign-off
+requirements. Do not convert these local p95 values into production SLOs.
 
 ## Suggested implementation sequence
 
