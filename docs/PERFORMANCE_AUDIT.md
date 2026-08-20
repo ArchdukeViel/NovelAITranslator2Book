@@ -566,9 +566,9 @@ connection-mode/budget change and production pooler verification. The local
 base budget is now `32` for three pool owners plus reserve; a bounded production
 object-storage readiness probe passes, but representative storage telemetry,
 PostgreSQL query-plan statistics, and multi-worker/provider capacity evidence
-are still missing. The earlier full-suite timeouts remain
-open; the former F-32 projection-fixture failures were repaired in the current
-continuation and are no longer counted as current failures.
+are still missing. The exact full backend suite now passes after the test
+harness repairs recorded below; production pooler/query-plan and provider
+capacity remain the external Phase 6 gates.
 
 ### Phase 6 continuation: current contract audit - 2026-08-20
 
@@ -589,14 +589,27 @@ The full frontend suite passed `857` tests across `78` files; frontend lint,
 typecheck, and production build also passed. The repaired backend contract
 tests and the full public-review/PR41 files passed `56` tests. The complete E2E
 file passed `5` tests, and the full slow shard passed `302` tests with `19`
-skipped. A full four-worker backend run reached `3,240 passed, 26 skipped,
-29 failed`; every failure was in the shared-state `test_web_api.py` module and
-included activity-lock contention. The same file passes serially (`163 passed`
-in `64.04 s`). A retry with `--dist=loadfile` timed out after `904.2 s` without
-a summary, so the backend collection contains `3,295` tests (`2,974`
-non-slow and `321` slow) but does not have a full-suite sign-off. Production
+skipped. The first four-worker backend attempt reached `3,240 passed, 26
+skipped, 29 failed`; every failure was in the shared-state `test_web_api.py`
+module and included activity-lock contention. That fixture now scopes its
+filesystem root by `PYTEST_XDIST_WORKER`, and the same file passes both serially
+(`163 passed in 84.03 s`) and under four-worker xdist (`163 passed in 38.71 s`).
+The orchestration fixture also now uses a disposable SQLite file inside its
+unique test directory instead of a Windows-invalid shared-memory URI. The
+exact current full command, launched with an in-repository basetemp after the
+host temp root returned `PermissionError`, passes `3,270` tests with `26`
+skipped in `552.92 s`; its shards are `2,968 passed/7 skipped` non-slow and
+`302 passed/19 skipped` slow. This is local test evidence only; production
 pooler/query-plan and representative worker/provider capacity evidence remain
 the external Phase 6 gates.
+
+A current read-only proxy recheck confirms port `80` is reachable and returns
+`200` for `/health/live`, `/health/ready`, the public catalog, weekly rankings,
+`robots.txt`, `sitemap.xml`, and the privacy, terms, and legal routes when sent
+with `Host: localhost`. The current local env files do not define `SITE_DOMAIN`,
+so Caddy correctly uses its documented `localhost` fallback. This proves the
+local proxy path only; a production hostname must be supplied and rechecked
+before public launch.
 
 ### F-33 - P1 - Home clock-dependent labels caused a hydration mismatch
 
@@ -972,3 +985,11 @@ The budgets should be validated with at least 50 warm and 50 cold requests per r
 - Object-storage timing was measured in the existing deployment, but no destructive or production data operation was performed.
 - The browser check with the wrong host was intentionally treated as invalid for API performance; only configured-host proxy timings were used.
 - No claim is made here about provider-side latency without a controlled provider workload and provider telemetry.
+- The current full backend collection passes with an explicit disposable
+  `backend/tests/.tmp/pytest-full-suite` basetemp. The default host temp root
+  was permission-denied after interrupted test processes, so the launch
+  workaround is recorded rather than treating host temp permissions as an
+  application result.
+- The current local Caddy smoke uses the documented `localhost` fallback because
+  `SITE_DOMAIN` is absent from the local env files; no production hostname was
+  exposed or asserted in this environment.

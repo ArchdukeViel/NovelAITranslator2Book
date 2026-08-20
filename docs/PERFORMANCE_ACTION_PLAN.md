@@ -683,15 +683,26 @@ inside the isolated SQLite database rather than bypassing it.
 The full frontend suite passed `857` tests across `78` files; frontend lint,
 typecheck, and production build passed. The repaired backend contract tests and
 public-review/PR41 files passed `56` tests. The complete E2E file passed `5`
-tests, and the full slow shard passed `302` tests with `19` skipped. A full
-four-worker backend run reached `3,240 passed, 26 skipped, 29 failed`; every
-failure was in the shared-state `test_web_api.py` module and included
-activity-lock contention. The same file passes serially (`163 passed` in
-`64.04 s`). A retry with `--dist=loadfile` timed out after `904.2 s` without a
-summary, so the backend collection contains `3,295` tests (`2,974` non-slow
-and `321` slow) but does not have a full-suite sign-off. Production
-pooler/query-plan and representative worker/provider capacity evidence remain
-the external Phase 6 gates.
+tests, and the full slow shard passed `302` tests with `19` skipped. The first
+four-worker backend attempt reached `3,240 passed, 26 skipped, 29 failed`; all
+failures were in the shared-state `test_web_api.py` module and included
+activity-lock contention. That fixture now scopes its filesystem root by
+`PYTEST_XDIST_WORKER`, and the module passes both serially (`163 passed in
+84.03 s`) and under four-worker xdist (`163 passed in 38.71 s`). The
+orchestration fixture now uses a disposable SQLite file inside its unique test
+directory instead of a Windows-invalid shared-memory URI. The exact current
+full command, launched with an in-repository basetemp after the host temp root
+returned `PermissionError`, passes `3,270` tests with `26` skipped in `552.92 s`;
+the non-slow and slow shards pass `2,968/7` and `302/19`, respectively. This is
+local test evidence only; production pooler/query-plan and representative
+worker/provider capacity evidence remain the external Phase 6 gates.
+
+A current read-only proxy recheck confirms port `80` is reachable and returns
+`200` for the health, public catalog, weekly rankings, robots, sitemap, privacy,
+terms, and legal routes when sent with `Host: localhost`. The local env files do
+not define `SITE_DOMAIN`, so Caddy uses its documented `localhost` fallback;
+this is local routing evidence only. Supply and recheck the production
+hostname before public launch.
 
 ## Suggested implementation sequence
 
@@ -703,12 +714,12 @@ the external Phase 6 gates.
 6. Align ranking indexes, remove summary enrichment fan-out, and add bounded result caching. (Complete locally in Phase 3; production-volume and multi-replica evidence remain open.)
 7. Review Phase 3 evidence and approve readiness/cache amplification work before starting Phase 4. (Complete.)
 8. Stabilize readiness, cache safe public projections, and decouple analytics writes. (Complete locally in Phase 4; percentile, populated-load, and shared-cache evidence remain open.)
-9. Review Phase 4 evidence and approve worker/provider isolation before starting Phase 5.
-10. Move translation to enqueue/worker-only execution, then replace file-backed activity/cache hot paths.
+9. Review Phase 4 evidence and approve worker/provider isolation before starting Phase 5. (Complete.)
+10. Move translation to enqueue/worker-only execution, then replace file-backed activity/cache hot paths. (Complete locally in Phase 5; provider-volume evidence remains open.)
 11. Run the repeatable Phase 6 load scenario and update the budgets using
-    measured capacity. (Local sample executed; review gate remains open.)
+    measured capacity. (Complete locally; the measured sample and full local suite pass, while production telemetry remains open.)
 12. Apply and verify the transaction-mode/aggregate connection budget against
     the target pooler, then rerun Phase 6 with production-equivalent object
-    storage and worker/provider telemetry before launch sign-off.
+    storage and worker/provider telemetry before launch sign-off. (Open external launch gate.)
 
 The first practical gate is not a frontend optimization: it is a current-revision deployment with a healthy reader, healthy readiness, current migrations, and a catalog request that cannot fall back to a serial object-storage scan.
