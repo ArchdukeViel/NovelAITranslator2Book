@@ -573,3 +573,12 @@ Focused Phase 4 source tests passed, including health single-flight,
 analytics backpressure, projection-cache copy/invalidation, public routes,
 rankings, and metrics. Production percentile readiness, slow-writer loss,
 populated ranking load, and multi-reader/shared-cache economics remain open.
+## 2026-08-20 PUBLIC READER PROJECTION FIXTURE & POLICY REPAIR
+
+Closed the Phase 1 public-reader availability fixture gap recorded as F-32.
+The fixture now seeds the published `Novel`/`Chapter` projection through
+`CatalogService`, and the full focused availability suite passes (`22 tests`).
+Projection-first reads preserve the existing per-novel unavailable policy via
+`Novel.public_reader_unavailable_policy` and migration `e5f7a9c1d3b2`, without
+restoring request-time object-storage fallback. Catalog, public-router, Ruff,
+Pyright, Graphify, migration smoke, and local Caddy route checks passed.

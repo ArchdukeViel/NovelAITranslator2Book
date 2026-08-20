@@ -209,6 +209,11 @@ chapter storage -> paragraph IDs -> chunks/bundles -> prompt + glossary
   never by title; reorder updates `sequence_number` in place without creating
   new rows; same-title chapters remain distinct rows.
 - SQL chapter counts are projections; canonical counts come from storage.
+- `Novel.public_reader_unavailable_policy` is an optional projection of the
+  per-novel availability policy from canonical metadata. Migration
+  `e5f7a9c1d3b2` persists it so projection-first public chapter reads retain
+  policy behavior without a request-time metadata fallback or object-storage
+  enumeration.
 - S3/R2 directories are virtual prefixes; no host-filesystem assumptions.
 - Preserve raw scraped chapters and historical generated files.
 - `storage/novel_library` is private and never served directly.

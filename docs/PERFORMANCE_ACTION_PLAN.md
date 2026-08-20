@@ -309,11 +309,10 @@ Completed in the local checkout and Compose environment:
 Phase 4 exit gate status: the source, focused-test, no-override readiness, and
 redaction gates passed locally. Percentile readiness under delayed storage,
 slow-writer loss behavior, populated ranking load, and multi-reader/shared
-cache economics remain open. The older
-`backend/tests/test_public_reader_availability.py` fixture still seeds
-storage without the required Phase 1 DB projection and has 21 truthful
-`Novel not found` failures; it must be repaired before the Phase 5 full-suite
-gate without restoring request-time storage fallback.
+cache economics remain open. The Phase 4 checkpoint recorded a storage-only
+`backend/tests/test_public_reader_availability.py` fixture; the continuation
+later repaired it against the required Phase 1 DB projection without restoring
+request-time storage fallback.
 
 ## Phase 5 — isolate worker and provider latency
 
@@ -421,9 +420,10 @@ review before Phase 6.**
 - The expanded Phase 5 backend set passed (`102 passed` in `13.63 s`), and
   activity-router, admin-translation, split-topology, and health coverage
   passed (`69 passed` in `12.22 s`).
-- The contract set passed `40` tests; its two failures are the known stale
-  public-reader projection fixture failures in `test_full_pipeline.py`, not
-  enqueue, idempotency, or worker failures.
+- The contract set passed `40` tests at the Phase 5 checkpoint; its two
+  failures were the then-known stale public-reader projection fixture failures,
+  not enqueue, idempotency, or worker failures. The continuation repaired the
+  separate availability fixture and now passes all `22` tests.
 - Frontend lint, typecheck, production build, and focused route/ranking/admin
   coverage passed. The focused Vitest run passed `40 tests` across `5 files`
   in `14.32 s`.
@@ -443,8 +443,8 @@ review before Phase 6.**
 
 The source, focused-test, migration, Compose, and route/document gates pass.
 The full backend command timed out after `904 s` without returning a result;
-the full frontend Vitest command timed out after about `243 s`. The contract
-subset still has the two known projection-fixture failures described above.
+the full frontend Vitest command timed out after about `243 s`. The stale
+availability fixture was repaired after this checkpoint and passes `22` tests.
 Enqueue p95 under concurrent public probes and production-like multi-worker/
 provider load evidence remain unavailable. Do not treat this section as Phase
 6 approval; review the completed implementation and these runtime limitations
@@ -596,6 +596,16 @@ connection-mode/budget change and production pooler verification. Phase 6
 remains open because production storage telemetry, database query-plan
 evidence, and representative worker/provider capacity remain sign-off
 requirements. Do not convert these local p95 values into production SLOs.
+
+### Phase 6 continuation: projection-fixture and policy repair
+
+The former F-32 fixture gap is resolved. Availability tests now seed the
+published `Novel`/`Chapter` projection through `CatalogService` and pass all
+`22` tests. Projection-first public reads retain the existing per-novel
+`public_reader_unavailable_policy` contract through migration
+`e5f7a9c1d3b2`; its SQLite upgrade/downgrade smoke also passes. This closes the
+local stale-fixture gate, but does not close the separate production storage,
+database-plan, pooler-budget, or worker/provider-capacity gates.
 
 ## Suggested implementation sequence
 

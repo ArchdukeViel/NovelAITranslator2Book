@@ -534,9 +534,10 @@ Evidence: commit `33c5c05`, focused health/analytics/cache/public-route tests,
 Ruff, Pyright, fresh backend/reader images, and live Caddy readiness with the
 one-second probe configuration and no temporary override. Production percentile
 readiness, slow-writer loss, populated ranking load, and multi-reader/shared
-cache economics remain open acceptance work. The older storage-only
-`test_public_reader_availability.py` fixture remains a Phase 1 projection
-test gap and is not counted as a passing full-suite result.
+cache economics remain open acceptance work. The Phase 4 checkpoint recorded
+the older storage-only `test_public_reader_availability.py` fixture as a
+projection test gap; the later continuation repaired it without restoring
+request-time storage fallback.
 
 ### Completed locally: public performance Phase 5
 
@@ -556,12 +557,11 @@ backend tests, `69` activity/router/health tests, `40` focused frontend tests,
 Ruff, Pyright, frontend lint/typecheck/build, successful local PostgreSQL
 migration, healthy production Compose recreation, route/Markdown audit, and
 Graphify refresh. The full backend command timed out after `904 s`; the full
-frontend Vitest command timed out after about `243 s`; and the contract subset
-still has two known public-reader projection fixture failures. Phase 5 is
-complete locally, while enqueue p95 under concurrent public probes and
+frontend Vitest command timed out after about `243 s`; the Phase 5 checkpoint
+also recorded two known public-reader projection fixture failures. The later
+continuation repaired the availability fixture and passes all `22` tests. Phase
+5 is complete locally, while enqueue p95 under concurrent public probes and
 production-like provider load/failure behavior remain runtime acceptance work.
-The known projection fixture gap above remains open and is not hidden by this
-implementation.
 
 ### Phase 6 acceptance: repeatable local sample, review gate open
 
@@ -608,6 +608,17 @@ has backend, reader, and worker pool processes with ten-connection theoretical
 ceilings, but the configured aggregate budget is `20` and the current source
 validator checks only the two web pools. Worker/migration/operator reserve
 therefore remains an explicit Phase 6 review gate.
+
+### Phase 6 continuation: F-32 resolved
+
+The stale public-reader availability fixture now creates the published
+`Novel`/`Chapter` projection through `CatalogService`, and its full focused
+suite passes (`22 passed`). The projection-first read context also preserves
+per-novel unavailable-policy metadata through migration `e5f7a9c1d3b2`.
+Focused catalog tests (`51 passed`), the public-router suite (`133 passed`),
+Ruff, Pyright, Graphify, and direct migration upgrade/downgrade smoke passed.
+The remaining open work is operator/production evidence, not this local
+fixture contract.
 
 ## Priority Recommendation
 

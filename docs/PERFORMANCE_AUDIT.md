@@ -302,22 +302,20 @@ the queue into an unbounded memory buffer.
 
 **Confidence:** Source and focused tests; slow-writer live load remains open.
 
-### F-32 - P2 - One Phase 1 reader test fixture still seeds storage without projection rows
+### F-32 - Resolved - Public reader availability coverage now seeds the projection
 
-**Evidence:** `backend/tests/test_public_reader_availability.py` currently seeds
-only `StorageService` metadata while the approved Phase 1 public reader contract
-requires a published `Novel`/`Chapter` projection. Its 21 failures report the
-truthful `Novel not found` response before chapter-policy assertions run. The
-Phase 4 changed-path suites pass independently.
+**Evidence:** The fixture now creates the published `Novel`/`Chapter`
+projection through `CatalogService`, and translation helpers reconcile the
+projected availability state. `backend/tests/test_public_reader_availability.py`
+passes all `22` tests. The existing per-novel policy contract is also preserved
+in the DB projection by migration `e5f7a9c1d3b2`.
 
-**Impact:** The stale fixture obscures chapter-policy regression coverage and
-must not be counted as a full backend-suite pass.
+**Impact:** Chapter-policy, owner-preview, version, and availability-list
+regressions now execute against the same projection-first contract as the
+public reader. Request-time storage fallback was not restored.
 
-**Remaining work:** Update that fixture to create/reconcile the DB projection
-before the Phase 5 full-suite gate. Do not restore request-time storage fallback
-to make the fixture pass.
-
-**Confidence:** Focused test output and current Phase 1 source contract.
+**Confidence:** Focused test output, catalog regression tests, migration
+upgrade/downgrade smoke, and current Phase 1 source contract.
 
 ## Phase 5 execution update - 2026-08-20
 
@@ -337,7 +335,7 @@ tests; runtime percentile/load evidence remains an explicit limitation.
 | Frontend release checks | Passed with full-suite limitation | `npm run lint`, `npm run typecheck`, and `npm run build` passed. The full `npm run test` command timed out after about `243 s`; the focused route/ranking/admin Vitest set passed. |
 | Migration and Compose | Passed locally | Targeted SQLite upgrade/downgrade passed; the real local PostgreSQL migration profile applied `d9f3a1b7c5e2`. Fresh admin/reader/frontend images built, the production Compose stack was recreated, and backend, reader, frontend, Redis, Caddy, and worker were healthy/running. |
 | Route and Markdown audit | Passed | No active `/contribute`, `/request-novel`, or singular `/novel/...` references remain. Current request route, historical notes, truthful All Time exclusions, and `TableOfContentsV2` source identifier are intentional. |
-| Runtime gate | Open | The full backend command timed out after `904 s`; the contract subset has two known stale public-reader projection fixture failures. Enqueue p95 under concurrent public probes and production-like provider failure/load evidence remain unmeasured. |
+| Runtime gate | Open | The full backend command timed out after `904 s`; the availability contract now passes `22` focused tests. Enqueue p95 under concurrent public probes and production-like provider failure/load evidence remain unmeasured. |
 
 ### Phase 5 finding resolutions
 
@@ -350,10 +348,10 @@ resolved locally: the database owns activity state and leases, with a one-time
 legacy queue import. F-15 is resolved locally: indexed cache metadata replaces
 recursive maintenance scans; the one-time backfill is visible in cache stats.
 
-The remaining Phase 4 fixture issue F-32 is still open. Its 21 stale public
-reader tests must be repaired against the published `Novel`/`Chapter`
-projection before the full backend-suite gate. The fixture will not be made to
-pass by restoring request-time storage fallback.
+F-32 is resolved locally. Its reader fixture now creates the published
+`Novel`/`Chapter` projection, and the per-novel unavailable policy is projected
+into `Novel.public_reader_unavailable_policy` by migration `e5f7a9c1d3b2`.
+The fixture passes without restoring request-time storage fallback.
 
 ## Phase 6 execution update - 2026-08-20
 
@@ -497,9 +495,9 @@ sample. The protected base runtime still needs an operator-approved
 connection-mode/budget change and production pooler verification. The Phase 6
 runtime gate remains open because production object-storage telemetry,
 PostgreSQL query-plan statistics, and representative multi-worker/provider
-capacity evidence are still missing. The existing F-32 stale projection
-fixture failures and the earlier full-suite timeouts also remain open; this
-run does not conceal them.
+capacity evidence are still missing. The earlier full-suite timeouts remain
+open; the former F-32 projection-fixture failures were repaired in the current
+continuation and are no longer counted as current failures.
 
 ### F-33 - P1 - Home clock-dependent labels caused a hydration mismatch
 
@@ -871,7 +869,7 @@ The budgets should be validated with at least 50 warm and 50 cold requests per r
 - The ranking cache is process-local with a bounded 60-second default stale window and 64-entry default limit; shared-cache economics and invalidation across reader replicas remain unverified.
 - The contributor/ranking migration is now applied locally; production-equivalent permissions and deployment migration procedure remain unverified.
 - Phase 4 readiness and Caddy passed locally with the protected one-second probe value and no process override. Percentile behavior under concurrent delayed storage and multi-process replacement remains unmeasured.
-- `backend/tests/test_public_reader_availability.py` still has 21 stale storage-only fixture failures because the Phase 1 contract requires DB projection rows; this is recorded as F-32 and is not counted as a Phase 4 pass.
+- `backend/tests/test_public_reader_availability.py` now passes all 22 tests against a published DB projection; migration `e5f7a9c1d3b2` persists the per-novel unavailable policy needed by the projection-first reader.
 - Object-storage timing was measured in the existing deployment, but no destructive or production data operation was performed.
 - The browser check with the wrong host was intentionally treated as invalid for API performance; only configured-host proxy timings were used.
 - No claim is made here about provider-side latency without a controlled provider workload and provider telemetry.
