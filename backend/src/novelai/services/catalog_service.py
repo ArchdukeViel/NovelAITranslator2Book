@@ -28,6 +28,7 @@ from novelai.services.library_summary_service import invalidate_library_summary_
 from novelai.services.taxonomy_persistence import persist_taxonomy_assignments
 from novelai.sources.status import normalize_publication_status
 from novelai.storage.service import StorageService
+from novelai.utils.chapter_selection import _chapter_logical_id
 
 logger = logging.getLogger(__name__)
 
@@ -372,10 +373,22 @@ class CatalogService:
             sequence_number=sequence_number,
             source_url=source_url,
         )
+        # The raw-chapter write is allowed to carry authoritative ordering and
+        # identity values.  Recomputing the catalog projection reconciles the
+        # metadata index too, but must not immediately overwrite the values
+        # just supplied (or an existing row's ordering when they were omitted).
+        preserved_chapter_fields = {
+            "chapter_number": chapter.chapter_number,
+            "sequence_number": chapter.sequence_number,
+            "source_episode_id": chapter.source_episode_id,
+            "source_url": chapter.source_url,
+        }
         chapter.raw_storage_key = f"{storage_key}:{checksum[:8]}"
         chapter.raw_status = "fetched"
         self._session.add(chapter)
         self.recompute_catalog_projection(novel_id, novel=novel)
+        for field, value in preserved_chapter_fields.items():
+            setattr(chapter, field, value)
         invalidate_library_summary_cache()
         return chapter
 
@@ -489,7 +502,7 @@ class CatalogService:
             return
 
         for index, metadata in enumerate(metadata_chapters):
-            chapter_id = _optional_string(metadata.get("id") or metadata.get("chapter_id"))
+            chapter_id = _chapter_logical_id(metadata)
             if not chapter_id:
                 continue
             raw_number = metadata.get("num") or metadata.get("chapter_number")

@@ -460,6 +460,28 @@ def test_reconcile_catalog_projection_updates_translated_latest_fields(storage, 
     assert {"translated_count", "latest_chapter_id"}.issubset(result.changed_fields)
 
 
+def test_reconcile_catalog_projection_stringifies_numeric_chapter_ids(storage, db_session) -> None:
+    storage.save_metadata(
+        "numeric-chapters",
+        {
+            "title": "Numeric Chapters",
+            "chapters": [
+                {"id": 1, "num": 1, "title": "Chapter One"},
+                {"id": 2, "num": 2, "title": "Chapter Two"},
+            ],
+        },
+    )
+
+    result = CatalogService(storage=storage, session=db_session).reconcile_catalog_projection("numeric-chapters")
+    db_session.commit()
+
+    assert result is not None
+    novel = db_session.query(Novel).filter_by(slug="numeric-chapters").one()
+    chapters = db_session.query(Chapter).filter_by(novel_id=novel.id).order_by(Chapter.sequence_number.asc()).all()
+    assert [chapter.logical_chapter_id for chapter in chapters] == ["1", "2"]
+    assert [chapter.chapter_number for chapter in chapters] == [1, 2]
+
+
 def test_checkpoint_restore_projection_refresh_updates_translated_latest_fields(
     storage, db_session, seeded_novel
 ) -> None:
