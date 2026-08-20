@@ -468,7 +468,7 @@ async def _run_workload(args: argparse.Namespace) -> dict[str, Any]:
                 client,
                 route="translation_enqueue",
                 method="POST",
-                path=f"/api/admin/{encoded_slug}/translate",
+                path=f"/api/admin/novels/{encoded_slug}/translate",
                 samples=args.translation_samples,
                 concurrency=min(args.concurrency, args.translation_concurrency),
                 headers=translation_headers,
