@@ -15,6 +15,8 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, SecretStr
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -454,6 +456,53 @@ def test_unhandled_generic_exception_hides_message_in_production(
     assert payload["message"] == "Internal Server Error"
     assert payload["detail"] == "Internal Server Error"
     assert "error" not in payload["details"]
+
+
+def test_database_capacity_error_is_retryable_and_redacted(
+    _session_auth_defaults: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bootstrap()
+    app = create_app()
+
+    @app.get("/debug/translate/db-capacity")
+    async def debug_database_capacity() -> None:
+        raise SQLAlchemyTimeoutError(
+            "QueuePool limit of size 5 overflow 5 reached, connection timed out, timeout 30.00"
+        )
+
+    monkeypatch.setattr(settings, "DEBUG_ERRORS", False)
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/debug/translate/db-capacity")
+    payload = response.json()
+
+    assert response.status_code == 503
+    assert payload["code"] == "DATABASE_CAPACITY_EXHAUSTED"
+    assert payload["category"] == "database"
+    assert payload["message"] == "Database connection capacity is temporarily exhausted."
+    assert payload["details"] == {"operation": "translation", "retryable": True}
+    assert "QueuePool" not in response.text
+
+
+def test_non_capacity_database_error_stays_internal(
+    _session_auth_defaults: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bootstrap()
+    app = create_app()
+
+    @app.get("/debug/db-error")
+    async def debug_database_error() -> None:
+        raise OperationalError("syntax error at or near SELECT", None, Exception("syntax error"))
+
+    monkeypatch.setattr(settings, "DEBUG_ERRORS", False)
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/debug/db-error")
+    payload = response.json()
+
+    assert response.status_code == 500
+    assert payload["code"] == "INTERNAL_ERROR"
+    assert payload["message"] == "Internal Server Error"
 
 
 def test_unhandled_value_error_keeps_validation_message_in_production(
