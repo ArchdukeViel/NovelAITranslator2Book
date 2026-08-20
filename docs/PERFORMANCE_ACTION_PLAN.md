@@ -493,7 +493,7 @@ Record for every run:
 ## Phase 6 execution log - 2026-08-20
 
 **Status: repeatable local acceptance and continuation controls executed; the
-runtime gate remains open.**
+local runtime gate passes, while production telemetry sign-off remains open.**
 
 The new `backend/tests/run_phase6_acceptance.py` harness creates a namespaced,
 reversible local fixture and runs public traffic through Caddy. The executed
