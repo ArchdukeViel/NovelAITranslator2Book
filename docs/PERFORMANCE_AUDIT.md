@@ -20,7 +20,7 @@ The initial runtime was behind the checkout and allowed public storage waterfall
 5. Phase 3 now uses one joined ranking/projection query, composite analytics indexes, and a bounded process-local success cache. Focused tests prove distinct-viewer periods, chapter exclusion, bounded SQL work, and cache metrics; production-volume query plans, seeded latency, and cross-replica cache behavior remain unmeasured.
 6. Phase 4 now makes readiness cacheable/single-flight, removes the mutating storage probe from public readiness, adds bounded origin projection caching, and queues analytics writes off the request path. The local one-second probe configuration now passes without an override; populated analytics load and cross-replica cache behavior remain unmeasured.
 7. Translation work can occupy a web request for up to the configured 120-second timeout. Provider calls also use blocking SDK calls in worker threads, bounded concurrency, retries, and quota reservation, so provider latency can create sustained backpressure.
-8. Phase 6 now has a repeatable local fixture and measured public/browser sample. Catalog, detail, chapter, and search p95 values were still above the proposed warm budgets in this small local run. Direct-mode owner enqueue exposed an aggregate database-session capacity failure; recognized capacity failures are now classified as sanitized retryable responses, transaction mode avoided them in an isolated control, and controlled storage delay produced visible bounded degradation. Production object-storage telemetry and provider-capacity evidence remain unmeasured, so no runtime sign-off is claimed.
+8. Phase 6 now has a repeatable local fixture and measured public/browser sample. Catalog, detail, chapter, and search p95 values were still above the proposed warm budgets in this small local run. Direct-mode owner enqueue exposed an aggregate database-session capacity failure; recognized capacity failures are now classified as sanitized retryable responses, transaction mode avoided them in an isolated control, and controlled storage delay produced visible bounded degradation. A bounded read-only probe against the real production object-storage configuration returned ready in `0.302 s`, but representative object-storage and provider-capacity evidence remain unmeasured, so no runtime sign-off is claimed.
 
 The remaining release/operations problems are chapter-projection completeness, production-scale browser/ranking budgets, and multi-instance cache economics. Phase 4 source and Compose defaults now make public readiness cheap and cached, preserve a full owner diagnostic path, cache only safe public projections, and apply explicit bounded analytics loss semantics. The live local stack passed the base Compose readiness check without a temporary override.
 
@@ -534,8 +534,11 @@ skipped because no disposable authenticated owner session and CSRF token were
 supplied for this rerun; it does not add provider or worker-capacity evidence.
 The fixture cleanup returned zero remaining novels, chapters, and analytics
 events, the temporary volume and containers were removed, and the base Compose
-stack was restored healthy. These are current-image local measurements only;
-R2/S3 telemetry, production pooler/query-plan evidence, and representative
+stack was restored healthy. These are current-image local measurements only.
+A subsequent sanitized read-only object-storage readiness probe using the real
+production environment returned `ready` in `0.302 s` with one bounded
+`list_objects_v2` request (`MaxKeys=1`). This is reachability evidence only;
+representative storage telemetry, production pooler/query-plan evidence, and
 worker/provider capacity remain open.
 
 The focused production-configuration validator suite now passes `38` tests.
@@ -547,9 +550,11 @@ owners, a two-connection reserve, and budget `32`. The rebuilt admin/worker and
 reader images now run in the local base Compose stack with that direct-mode
 budget. Configuration-only validation of the real production environment passes
 for both admin and reader roles with zero fatal issues and one backup warning;
-the real production database and object storage were not contacted by that
-probe. Production pooler verification, R2/S3 telemetry, and provider capacity
-remain open.
+that validator intentionally does not contact the real production database or
+object storage. The separate bounded read-only object-storage readiness probe
+using the same production environment returned `ready` in `0.302 s`.
+Representative storage telemetry, production pooler/query-plan evidence, and
+provider capacity remain open.
 
 ### Phase 6 gate status and remaining work
 
@@ -558,10 +563,10 @@ guest/authenticated-browser, hydration, focused frontend, controlled
 storage-delay, and classified-capacity-response gates pass for this local
 sample. The protected base runtime still needs an operator-approved
 connection-mode/budget change and production pooler verification. The local
-base budget is now `32` for three pool owners plus reserve; the Phase 6 runtime
-gate remains open because production object-storage telemetry, PostgreSQL
-query-plan statistics, and representative multi-worker/provider capacity
-evidence are still missing. The earlier full-suite timeouts remain
+base budget is now `32` for three pool owners plus reserve; a bounded production
+object-storage readiness probe passes, but representative storage telemetry,
+PostgreSQL query-plan statistics, and multi-worker/provider capacity evidence
+are still missing. The earlier full-suite timeouts remain
 open; the former F-32 projection-fixture failures were repaired in the current
 continuation and are no longer counted as current failures.
 

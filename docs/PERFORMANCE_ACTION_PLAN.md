@@ -621,9 +621,12 @@ local seeded-query-plan gap for the current-image sample, not the production
 capacity gate. Translation enqueue was skipped because no disposable owner
 session and CSRF token were supplied. Cleanup verified zero remaining fixture
 novels, chapters, and analytics events; the temporary volume and containers
-were removed and the base Compose stack was restored healthy. R2/S3 telemetry,
-production pooler/query-plan evidence, and worker/provider capacity remain
-open.
+were removed and the base Compose stack was restored healthy. A subsequent
+sanitized read-only object-storage readiness probe using the real production
+environment completed successfully in `0.302 s` (`list_objects_v2` with
+`MaxKeys=1`). This proves bounded reachability only, not production-volume
+object-storage call, latency, or byte telemetry. Production pooler/query-plan
+evidence and worker/provider capacity remain open.
 
 The focused production-configuration validator suite now passes `38` tests.
 The source guard computes
@@ -634,8 +637,10 @@ owners, a two-connection reserve, and budget `32`. The rebuilt admin/worker and
 reader images now run in the local base Compose stack with that direct-mode
 budget. Configuration-only validation of the real production environment passes
 for both admin and reader roles with zero fatal issues and one backup warning;
-the real production database and object storage were not contacted by that
-probe. Production pooler verification, R2/S3 telemetry, and provider capacity
+that validator intentionally does not contact the real production database or
+object storage. A separate bounded read-only object-storage probe using the
+same production environment returned `ready` in `0.302 s`; representative
+storage telemetry, production pooler verification, and provider capacity
 remain open.
 
 ### Phase 6 gate status
@@ -645,8 +650,9 @@ browser, hydration, focused frontend, cleanup, controlled storage-delay, and
 classified-capacity-response checks pass for the local sample. Transaction
 mode provides a tested local mitigation for the direct-mode database-session
 failure, and the local base runtime now uses the explicit direct-mode budget of
-`32`. Production pooler verification remains open. Phase 6 remains open because
-production storage telemetry, database query-plan evidence, and representative
+`32`. A bounded production object-storage readiness probe also passes, but it
+does not provide representative call, latency, or byte telemetry. Production
+pooler verification, database query-plan evidence, and representative
 worker/provider capacity remain sign-off requirements. Do not convert these
 local p95 values into production SLOs.
 
