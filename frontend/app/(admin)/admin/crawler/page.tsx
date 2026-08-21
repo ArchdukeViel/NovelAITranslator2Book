@@ -104,9 +104,8 @@ export default function CrawlerPage() {
   const [crawlProgress, setCrawlProgress] = React.useState(0);
   const [resultModalOpen, setResultModalOpen] = React.useState(false);
   const [selectedChapterIds, setSelectedChapterIds] = React.useState<Set<string>>(new Set());
-  const [adapterKey, setAdapterKey] = React.useState("web");
   const [importNovelId, setImportNovelId] = React.useState("");
-  const [importSource, setImportSource] = React.useState("");
+  const [importSourceUrl, setImportSourceUrl] = React.useState("");
   const [maxUnits, setMaxUnits] = React.useState("");
   const [dismissedErrorKey, setDismissedErrorKey] = React.useState<string | null>(null);
   const [addNovelRunState, setAddNovelRunState] = React.useState<AddNovelRunState>("idle");
@@ -116,8 +115,6 @@ export default function CrawlerPage() {
 
   const activity = useQuery({ queryKey: ["activity", "crawl"], queryFn: () => api.activity({ activity_type: "crawl", limit: 50 }) });
   const sourceHealth = useQuery({ queryKey: ["source-health"], queryFn: () => api.sourceHealth() });
-  const adapters = useQuery({ queryKey: ["input-adapters"], queryFn: () => api.inputAdapters() });
-
   const detectedSource = React.useMemo(() => detectSourceOrigin(novelInput), [novelInput]);
   const derivedNovelId = React.useMemo(
     () => deriveNovelId(novelInput, detectedSource),
@@ -220,8 +217,7 @@ export default function CrawlerPage() {
   const importNow = useMutation({
     mutationFn: () =>
       api.importNow(importNovelId, {
-        adapter_key: adapterKey,
-        source: importSource,
+        source_url: importSourceUrl,
         max_units: maxUnits ? Number(maxUnits) : null
       }),
     onSuccess: invalidateCrawler
@@ -389,16 +385,13 @@ export default function CrawlerPage() {
 
           <ImportNowPanel
             novelId={importNovelId}
-            adapterKey={adapterKey}
-            source={importSource}
+            sourceUrl={importSourceUrl}
             maxUnits={maxUnits}
-            adapters={adapters.data ?? []}
             pending={importNow.isPending}
             result={importNow.data}
             error={importNow.error}
             onNovelIdChange={setImportNovelId}
-            onAdapterKeyChange={setAdapterKey}
-            onSourceChange={setImportSource}
+            onSourceUrlChange={setImportSourceUrl}
             onMaxUnitsChange={setMaxUnits}
             onSubmit={() => {
               setDismissedErrorKey(null);

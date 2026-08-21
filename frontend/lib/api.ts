@@ -290,7 +290,6 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  inputAdapters: () => apiFetch<string[]>("/admin/input-adapters"),
   novels: () => apiFetch<NovelSummary[]>("/admin/novels"),
   novel: (novelId: string) => apiFetch<NovelMetadata>(`/admin/novels/${encodeURIComponent(novelId)}`),
   deleteNovel: (novelId: string) =>
@@ -452,8 +451,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
-  importNow: (novelId: string, payload: { adapter_key: string; source: string; max_units?: number | null }) =>
-    apiFetch<{ novel_id: string; adapter_key: string; chapters: number; document_type?: string | null }>(
+  importNow: (novelId: string, payload: { source_url: string; max_units?: number | null }) =>
+    apiFetch<{ novel_id: string; source_url: string; chapters: number; document_type?: string | null }>(
       `/admin/novels/${encodeURIComponent(novelId)}/import`,
       {
         method: "POST",
