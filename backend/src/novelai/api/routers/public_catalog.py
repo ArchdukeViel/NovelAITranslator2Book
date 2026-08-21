@@ -8,8 +8,7 @@ Chapter reader and tags search are in ``public_chapter.py``.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from sqlalchemy import and_, func, true
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.dependencies import (
@@ -28,152 +27,12 @@ from novelai.api.routers.public_contracts import (
     _optional_str,
     _parse_csv_filter,
 )
-from novelai.db.models.novel import Novel
 from novelai.services.analytics_service import record_server_event
 from novelai.services.public_catalog_service import PublicCatalogService
 from novelai.services.public_projection_cache import public_projection_cache
 from novelai.services.takedown_service import TakedownService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
-
-
-# ---------------------------------------------------------------------------
-# Catalog-specific helpers
-# ---------------------------------------------------------------------------
-
-
-def _published_db_catalog_query(db: Session, *, include_adult: bool):
-    # Adult/R18 classification affects optional taxonomy projection, not
-    # whether an explicitly published novel participates in the catalog.
-    _ = include_adult
-    query = db.query(Novel).filter(Novel.is_published.is_(True))
-    return query
-
-
-def _catalog_from_db_page(
-    *,
-    service: PublicCatalogService,
-    q: str | None,
-    publication_status: str | None,
-    source_key: str | None,
-    effective_sort_by: str,
-    min_chapters: int | None,
-    max_chapters: int | None,
-    genre_include_set: set[str],
-    genre_exclude_set: set[str],
-    tag_include_set: set[str],
-    tag_exclude_set: set[str],
-    include_adult: bool,
-    page: int,
-    page_size: int,
-    order: str,
-) -> PublicCatalogResponse:
-    db = service.db_session
-    if db is None:
-        return PublicCatalogResponse(novels=[], total=0, page=page, page_size=page_size, degraded=True)
-    from novelai.db.models.genre import Genre
-    from novelai.db.models.novel import Novel
-    from novelai.db.models.tag import Tag
-
-    query = _published_db_catalog_query(db, include_adult=include_adult).filter(Novel.title != Novel.slug)
-
-    search_text = _optional_str(q)
-    if search_text:
-        pattern = f"%{search_text}%"
-        query = query.filter(
-            Novel.title.ilike(pattern) | Novel.original_title.ilike(pattern) | Novel.author.ilike(pattern)
-        )
-    if publication_status:
-        query = query.filter(Novel.publication_status == publication_status)
-    if source_key:
-        query = query.filter(Novel.source_site == source_key)
-    if min_chapters is not None:
-        query = query.filter(Novel.chapter_count >= min_chapters)
-    if max_chapters is not None:
-        query = query.filter(Novel.chapter_count <= max_chapters)
-    active_public_genre = (
-        Genre.is_active.is_(True) if include_adult else and_(Genre.is_active.is_(True), Genre.is_adult.is_(False))
-    )
-    public_tag = true() if include_adult else Tag.is_adult.is_(False)
-    for genre_slug in sorted(genre_include_set):
-        query = query.filter(
-            Novel.genres.any(
-                and_(
-                    Genre.slug == genre_slug,
-                    active_public_genre,
-                )
-            )
-        )
-    if genre_exclude_set:
-        query = query.filter(
-            ~Novel.genres.any(
-                and_(
-                    Genre.slug.in_(genre_exclude_set),
-                    active_public_genre,
-                )
-            )
-        )
-    for tag_name in sorted(tag_include_set):
-        query = query.filter(
-            Novel.tags.any(
-                and_(
-                    Tag.name == tag_name,
-                    public_tag,
-                )
-            )
-        )
-    if tag_exclude_set:
-        query = query.filter(
-            ~Novel.tags.any(
-                and_(
-                    Tag.name.in_(tag_exclude_set),
-                    public_tag,
-                )
-            )
-        )
-
-    if effective_sort_by == "title":
-        order_field = Novel.title
-    elif effective_sort_by == "updated_at":
-        order_field = func.coalesce(Novel.latest_chapter_updated_at, Novel.updated_at)
-    elif effective_sort_by == "chapter_count":
-        order_field = Novel.chapter_count
-    else:
-        order_field = Novel.source_updated_at
-    if order == "asc":
-        order_columns = (order_field.asc().nulls_first(), Novel.id.asc())
-    else:
-        order_columns = (order_field.desc().nulls_last(), Novel.id.desc())
-    offset = (page - 1) * page_size
-    rows = (
-        query.add_columns(func.count(Novel.id).over().label("catalog_total"))
-        .options(selectinload(Novel.genres), selectinload(Novel.tags))
-        .order_by(*order_columns)
-        .offset(offset)
-        .limit(page_size)
-        .all()
-    )
-    if rows:
-        novels = [row[0] for row in rows]
-        total = int(rows[0][1])
-        degraded = False
-    else:
-        has_published_projection = (
-            db.query(Novel.id).filter(Novel.is_published.is_(True), Novel.title != Novel.slug).limit(1).first()
-            is not None
-        )
-        novels = []
-        total = 0
-        degraded = not has_published_projection
-    return PublicCatalogResponse(
-        novels=[
-            PublicNovelSummary(**service._db_novel_summary(novel, include_adult=include_adult)) for novel in novels
-        ],
-        total=total,
-        page=page,
-        page_size=page_size,
-        degraded=degraded,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -234,21 +93,17 @@ async def catalog(
             include_adult,
         )
     )
-    cache_key = (
-        "catalog-v1",
-        str(id(db.get_bind())),
-        str(db.query(func.max(Novel.updated_at)).scalar()),
-        effective_sort_by,
-        effective_order,
-        str(page),
-        str(page_size),
+    cache_key = service.public_catalog_cache_key(
+        sort_by=effective_sort_by,
+        order=effective_order,
+        page=page,
+        page_size=page_size,
     )
     cached = public_projection_cache.get(cache_key) if cacheable else None
     if isinstance(cached, dict):
         response = PublicCatalogResponse.model_validate(cached)
     else:
-        response = _catalog_from_db_page(
-            service=service,
+        novels, total, degraded = service.get_public_catalog_page(
             q=q,
             publication_status=publication_status_filter,
             source_key=source_key_filter,
@@ -263,6 +118,18 @@ async def catalog(
             page=page,
             page_size=page_size,
             order=effective_order,
+        )
+        public_novels: list[PublicNovelSummary] = []
+        for novel in novels:
+            summary = service.build_public_novel_summary(novel, include_adult=include_adult)
+            if summary is not None:
+                public_novels.append(PublicNovelSummary(**summary))
+        response = PublicCatalogResponse(
+            novels=public_novels,
+            total=total,
+            page=page,
+            page_size=page_size,
+            degraded=degraded,
         )
         if cacheable and response.novels and not response.degraded:
             public_projection_cache.set(cache_key, response.model_dump(mode="json"))
@@ -304,20 +171,7 @@ async def catalog(
 @router.get("/genres", response_model=list[PublicGenreResponse])
 async def list_genres(
     include_adult: bool = Query(default=False, description="Include adult genres"),
-    db: Session = Depends(get_db_session),
+    service: PublicCatalogService = Depends(get_public_catalog_service),
 ) -> list[PublicGenreResponse]:
     """Return active genres ordered by display_order then name."""
-    from novelai.db.models.genre import Genre
-
-    query = db.query(Genre).filter(Genre.is_active.is_(True))
-    if not include_adult:
-        query = query.filter(Genre.is_adult.is_(False))
-    query = query.order_by(Genre.display_order, Genre.name_ja)
-    return [
-        PublicGenreResponse(
-            slug=g.slug,
-            name_ja=g.name_ja,
-            name_en=g.name_en,
-        )
-        for g in query.all()
-    ]
+    return [PublicGenreResponse(**genre) for genre in service.list_public_genres(include_adult=include_adult)]
