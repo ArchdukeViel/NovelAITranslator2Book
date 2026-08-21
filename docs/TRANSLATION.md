@@ -85,6 +85,17 @@ requests, configured retry reserve, selective QA requests, token estimates,
 RPD feasibility, and the RPM-only wall-clock lower bound. Unknown glossary
 terms and actual provider usage remain explicitly marked as estimates.
 
+### Gemini response-schema compatibility
+
+Gemini structured-output requests use the provider boundary rather than passing
+the repository's full JSON Schema vocabulary directly to the SDK. Before a
+request, the provider recursively removes `additionalProperties`, which is not
+accepted by Gemini response schemas, without mutating the caller's schema.
+This keeps glossary discovery and other structured requests valid while leaving
+the repository-side parser and validation contract unchanged. The behavior is
+covered by provider unit tests and a live NCode chapter translation smoke that
+passed deterministic QA and persisted the translated artifact in R2.
+
 ## Optional Review Metadata
 
 Structured responses may include `uncertainties`, `glossary_conflicts`, and

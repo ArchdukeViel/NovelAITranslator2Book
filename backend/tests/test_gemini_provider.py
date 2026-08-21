@@ -130,7 +130,32 @@ def test_gemini_provider_accepts_custom_json_schema(monkeypatch: pytest.MonkeyPa
     config = payload.get("config")
     assert isinstance(config, dict)
     assert config.get("response_mime_type") == "application/json"
-    assert config.get("response_schema") == schema
+    assert config.get("response_schema") == {
+        "type": "object",
+        "properties": {"terms": {"type": "array"}},
+        "required": ["terms"],
+    }
+
+
+def test_gemini_provider_normalizes_nested_unsupported_schema_fields() -> None:
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": False},
+            }
+        },
+    }
+
+    normalized = GeminiProvider._normalize_response_schema(schema)
+
+    assert normalized == {
+        "type": "object",
+        "properties": {"items": {"type": "array", "items": {"type": "object"}}},
+    }
+    assert schema["additionalProperties"] is False
 
 
 def test_gemini_provider_raises_when_api_key_missing() -> None:
