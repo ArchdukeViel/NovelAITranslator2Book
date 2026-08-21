@@ -493,6 +493,11 @@ class AppSettings(BaseSettings):
         default=30,
         description="Maximum age in days for successful backups. Older backups are eligible for deletion.",
     )
+    BACKUP_SAFETY_GRACE_DAYS: int = Field(
+        default=7,
+        ge=0,
+        description="Minimum age for unreferenced R2 backup objects before collection.",
+    )
     R2_BACKUP_ENABLED: bool = Field(
         default=False,
         description="Copy scheduled backups to the independent R2 recovery bucket.",

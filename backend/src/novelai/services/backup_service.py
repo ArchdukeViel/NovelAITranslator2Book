@@ -1,18 +1,14 @@
-"""Backup scheduling and status service (M2c, DEBT-010).
-
-Wraps BackupManager with scheduling integration, lock-based concurrency
-prevention, verified offsite snapshots, and status reporting.
-"""
+"""R2 backup scheduling, retention, and status service."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from novelai.config.settings import settings
-from novelai.services.backup_manager import BackupManager
 from novelai.storage.file_lock import InterProcessFileLock
 from novelai.storage.snapshots import SnapshotTarget
 
@@ -43,12 +39,11 @@ class BackupService:
 
     def __init__(
         self,
-        backup_manager: BackupManager,
+        runtime_dir: Path | None = None,
         snapshot_target: SnapshotTarget | None = None,
     ) -> None:
-        self._backup_manager = backup_manager
         self._snapshot_target = snapshot_target
-        self._lock_path = backup_manager.backups_dir / ".backup.lock"
+        self._lock_path = (runtime_dir or settings.RUNTIME_DIR) / "backup.lock"
 
     async def run_scheduled_backup(self, novel_id: str | None = None) -> dict[str, Any]:
         """Run a scheduled backup with lock-based concurrency prevention.
@@ -94,6 +89,42 @@ class BackupService:
                 "started_at": started_at,
                 "finished_at": _utc_now_iso(),
             }
+        finally:
+            lock.release()
+
+    async def apply_retention(
+        self,
+        *,
+        keep_count: int | None = None,
+        min_successful: int | None = None,
+        max_age_days: int | None = None,
+        safety_grace_days: int | None = None,
+        dry_run: bool = False,
+    ) -> int:
+        """Apply reference-aware retention in the independent R2 bucket."""
+        if self._snapshot_target is None:
+            return 0
+
+        lock = InterProcessFileLock(self._lock_path, retry_count=3, retry_delay=0.5)
+        try:
+            lock.acquire()
+        except TimeoutError:
+            logger.info("R2 backup retention skipped: another backup operation is running.")
+            return 0
+
+        try:
+            return await asyncio.to_thread(
+                self._snapshot_target.apply_retention,
+                keep_count=(keep_count if keep_count is not None else settings.BACKUP_RETENTION_COUNT),
+                min_successful=(
+                    min_successful if min_successful is not None else settings.BACKUP_MIN_SUCCESSFUL_TO_KEEP
+                ),
+                max_age_days=(max_age_days if max_age_days is not None else settings.BACKUP_MAX_AGE_DAYS),
+                safety_grace_days=(
+                    safety_grace_days if safety_grace_days is not None else settings.BACKUP_SAFETY_GRACE_DAYS
+                ),
+                dry_run=dry_run,
+            )
         finally:
             lock.release()
 

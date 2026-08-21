@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from novelai.storage.backends.base import StorageBackend
 from novelai.storage.content_addressing import ArtifactConflictError, sha256_base64
@@ -94,6 +94,9 @@ class R2Storage(StorageBackend):
     """Object store for the canonical `dokushodo` application bucket."""
 
     _BACKING = "r2"
+    _MULTIPART_THRESHOLD_BYTES = 8 * 1024 * 1024
+    _MULTIPART_CHUNKSIZE_BYTES = 8 * 1024 * 1024
+    _MULTIPART_MAX_CONCURRENCY = 4
 
     def __init__(
         self,
@@ -225,6 +228,68 @@ class R2Storage(StorageBackend):
             self._observe("put", started, error=True)
             raise
         self._observe("put", started)
+
+    def save_stream(
+        self,
+        path: str | Path,
+        source: BinaryIO,
+        *,
+        content_length: int | None = None,
+        content_type: str | None = None,
+        content_encoding: str | None = None,
+        metadata: dict[str, str] | None = None,
+    ) -> int:
+        """Upload a binary stream with bounded multipart transfer settings.
+
+        ``upload_fileobj`` keeps small writes as one request and switches to
+        multipart transfer at the configured threshold. The provider computes
+        and validates a SHA-256 checksum for both paths. The returned length is
+        read from the committed object metadata rather than inferred from the
+        source stream, so non-seekable producers are supported.
+        """
+
+        if content_length is not None and content_length < 0:
+            raise ValueError("R2 stream content length must not be negative")
+        key = self._normalize_key(path)
+        extra_args: dict[str, Any] = {"ChecksumAlgorithm": "SHA256"}
+        if content_type:
+            extra_args["ContentType"] = content_type
+        if content_encoding:
+            extra_args["ContentEncoding"] = content_encoding
+        if metadata:
+            extra_args["Metadata"] = metadata
+
+        from boto3.s3.transfer import TransferConfig
+
+        config = TransferConfig(
+            multipart_threshold=self._MULTIPART_THRESHOLD_BYTES,
+            multipart_chunksize=self._MULTIPART_CHUNKSIZE_BYTES,
+            max_concurrency=self._MULTIPART_MAX_CONCURRENCY,
+            use_threads=True,
+        )
+        started = time.perf_counter()
+        try:
+            self._client.upload_fileobj(
+                source,
+                self._bucket,
+                key,
+                ExtraArgs=extra_args,
+                Config=config,
+            )
+            response = self._head_raw(key)
+            size_bytes = int(response.get("ContentLength", 0))
+            if content_length is not None and size_bytes != content_length:
+                try:
+                    self.delete(key)
+                except Exception:
+                    logger.warning("Could not clean R2 stream with unexpected length: %s", key, exc_info=True)
+                raise ValueError(f"R2 stream length mismatch for {key}: expected {content_length}, got {size_bytes}")
+            self._stats.bytes_written += size_bytes
+        except Exception:
+            self._observe("put_stream", started, error=True)
+            raise
+        self._observe("put_stream", started)
+        return size_bytes
 
     def put_immutable(
         self,
@@ -374,24 +439,29 @@ class R2Storage(StorageBackend):
         return total
 
     def delete_prefix(self, prefix: str | Path) -> int:
-        """Delete every object under a prefix, including all list pages."""
+        """Delete every object under a prefix, including all list pages.
+
+        The full key list is collected before any delete request. Mutating an
+        object store while advancing the same listing can invalidate its
+        continuation cursor and skip keys on providers that re-evaluate the
+        listing between pages.
+        """
 
         normalized = self._normalize_key(prefix)
         prefix_str = normalized if not normalized or normalized.endswith("/") else f"{normalized}/"
-        deleted = 0
         paginator = self._client.get_paginator("list_objects_v2")
+        keys: list[str] = []
         for page in paginator.paginate(Bucket=self._bucket, Prefix=prefix_str):
-            keys = [str(item["Key"]) for item in page.get("Contents", []) if item.get("Key")]
-            for start in range(0, len(keys), 1000):
-                batch = keys[start : start + 1000]
-                if not batch:
-                    continue
-                self._client.delete_objects(
-                    Bucket=self._bucket,
-                    Delete={"Objects": [{"Key": key} for key in batch], "Quiet": True},
-                )
-                deleted += len(batch)
-        return deleted
+            keys.extend(str(item["Key"]) for item in page.get("Contents", []) if item.get("Key"))
+        for start in range(0, len(keys), 1000):
+            batch = keys[start : start + 1000]
+            if not batch:
+                continue
+            self._client.delete_objects(
+                Bucket=self._bucket,
+                Delete={"Objects": [{"Key": key} for key in batch], "Quiet": True},
+            )
+        return len(keys)
 
     def mkdirs(self, path: str | Path) -> None:
         # R2 has virtual prefixes; marker objects would violate the app layout.

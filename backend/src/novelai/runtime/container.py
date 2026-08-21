@@ -200,10 +200,8 @@ class Container:
     @property
     def backup_service(self) -> BackupService:
         if self._backup_service is None:
-            from novelai.services.backup_manager import BackupManager
             from novelai.storage.r2_backup import R2IncrementalBackupTarget
 
-            backup_manager = BackupManager(base_dir=settings.RUNTIME_DIR)
             snapshot_target = None
             if settings.R2_BACKUP_ENABLED:
                 if not settings.R2_BUCKET or not settings.R2_BACKUP_BUCKET:
@@ -236,7 +234,7 @@ class Container:
                     ),
                 )
             self._backup_service = BackupService(
-                backup_manager=backup_manager,
+                runtime_dir=settings.RUNTIME_DIR,
                 snapshot_target=snapshot_target,
             )
         return self._backup_service
@@ -247,6 +245,7 @@ class Container:
             self._maintenance_service = MaintenanceService(
                 storage=self.storage,
                 activity_log=self.activity_log,
+                backup_service=self.backup_service,
                 scheduler_runtime_state_service=self.scheduler_runtime_state,
                 analytics_service=AnalyticsService(),
                 notification_cleanup=self._cleanup_notifications,

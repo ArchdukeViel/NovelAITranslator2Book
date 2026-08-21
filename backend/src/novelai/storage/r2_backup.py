@@ -7,7 +7,7 @@ import json
 import logging
 import tempfile
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from novelai.storage.snapshots import SnapshotResult
@@ -102,6 +102,43 @@ class R2IncrementalBackupTarget:
         if not isinstance(manifest, dict) or manifest.get("snapshot_id") != snapshot_id:
             raise RuntimeError("Invalid R2 backup manifest")
         return manifest
+
+    def _list_manifest_items(self) -> list[dict[str, Any]]:
+        paginator = self._target_client.get_paginator("list_objects_v2")
+        items: list[dict[str, Any]] = []
+        for page in paginator.paginate(Bucket=self._target_bucket, Prefix="snapshots/"):
+            for item in page.get("Contents", []):
+                key = str(item.get("Key", ""))
+                if key.startswith("snapshots/") and key.endswith("/manifest.json"):
+                    items.append(item)
+        return items
+
+    @staticmethod
+    def _parse_timestamp(value: object) -> datetime | None:
+        if isinstance(value, datetime):
+            timestamp = value
+        elif isinstance(value, str):
+            try:
+                timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+        else:
+            return None
+        return timestamp if timestamp.tzinfo is not None else timestamp.replace(tzinfo=UTC)
+
+    @staticmethod
+    def _manifest_references(manifest: dict[str, Any]) -> set[str]:
+        references: set[str] = set()
+        objects = manifest.get("objects")
+        if not isinstance(objects, list):
+            return references
+        for entry in objects:
+            if not isinstance(entry, dict):
+                continue
+            backup_key = entry.get("backup_key")
+            if isinstance(backup_key, str) and backup_key.startswith("objects/"):
+                references.add(backup_key)
+        return references
 
     def create_snapshot(self) -> SnapshotResult:
         snapshot_id = _snapshot_id()
@@ -206,28 +243,28 @@ class R2IncrementalBackupTarget:
             raise
 
     def latest_snapshot(self) -> SnapshotResult | None:
-        roots: list[str] = []
-        paginator = self._target_client.get_paginator("list_objects_v2")
-        for page in paginator.paginate(
-            Bucket=self._target_bucket,
-            Prefix="snapshots/",
-            Delimiter="/",
-        ):
-            roots.extend(str(item["Prefix"]) for item in page.get("CommonPrefixes", []))
-        for root in sorted(set(roots), reverse=True):
-            snapshot_id = root.rstrip("/").rsplit("/", 1)[-1]
+        records: list[tuple[datetime, str, dict[str, Any]]] = []
+        for item in self._list_manifest_items():
+            key = str(item.get("Key", ""))
+            snapshot_id = key[len("snapshots/") : -len("/manifest.json")]
             try:
                 manifest = self._load_manifest(snapshot_id)
+                created_at = self._parse_timestamp(manifest.get("created_at"))
+                if created_at is None or manifest.get("status") != "succeeded":
+                    continue
             except Exception:
                 continue
-            return SnapshotResult(
-                snapshot_id=snapshot_id,
-                created_at=str(manifest.get("created_at", "")),
-                files_count=int(manifest.get("files_count", 0)),
-                size_bytes=int(manifest.get("size_bytes", 0)),
-                verified=manifest.get("restore_verification", {}).get("status") == "succeeded",
-            )
-        return None
+            records.append((created_at, snapshot_id, manifest))
+        if not records:
+            return None
+        _, snapshot_id, manifest = max(records, key=lambda record: record[0])
+        return SnapshotResult(
+            snapshot_id=snapshot_id,
+            created_at=str(manifest.get("created_at", "")),
+            files_count=int(manifest.get("files_count", 0)),
+            size_bytes=int(manifest.get("size_bytes", 0)),
+            verified=manifest.get("restore_verification", {}).get("status") == "succeeded",
+        )
 
     def verify_snapshot(self, snapshot_id: str) -> SnapshotResult:
         manifest = self._load_manifest(snapshot_id)
@@ -244,3 +281,91 @@ class R2IncrementalBackupTarget:
             size_bytes=int(manifest.get("size_bytes", 0)),
             verified=True,
         )
+
+    def apply_retention(
+        self,
+        *,
+        keep_count: int,
+        min_successful: int,
+        max_age_days: int,
+        safety_grace_days: int,
+        dry_run: bool = False,
+    ) -> int:
+        """Delete old committed manifests and unreferenced backup objects safely.
+
+        Snapshot manifests are retained by count and age. Shared objects are
+        collected only after every retained manifest has been inspected and
+        their object-level grace period has elapsed. Invalid or incomplete
+        manifests stop object collection so an interrupted backup cannot make
+        a referenced object eligible for deletion.
+        """
+        if min_successful < 0 or keep_count < 0 or max_age_days < 0 or safety_grace_days < 0:
+            raise ValueError("Backup retention values must not be negative")
+
+        now = datetime.now(UTC)
+        valid_records: list[tuple[str, datetime, dict[str, Any]]] = []
+        invalid_manifest_found = False
+        for item in self._list_manifest_items():
+            key = str(item.get("Key", ""))
+            snapshot_id = key[len("snapshots/") : -len("/manifest.json")]
+            try:
+                manifest = self._load_manifest(snapshot_id)
+                created_at = self._parse_timestamp(manifest.get("created_at"))
+                if not snapshot_id or created_at is None or manifest.get("status") != "succeeded":
+                    invalid_manifest_found = True
+                    continue
+            except Exception:
+                invalid_manifest_found = True
+                continue
+            valid_records.append((snapshot_id, created_at, manifest))
+
+        valid_records.sort(key=lambda record: record[1], reverse=True)
+        protected_count = max(keep_count, min_successful)
+        cutoff = now - timedelta(days=max_age_days)
+        candidates = [
+            record for index, record in enumerate(valid_records) if index >= protected_count and record[1] < cutoff
+        ]
+        candidate_ids = {record[0] for record in candidates}
+        retained_records = [record for record in valid_records if record[0] not in candidate_ids]
+        retained_references: set[str] = set()
+        for _, _, manifest in retained_records:
+            retained_references.update(self._manifest_references(manifest))
+
+        deleted_count = 0
+        if dry_run:
+            deleted_count += len(candidates)
+        else:
+            for snapshot_id, _, manifest in candidates:
+                try:
+                    self._target_client.delete_object(
+                        Bucket=self._target_bucket,
+                        Key=self._manifest_key(snapshot_id),
+                    )
+                    deleted_count += 1
+                except Exception:
+                    retained_references.update(self._manifest_references(manifest))
+                    logger.warning("Could not delete expired R2 backup manifest %s", snapshot_id, exc_info=True)
+
+        if invalid_manifest_found:
+            logger.warning("Skipping R2 backup object collection because an invalid snapshot manifest exists")
+            return deleted_count
+
+        object_cutoff = now - timedelta(days=safety_grace_days)
+        paginator = self._target_client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self._target_bucket, Prefix="objects/"):
+            for item in page.get("Contents", []):
+                key = str(item.get("Key", ""))
+                if not key or key in retained_references:
+                    continue
+                last_modified = self._parse_timestamp(item.get("LastModified"))
+                if last_modified is None or last_modified >= object_cutoff:
+                    continue
+                if dry_run:
+                    deleted_count += 1
+                    continue
+                try:
+                    self._target_client.delete_object(Bucket=self._target_bucket, Key=key)
+                    deleted_count += 1
+                except Exception:
+                    logger.warning("Could not delete unreferenced R2 backup object %s", key, exc_info=True)
+        return deleted_count

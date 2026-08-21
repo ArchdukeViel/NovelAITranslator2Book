@@ -31,3 +31,15 @@ class SnapshotTarget(Protocol):
     def verify_snapshot(self, snapshot_id: str) -> SnapshotResult:
         """Download and verify every object in an isolated read-only drill."""
         ...
+
+    def apply_retention(
+        self,
+        *,
+        keep_count: int,
+        min_successful: int,
+        max_age_days: int,
+        safety_grace_days: int,
+        dry_run: bool = False,
+    ) -> int:
+        """Apply reference-aware snapshot and object retention."""
+        ...
