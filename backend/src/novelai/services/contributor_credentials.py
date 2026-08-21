@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.db.models.contributor import ContributorCredential, ContributorUsageLedger
 from novelai.providers.gemini_provider import GeminiProvider
-from novelai.services.gemini_request_control import GeminiQuotaController
+from novelai.services.gemini_request_control import GeminiQuotaController, RedisGeminiQuotaController
 from novelai.utils.hashing import digest32, hexdigest
 
 logger = logging.getLogger(__name__)
@@ -190,7 +190,14 @@ class ContributorCredentialService:
         return credential, clean
 
     def _quota_controller(self, credential_id: str) -> GeminiQuotaController:
-        quota_dir = settings.NOVEL_LIBRARY_DIR / "contributor_quota" / credential_id
+        if settings.ENV != "test":
+            return RedisGeminiQuotaController(
+                namespace=f"contributor:{credential_id}",
+                rpm_limit=settings.CONTRIBUTOR_RPM_LIMIT,
+                tpm_limit=settings.CONTRIBUTOR_TPM_LIMIT,
+                rpd_limit=settings.CONTRIBUTOR_RPD_LIMIT,
+            )
+        quota_dir = settings.RUNTIME_DIR / "contributor_quota" / credential_id
         return GeminiQuotaController(
             quota_dir,
             rpm_limit=settings.CONTRIBUTOR_RPM_LIMIT,

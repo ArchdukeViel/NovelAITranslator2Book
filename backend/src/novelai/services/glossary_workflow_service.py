@@ -1,12 +1,7 @@
-"""Workflow service for glossary management operations.
-
-Encapsulates glossary CRUD, alias, provenance, QA, batch, sync, and
-status transition operations behind a single service boundary.
-"""
+"""Workflow service for PostgreSQL-backed glossary management operations."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -15,15 +10,14 @@ from sqlalchemy.orm import Session
 from novelai.db.models.novel import Novel
 from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.glossary_status_service import GlossaryStatusService
-from novelai.services.glossary_sync_service import GlossarySyncService
 from novelai.storage.service import StorageService
 
 
 class GlossaryWorkflowService:
     """Consolidated workflow service for glossary management.
 
-    Wraps GlossaryRepository, GlossaryStatusService, GlossarySyncService,
-    and direct DB/storage access behind a single boundary.
+    Wraps GlossaryRepository, GlossaryStatusService, and direct DB access
+    behind a single boundary. PostgreSQL is the canonical glossary store.
     """
 
     def __init__(
@@ -36,7 +30,6 @@ class GlossaryWorkflowService:
         self._storage = storage
         self._db = db_session
         self._repo = glossary_repository or GlossaryRepository(db_session)
-        self._last_sync_timestamps: dict[str, str] = {}
 
     # ── helpers ──
 
@@ -465,50 +458,6 @@ class GlossaryWorkflowService:
         )
 
     # ── sync operations ──
-
-    def sync_from_file(self, novel_id: str, *, dry_run: bool = False):
-        if self._storage.load_metadata(novel_id) is None:
-            raise LookupError("Novel not found in storage")
-        return GlossarySyncService(self._repo, self._storage).sync_from_file(novel_id, dry_run=dry_run)
-
-    def record_sync_timestamp(self, novel_id: str) -> None:
-        self._last_sync_timestamps[novel_id] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-    def get_last_sync_timestamp(self, novel_id: str) -> str | None:
-        return self._last_sync_timestamps.get(novel_id)
-
-    def get_sync_status(self, novel_id: str) -> dict[str, Any]:
-        from novelai.db.models.novel import Novel
-
-        file_entries = self._storage.load_glossary(novel_id)
-        file_approved_count = sum(
-            1
-            for e in file_entries
-            if isinstance(e, dict) and str(e.get("status") or "").strip().lower() == "approved"
-        )
-        novel_row = self._db.query(Novel).filter(Novel.slug == novel_id).one_or_none()
-        db_approved_count = 0
-        if novel_row is not None:
-            db_approved_count = len(self._repo.list_glossary_entries_for_novel(novel_row.id, status="approved"))
-        in_sync = file_approved_count == db_approved_count and db_approved_count > 0
-
-        if in_sync:
-            recommendation = "healthy"
-        elif file_approved_count > 0 and db_approved_count == 0:
-            recommendation = "sync_required"
-        elif file_approved_count == 0 and db_approved_count == 0:
-            recommendation = "empty"
-        else:
-            recommendation = "sync_required"
-
-        return {
-            "novel_id": novel_id,
-            "file_approved_count": file_approved_count,
-            "db_approved_count": db_approved_count,
-            "in_sync": in_sync,
-            "last_sync_at": self._last_sync_timestamps.get(novel_id),
-            "recommendation": recommendation,
-        }
 
     # ── global glossary operations ──
 

@@ -59,7 +59,9 @@ class GlossaryEntryCreateRequest(BaseModel):
     public_description: NonEmptyStr | None = None
     admin_notes: NonEmptyStr | None = None
     confidence: float | None = None
-    replacement_policy: Literal["never_auto_replace", "preview_required", "manual_only", "safe_exact", "no_replacement"] = "preview_required"
+    replacement_policy: Literal[
+        "never_auto_replace", "preview_required", "manual_only", "safe_exact", "no_replacement"
+    ] = "preview_required"
     matching_policy: Literal[
         "exact_phrase",
         "case_insensitive_phrase",
@@ -86,17 +88,22 @@ class GlossaryEntryUpdateRequest(BaseModel):
     public_description: NonEmptyStr | None = None
     admin_notes: NonEmptyStr | None = None
     confidence: float | None = None
-    replacement_policy: Literal["never_auto_replace", "preview_required", "manual_only", "safe_exact", "no_replacement"] | None = None
-    matching_policy: Literal[
-        "exact_phrase",
-        "case_insensitive_phrase",
-        "word_boundary",
-        "source_text_only",
-        "translated_text_only",
-        "regex_reviewed",
-        "manual_only",
-        "custom",
-    ] | None = None
+    replacement_policy: (
+        Literal["never_auto_replace", "preview_required", "manual_only", "safe_exact", "no_replacement"] | None
+    ) = None
+    matching_policy: (
+        Literal[
+            "exact_phrase",
+            "case_insensitive_phrase",
+            "word_boundary",
+            "source_text_only",
+            "translated_text_only",
+            "regex_reviewed",
+            "manual_only",
+            "custom",
+        ]
+        | None
+    ) = None
     first_seen_chapter_id: int | None = None
     first_seen_chapter_number: int | None = None
     last_seen_chapter_id: int | None = None
@@ -145,16 +152,19 @@ class GlossaryAliasCreateRequest(BaseModel):
     language: NonEmptyStr | None = None
     text_origin: NonEmptyStr | None = None
     applies_to: AliasAppliesTo | None = None
-    matching_policy: Literal[
-        "exact_phrase",
-        "case_insensitive_phrase",
-        "word_boundary",
-        "source_text_only",
-        "translated_text_only",
-        "regex_reviewed",
-        "manual_only",
-        "custom",
-    ] | None = None
+    matching_policy: (
+        Literal[
+            "exact_phrase",
+            "case_insensitive_phrase",
+            "word_boundary",
+            "source_text_only",
+            "translated_text_only",
+            "regex_reviewed",
+            "manual_only",
+            "custom",
+        ]
+        | None
+    ) = None
     notes: NonEmptyStr | None = None
     rationale: NonEmptyStr | None = None
 
@@ -165,16 +175,19 @@ class GlossaryAliasUpdateRequest(BaseModel):
     language: NonEmptyStr | None = None
     text_origin: NonEmptyStr | None = None
     applies_to: AliasAppliesTo | None = None
-    matching_policy: Literal[
-        "exact_phrase",
-        "case_insensitive_phrase",
-        "word_boundary",
-        "source_text_only",
-        "translated_text_only",
-        "regex_reviewed",
-        "manual_only",
-        "custom",
-    ] | None = None
+    matching_policy: (
+        Literal[
+            "exact_phrase",
+            "case_insensitive_phrase",
+            "word_boundary",
+            "source_text_only",
+            "translated_text_only",
+            "regex_reviewed",
+            "manual_only",
+            "custom",
+        ]
+        | None
+    ) = None
     notes: NonEmptyStr | None = None
     rationale: NonEmptyStr | None = None
 
@@ -206,7 +219,9 @@ class GlossaryProvenanceCreateRequest(BaseModel):
     observed_translated_term: NonEmptyStr | None = None
     evidence_ref: NonEmptyStr | None = None
     local_reference: NonEmptyStr | None = None
-    evidence_quality: Literal["clean_source", "mojibake", "translated_only", "metadata_only", "manual_owner_decision"] | None = None
+    evidence_quality: (
+        Literal["clean_source", "mojibake", "translated_only", "metadata_only", "manual_owner_decision"] | None
+    ) = None
     confidence: float | None = None
 
 
@@ -493,29 +508,6 @@ class ApproveTranslationChangeResponse(BaseModel):
     approved_translation: str
     glossary_revision: int | None
     updated_at: str | None
-
-
-class GlossarySyncRequest(BaseModel):
-    dry_run: bool = False
-
-
-class GlossarySyncResponse(BaseModel):
-    novel_id: str
-    dry_run: bool
-    created: int
-    updated: int
-    skipped: int
-    errors: list[dict[str, str]]
-    synced_terms: list[str]
-
-
-class GlossarySyncStatusResponse(BaseModel):
-    novel_id: str
-    file_approved_count: int
-    db_approved_count: int
-    in_sync: bool
-    last_sync_at: str | None
-    recommendation: str
 
 
 # ── Shared helpers ────────────────────────────────────────────────────

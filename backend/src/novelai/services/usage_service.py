@@ -21,7 +21,7 @@ class UsageService:
     """Track translation usage (tokens, costs, provider/model choices, etc.)."""
 
     def __init__(self, base_dir: Path | None = None) -> None:
-        self.base_dir = (base_dir or settings.NOVEL_LIBRARY_DIR).resolve()
+        self.base_dir = (base_dir or settings.RUNTIME_DIR).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.usage_path = self.base_dir / "usage.json"
         self.lock_path = self.usage_path.with_suffix(".lock")

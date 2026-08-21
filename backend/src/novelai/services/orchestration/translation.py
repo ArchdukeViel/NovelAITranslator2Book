@@ -40,7 +40,6 @@ from novelai.services.orchestration.translation_lineage import (
 from novelai.services.orchestration.translation_progress import _build_chapter_summary
 from novelai.services.pipeline.checkpoint import Checkpoint
 from novelai.sources.base import SourceAdapter
-from novelai.storage.generations import resolve_active_generation_id
 from novelai.translation.pipeline.stages.translate_result_assembly import hash_text
 from novelai.translation.run_manifest import TranslationRunManifest
 from novelai.utils.chapter_selection import ResolvedChapterSelection, resolve_chapter_selection
@@ -49,6 +48,29 @@ logger = logging.getLogger(__name__)
 
 # Per-chapter lock to prevent concurrent translation of the same chapter
 _translation_locks: dict[str, asyncio.Lock] = {}
+_DB_REVIEW_GLOSSARY_STATUSES = {"candidate", "recommended", "rejected", "deprecated"}
+
+
+def _runtime_glossary_entries(entries: Any) -> list[dict[str, Any]]:
+    """Exclude PostgreSQL review rows from the runtime prompt glossary.
+
+    PostgreSQL retains candidate/recommended/rejected/deprecated rows for the
+    review workflow. Only approved/translated entries (plus legacy runtime
+    states supplied by test doubles or older callers) may reach prompt
+    normalization and hashing.
+    """
+
+    if not isinstance(entries, (list, tuple)):
+        return []
+    runtime: list[dict[str, Any]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        db_status = str(entry.get("_db_status") or "").strip().lower()
+        if db_status in _DB_REVIEW_GLOSSARY_STATUSES:
+            continue
+        runtime.append(dict(entry))
+    return runtime
 
 
 def _get_translation_lock(novel_id: str, chapter_id: str) -> asyncio.Lock:
@@ -538,7 +560,7 @@ def _preflight_translation(
         )
 
     try:
-        normalized_glossary = normalize_glossary_entries(glossary)
+        normalized_glossary = normalize_glossary_entries(_runtime_glossary_entries(glossary))
     except Exception as exc:
         issues.append(
             PreflightIssue(
@@ -1030,7 +1052,9 @@ async def translate_chapters(
     preexisting_pending = {
         str(entry.get("source"))
         for entry in existing_glossary_entries
-        if isinstance(entry, dict) and str(entry.get("status") or "").lower() == "pending"
+        if isinstance(entry, dict)
+        and str(entry.get("status") or "").lower() == "pending"
+        and str(entry.get("_db_status") or "").lower() not in _DB_REVIEW_GLOSSARY_STATUSES
     }
     from novelai.services.orchestration.glossary import discover_incremental_glossary_terms
 
@@ -1051,7 +1075,7 @@ async def translate_chapters(
         meta["incremental_glossary_discovery"] = incremental_glossary["discovery_state"]
     if not preexisting_pending:
         meta["_incremental_glossary_preflight"]["pending_only_new_terms"] = True
-    glossary = self.storage.load_glossary(novel_id)
+    glossary = _runtime_glossary_entries(self.storage.load_glossary(novel_id))
     glossary_revision = _resolve_glossary_revision(novel_id, platform_novel_id)
 
     preflight_issues = self._preflight_translation(
@@ -1081,7 +1105,7 @@ async def translate_chapters(
 
     # Section 9: link the run to the active raw generation so every
     # translation version can be traced back to its immutable snapshot.
-    raw_generation_id = resolve_active_generation_id(self.storage, novel_id) or ""
+    raw_generation_id = self.storage.resolve_active_generation_id(novel_id) or ""
 
     # Section 9: hash the glossary through the canonical serializer
     # (normalized source/target/status/locked/notes, sort_keys, JSON).

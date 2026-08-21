@@ -336,6 +336,96 @@ class PublicCatalogService:
             )
         return db_novel.slug, str(summary["slug"]), metadata, chapter_metadata
 
+    def load_public_translation(
+        self,
+        novel_slug: str,
+        chapter_id: str,
+        *,
+        version_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Load a public translation by the PostgreSQL-owned exact object key.
+
+        Public reads use the persisted PostgreSQL ``Chapter`` reference and
+        load exactly that immutable object from R2. They never scan a prefix
+        or reconstruct an object key from a slug/chapter convention.
+        """
+
+        if self.db_session is None:
+            return None
+        novel = self._load_published_db_novel(novel_slug)
+        if novel is None:
+            return None
+        chapter = (
+            self.db_session.query(Chapter)
+            .filter(Chapter.novel_id == novel.id, Chapter.logical_chapter_id == chapter_id)
+            .one_or_none()
+        )
+        if chapter is None:
+            return None
+        if version_id is not None:
+            try:
+                payload = self.storage.load_translated_chapter_by_version_id(
+                    novel_slug,
+                    chapter_id,
+                    version_id,
+                )
+            except FileNotFoundError:
+                logger.error(
+                    "Requested published translation version is missing from R2: novel=%s chapter=%s version=%s",
+                    novel_slug,
+                    chapter_id,
+                    version_id,
+                )
+                return None
+            return payload
+        if not chapter.translated_storage_key:
+            return None
+        try:
+            payload = self.storage.load_r2_json_artifact(chapter.translated_storage_key)
+        except FileNotFoundError:
+            logger.error(
+                "Published translation reference is missing from R2: novel=%s chapter=%s",
+                novel_slug,
+                chapter_id,
+            )
+            return None
+        if version_id is not None and payload.get("version_id") != version_id:
+            return None
+        return payload
+
+    def load_public_raw_chapter(self, novel_slug: str, chapter_id: str) -> dict[str, Any] | None:
+        """Load one public raw chapter through its exact PostgreSQL key."""
+
+        if self.db_session is None:
+            return None
+        novel = self._load_published_db_novel(novel_slug)
+        if novel is None:
+            return None
+        chapter = (
+            self.db_session.query(Chapter)
+            .filter(Chapter.novel_id == novel.id, Chapter.logical_chapter_id == chapter_id)
+            .one_or_none()
+        )
+        if chapter is None or not chapter.raw_storage_key:
+            return None
+        try:
+            payload = self.storage.load_r2_json_artifact(chapter.raw_storage_key)
+        except FileNotFoundError:
+            logger.error(
+                "Published raw chapter reference is missing from R2: novel=%s chapter=%s",
+                novel_slug,
+                chapter_id,
+            )
+            return None
+        raw = payload.get("raw")
+        if isinstance(raw, dict):
+            return {
+                "text": raw.get("text"),
+                "paragraphs": raw.get("paragraphs"),
+                "source_blocks": raw.get("source_blocks"),
+            }
+        return payload
+
     def _load_published_db_novel(self, slug: str) -> Novel | None:
         if self.db_session is None:
             return None

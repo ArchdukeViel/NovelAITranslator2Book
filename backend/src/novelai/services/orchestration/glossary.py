@@ -360,7 +360,7 @@ async def discover_incremental_glossary_terms(
         self.storage.save_metadata(novel_id, metadata)
 
     # Keep the canonical DB glossary aligned when the platform row exists;
-    # failure here must not discard the file-backed audit record.
+    # failure here must not discard the runtime audit record.
     with contextlib.suppress(Exception), _session_scope() as session:
         novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
         if novel is not None:
@@ -987,32 +987,6 @@ async def review_glossary_terms(
         ),
     )
 
-    # Best-effort sync to DB glossary
-    db_sync: dict[str, Any] = {"skipped": True, "reason": "sync_not_run"}
-    try:
-        from novelai.db.engine import session_scope
-        from novelai.services.glossary_repository import GlossaryRepository
-        from novelai.services.glossary_sync_service import GlossarySyncService
-
-        with session_scope() as session:
-            repo = GlossaryRepository(session)
-            sync_result = GlossarySyncService(repo, self.storage).sync_from_file(novel_id, actor_user_id=None)
-        db_sync = {
-            "created": sync_result.created,
-            "updated": sync_result.updated,
-            "skipped": sync_result.skipped,
-            "error_count": len(sync_result.errors),
-        }
-    except ValueError as exc:
-        if "novel_not_in_db" in str(exc):
-            db_sync = {"skipped": True, "reason": "novel_not_in_db"}
-        else:
-            logger.warning("Glossary DB sync failed: %s", exc)
-            db_sync = {"skipped": True, "reason": "sync_error"}
-    except Exception as exc:
-        logger.warning("Glossary DB sync failed after review: %s", exc.__class__.__name__)
-        db_sync = {"skipped": True, "reason": "sync_error"}
-
     return self._phase_payload(
         phase="phase1c_glossary_review",
         status="completed",
@@ -1024,7 +998,7 @@ async def review_glossary_terms(
         ignored=ignored,
         provider=profile_provider,
         model=profile_model,
-        db_sync=db_sync,
+        db_sync={"skipped": False, "reason": "postgresql_canonical"},
     )
 
 

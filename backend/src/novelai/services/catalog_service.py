@@ -1,16 +1,12 @@
-"""Catalog service — storage-key bridge.
+"""Catalog service — PostgreSQL projection and R2 reference bridge.
 
-Writes chapter content to file/object storage and persists the storage key
-and checksum in the database (architecture.md §21).
-
-Storage-path knowledge stays inside the storage boundary (storage/*).
-This service bridges the file-backed StorageService with the DB models so
-the two can run in parallel during the file→DB transition.
+Writes immutable chapter artifacts through the R2 storage boundary and
+persists exact object keys and logical checksums in PostgreSQL.
 """
 
 from __future__ import annotations
 
-import hashlib
+import json
 import logging
 import re
 from collections import deque
@@ -94,11 +90,6 @@ class CatalogProjectionBulkReconciliation:
 class CatalogPublicationResult:
     novel: Novel
     visibility_warnings: list[str]
-
-
-def _sha256(text: str) -> str:
-    """Return a hex SHA-256 digest for a text string."""
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _metadata_datetime(value: object) -> datetime | None:
@@ -245,22 +236,36 @@ def get_projection_refresh_failures() -> list[dict]:
 
 
 class CatalogService:
-    """Bridge between file-backed StorageService and the DB catalog.
+    """Bridge between the R2 storage facade and the DB catalog.
 
     Responsibilities:
-    - Persist raw/translated chapter text via StorageService (file/object storage).
+    - Persist raw/translated chapter text via StorageService (R2 artifacts).
     - Write the resulting storage key + checksum into the Chapter DB row.
     - Keep all path/key construction inside StorageService; this layer only
       stores the returned key string and a content checksum.
 
     Args:
-        storage: The file-backed StorageService instance.
+        storage: The R2-only StorageService instance.
         session: An active SQLAlchemy session (caller owns lifecycle).
     """
 
     def __init__(self, storage: StorageService, session: Session) -> None:
         self._storage = storage
         self._session = session
+        # Isolated catalog tests use a private SQLite session while the
+        # application storage facade resolves its production session through
+        # the database engine. Let those tests make R2 reads against their
+        # own transaction without creating a process-wide production binding.
+        from novelai.config.settings import settings
+
+        if settings.ENV == "test":
+            storage._test_db_session = session
+            bound_storages = session.info.get("_novelai_r2_bound_storages")
+            if not isinstance(bound_storages, list):
+                bound_storages = []
+                session.info["_novelai_r2_bound_storages"] = bound_storages
+            if storage not in bound_storages:
+                bound_storages.append(storage)
 
     # ------------------------------------------------------------------
     # Novel catalog helpers
@@ -304,14 +309,36 @@ class CatalogService:
             if source_updated_at is not None:
                 novel.source_updated_at = source_updated_at
 
-        self.recompute_catalog_projection(novel.slug, novel=novel, metadata=metadata)
+        # Keep the complete small catalog/source metadata in PostgreSQL. This
+        # is the R2-only replacement for novel-root metadata.json; immutable
+        # chapter and generation artifacts remain in R2 and are referenced by
+        # the Chapter/Novel rows below.
+        previous_metadata = dict(novel.metadata_json) if isinstance(novel.metadata_json, dict) else {}
+        if previous_metadata and previous_metadata != metadata:
+            history = [dict(item) for item in (novel.metadata_history_json or []) if isinstance(item, dict)]
+            created_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            history.append(
+                {
+                    "snapshot_id": f"metadata-{len(history) + 1:04d}",
+                    "created_at": created_at,
+                    "metadata": previous_metadata,
+                    "size_bytes": len(json.dumps(previous_metadata, ensure_ascii=False).encode("utf-8")),
+                    "is_current": False,
+                }
+            )
+            novel.metadata_history_json = history[-25:]
+        effective_metadata = {**previous_metadata, **metadata}
+        novel.metadata_json = effective_metadata
+        self._session.add(novel)
+
+        self.recompute_catalog_projection(novel.slug, novel=novel, metadata=effective_metadata)
 
         # Persist taxonomy assignments from scraped metadata
-        source_key = metadata.get("source_key")
+        source_key = effective_metadata.get("source_key")
         persist_taxonomy_assignments(
             self._session,
             novel.id,
-            metadata,
+            effective_metadata,
             source_key=str(source_key) if source_key else None,
         )
         from novelai.services.public_projection_cache import invalidate_public_projection_cache
@@ -335,6 +362,7 @@ class CatalogService:
         source_episode_id: str | None = None,
         sequence_number: int | None = None,
         source_url: str | None = None,
+        artifact_payload: dict | None = None,
     ) -> Chapter:
         """Save raw chapter text to file storage; persist key+checksum in DB.
 
@@ -357,9 +385,15 @@ class CatalogService:
         Returns:
             The Chapter ORM instance (added to session, not yet committed).
         """
-        self._storage.save_chapter(novel_id, chapter_id, content, title=title, source_key=source_key)
-        storage_key = f"{novel_id}/{chapter_id}/raw"
-        checksum = _sha256(content)
+        stored_artifact = self._storage.save_raw_chapter_artifact(
+            novel_id,
+            chapter_id,
+            content,
+            title=title,
+            source_key=source_key,
+            source_url=source_url,
+            artifact_payload=artifact_payload,
+        )
 
         novel = self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
         novel_db_id = novel.id if novel else None
@@ -383,7 +417,8 @@ class CatalogService:
             "source_episode_id": chapter.source_episode_id,
             "source_url": chapter.source_url,
         }
-        chapter.raw_storage_key = f"{storage_key}:{checksum[:8]}"
+        chapter.raw_storage_key = stored_artifact.key
+        chapter.raw_content_hash = stored_artifact.logical_sha256
         chapter.raw_status = "fetched"
         self._session.add(chapter)
         self.recompute_catalog_projection(novel_id, novel=novel)
@@ -399,6 +434,13 @@ class CatalogService:
         content: str,
         *,
         provider_key: str | None = None,
+        provider_model: str | None = None,
+        source_hash: str | None = None,
+        translation_run_id: str | None = None,
+        raw_generation_id: str | None = None,
+        glossary_hash: str | None = None,
+        prompt_template_version: str | None = None,
+        artifact_payload: dict | None = None,
     ) -> Chapter:
         """Save translated chapter text to file storage; persist key+checksum in DB.
 
@@ -411,15 +453,19 @@ class CatalogService:
         Returns:
             The Chapter ORM instance (updated in session, not yet committed).
         """
-        self._storage.save_translated_chapter(
+        stored_artifact = self._storage.save_translation_artifact(
             novel_id,
             chapter_id,
             content,
             provider_key=provider_key,
-            glossary_revision=0,
+            provider_model=provider_model,
+            source_hash=source_hash,
+            translation_run_id=translation_run_id,
+            raw_generation_id=raw_generation_id,
+            glossary_hash=glossary_hash,
+            prompt_template_version=prompt_template_version,
+            artifact_payload=artifact_payload,
         )
-        storage_key = f"{novel_id}/{chapter_id}/translated"
-        checksum = _sha256(content)
 
         novel = self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
         novel_db_id = novel.id if novel else None
@@ -429,7 +475,8 @@ class CatalogService:
             chapter_id=chapter_id,
             chapter_number=None,
         )
-        chapter.translated_storage_key = f"{storage_key}:{checksum[:8]}"
+        chapter.translated_storage_key = stored_artifact.key
+        chapter.translated_content_hash = stored_artifact.logical_sha256
         chapter.translation_status = "translated"
         self._session.add(chapter)
         self.recompute_catalog_projection(novel_id, novel=novel)
@@ -445,21 +492,32 @@ class CatalogService:
     ) -> Novel | None:
         """Refresh denormalized catalog summary fields for one novel.
 
-        Mirrors the current public catalog's file-backed semantics so later
+        Mirrors the current public catalog's PostgreSQL projection semantics so later
         DB-backed listing phases can switch storage without changing values.
         """
         novel = novel or self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             return None
 
-        metadata = metadata if metadata is not None else (self._storage.load_metadata(novel_id) or {})
+        if metadata is None:
+            loaded_metadata = self._storage.load_metadata(novel_id)
+            metadata = loaded_metadata if isinstance(loaded_metadata, dict) else {}
         translated_count = self._storage.count_translated_chapters(novel_id)
         translated_ids = set(self._storage.list_translated_chapters(novel_id))
         metadata_chapters = _metadata_chapters(metadata)
-        chapter_count = len(metadata_chapters) or max(
-            self._storage.count_stored_chapters(novel_id),
-            translated_count,
-        )
+        if metadata_chapters:
+            chapter_count = max(
+                len(metadata_chapters),
+                self._storage.count_stored_chapters(novel_id),
+                translated_count,
+            )
+        else:
+            chapter_count = max(
+                int(novel.chapter_count or 0),
+                self._storage.count_stored_chapters(novel_id),
+                translated_count,
+            )
+            translated_count = max(int(novel.translated_count or 0), translated_count)
         latest_chapter = self._latest_translated_chapter(novel_id, metadata_chapters)
 
         self._reconcile_chapter_projection(
@@ -471,18 +529,23 @@ class CatalogService:
         if metadata:
             novel.title = _metadata_public_title(novel_id, metadata)
             novel.original_title = _metadata_original_title(metadata)
-            novel.author = _optional_string(metadata.get("translated_author")) or _optional_string(
-                metadata.get("author")
-            )
-            novel.synopsis = _metadata_public_synopsis(metadata)
-            novel.public_reader_unavailable_policy = _optional_string(metadata.get("public_reader_unavailable_policy"))
+            author = _optional_string(metadata.get("translated_author")) or _optional_string(metadata.get("author"))
+            if author is not None:
+                novel.author = author
+            synopsis = _metadata_public_synopsis(metadata)
+            if synopsis is not None:
+                novel.synopsis = synopsis
+            policy = _optional_string(metadata.get("public_reader_unavailable_policy"))
+            if policy is not None:
+                novel.public_reader_unavailable_policy = policy
         novel.public_slug = _public_slug_from_title(novel.title, novel.slug)
         novel.chapter_count = chapter_count
         novel.translated_count = translated_count
-        novel.latest_chapter_id = latest_chapter["id"] if latest_chapter else None  # type: ignore[reportAttributeAccessIssue]
-        novel.latest_chapter_number = latest_chapter["number"] if latest_chapter else None  # type: ignore[reportAttributeAccessIssue]
-        novel.latest_chapter_title = latest_chapter["title"] if latest_chapter else None  # type: ignore[reportAttributeAccessIssue]
-        novel.latest_chapter_updated_at = latest_chapter["updated_at"] if latest_chapter else None  # type: ignore[reportAttributeAccessIssue]
+        if latest_chapter:
+            novel.latest_chapter_id = latest_chapter["id"]  # type: ignore[reportAttributeAccessIssue]
+            novel.latest_chapter_number = latest_chapter["number"]  # type: ignore[reportAttributeAccessIssue]
+            novel.latest_chapter_title = latest_chapter["title"]  # type: ignore[reportAttributeAccessIssue]
+            novel.latest_chapter_updated_at = latest_chapter["updated_at"]  # type: ignore[reportAttributeAccessIssue]
         return novel
 
     def _reconcile_chapter_projection(

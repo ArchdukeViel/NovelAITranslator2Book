@@ -104,7 +104,7 @@ class ActivityQueueService:
         *,
         db_session_scope_factory: Any | None = None,
     ) -> None:
-        self.base_dir = (base_dir or settings.NOVEL_LIBRARY_DIR).resolve()
+        self.base_dir = (base_dir or settings.RUNTIME_DIR).resolve()
         self.activity_log_dir = self.base_dir / self.ACTIVITY_LOG_DIRNAME
         self.activity_log_dir.mkdir(parents=True, exist_ok=True)
         self.activity_dir = self.activity_log_dir
