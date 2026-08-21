@@ -7,10 +7,13 @@ import re
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import and_, func, true
 from sqlalchemy.orm import Session, selectinload
 
 from novelai.db.models.chapter import Chapter
+from novelai.db.models.genre import Genre
 from novelai.db.models.novel import Novel
+from novelai.db.models.tag import Tag
 from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.public_glossary_annotations import find_annotations, select_public_terms
 from novelai.services.public_projection_cache import public_projection_cache
@@ -195,6 +198,163 @@ class PublicCatalogService:
     @staticmethod
     def is_db_catalog_base_request(*, sort_by: str | None) -> bool:
         return sort_by is None or sort_by in VALID_SORT_FIELDS
+
+    def public_catalog_cache_key(
+        self,
+        *,
+        sort_by: str,
+        order: str,
+        page: int,
+        page_size: int,
+    ) -> tuple[str, ...]:
+        """Return the cache identity for an unfiltered public catalog page."""
+        if self.db_session is None:
+            database_identity = "none"
+            catalog_version = "none"
+        else:
+            database_identity = str(id(self.db_session.get_bind()))
+            catalog_version = str(self.db_session.query(func.max(Novel.updated_at)).scalar())
+        return (
+            "catalog-v1",
+            database_identity,
+            catalog_version,
+            sort_by,
+            order,
+            str(page),
+            str(page_size),
+        )
+
+    def get_public_catalog_page(
+        self,
+        *,
+        q: str | None,
+        publication_status: str | None,
+        source_key: str | None,
+        effective_sort_by: str,
+        min_chapters: int | None,
+        max_chapters: int | None,
+        genre_include_set: set[str],
+        genre_exclude_set: set[str],
+        tag_include_set: set[str],
+        tag_exclude_set: set[str],
+        include_adult: bool,
+        page: int,
+        page_size: int,
+        order: str,
+    ) -> tuple[list[Novel], int, bool]:
+        """Return a filtered page of published catalog projection rows."""
+        if self.db_session is None:
+            return [], 0, True
+
+        query = self.db_session.query(Novel).filter(
+            Novel.is_published.is_(True),
+            Novel.title != Novel.slug,
+        )
+        search_text = _optional_str(q)
+        if search_text:
+            pattern = f"%{search_text}%"
+            query = query.filter(
+                Novel.title.ilike(pattern) | Novel.original_title.ilike(pattern) | Novel.author.ilike(pattern)
+            )
+        if publication_status:
+            query = query.filter(Novel.publication_status == publication_status)
+        if source_key:
+            query = query.filter(Novel.source_site == source_key)
+        if min_chapters is not None:
+            query = query.filter(Novel.chapter_count >= min_chapters)
+        if max_chapters is not None:
+            query = query.filter(Novel.chapter_count <= max_chapters)
+
+        active_public_genre = (
+            Genre.is_active.is_(True) if include_adult else and_(Genre.is_active.is_(True), Genre.is_adult.is_(False))
+        )
+        public_tag = true() if include_adult else Tag.is_adult.is_(False)
+        for genre_slug in sorted(genre_include_set):
+            query = query.filter(
+                Novel.genres.any(
+                    and_(
+                        Genre.slug == genre_slug,
+                        active_public_genre,
+                    )
+                )
+            )
+        if genre_exclude_set:
+            query = query.filter(
+                ~Novel.genres.any(
+                    and_(
+                        Genre.slug.in_(genre_exclude_set),
+                        active_public_genre,
+                    )
+                )
+            )
+        for tag_name in sorted(tag_include_set):
+            query = query.filter(
+                Novel.tags.any(
+                    and_(
+                        Tag.name == tag_name,
+                        public_tag,
+                    )
+                )
+            )
+        if tag_exclude_set:
+            query = query.filter(
+                ~Novel.tags.any(
+                    and_(
+                        Tag.name.in_(tag_exclude_set),
+                        public_tag,
+                    )
+                )
+            )
+
+        if effective_sort_by == "title":
+            order_field = Novel.title
+        elif effective_sort_by == "updated_at":
+            order_field = func.coalesce(Novel.latest_chapter_updated_at, Novel.updated_at)
+        elif effective_sort_by == "chapter_count":
+            order_field = Novel.chapter_count
+        else:
+            order_field = Novel.source_updated_at
+        if order == "asc":
+            order_columns = (order_field.asc().nulls_first(), Novel.id.asc())
+        else:
+            order_columns = (order_field.desc().nulls_last(), Novel.id.desc())
+
+        offset = (page - 1) * page_size
+        rows = (
+            query.add_columns(func.count(Novel.id).over().label("catalog_total"))
+            .options(selectinload(Novel.genres), selectinload(Novel.tags))
+            .order_by(*order_columns)
+            .offset(offset)
+            .limit(page_size)
+            .all()
+        )
+        if rows:
+            return [row[0] for row in rows], int(rows[0][1]), False
+
+        has_published_projection = (
+            self.db_session.query(Novel.id)
+            .filter(Novel.is_published.is_(True), Novel.title != Novel.slug)
+            .limit(1)
+            .first()
+            is not None
+        )
+        return [], 0, not has_published_projection
+
+    def list_public_genres(self, *, include_adult: bool) -> list[dict[str, Any]]:
+        """Return active public genres in their stable display order."""
+        if self.db_session is None:
+            return []
+        query = self.db_session.query(Genre).filter(Genre.is_active.is_(True))
+        if not include_adult:
+            query = query.filter(Genre.is_adult.is_(False))
+        return [
+            {
+                "slug": genre.slug,
+                "name_ja": genre.name_ja,
+                "name_en": genre.name_en,
+            }
+            for genre in query.order_by(Genre.display_order, Genre.name_ja).all()
+        ]
 
     # -- instance helpers (need storage / db) ----------------------------------
 
