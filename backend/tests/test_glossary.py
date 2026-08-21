@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 import pytest
 
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.glossary.glossary import (
     Glossary,
     GlossaryTerm,
@@ -12,6 +16,11 @@ from novelai.glossary.glossary import (
     normalize_glossary_entry,
     rank_glossary_terms_for_text,
     summarize_term_context,
+)
+from novelai.services.orchestration.glossary import (
+    discover_incremental_glossary_terms,
+    parse_incremental_glossary_response,
+    translate_glossary_terms,
 )
 
 
@@ -165,6 +174,14 @@ class TestGlossaryContextRanking:
         ranked = rank_glossary_terms_for_text("The hero and mage arrived.", terms)
         assert [term.source for term in ranked] == ["mage"]
 
+    def test_rank_glossary_terms_excludes_pending_candidates(self) -> None:
+        terms = [
+            GlossaryTerm(source="pending", target="Provisional", status="pending"),
+            GlossaryTerm(source="approved", target="Approved", status="approved"),
+        ]
+        ranked = rank_glossary_terms_for_text("pending approved", terms)
+        assert [term.source for term in ranked] == ["approved"]
+
 
 class TestGlossaryStatusCounts:
     def test_glossary_status_counts_tracks_reviewed_and_pending(self) -> None:
@@ -182,3 +199,179 @@ class TestGlossaryStatusCounts:
         assert counts["ignored"] == 1
         assert counts["translated"] == 1
         assert counts["reviewed"] == 3
+
+
+def test_incremental_glossary_response_requires_source_evidence_and_known_ids() -> None:
+    result = parse_incremental_glossary_response(
+        '{"items": ['
+        '{"chapter_id":"ch-1","source":"魔導具","target":"magic device","confidence":0.91},'
+        '{"chapter_id":"ch-1","source":"not present","target":"Invented","confidence":0.99},'
+        '{"chapter_id":"unknown","source":"魔導具","target":"Unknown","confidence":0.99}'
+        "]}",
+        source_text_by_chapter={"ch-1": "魔導具を使う。魔導具が光る。"},
+        max_terms=10,
+    )
+    assert len(result) == 1
+    assert result[0]["safe_to_activate"] is True
+    assert result[0]["occurrence_count"] == 2
+
+
+class _IncrementalGlossaryStorage:
+    def __init__(self) -> None:
+        self.text = "Aria enters the city. Aria returns before dawn."
+        self.metadata: dict[str, Any] = {}
+        self.entries: list[dict[str, Any]] = []
+
+    def load_chapter(self, novel_id: str, chapter_id: str) -> dict[str, str]:
+        return {"text": self.text}
+
+    def load_metadata(self, novel_id: str) -> dict[str, Any]:
+        return self.metadata
+
+    def save_metadata(self, novel_id: str, metadata: dict[str, Any]) -> None:
+        self.metadata = metadata
+
+    def load_glossary(self, novel_id: str) -> list[dict[str, Any]]:
+        return [dict(entry) for entry in self.entries]
+
+    def save_glossary(self, novel_id: str, entries: list[dict[str, Any]]) -> None:
+        self.entries = [dict(entry) for entry in entries]
+
+
+class _IncrementalGlossaryProvider:
+    key = "gemini"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def translate(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
+        self.calls += 1
+        if self.calls == 1:
+            return {"text": "NOT JSON", "metadata": {"usage": {"total_tokens": 4}}}
+        return {"text": '{"items": []}', "metadata": {"usage": {"total_tokens": 4}}}
+
+
+class _IncrementalGlossaryService:
+    def __init__(self) -> None:
+        self.storage = _IncrementalGlossaryStorage()
+        self.provider = _IncrementalGlossaryProvider()
+
+    def _resolve_provider_and_model(self, provider_key: str | None, provider_model: str | None) -> tuple[str, str]:
+        return provider_key or "gemini", provider_model or GEMINI_DEFAULT_MODEL
+
+    def _provider_factory(self, provider_key: str) -> _IncrementalGlossaryProvider:
+        return self.provider
+
+    def _record_usage(self, provider_key: str, provider_model: str, metadata: Any) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_incremental_glossary_retries_structured_response_and_resumes(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TRANSLATION_MAX_ATTEMPTS_PER_CHUNK", 2)
+    service = _IncrementalGlossaryService()
+    first = await discover_incremental_glossary_terms(
+        service,
+        "novel-1",
+        [{"chapter_id": "1"}],
+        provider_key="gemini",
+        provider_model=GEMINI_DEFAULT_MODEL,
+        source_language="Japanese",
+    )
+    assert service.provider.calls == 2
+    assert first["provider_calls"] == 2
+    assert first["changed_chapters"] == ["1"]
+
+    resumed = await discover_incremental_glossary_terms(
+        service,
+        "novel-1",
+        [{"chapter_id": "1"}],
+        provider_key="gemini",
+        provider_model=GEMINI_DEFAULT_MODEL,
+        source_language="Japanese",
+    )
+    assert service.provider.calls == 2
+    assert resumed["provider_calls"] == 0
+    assert resumed["unchanged_chapters"] == ["1"]
+    assert resumed["changed_chapters"] == []
+
+
+class _BatchGlossaryProvider:
+    key = "mock"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def available_models(self) -> list[str]:
+        return ["mock-1.0"]
+
+    async def translate(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
+        self.calls += 1
+        payload = json.loads(prompt.split("Input: ", 1)[1])
+        return {
+            "text": json.dumps(
+                {"items": [{"id": item["id"], "translation": f"English {item['id']}"} for item in payload["items"]]}
+            ),
+            "metadata": {"usage": {"total_tokens": 20}},
+        }
+
+
+class _BatchGlossaryStorage:
+    def __init__(self, entries: list[dict[str, Any]]) -> None:
+        self.entries = entries
+
+    def load_glossary(self, novel_id: str) -> list[dict[str, Any]]:
+        return [dict(entry) for entry in self.entries]
+
+    def load_metadata(self, novel_id: str) -> dict[str, Any]:
+        return {}
+
+    def save_glossary(self, novel_id: str, entries: list[dict[str, Any]]) -> None:
+        self.entries = [dict(entry) for entry in entries]
+
+
+class _BatchGlossaryCache:
+    def __init__(self) -> None:
+        self.values: dict[tuple[str, str, str], str] = {}
+
+    def get(self, text: str, provider_key: str, provider_model: str) -> str | None:
+        return self.values.get((text, provider_key, provider_model))
+
+    def set(self, text: str, provider_key: str, provider_model: str, translated_text: str) -> None:
+        self.values[(text, provider_key, provider_model)] = translated_text
+
+
+class _BatchGlossaryService:
+    def __init__(self, entries: list[dict[str, Any]], provider: _BatchGlossaryProvider) -> None:
+        self.storage = _BatchGlossaryStorage(entries)
+        self._cache = _BatchGlossaryCache()
+        self.provider = provider
+
+    def _resolve_workflow_profile(self, step: str, metadata: dict[str, Any]) -> tuple[str, str]:
+        return "mock", "mock-1.0"
+
+    def _resolve_provider_and_model(self, provider_key: str | None, provider_model: str | None) -> tuple[str, str]:
+        return provider_key or "mock", provider_model or "mock-1.0"
+
+    def _provider_factory(self, provider_key: str) -> _BatchGlossaryProvider:
+        return self.provider
+
+    def _record_usage(self, provider_key: str, provider_model: str, metadata: Any) -> None:
+        return None
+
+    def _phase_payload(self, **payload: Any) -> dict[str, Any]:
+        return payload
+
+
+@pytest.mark.asyncio
+async def test_glossary_translation_batches_twenty_terms_into_one_provider_call() -> None:
+    provider = _BatchGlossaryProvider()
+    service = _BatchGlossaryService(
+        [{"source": f"term-{index}", "target": "", "status": "pending"} for index in range(20)],
+        provider,
+    )
+    result = await translate_glossary_terms(service, "novel-1")
+    assert provider.calls == 1
+    assert result["provider_calls"] == 1
+    assert result["batch_count"] == 1
+    assert result["translated"] == 20

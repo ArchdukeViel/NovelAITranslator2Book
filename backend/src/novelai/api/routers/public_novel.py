@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from novelai.api.auth.session import SessionUser, get_current_user
@@ -17,7 +17,6 @@ from novelai.api.routers.dependencies import (
     get_db_session,
     get_public_catalog_service,
     get_review_service,
-    metadata_chapters,
 )
 from novelai.api.routers.public_contracts import (
     PublicChapterSummary,
@@ -25,8 +24,10 @@ from novelai.api.routers.public_contracts import (
     PublicReviewItem,
     PublicReviewListResponse,
     _optional_str,
+    _public_section_fields,
 )
-from novelai.services.analytics_service import record_server_event
+from novelai.config.settings import settings
+from novelai.services.analytics_service import anonymous_viewer_identity, record_server_event
 from novelai.services.public_catalog_service import PublicCatalogService
 from novelai.services.review_service import ReviewService
 from novelai.services.takedown_service import TakedownService
@@ -47,11 +48,9 @@ async def get_novel(
     user: SessionUser = Depends(get_current_user),
     db: Session = Depends(get_db_session),
     response: Response = None,  # type: ignore[assignment]
+    request: Request = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
     """Public novel detail."""
-    resolved = service._resolve_public_novel(slug)
-    if resolved is None:
-        raise HTTPException(status_code=404, detail="Novel not found.")
     # HTTP 451 — Unavailable For Legal Reasons
     if isinstance(db, Session) and TakedownService(db).has_active_takedown_for_slug(slug):
         raise HTTPException(
@@ -59,13 +58,20 @@ async def get_novel(
             detail="Unavailable For Legal Reasons",
             headers={"Cache-Control": "no-store"},
         )
-    novel_id, meta, _public_slug = resolved
-    genres, tags, _ = service._load_taxonomy_for_novel(novel_id, include_adult=include_adult)
+    summary, novel_id = service.get_public_novel_summary(slug, include_adult=include_adult)
+    if summary is None or novel_id is None:
+        raise HTTPException(status_code=404, detail="Novel not found.")
     # Best-effort analytics: record public_novel.view
-    record_server_event("public_novel.view", user_id=user.user_id, novel_id=novel_id)
+    session_id: str | None = None
+    viewer_cookie_created = False
+    if settings.ANALYTICS_ENABLED and user.user_id is None and request is not None and response is not None:
+        session_id, viewer_cookie_created = anonymous_viewer_identity(request, response)
+    record_server_event("public_novel.view", user_id=user.user_id, session_id=session_id, novel_id=novel_id)
     if response is not None:
-        response.headers["Cache-Control"] = "public, max-age=60"
-    return service._novel_summary(novel_id, meta, genres=genres, tags=tags)
+        # A public cache cannot safely serve an identity-setting/detail-view
+        # response because it would suppress the next viewer's event.
+        response.headers["Cache-Control"] = "private, no-store" if viewer_cookie_created else "private, max-age=60"
+    return summary
 
 
 @router.get("/novels/{slug}/chapters", response_model=list[PublicChapterSummary])
@@ -76,21 +82,20 @@ async def list_chapters(
     db: Session = Depends(get_db_session),
 ) -> list[PublicChapterSummary]:
     """Public chapter list for a novel."""
-    resolved = service._resolve_public_novel(slug)
-    if resolved is None:
-        raise HTTPException(status_code=404, detail="Novel not found.")
     if TakedownService(db).has_active_takedown_for_slug(slug):
         raise HTTPException(
             status_code=451,
             detail="Unavailable For Legal Reasons",
             headers={"Cache-Control": "no-store"},
         )
-    novel_id, meta, _public_slug = resolved
-    translated_ids = set(service.storage.list_translated_chapters(novel_id))
+    context = service.get_public_read_context(slug)
+    if context is None:
+        raise HTTPException(status_code=404, detail="Novel not found.")
+    _novel_id, _public_slug, _meta, chapters = context
     result = []
-    for idx, ch in enumerate(metadata_chapters(meta)):
+    for idx, ch in enumerate(chapters):
         chapter_id = str(ch.get("id", ""))
-        is_translated = chapter_id in translated_ids
+        is_translated = bool(ch.get("translated"))
         result.append(
             PublicChapterSummary(
                 chapter_id=chapter_id,
@@ -99,6 +104,7 @@ async def list_chapters(
                 translated=is_translated,
                 availability_status="available" if is_translated else "not_translated",
                 part=_optional_str(ch.get("part")) or _optional_str(ch.get("volume")),
+                **_public_section_fields(ch),
             )
         )
     response.headers["Cache-Control"] = "public, max-age=60"
@@ -116,15 +122,15 @@ async def list_novel_reviews(
     db: Session = Depends(get_db_session),
 ) -> PublicReviewListResponse:
     """Public published reviews for a novel (guest-accessible)."""
-    resolved = service._resolve_public_novel(slug)
-    if resolved is None:
-        raise HTTPException(status_code=404, detail="Novel not found.")
     if TakedownService(db).has_active_takedown_for_slug(slug):
         raise HTTPException(
             status_code=451,
             detail="Unavailable For Legal Reasons",
             headers={"Cache-Control": "no-store"},
         )
+    summary, _novel_id = service.get_public_novel_summary(slug)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="Novel not found.")
     items, next_cursor = review_service.list_published_reviews(slug, limit=limit, cursor=cursor)
     response.headers["Cache-Control"] = "public, max-age=60"
     return PublicReviewListResponse(

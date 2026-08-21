@@ -406,10 +406,11 @@ def _manifest_path(self: Any, novel_id: str, generation_id: str) -> Path:
 
 def _load_manifest(self: Any, novel_id: str, generation_id: str) -> GenerationManifest | None:
     manifest_path = _manifest_path(self, novel_id, generation_id)
-    if not self._path_exists(manifest_path):
+    text = self._read_text_optional(manifest_path)
+    if not text:
         return None
     try:
-        return GenerationManifest.from_dict(json.loads(self._read_text(manifest_path)))
+        return GenerationManifest.from_dict(json.loads(text))
     except Exception as exc:
         logger.warning("Failed to load generation manifest for %s/%s: %s", novel_id, generation_id, exc)
         return None
@@ -470,10 +471,11 @@ def get_active_generation(
     folder naming runs).
     """
     active_pointer_path = self._novel_dir(novel_id) / "generations" / "active_generation.json"
-    if not self._path_exists(active_pointer_path):
+    text = self._read_text_optional(active_pointer_path)
+    if not text:
         return None
     try:
-        data = json.loads(self._read_text(active_pointer_path))
+        data = json.loads(text)
         gen_id = data.get("active_generation_id")
         return self.load_generation_manifest(novel_id, gen_id) if gen_id else None
     except Exception as exc:
@@ -487,10 +489,11 @@ def resolve_active_generation_id(self: Any, novel_id: str) -> str | None:
     Read-only: never creates the ``generations/`` tree.
     """
     active_pointer_path = self._novel_dir(novel_id) / "generations" / "active_generation.json"
-    if not self._path_exists(active_pointer_path):
+    text = self._read_text_optional(active_pointer_path)
+    if not text:
         return None
     try:
-        data = json.loads(self._read_text(active_pointer_path))
+        data = json.loads(text)
         gen_id = data.get("active_generation_id")
         return str(gen_id) if isinstance(gen_id, str) and gen_id.strip() else None
     except Exception as exc:
@@ -700,8 +703,29 @@ def seed_generation_from_active(
 
     Used for chapters the planner reuses or that are unchanged: the stage
     must contain a complete snapshot, so existing raw + translation content
-    is carried forward. Returns ``(copied_chapters, copied_assets)``.
+    is carried forward.  When the active generation has a manifest, immutable
+    objects are copied directly by the backend and the staged manifest is
+    persisted once after all references are recorded.  This avoids a
+    load/save/manifest-write round trip for every unchanged chapter while
+    retaining the complete physical snapshot contract.  Returns
+    ``(copied_chapters, copied_assets)``.
     """
+    active_generation_id = resolve_active_generation_id(self, novel_id)
+    active_manifest = (
+        load_generation_manifest(self, novel_id, active_generation_id) if active_generation_id is not None else None
+    )
+    staged_manifest = _load_manifest(self, novel_id, generation_id)
+    if active_generation_id is not None and active_manifest is not None and staged_manifest is not None:
+        return _seed_generation_from_active_manifest(
+            self,
+            novel_id,
+            generation_id,
+            chapter_ids,
+            active_generation_id,
+            active_manifest,
+            staged_manifest,
+        )
+
     copied_chapters = 0
     copied_assets = 0
     for chapter_id in chapter_ids:
@@ -726,6 +750,85 @@ def seed_generation_from_active(
                 if not isinstance(local_path, str) or not local_path.strip():
                     continue
                 copied_assets += self._copy_asset_to_generation(novel_id, generation_id, local_path)
+    return copied_chapters, copied_assets
+
+
+def _seed_generation_from_active_manifest(
+    self: Any,
+    novel_id: str,
+    generation_id: str,
+    chapter_ids: list[str],
+    active_generation_id: str,
+    active_manifest: GenerationManifest,
+    staged_manifest: GenerationManifest,
+) -> tuple[int, int]:
+    """Carry forward immutable objects using one active-manifest snapshot."""
+    source_generation_dir = _generation_dir(self, novel_id, active_generation_id)
+    target_generation_dir = _generation_dir(self, novel_id, generation_id)
+    source_chapters_dir = source_generation_dir / "chapters"
+    target_chapters_dir = target_generation_dir / "chapters"
+    source_assets_dir = source_generation_dir / "assets" / "images"
+    target_assets_dir = target_generation_dir / "assets" / "images"
+
+    source_assets_prefix = self._rel(source_assets_dir).replace("\\", "/").rstrip("/") + "/"
+    active_asset_keys = self._backend.list_keys(self._rel(source_assets_dir), recursive=True)
+    copied_chapters = 0
+    copied_assets = 0
+
+    # The index can contain stable IDs with characters that are unsafe as
+    # filesystem names.  Use the canonical physical filename/encoding for
+    # both chapter bundles and their asset directory.
+    from novelai.core.security import encode_physical_stem
+
+    for chapter_id in chapter_ids:
+        physical_filename = _physical_chapter_filename(self, chapter_id)
+        source_path = source_chapters_dir / physical_filename
+        target_path = target_chapters_dir / physical_filename
+        try:
+            self._backend.copy_object(self._rel(source_path), self._rel(target_path))
+        except FileNotFoundError:
+            # Preserve the existing behavior: a missing active bundle is
+            # left for generation validation to report as an incomplete
+            # snapshot instead of being silently synthesized.
+            continue
+
+        copied_chapters += 1
+        if chapter_id not in staged_manifest.chapter_ids:
+            staged_manifest.chapter_ids.append(chapter_id)
+
+        # A valid active manifest already contains the canonical hashes and
+        # version metadata for the immutable bytes just copied.  Missing
+        # fields are deliberately left empty so validation fails closed for
+        # a corrupt/legacy active manifest rather than accepting unverified
+        # content.
+        for field_name in (
+            "source_hashes",
+            "structure_hashes",
+            "image_manifest_hashes",
+            "parser_versions",
+            "translation_versions",
+        ):
+            source_values = getattr(active_manifest, field_name)
+            target_values = getattr(staged_manifest, field_name)
+            if chapter_id in source_values:
+                target_values[chapter_id] = source_values[chapter_id]
+
+        encoded_stem = encode_physical_stem(str(chapter_id))
+        asset_prefix = f"{source_assets_prefix}{encoded_stem}/"
+        for key in active_asset_keys:
+            normalized_key = str(key).replace("\\", "/")
+            if not normalized_key.startswith(asset_prefix):
+                continue
+            relative_asset = normalized_key[len(source_assets_prefix) :]
+            target_asset = target_assets_dir.joinpath(*relative_asset.split("/"))
+            self._mkdirs(target_asset.parent)
+            self._backend.copy_object(normalized_key, self._rel(target_asset))
+            copied_assets += 1
+
+    # Keep manifest persistence out of the per-object loop.  The validator
+    # still reads every staged bundle and asset before activation, so this
+    # optimization changes only transport, not integrity or atomicity.
+    _save_manifest(self, novel_id, generation_id, staged_manifest)
     return copied_chapters, copied_assets
 
 
@@ -969,7 +1072,7 @@ def validate_generation_activation(
     # ── exact membership reconciliation ────────────────────────────────
     chapter_dir = g_dir / "chapters"
     physical_logical_ids: list[str] = []
-    if self._path_exists(chapter_dir):
+    if self._is_dir_present(chapter_dir):
         for physical_path in self._glob(chapter_dir, "*.json"):
             try:
                 physical_logical_ids.append(self.logical_id_from_stem(physical_path.stem))
@@ -1583,6 +1686,6 @@ def rollback_generation(
         manifest.rolled_back_at = _utc_now_iso()
         _save_manifest(self, novel_id, generation_id, manifest)
     g_dir = self._generation_dir(novel_id, generation_id)
-    if self._path_exists(g_dir):
+    if self._is_dir_present(g_dir):
         self._rmtree(g_dir)
     logger.warning("Rolled back generation %s for %s (%s).", generation_id, novel_id, reason)

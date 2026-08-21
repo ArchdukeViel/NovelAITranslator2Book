@@ -75,6 +75,14 @@ async def list_provider_models(
     return service.provider_models()
 
 
+@router.get("/admin/providers/gemini/accounting")
+async def get_gemini_request_accounting(
+    service: AdminService = Depends(get_admin_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    return service.gemini_request_accounting()
+
+
 @router.get("/admin/providers/credentials")
 async def list_provider_credentials(
     service: AdminService = Depends(get_admin_db_service),

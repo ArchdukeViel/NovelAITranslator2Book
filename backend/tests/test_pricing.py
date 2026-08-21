@@ -4,6 +4,7 @@ import math
 
 import pytest
 
+from novelai.config.settings import GEMINI_DEFAULT_MODEL
 from novelai.cost_estimator.models import CurrencyConverter
 from novelai.cost_estimator.pricing import (
     DEFAULT_PRICING,
@@ -22,15 +23,15 @@ class FixedRateConverter:
 
 
 def test_default_pricing_lookup_returns_expected_values() -> None:
-    pricing = get_model_pricing("gemini-3.1-flash-lite")
+    pricing = get_model_pricing(GEMINI_DEFAULT_MODEL)
 
-    assert pricing == DEFAULT_PRICING["gemini-3.1-flash-lite"]
+    assert pricing == DEFAULT_PRICING[GEMINI_DEFAULT_MODEL]
     assert pricing.input_per_million_usd == 0.0
     assert pricing.output_per_million_usd == 0.0
 
 
 def test_pricing_calculations_are_correct() -> None:
-    pricing = get_model_pricing("gemma-4-31b-it")
+    pricing = get_model_pricing(GEMINI_DEFAULT_MODEL)
 
     input_cost = calculate_input_cost(9_200, pricing)
     output_cost = calculate_output_cost(8_000, pricing)

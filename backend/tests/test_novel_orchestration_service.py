@@ -495,6 +495,7 @@ class GlossarySchemaCaptureProvider(MockTranslationProvider):
 class PromptInjectionCaptureProvider(TranslationProvider):
     def __init__(self) -> None:
         self.user_prompts: list[str] = []
+        self.requests: list[Any] = []
 
     @property
     def key(self) -> str:
@@ -511,6 +512,7 @@ class PromptInjectionCaptureProvider(TranslationProvider):
         **kwargs: Any,
     ) -> Mapping[str, Any]:
         request = kwargs.get("request")
+        self.requests.append(request)
         user_prompt = getattr(request, "user_prompt", "") if request is not None else ""
         self.user_prompts.append(str(user_prompt))
         return {
@@ -599,6 +601,19 @@ class SynopsisSource(StubSource):
     async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, object]:
         metadata = await super().fetch_metadata(url, max_chapter=max_chapter)
         metadata["synopsis"] = "Original Synopsis"
+        return metadata
+
+
+class NarrativeSynopsisSource(StubSource):
+    async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, object]:
+        metadata = await super().fetch_metadata(url, max_chapter=max_chapter)
+        metadata.update(
+            {
+                "source_synopsis": "書籍化のお知らせ。\n主人公は旅に出る。",
+                "narrative_synopsis": "主人公は旅に出る。",
+                "synopsis": "主人公は旅に出る。",
+            }
+        )
         return metadata
 
 
@@ -699,7 +714,14 @@ async def test_scrape_write_paths_refresh_catalog_projection(orchestration_env) 
 @pytest.mark.asyncio
 async def test_scrape_metadata_bootstraps_glossary_candidates_nonfatally(orchestration_env) -> None:
     SessionLocal = orchestration_env["catalog_sessionmaker"]
-    source = StubSource()
+
+    class BootstrapSource(StubSource):
+        async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, object]:
+            metadata = await super().fetch_metadata(url, max_chapter=max_chapter)
+            metadata["synopsis"] = "Aria enters the city. Aria returns before dawn."
+            return metadata
+
+    source = BootstrapSource()
     storage = orchestration_env["storage"]
     orchestrator = NovelOrchestrationService(
         storage=storage,
@@ -1226,7 +1248,9 @@ async def test_translate_chapters_injects_approved_db_glossary_through_real_pipe
 
     await orchestrator.translate_chapters("stub", "glossary-pipeline", "1", source_language="Japanese")
 
-    prompt = provider.user_prompts[0]
+    prompt = provider.user_prompts[-1]
+    assert provider.requests[-1] is not None
+    assert provider.requests[-1].prompt_glossary_block is not None
     assert prompt.count("GLOSSARY FOR THIS NOVEL") == 1
     assert "- Pocott => Pocott" in prompt
     assert 'Pocott: avoid "Pokot"' in prompt
@@ -1472,18 +1496,14 @@ async def test_translation_service_generates_isolated_manual_run_ids() -> None:
 def test_gemini_model_candidates_default_to_stable_flash_lite() -> None:
     candidates = model_candidates("gemini", None, [GEMINI_FALLBACK_MODEL])
 
-    assert len(candidates) >= 1
-    assert candidates[0] == GEMINI_DEFAULT_MODEL
-    # When no requested_model is given, the first supported model is included
-    # as an additional candidate after defaults and fallbacks.
-    assert GEMINI_FALLBACK_MODEL in candidates
+    assert candidates == [GEMINI_DEFAULT_MODEL]
     assert not candidates[0].endswith("-preview")
 
 
 def test_gemini_model_candidates_preserve_explicit_override() -> None:
     candidates = model_candidates("gemini", GEMINI_FALLBACK_MODEL, [GEMINI_DEFAULT_MODEL])
 
-    assert candidates[:2] == [GEMINI_FALLBACK_MODEL, GEMINI_DEFAULT_MODEL]
+    assert candidates == [GEMINI_DEFAULT_MODEL]
 
 
 @pytest.mark.asyncio
@@ -1506,7 +1526,7 @@ async def test_scrape_metadata_translates_title_author_and_chapter_titles(orches
 
     assert metadata["translated_title"] == "[TRANSLATED] Original Novel"
     assert metadata["translated_author"] == "[TRANSLATED] Original Author"
-    assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v3"
+    assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v4"
     assert metadata["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
     assert metadata["chapters"][1]["translated_title"] == "[TRANSLATED] Chapter Two"
     stored = storage.load_metadata("novel-1")
@@ -1520,7 +1540,7 @@ async def test_scrape_metadata_translates_title_author_and_chapter_titles(orches
     assert stored["translated_title"] == "[TRANSLATED] Original Novel"
     assert stored["translated_author"] == "[TRANSLATED] Original Author"
     assert stored["metadata_translation_status"] == "completed"
-    assert stored["metadata_translation_prompt_version"] == "metadata-literal-v3"
+    assert stored["metadata_translation_prompt_version"] == "metadata-literal-v4"
     assert stored["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
     assert stored["chapters"][1]["translated_title"] == "[TRANSLATED] Chapter Two"
     assert stored["authors"]["translated"] == "[TRANSLATED] Original Author"
@@ -1552,6 +1572,48 @@ async def test_scrape_metadata_batches_title_author_and_synopsis(orchestration_e
     assert stored["metadata_translation_status"] == "completed"
     first_batch = json.loads(provider.prompts[0].split("<metadata_items>", 1)[1].split("</metadata_items>", 1)[0])
     assert [item["id"] for item in first_batch["items"]] == ["novel_title", "author", "synopsis"]
+
+
+@pytest.mark.asyncio
+async def test_scrape_metadata_translates_narrative_synopsis_and_preserves_raw_overview(orchestration_env) -> None:
+    provider = BatchMetadataProvider()
+    source = NarrativeSynopsisSource()
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "novel-1",
+        {
+            "title": "Original Novel",
+            "synopsis": "Old promotion",
+            "translated_synopsis": "Old promotion translation",
+            "chapters": [
+                {"id": "1", "title": "Chapter One"},
+                {"id": "2", "title": "Chapter Two"},
+            ],
+        },
+    )
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: source,
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
+
+    assert metadata["source_synopsis"] == "書籍化のお知らせ。\n主人公は旅に出る。"
+    assert metadata["narrative_synopsis"] == "主人公は旅に出る。"
+    assert metadata["translated_narrative_synopsis"] == "[TRANSLATED] 主人公は旅に出る。"
+    assert metadata["translated_synopsis"] == "[TRANSLATED] 主人公は旅に出る。"
+    stored = storage.load_metadata("novel-1")
+    assert stored["source_synopsis"] == metadata["source_synopsis"]
+    assert stored["translated_synopsis"] == metadata["translated_synopsis"]
+    first_batch = json.loads(provider.prompts[0].split("<metadata_items>", 1)[1].split("</metadata_items>", 1)[0])
+    synopsis_item = next(item for item in first_batch["items"] if item["id"] == "synopsis")
+    assert synopsis_item["source_text"] == "主人公は旅に出る。"
+    assert "書籍化のお知らせ" not in synopsis_item["source_text"]
 
 
 @pytest.mark.asyncio
@@ -1601,7 +1663,7 @@ async def test_scrape_metadata_retranslates_source_identical_previous_metadata(o
 
 
 @pytest.mark.asyncio
-async def test_scrape_metadata_falls_back_between_gemini_models(orchestration_env) -> None:
+async def test_scrape_metadata_does_not_fall_back_between_gemini_models(orchestration_env) -> None:
     provider = GeminiFallbackProvider()
     source = StubSource()
     settings = orchestration_env["settings"]
@@ -1627,13 +1689,12 @@ async def test_scrape_metadata_falls_back_between_gemini_models(orchestration_en
 
     metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
 
-    assert provider.models_seen[:2] == [GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODEL]
-    assert metadata["translated_title"] == f"[{GEMINI_FALLBACK_MODEL}] Original Novel"
-    assert metadata["metadata_translation_status"] == "completed"
+    assert provider.models_seen == [GEMINI_DEFAULT_MODEL] * 3
+    assert metadata["metadata_translation_status"] == "failed"
 
 
 @pytest.mark.asyncio
-async def test_scrape_metadata_retries_incomplete_chapter_title_translation(orchestration_env) -> None:
+async def test_scrape_metadata_does_not_switch_model_after_incomplete_chapter_title(orchestration_env) -> None:
     provider = PartialGeminiTitleProvider()
     source = PartialTitleSource()
     settings = orchestration_env["settings"]
@@ -1653,9 +1714,8 @@ async def test_scrape_metadata_retries_incomplete_chapter_title_translation(orch
 
     metadata = await orchestrator.scrape_metadata("novel18_syosetu", "n0813kx", mode="update")
 
-    assert metadata["metadata_translation_status"] == "completed"
-    assert metadata["chapters"][0]["translated_title"] == "Episode 10: First Skirt Reveal"
-    assert GEMINI_DEFAULT_MODEL in provider.models_seen
+    assert metadata["metadata_translation_status"] == "failed"
+    assert provider.models_seen == [GEMINI_DEFAULT_MODEL] * 3
 
 
 @pytest.mark.asyncio
@@ -1719,6 +1779,37 @@ async def test_metadata_chapter_title_batch_deduplicates_exact_repeated_titles(o
 
 
 @pytest.mark.asyncio
+async def test_metadata_section_titles_use_existing_batch_translation_cache(orchestration_env) -> None:
+    provider = BatchMetadataProvider()
+    metadata = {
+        "source_key": "syosetu_ncode",
+        "chapters": [
+            {"id": "1", "num": 1, "section_title": "Part One", "section_ordinal": 1},
+            {"id": "2", "num": 2, "section_title": "Part One", "section_ordinal": 1},
+        ],
+    }
+    orchestrator = NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    translated = await orchestrator._translate_metadata_fields(metadata)
+
+    assert provider.call_count == 1
+    batch = json.loads(provider.prompts[0].split("<metadata_items>", 1)[1].split("</metadata_items>", 1)[0])
+    assert batch["items"] == [{"id": "section:1", "field": "section_title", "source_text": "Part One"}]
+    assert [chapter["translated_section_title"] for chapter in translated["chapters"]] == [
+        "[TRANSLATED] Part One",
+        "[TRANSLATED] Part One",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_metadata_batch_skips_reusable_and_cached_fields(orchestration_env) -> None:
     provider = BatchMetadataProvider()
     cache = orchestration_env["cache"]
@@ -1727,7 +1818,7 @@ async def test_metadata_batch_skips_reusable_and_cached_fields(orchestration_env
         "source_key": "syosetu_ncode",
         "title": "Original Novel",
         "translated_title": "Translated Novel",
-        "metadata_translation_prompt_version": "metadata-literal-v3",
+        "metadata_translation_prompt_version": "metadata-literal-v4",
         "chapters": [
             {"id": "1", "num": 1, "title": "Cached Chapter"},
             {"id": "2", "num": 2, "title": "Needs Batch"},
@@ -1754,7 +1845,7 @@ async def test_metadata_batch_skips_reusable_and_cached_fields(orchestration_env
 
 
 @pytest.mark.asyncio
-async def test_metadata_invalid_batch_json_falls_back_to_individual_translation(orchestration_env) -> None:
+async def test_metadata_invalid_batch_json_retries_same_batch_without_individual_fallback(orchestration_env) -> None:
     provider = BatchMetadataProvider(invalid_batch_json=True)
     metadata = {
         "source_key": "syosetu_ncode",
@@ -1771,11 +1862,9 @@ async def test_metadata_invalid_batch_json_falls_back_to_individual_translation(
         usage_service=orchestration_env["usage"],
     )
 
-    translated = await orchestrator._translate_metadata_fields(metadata)
-
-    assert translated["translated_title"] == "[TRANSLATED] Original Novel"
-    assert translated["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
-    assert provider.call_count == 8
+    with pytest.raises(ValueError, match="JSON"):
+        await orchestrator._translate_metadata_fields(metadata)
+    assert provider.call_count == 3
 
 
 @pytest.mark.asyncio
@@ -1827,7 +1916,7 @@ async def test_metadata_batch_commentary_with_single_json_object_is_extracted(or
 
 
 @pytest.mark.asyncio
-async def test_metadata_duplicate_batch_item_id_falls_back_safely(orchestration_env) -> None:
+async def test_metadata_duplicate_batch_item_id_retries_same_batch(orchestration_env) -> None:
     provider = BatchMetadataProvider(duplicate_first_id=True)
     metadata = {
         "source_key": "syosetu_ncode",
@@ -1846,15 +1935,13 @@ async def test_metadata_duplicate_batch_item_id_falls_back_safely(orchestration_
         usage_service=orchestration_env["usage"],
     )
 
-    translated = await orchestrator._translate_metadata_fields(metadata)
-
-    assert translated["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
-    assert translated["chapters"][1]["translated_title"] == "[TRANSLATED] Chapter Two"
-    assert provider.call_count == 5
+    with pytest.raises(ValueError, match="duplicated item id"):
+        await orchestrator._translate_metadata_fields(metadata)
+    assert provider.call_count == 3
 
 
 @pytest.mark.asyncio
-async def test_metadata_missing_batch_item_id_falls_back_safely(orchestration_env) -> None:
+async def test_metadata_missing_batch_item_id_retries_same_batch(orchestration_env) -> None:
     provider = BatchMetadataProvider(omit_ids={"chapter:2"})
     metadata = {
         "source_key": "syosetu_ncode",
@@ -1873,11 +1960,9 @@ async def test_metadata_missing_batch_item_id_falls_back_safely(orchestration_en
         usage_service=orchestration_env["usage"],
     )
 
-    translated = await orchestrator._translate_metadata_fields(metadata)
-
-    assert translated["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
-    assert translated["chapters"][1]["translated_title"] == "[TRANSLATED] Chapter Two"
-    assert provider.call_count == 5
+    with pytest.raises(RuntimeError, match="missing item id"):
+        await orchestrator._translate_metadata_fields(metadata)
+    assert provider.call_count == 3
 
 
 @pytest.mark.asyncio
@@ -1923,7 +2008,7 @@ async def test_scrape_metadata_missing_gemini_key_never_calls_dummy_provider(orc
 
     assert provider.call_count == 0
     assert metadata["metadata_translation_status"] == "unavailable"
-    assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v3"
+    assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v4"
     assert "metadata_translation_error" not in metadata
     assert "translated_title" not in metadata
 
@@ -1953,7 +2038,7 @@ async def test_scrape_metadata_failed_translation_preserves_source_fields_withou
     assert metadata["synopsis"] == "Original Synopsis"
     assert metadata["chapters"][0]["title"] == "Chapter One"
     assert metadata["metadata_translation_status"] == "failed"
-    assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v3"
+    assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v4"
     assert len(metadata["metadata_translation_error"]) <= 500
     assert "translated_title" not in metadata
     assert "translated_author" not in metadata
@@ -2016,6 +2101,13 @@ def test_estimate_translation_requests_counts_metadata_and_body_chunks(orchestra
         {"chapter_id": "2", "source_chars": 6002, "paragraphs": 2, "chunks": 1},
     ]
     assert estimate["total_estimated_requests"] == 4
+    assert estimate["body_requests"]["provider_requests"] == 2
+    assert estimate["body_requests"]["cache_hits"] == 0
+    assert estimate["request_estimate_quality"]["known"]["minimum_provider_requests"] == 5
+    assert estimate["quota_projection"]["minimum_provider_requests"] == 5
+    assert estimate["quota_projection"]["configured_max_attempts"] >= 1
+    assert estimate["quota_projection"]["minimum_wall_clock_seconds_from_rpm"] >= 0
+    assert estimate["quota_projection"]["one_day_completion_theoretically_possible"] is True
     assert estimate["assumptions"]["provider_calls"] is False
     assert estimate["assumptions"]["metadata_batching"] is True
     assert estimate["assumptions"]["adaptive_chunking"] is True
@@ -2375,7 +2467,7 @@ def _save_delta_execution_fixture(
             json_output=False,
             qa_policy_fingerprint=seed_qa_fingerprint,
             auto_activate=True,
-            honorific_policy=None,
+            honorific_policy="contextual",
             source_episode_id="1",
         )
         # Persist the canonical prompt version and glossary hash the

@@ -12,21 +12,29 @@ translated chapter. Failed chapters do not erase successful siblings.
 ## JP-EN Quality Rules
 
 JP-EN policy applies when source is `ja|japanese` and target is `en|english`.
-Policy identity is `jp_en_quality_v1`; changing output-shaping instructions
-requires a version bump and cache invalidation.
+Policy identity is `jp_en_quality_v3`; the translation prompt template is
+`v4` and metadata prompts are `metadata-literal-v4`. Changing output-shaping
+instructions requires a version bump and cache invalidation.
 
 Prompts must:
 
 1. Preserve facts; never omit, summarize, censor, soften, or add information.
-2. Use approved glossary translations exactly.
-3. Preserve tone, register, narrator voice, paragraph order, and scene order.
-4. Prefer natural publication-quality English over awkward literalness.
-5. Never invent gender, identity, relationships, motives, or speaker attribution.
-6. Preserve ambiguity with neutral wording when context cannot resolve it.
-7. Preserve notes and structural boundaries; do not introduce markup needlessly.
+2. Do not invent omitted subjects, objects, pronouns, number, gender,
+   relationships, motives, or dialogue attribution. Add an English grammatical
+   subject only when context supports it; otherwise use neutral restructuring.
+3. Use approved glossary translations exactly and preserve source-order names.
+4. Preserve tone, register, narrator voice, paragraph order, and scene order.
+5. Prefer natural publication-quality English over awkward literalness while
+   preserving ambiguity when context cannot resolve it.
+6. Preserve notes and structural boundaries, including fragments, ellipses,
+   punctuation, counters, titles, kinship terms, embedded writing, and
+   wordplay; do not introduce markup needlessly.
 
-Honorific mode is one of `retain`, `translate`, or `omit`; do not mix modes
-without clear source need. Dialogue and narration remain distinct.
+Honorific mode is one of `contextual`, `retain`, `translate`, or `omit`; the
+default is `contextual`. Contextual handling preserves meaningful personal-name
+honorifics and localizes established rank, profession, royal, kinship, and
+social-role terms using the glossary. It never invents a relationship.
+Dialogue and narration remain distinct.
 
 ## Glossary Lifecycle
 
@@ -45,8 +53,35 @@ Rules:
 - Glossary injection happens once per prompt; do not duplicate full blocks.
 - Conflicts keep approved term and may report bounded review metadata.
 - Revision/hash changes participate in translation/cache invalidation.
+- Before body translation, incremental discovery inspects each selected chapter
+  in bounded batches. Approved/translated entries are immutable truth; only
+  structurally validated, high-confidence proposals at the configured
+  `TRANSLATION_LOW_CONFIDENCE_ACTIVATION_THRESHOLD` may activate immediately.
+  Ambiguous or low-confidence proposals remain pending and are excluded from
+  body prompts until reviewed. Discovery state is keyed by source hash, model,
+  and prompt version so resumed runs skip unchanged chapters.
+- Pending glossary translations use structured ID-based batches of
+  `TRANSLATION_GLOSSARY_BATCH_SIZE` terms. A malformed batch retries on the
+  same model and never falls back to one request per term or another model.
 - Public annotations include only explicitly public-visible approved entries.
 - Diagnostics and sync never expose private notes or credentials.
+
+## Gemini Request Budget
+
+The production Gemini contract is exact model `gemini-3.5-flash-lite` with no
+alternate model/provider fallback. All request purposes share hard limits of
+15 RPM, 250,000 TPM, and 500 RPD. The controller reserves conservative token
+estimates before a call, reconciles actual usage afterward, persists rolling
+minute/day state, honors provider `Retry-After`, and records sanitized purpose,
+model, estimates, actual tokens, retry, chapter/chunk, cache, and outcome
+metadata. Cache hits are recorded but do not consume provider quota.
+
+The dry-run estimator makes zero provider calls. It reports known chapters,
+characters, chunks, metadata/title batches, cached body chunks, known glossary
+batches, an upper estimate for undiscovered glossary output, minimum provider
+requests, configured retry reserve, selective QA requests, token estimates,
+RPD feasibility, and the RPM-only wall-clock lower bound. Unknown glossary
+terms and actual provider usage remain explicitly marked as estimates.
 
 ## Optional Review Metadata
 
@@ -232,12 +267,21 @@ history is retained); on reappearance `missing_since` is cleared. Repeated
 crawls after reconciliation produce no reorder / removal delta. Reorder
 signals propagate to reader / export ordering without retranslation.
 
+Optional source sections are metadata/display context attached to the existing
+chapter index. Section discovery, ordinal changes, section moves, and section
+title changes do not change raw chapter content, body translation identity,
+glossary hashes, or body-cache keys. If translated section labels are enabled,
+the exact `section_title` is sent through the existing metadata-title batching
+and cache path as `translated_section_title`; it is never included in body
+translation prompts and does not cause a novel-wide body retranslation.
+
 ## QA
 
 Deterministic checks cover empty or source-identical text, suspicious length,
 unresolved placeholders, provider refusals/error text, paragraph mapping, and
-glossary consistency. LLM QA is advisory, disabled by default where configured,
-and cannot silently replace deterministic gates or auto-publish findings.
+glossary consistency. Optional LLM QA is selective and bounded by risk/sample
+policy, advisory by default, and cannot silently replace deterministic gates or
+auto-publish findings.
 
 ## Change Checklist
 
@@ -252,3 +296,51 @@ and cannot silently replace deterministic gates or auto-publish findings.
   any output-shaping change.
 
 Deferred semantic-cache and broader advisory-QA work lives in [`WORK.md`](WORK.md).
+
+## Contributor Credential Selection and Usage Accounting
+
+Contributor-backed translation is an explicitly marked execution mode. It
+never falls through to owner preferences and never changes the global provider
+contract. The worker selects only an active, successfully validated Gemini
+credential, decrypts it for the provider call, and keeps the raw key out of
+activity metadata, cache keys, prompts, logs, and responses. Owner-only jobs
+remain owner-scoped even when contributor credentials exist.
+
+The pipeline propagates `credential_id`, `credential_owner_user_id`,
+`requesting_user_id`, `credential_scope`, and `contribution_mode` as safe
+metadata. Each provider attempt reserves the credential's RPM/TPM/RPD capacity
+before calling Gemini. The contributor usage ledger records provider/model,
+request/job/activity ids, status, actual or estimated token accounting, cost,
+and timestamps only. Invalid-key and quota/rate failures pause the credential
+and leave a truthful failed ledger state; successful validation activates the
+credential immediately. Rejected or failed credentials are never added to the
+eligible contributor pool.
+
+## Translation activity and provider bounds
+
+Owner translation requests are enqueue operations: the API returns `202` with
+an activity id and the worker performs the staged translation under a durable
+lease. An optional `Idempotency-Key` makes client retries safe; omitted keys
+are derived from non-secret operation parameters. The activity id is propagated
+as both `job_id` and `activity_id`, and progress/status is polled from the
+activity API.
+
+The production queue is the `activity_records` database table, not a full-file
+JSON rewrite. Claims use row locks, expired leases are recovered, retries and
+metadata are bounded, and queue age/claim/heartbeat/update timings are
+observable. The legacy queue file may be imported during migration but is not
+the normal control plane.
+
+Gemini admission reserves RPM, TPM, RPD, and in-flight capacity globally for
+the owner key or per contributor credential. Each chunk has a configured
+provider deadline and bounded exponential retry delay. Provider clients are
+reused only inside their credential-isolated provider instance; explicit
+contributor keys are never placed in owner preferences or shared clients.
+Sanitized usage records and runtime metrics capture provider wait, execution,
+retry, quota-reservation, and usage-ledger write duration without prompts,
+keys, authorization headers, or response secrets.
+
+Accepted translation cache entries remain file-backed, while a SQLite WAL
+sidecar indexes key, novel, access time, and size metadata. Invalidation,
+statistics, and eviction use that index; only the initialization backfill may
+walk existing cache JSON files.

@@ -13,6 +13,9 @@ import type { ApiErrorPayload } from "@/lib/api-types";
 import type {
   AuthUser,
   CatalogParams,
+  ContributorListResponse,
+  ContributorUsageResponse,
+  ContributorWriteResponse,
   EmailPasswordAuthInput,
   HistoryListParams,
   HistoryListResponse,
@@ -34,6 +37,8 @@ import type {
   PublicChapterSummary,
   PublicGenreResponse,
   PublicNovelSummary,
+  PublicRankingPeriod,
+  PublicRankingResponse,
   PublicReviewListResponse,
   PublicTagSearchResult,
   RegisterAuthInput,
@@ -48,7 +53,32 @@ import type {
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
 const DEFAULT_PUBLIC_RETURN_TO = "/";
 const CSRF_HEADER_NAME = "X-CSRF-Token";
+export const PUBLIC_REQUEST_TIMEOUT_MS = 10_000;
 let csrfTokenPromise: Promise<string> | null = null;
+
+export type PublicRequestAbortReason = "caller" | "timeout";
+
+/** A bounded public request ended before a response was available. */
+export class PublicRequestAbortError extends Error {
+  readonly reason: PublicRequestAbortReason;
+  readonly path: string;
+
+  constructor(reason: PublicRequestAbortReason, path: string, options?: ErrorOptions) {
+    super(
+      reason === "timeout"
+        ? `Public request timed out: ${path}`
+        : `Public request was cancelled: ${path}`,
+      options,
+    );
+    this.name = "AbortError";
+    this.reason = reason;
+    this.path = path;
+  }
+}
+
+export function isPublicRequestAbortError(error: unknown): error is PublicRequestAbortError {
+  return error instanceof PublicRequestAbortError;
+}
 
 // ---------------------------------------------------------------------------
 // Error parsing (mirrors lib/api.ts responseError logic, reuses ApiError class)
@@ -137,15 +167,110 @@ export async function publicFetch(
   if (unsafeMethod && path !== "/api/auth/csrf" && !headers.has(CSRF_HEADER_NAME)) {
     headers.set(CSRF_HEADER_NAME, await getCsrfToken());
   }
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
+
+  const requestSignal = createRequestSignal(init?.signal ?? undefined);
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      headers,
+      credentials: "include",
+      signal: requestSignal.signal,
+    });
+    if (!response.ok) {
+      throw await responseError(response);
+    }
+    return response;
+  } catch (error) {
+    if (requestSignal.signal.aborted) {
+      throw new PublicRequestAbortError(requestSignal.reason, path, { cause: error });
+    }
+    throw error;
+  } finally {
+    requestSignal.cleanup();
+  }
+}
+
+export type PublicServerFetchOptions = {
+  baseUrl: string;
+  host?: string;
+  revalidateSeconds?: number;
+  signal?: AbortSignal;
+};
+
+/**
+ * Fetch a public reader resource from a server-side Next.js boundary.
+ *
+ * Server prefetches use an internal reader base URL and optional Host header,
+ * so they cannot use the browser-oriented `publicFetch` base URL. Keeping the
+ * transport here preserves the single public API-client boundary while still
+ * allowing Next.js revalidation and caller-owned cancellation.
+ */
+export async function publicServerFetch(
+  path: string,
+  options: PublicServerFetchOptions,
+): Promise<Response> {
+  const headers = new Headers({ Accept: "application/json" });
+  if (options.host) headers.set("Host", options.host);
+
+  const response = await fetch(`${options.baseUrl.replace(/\/+$/, "")}${path}`, {
     headers,
-    credentials: "include",
+    next:
+      options.revalidateSeconds === undefined
+        ? undefined
+        : { revalidate: options.revalidateSeconds },
+    signal: options.signal,
   });
   if (!response.ok) {
     throw await responseError(response);
   }
   return response;
+}
+
+export async function publicServerGet<T>(
+  path: string,
+  options: PublicServerFetchOptions,
+): Promise<T> {
+  const response = await publicServerFetch(path, options);
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
+
+function createRequestSignal(callerSignal?: AbortSignal): {
+  signal: AbortSignal;
+  reason: PublicRequestAbortReason;
+  cleanup: () => void;
+} {
+  const controller = new AbortController();
+  let reason: PublicRequestAbortReason = "caller";
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const abort = (nextReason: PublicRequestAbortReason) => {
+    if (controller.signal.aborted) return;
+    reason = nextReason;
+    controller.abort(nextReason);
+  };
+
+  const onCallerAbort = () => abort("caller");
+  if (callerSignal?.aborted) {
+    abort("caller");
+  } else if (callerSignal) {
+    callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+  }
+
+  if (!controller.signal.aborted) {
+    timeoutId = setTimeout(() => abort("timeout"), PUBLIC_REQUEST_TIMEOUT_MS);
+  }
+
+  return {
+    signal: controller.signal,
+    get reason() {
+      return reason;
+    },
+    cleanup: () => {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+      callerSignal?.removeEventListener("abort", onCallerAbort);
+    },
+  };
 }
 
 async function getCsrfToken(): Promise<string> {
@@ -185,6 +310,18 @@ async function publicPost<T>(path: string, body?: unknown): Promise<T> {
 async function publicPut<T>(path: string, body: unknown): Promise<T> {
   const response = await publicFetch(path, {
     method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  return response.json() as Promise<T>;
+}
+
+async function publicPatch<T>(path: string, body: unknown): Promise<T> {
+  const response = await publicFetch(path, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -254,21 +391,24 @@ export const publicApi = {
     );
   },
 
-  novel(slug: string): Promise<PublicNovelSummary> {
+  novel(slug: string, signal?: AbortSignal): Promise<PublicNovelSummary> {
     return publicGet<PublicNovelSummary>(
-      `/api/public/novels/${encodeURIComponent(slug)}`
+      `/api/public/novels/${encodeURIComponent(slug)}`,
+      signal,
     );
   },
 
-  chapters(slug: string): Promise<PublicChapterSummary[]> {
+  chapters(slug: string, signal?: AbortSignal): Promise<PublicChapterSummary[]> {
     return publicGet<PublicChapterSummary[]>(
-      `/api/public/novels/${encodeURIComponent(slug)}/chapters`
+      `/api/public/novels/${encodeURIComponent(slug)}/chapters`,
+      signal,
     );
   },
 
-  chapter(slug: string, chapterId: string): Promise<PublicChapterDetail> {
+  chapter(slug: string, chapterId: string, signal?: AbortSignal): Promise<PublicChapterDetail> {
     return publicGet<PublicChapterDetail>(
-      `/api/public/novels/${encodeURIComponent(slug)}/chapters/${encodeURIComponent(chapterId)}`
+      `/api/public/novels/${encodeURIComponent(slug)}/chapters/${encodeURIComponent(chapterId)}`,
+      signal,
     );
   },
 
@@ -302,6 +442,42 @@ export const publicApi = {
     const qs = search.toString();
     return publicGet<PublicReviewListResponse>(
       `/api/public/novels/${encodeURIComponent(slug)}/reviews${qs ? `?${qs}` : ""}`
+    );
+  },
+
+  rankings(period: PublicRankingPeriod, limit = 10, signal?: AbortSignal): Promise<PublicRankingResponse> {
+    const search = new URLSearchParams({ period, limit: String(limit) });
+    return publicGet<PublicRankingResponse>(`/api/public/rankings?${search.toString()}`, signal);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Contributor API client - authenticated user-owned credentials only
+// ---------------------------------------------------------------------------
+
+export const userContributionApi = {
+  list(): Promise<ContributorListResponse> {
+    return publicGet<ContributorListResponse>("/api/user/contributions");
+  },
+
+  replace(input: { provider_key: "gemini"; api_key: string; consent_version: string }): Promise<ContributorWriteResponse> {
+    return publicPut<ContributorWriteResponse>("/api/user/contributions", input);
+  },
+
+  updateStatus(credentialId: string, status: "active" | "paused"): Promise<ContributorListResponse["credentials"][number]> {
+    return publicPatch<ContributorListResponse["credentials"][number]>(
+      `/api/user/contributions/${encodeURIComponent(credentialId)}`,
+      { status },
+    );
+  },
+
+  remove(credentialId: string): Promise<void> {
+    return publicDelete(`/api/user/contributions/${encodeURIComponent(credentialId)}`);
+  },
+
+  usage(credentialId: string): Promise<ContributorUsageResponse> {
+    return publicGet<ContributorUsageResponse>(
+      `/api/user/contributions/${encodeURIComponent(credentialId)}/usage`,
     );
   },
 };

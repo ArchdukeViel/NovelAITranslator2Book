@@ -6,12 +6,13 @@ import logging
 import re
 from collections.abc import Callable
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup, Tag
 
 from novelai.core.errors import SourceError
+from novelai.infrastructure.http.client import validate_safe_url
 from novelai.infrastructure.http.fetch_service import FetchService, get_default_fetch_service
 from novelai.infrastructure.http.profiles import PROFILE_ASSETS, PROFILE_SYOSETU_HTML
 from novelai.sources._helpers import (
@@ -21,11 +22,12 @@ from novelai.sources._helpers import (
 from novelai.sources.base import SourceAdapter
 from novelai.sources.html_parsers import HTMLParserMixin
 from novelai.sources.quality import (
-    detect_age_gate_text,
+    detect_age_gate_page,
     detect_block_page_text,
 )
 from novelai.sources.source_layout import normalize_source_blocks
 from novelai.sources.status import normalize_publication_status, publication_status_payload
+from novelai.sources.synopsis import normalize_synopsis_metadata
 from novelai.sources.syosetu.parser import (
     AFTERWORD_SELECTORS,
     BODY_SELECTORS,
@@ -103,8 +105,54 @@ class SyosetuNcodeSource(SourceAdapter):
     def _build_request_cookies(self) -> httpx.Cookies | None:
         return None
 
-    def _validate_fetched_page(self, requested_url: str, final_url: httpx.URL, html: str) -> None:
+    def _is_age_gate_page(self, final_url: httpx.URL, html: str) -> bool:
+        return detect_age_gate_page(html, final_url=str(final_url))
+
+    def _is_allowed_age_gate_target_url(self, requested_url: str, target_url: str) -> bool:
+        requested = httpx.URL(requested_url)
+        target = httpx.URL(target_url)
+        return (
+            target.scheme == requested.scheme
+            and (target.host or "").lower() == (requested.host or "").lower()
+            and self.normalize_novel_id(str(target)) == self.normalize_novel_id(requested_url)
+        )
+
+    def _extract_age_gate_target_url(
+        self,
+        requested_url: str,
+        final_url: httpx.URL,
+        html: str,
+    ) -> str | None:
+        """Return a safe same-novel URL from a public age interstitial."""
+        candidates: list[str] = []
+        query_target = parse_qs(urlparse(str(final_url)).query).get("url")
+        if query_target:
+            candidates.extend(query_target)
+
+        soup = BeautifulSoup(html, "lxml")
+        for node in soup.select("[data-url]"):
+            value = node.get("data-url")
+            if isinstance(value, str) and value.strip():
+                candidates.append(value.strip())
+
+        for candidate in candidates:
+            try:
+                resolved = urljoin(requested_url, candidate.strip())
+                safe_url = validate_safe_url(resolved)
+                if self._is_allowed_age_gate_target_url(requested_url, safe_url):
+                    return safe_url
+            except Exception:
+                # Invalid or cross-site interstitial targets are treated as
+                # unresolved rather than followed.
+                continue
         return None
+
+    def _validate_fetched_page(self, requested_url: str, final_url: httpx.URL, html: str) -> None:
+        if self._is_age_gate_page(final_url, html):
+            raise SourceError(
+                f"Syosetu page at {requested_url} remained behind an age-verification interstitial "
+                "after the bounded public confirmation flow."
+            )
 
     def _request_headers(self, *, referer: str | None = None) -> dict[str, str]:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -134,7 +182,24 @@ class SyosetuNcodeSource(SourceAdapter):
             on_retry=on_retry,
         )
         html = self._decode_page_body(result.body)
-        self._validate_fetched_page(url, httpx.URL(result.final_url), html)
+        final_url = httpx.URL(result.final_url)
+        if self._is_age_gate_page(final_url, html):
+            target_url = self._extract_age_gate_target_url(url, final_url, html)
+            if target_url is None:
+                self._validate_fetched_page(url, final_url, html)
+                raise SourceError(f"Syosetu age-verification page at {url} did not expose a safe chapter target.")
+            result = await self._fetch_service.get_text(
+                target_url,
+                source_key=self.source_key,
+                profile=self._request_profile,
+                headers=self._request_headers(referer=url),
+                cookies=self._build_request_cookies(),
+                on_retry=on_retry,
+                use_cache=False,
+            )
+            html = self._decode_page_body(result.body)
+            final_url = httpx.URL(result.final_url)
+        self._validate_fetched_page(url, final_url, html)
         return html
 
     async def fetch_asset(self, url: str, *, referer: str | None = None) -> dict[str, Any]:
@@ -217,8 +282,17 @@ class SyosetuNcodeSource(SourceAdapter):
         title: str | None,
         *,
         initial_part: str | None = None,
+        initial_section_title: str | None = None,
+        initial_section_ordinal: int | None = None,
     ) -> list[dict[str, Any]]:
-        return extract_chapters(soup, url, title, initial_part=initial_part)
+        return extract_chapters(
+            soup,
+            url,
+            title,
+            initial_part=initial_part,
+            initial_section_title=initial_section_title,
+            initial_section_ordinal=initial_section_ordinal,
+        )
 
     @staticmethod
     def _apply_chapter_cap(chapters: list[dict[str, Any]], max_chapter: int | None) -> list[dict[str, Any]]:
@@ -241,6 +315,21 @@ class SyosetuNcodeSource(SourceAdapter):
             if isinstance(part, str) and part.strip():
                 return part.strip()
         return None
+
+    @staticmethod
+    def _last_chapter_section(chapters: Any) -> tuple[str | None, int | None]:
+        if not isinstance(chapters, list):
+            return None, None
+        for chapter in reversed(chapters):
+            if not isinstance(chapter, dict):
+                continue
+            title = chapter.get("section_title") or chapter.get("part") or chapter.get("volume")
+            if not isinstance(title, str) or not title.strip():
+                continue
+            ordinal = chapter.get("section_ordinal")
+            normalized_ordinal = ordinal if isinstance(ordinal, int) and ordinal > 0 else None
+            return title.strip(), normalized_ordinal
+        return None, None
 
     def _find_story_sections(self, soup: BeautifulSoup) -> list[Tag]:
         return find_story_sections(soup)
@@ -388,8 +477,19 @@ class SyosetuNcodeSource(SourceAdapter):
         source_genre_name, genre_slug = self._extract_source_genre(soup)
         source_keywords = self._extract_source_keywords(soup)
         status_payload = self._publication_status_payload_from_html(html, url)
+        synopsis_metadata = normalize_synopsis_metadata(
+            synopsis,
+            source_key=self.source_key,
+            separator="\n",
+        )
 
         novel_id = self.normalize_novel_id(url)
+        root_url = str(httpx.URL(url).copy_with(query=None, fragment=None)).rstrip("/")
+        direct_body = (
+            len(chapters) == 1
+            and str(chapters[0].get("url") or "").rstrip("/") == root_url
+            and self._find_story_body(soup) is not None
+        )
         return {
             "source_key": self.source_key,
             "source_url": url,
@@ -398,9 +498,11 @@ class SyosetuNcodeSource(SourceAdapter):
             "title": title,
             "author": author,
             "synopsis": synopsis,
+            **synopsis_metadata,
             "published_at": published_at,
             "updated_at": updated_at,
             "chapters": chapters,
+            "work_structure": "direct_body" if direct_body else "episodes",
             "source_genre_name": source_genre_name,
             "genre_slug": genre_slug,
             "source_keywords": source_keywords,
@@ -408,7 +510,7 @@ class SyosetuNcodeSource(SourceAdapter):
         }
 
     def _parse_chapter_payload(self, html: str, url: str) -> dict[str, Any]:
-        if detect_age_gate_text(html):
+        if detect_age_gate_page(html, final_url=url):
             raise SourceError("Syosetu page appears to be an age gate or auth redirect.")
         if detect_block_page_text(html):
             raise SourceError("Syosetu page appears to be blocked or unavailable.")
@@ -498,6 +600,17 @@ class SyosetuNcodeSource(SourceAdapter):
 
         metadata.update(metadata_provenance)
 
+        raw_synopsis = api_entry.get("synopsis")
+        if not isinstance(raw_synopsis, str) or not raw_synopsis.strip():
+            raw_synopsis = metadata.get("source_synopsis") or metadata.get("synopsis")
+        metadata.update(
+            normalize_synopsis_metadata(
+                raw_synopsis,
+                source_key=self.source_key,
+                separator="\n",
+            )
+        )
+
         infotop_url = self._infotop_url(url)
         try:
             infotop_html = await self._fetch_page(infotop_url, on_retry=None)
@@ -530,11 +643,14 @@ class SyosetuNcodeSource(SourceAdapter):
             page_url = f"{url.rstrip('/')}/?p={page}"
             page_html = await self._fetch_page(page_url, on_retry=None)
             page_soup = BeautifulSoup(page_html, "lxml")
+            section_title, section_ordinal = self._last_chapter_section(metadata.get("chapters"))
             page_chapters = self._extract_chapters(
                 page_soup,
                 url,
                 metadata.get("title"),
-                initial_part=self._last_chapter_part(metadata.get("chapters")),
+                initial_part=section_title or self._last_chapter_part(metadata.get("chapters")),
+                initial_section_title=section_title,
+                initial_section_ordinal=section_ordinal,
             )
             existing_chapters = metadata.get("chapters", [])
             seen_ids = {c["id"] for c in existing_chapters if isinstance(c, dict) and "id" in c}

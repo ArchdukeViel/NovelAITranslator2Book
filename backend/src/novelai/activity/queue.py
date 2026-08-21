@@ -76,10 +76,12 @@ def _utc_now_iso() -> str:
 
 
 class ActivityQueueService:
-    """Small durable activity queue used by the web/platform layer.
+    """Durable activity queue used by the web/platform layer.
 
-    Records are still stored in one JSON file. The public concept is activity:
-    preliminary crawl, scraping, translation, and future workflow phases.
+    A configured production database selects the row-locked backend. Explicit
+    ``base_dir`` instances without a database remain file-backed for isolated
+    tests and legacy maintenance tooling; they never become the production
+    control plane.
     """
 
     VALID_ACTIVITY_TYPES = {"crawl", "translation"}
@@ -96,7 +98,12 @@ class ActivityQueueService:
     SOURCE_HEALTH_CACHE_TTL = 60.0
     LEASE_SECONDS = 300
 
-    def __init__(self, base_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        base_dir: Path | None = None,
+        *,
+        db_session_scope_factory: Any | None = None,
+    ) -> None:
         self.base_dir = (base_dir or settings.NOVEL_LIBRARY_DIR).resolve()
         self.activity_log_dir = self.base_dir / self.ACTIVITY_LOG_DIRNAME
         self.activity_log_dir.mkdir(parents=True, exist_ok=True)
@@ -106,8 +113,20 @@ class ActivityQueueService:
         self.source_health_file = self.activity_log_dir / "source_health.json"
         self._lock = threading.Lock()
         self._source_health_cache: dict[str, tuple[float, Any]] = {}
+        self._database_backend: Any | None = None
+        use_database = db_session_scope_factory is not None or (base_dir is None and bool(settings.DATABASE_URL))
+        if use_database:
+            from novelai.activity.database import ActivityDatabaseBackend
+            from novelai.db.engine import session_scope
+
+            self._database_backend = ActivityDatabaseBackend(
+                db_session_scope_factory or session_scope,
+                legacy_queue_file=self.activity_file,
+            )
 
     def _load_activity(self) -> list[dict[str, Any]]:
+        if self._database_backend is not None:
+            return self._database_backend._load_activity()
         if not self.activity_file.exists():
             return []
         try:
@@ -130,6 +149,9 @@ class ActivityQueueService:
         return activity_log
 
     def _persist_activity(self, activity: list[dict[str, Any]]) -> None:
+        if self._database_backend is not None:
+            self._database_backend._persist_activity(activity)
+            return
         atomic_write(self.activity_file, json.dumps(activity, ensure_ascii=False, indent=2))
 
     def _load_source_health(self) -> dict[str, dict[str, Any]]:
@@ -224,6 +246,12 @@ class ActivityQueueService:
         keep_failed: int = DEFAULT_PRUNE_KEEP_FAILED,
         dry_run: bool = True,
     ) -> dict[str, Any]:
+        if self._database_backend is not None:
+            return self._database_backend.prune_activity_log(
+                keep_completed=keep_completed,
+                keep_failed=keep_failed,
+                dry_run=dry_run,
+            )
         with self._lock, InterProcessFileLock(self.activity_lock_file):
             return self._prune_activity_log_unlocked(
                 keep_completed=keep_completed,
@@ -315,6 +343,8 @@ class ActivityQueueService:
             "error": None,
             "metadata": dict(metadata or {}),
         }
+        if self._database_backend is not None:
+            return self._database_backend.create_crawl_activity(activity)
         with self._lock, InterProcessFileLock(self.activity_lock_file):
             activity_log = self._load_activity()
             activity_log.append(activity)
@@ -331,6 +361,7 @@ class ActivityQueueService:
         provider_key: str | None = None,
         provider_model: str | None = None,
         metadata: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
     ) -> dict[str, Any]:
         activity_kind = kind.value if isinstance(kind, TranslationJobKind) else str(kind)
         if activity_kind not in {item.value for item in TranslationJobKind}:
@@ -355,8 +386,16 @@ class ActivityQueueService:
             "error": None,
             "metadata": dict(metadata or {}),
         }
+        if idempotency_key:
+            activity["idempotency_key"] = idempotency_key[:255]
+        if self._database_backend is not None:
+            return self._database_backend.create_translation_activity(activity, idempotency_key=idempotency_key)
         with self._lock, InterProcessFileLock(self.activity_lock_file):
             activity_log = self._load_activity()
+            if idempotency_key:
+                for existing in activity_log:
+                    if existing.get("idempotency_key") == idempotency_key[:255]:
+                        return dict(existing)
             activity_log.append(activity)
             self._persist_activity(activity_log)
         return dict(activity)
@@ -376,6 +415,14 @@ class ActivityQueueService:
         if normalized_type is not None and normalized_type not in self.VALID_ACTIVITY_TYPES:
             raise ValueError(f"Unsupported activity type: {activity_type}")
 
+        if self._database_backend is not None:
+            return self._database_backend.list_activity(
+                status=normalized_status,
+                activity_type=normalized_type,
+                novel_id=novel_id.strip() if isinstance(novel_id, str) and novel_id.strip() else None,
+                limit=limit,
+            )
+
         activity_log = self._load_activity()
         if normalized_status is not None:
             activity_log = [activity for activity in activity_log if activity.get("status") == normalized_status]
@@ -390,12 +437,16 @@ class ActivityQueueService:
         return [dict(activity) for activity in activity_log]
 
     def get_activity(self, activity_id: str) -> dict[str, Any] | None:
+        if self._database_backend is not None:
+            return self._database_backend.get_activity(activity_id)
         for activity in self._load_activity():
             if activity.get("activity_id") == activity_id:
                 return dict(activity)
         return None
 
     def delete_activity(self, activity_id: str) -> bool:
+        if self._database_backend is not None:
+            return self._database_backend.delete_activity(activity_id)
         with self._lock, InterProcessFileLock(self.activity_lock_file):
             activity_log = self._load_activity()
             remaining = [activity for activity in activity_log if activity.get("activity_id") != activity_id]
@@ -416,6 +467,15 @@ class ActivityQueueService:
         normalized_status = self._normalize_status(status)
         if normalized_status is None:
             raise ValueError(f"Unsupported activity status: {status}")
+
+        if self._database_backend is not None:
+            return self._database_backend.update_activity_status(
+                activity_id,
+                normalized_status,
+                error=error,
+                metadata=metadata,
+                lease_id=lease_id,
+            )
 
         with self._lock, InterProcessFileLock(self.activity_lock_file):
             activity_log = self._load_activity()
@@ -471,6 +531,8 @@ class ActivityQueueService:
         *,
         lease_id: str | None = None,
     ) -> bool:
+        if self._database_backend is not None:
+            return self._database_backend.update_activity_metadata(activity_id, patch, lease_id=lease_id)
         with self._lock, InterProcessFileLock(self.activity_lock_file):
             activity_log = self._load_activity()
             for _index, act in enumerate(activity_log):
@@ -507,6 +569,8 @@ class ActivityQueueService:
         self._source_health_cache.clear()
 
     def retry_activity(self, activity_id: str) -> dict[str, Any] | None:
+        if self._database_backend is not None:
+            return self._database_backend.retry_activity(activity_id)
         with self._lock, InterProcessFileLock(self.activity_lock_file):
             activity_log = self._load_activity()
             for index, activity in enumerate(activity_log):
@@ -533,6 +597,7 @@ class ActivityQueueService:
                         "metadata": previous_metadata,
                     }
                 )
+                retry_history = retry_history[-settings.ACTIVITY_RETRY_HISTORY_MAX_ENTRIES :]
                 updated_metadata["retry_history"] = retry_history
                 updated_metadata["current_stage"] = "queued"
                 updated_metadata["current_label"] = None
@@ -572,6 +637,9 @@ class ActivityQueueService:
     def claim_activity(self, activity_id: str) -> dict[str, Any] | None:
         """Atomically claim one pending activity and attach a renewable lease."""
 
+        if self._database_backend is not None:
+            return self._database_backend.claim_activity(activity_id)
+
         with self._lock, InterProcessFileLock(self.activity_lock_file):
             activity_log = self._load_activity()
             recovered = self._recover_expired_leases(activity_log)
@@ -601,6 +669,9 @@ class ActivityQueueService:
         if normalized_type is not None and normalized_type not in self.VALID_ACTIVITY_TYPES:
             raise ValueError(f"Unsupported activity type: {activity_type}")
 
+        if self._database_backend is not None:
+            return self._database_backend.claim_next_activity(activity_type=normalized_type)
+
         with self._lock, InterProcessFileLock(self.activity_lock_file):
             activity_log = self._load_activity()
             self._recover_expired_leases(activity_log)
@@ -622,6 +693,8 @@ class ActivityQueueService:
             return dict(activity)
 
     def renew_activity_lease(self, activity_id: str, lease_id: str) -> bool:
+        if self._database_backend is not None:
+            return self._database_backend.renew_activity_lease(activity_id, lease_id)
         with self._lock, InterProcessFileLock(self.activity_lock_file):
             activity_log = self._load_activity()
             for activity in activity_log:
@@ -640,6 +713,58 @@ class ActivityQueueService:
         if activity is None:
             return True
         return activity.get("status") == JobStatus.CANCELLED.value
+
+    def find_active_translation(
+        self,
+        *,
+        novel_id: str,
+        kind: TranslationJobKind | str,
+        chapters: str,
+        provider_key: str | None,
+        provider_model: str | None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any] | None:
+        activity_kind = kind.value if isinstance(kind, TranslationJobKind) else str(kind)
+        if self._database_backend is not None:
+            return self._database_backend.find_active_translation(
+                novel_id=novel_id,
+                kind=activity_kind,
+                chapters=chapters,
+                provider_key=provider_key,
+                provider_model=provider_model,
+                idempotency_key=idempotency_key,
+            )
+        for activity in self._load_activity():
+            if activity.get("type") != "translation" or activity.get("status") not in self.ACTIVE_STATUSES:
+                continue
+            if idempotency_key:
+                if activity.get("idempotency_key") == idempotency_key[:255]:
+                    return dict(activity)
+                continue
+            if (
+                activity.get("novel_id") == novel_id
+                and activity.get("kind") == activity_kind
+                and activity.get("chapters") == chapters
+                and activity.get("provider_key") == provider_key
+                and activity.get("provider_model") == provider_model
+            ):
+                return dict(activity)
+        return None
+
+    def queue_stats(self) -> dict[str, Any]:
+        if self._database_backend is not None:
+            return self._database_backend.stats()
+        pending = self.list_activity(status=JobStatus.PENDING, limit=1)
+        queue_age = None
+        if pending:
+            created = self._parse_timestamp(pending[0].get("created_at"))
+            if created is not None:
+                queue_age = max(0.0, (datetime.now(UTC) - created).total_seconds())
+        return {
+            "backend": "file",
+            "pending_count": len(self.list_activity(status=JobStatus.PENDING)),
+            "queue_age_seconds": queue_age,
+        }
 
     def record_source_health(
         self,

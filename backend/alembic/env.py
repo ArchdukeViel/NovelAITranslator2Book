@@ -27,6 +27,7 @@ from novelai.db.base import Base  # noqa: E402
 
 for _model_module in (
     "novelai.db.models.analytics_event",
+    "novelai.db.models.activity",
     "novelai.db.models.chapter",
     "novelai.db.models.genre",
     "novelai.db.models.glossary",

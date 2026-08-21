@@ -220,6 +220,7 @@ class FakeFetchService(FetchService):
         on_retry: Any = None,
         profile: str | None = None,
         kind: str = "html",
+        use_cache: bool = True,
     ) -> FetchResult:
         self.calls.append(
             {

@@ -14,12 +14,23 @@ alerting, browser/network acceptance, and rollback evidence remain incomplete.
   monitoring, accessibility, performance, SEO, legal propagation, rollback.
 - `DEBT-FE-01` FE-02+ is non-launch-blocking unless a changed slice touches
   the launch candidate.
-- Deferred work stays disabled until its activation gate passes; no frontend
-  surface is swapped before backend contract evidence exists.
+- Enabled feature slices must retain their backend contract, truthful empty
+  states, and operator evidence; deferred work remains disabled until its own
+  activation gate passes.
 - Every evidence record includes candidate commit, environment, UTC time,
   operator, exact command/URL, sanitized result, blocker, waiver, and expiry.
 - Work closes only after evidence is recorded in `HISTORY.md`; passing local
   tests never substitutes for hosted/manual evidence.
+
+## Novel Detail Stage B Decision (2026-08-19)
+
+The public novel detail redesign keeps the existing Overview, Chapters, and
+Reviews contract and makes the first viewport reading-first. Recommendations
+remain deferred because the current public catalog API has no bounded related-
+novel contract. Do not add a fourth tab, behavioral language, popularity
+metrics, or a client-side catalog download to simulate one. A future related-
+novel slice needs an approved public contract with deterministic exclusions,
+stable ordering, and bounded work before it reaches the page.
 
 ## Launch Roadmap
 
@@ -31,15 +42,15 @@ exists and is recorded in `HISTORY.md`.
 | 1 | OWN-001 | Assign launch, rollback, monitoring, security, recovery, accessibility, performance, SEO, legal owners | None | All nine gates owned by single operator (email on file in operator record, not committed); legal owner = operator for now; no backup contacts — accepted as waiver-eligible single-operator risk, expiry at GO-001; no unowned gate |
 | 2 | REL-001 | Freeze exact candidate | OWN-001 | Candidate commit/image tags, domains, environment, UTC time recorded |
 | 3 | GH-001 | Finish GitHub controls | REL-001 | `main` protected; exact CI, CodeQL, and GitGuardian checks required; no force push/deletion; sanitized secret-scan incident/false-positive exercise recorded |
-| 4 | DEBT-079A | Deploy always-on candidate | REL-001 | Migrations one-shot succeeds; immutable images run; production config validated |
-| 5 | DEBT-079B | Hosted auth/security smoke | DEBT-079A | OAuth, cookies, CSRF, CORS, hosts, roles, disabled users, admin/reader boundaries pass |
-| 6 | DEBT-075A | Verify hosted PostgreSQL/R2 workflow | DEBT-079A | Managed-services workflow passes against isolated targets |
-| 7 | DEBT-075B | Current-head recovery drill | DEBT-075A | DB dump and object snapshot restored into isolated targets; schema, checksums, counts, content, catalog rebuild pass |
+| 4 | DEBT-079A | Deploy always-on candidate | REL-001 | Migrations one-shot succeeds; immutable images run; production config validated (COMPLETED 2026-08-17) |
+| 5 | DEBT-079B | Hosted auth/security smoke | DEBT-079A | OAuth, cookies, CSRF, CORS, hosts, roles, disabled users, admin/reader boundaries pass (COMPLETED 2026-08-17) |
+| 6 | DEBT-075A | Verify hosted PostgreSQL/R2 workflow | DEBT-079A | Managed-services workflow passes against isolated targets (COMPLETED 2026-08-17) |
+| 7 | DEBT-075B | Current-head recovery drill | DEBT-075A | DB dump and object snapshot restored into isolated targets; schema, checksums, counts, content, catalog rebuild pass (COMPLETED 2026-08-17) |
 | 8 | DEBT-118 | Activate and verify SMTP | DEBT-079A | Domain/SPF/DKIM/DMARC, auth mail, bounce/error handling, redaction, limits, `noop` rollback proven |
 | 9 | DEBT-075C | Real operator alert | DEBT-118 | Stale/failure alert delivered; threshold, cooldown, redaction, escalation proven |
 | 10 | DEBT-079C | External monitoring | DEBT-079A, OWN-001 | Scheduled runs, dashboard, operator delivery, escalation ownership proven |
-| 11 | DEBT-FE-01A | FE-01 manual acceptance | DEBT-079A | Keyboard, screen reader, 200% zoom, reduced motion, focus, contrast verified on shipped tokens; see manual acceptance checklist below |
-| 12 | DEBT-079D | Performance/SEO/legal acceptance | DEBT-079A | Budgets, canonical/robots/sitemap/structured data, HTTP 451 and CDN propagation pass |
+| 11 | DEBT-FE-01A | FE-01 manual acceptance | DEBT-079A | Keyboard, screen reader, 200% zoom, reduced motion, focus, contrast verified on shipped tokens; operator physical acceptance complete (COMPLETED 2026-08-17) |
+| 12 | DEBT-079D | Performance/SEO/legal acceptance | DEBT-079A | Minimal real staging fixtures populated across 3 source adapters; adult gating proven; payload size budgets met; hosted latency budget blocked on remote network topology / WAN latency to Supabase SG & R2 (FAIL / BLOCKED 2026-08-17) |
 | 13 | DEBT-079E | Rollback rehearsal | DEBT-075B, DEBT-079B | Worker/scheduler paused, reader disabled, cache purged, prior image compatibility checked, redeployed, smoke rerun |
 | 14 | GO-001 | Final launch decision | All above | Zero unwaived blockers; launch/rollback/monitoring owners named |
 
@@ -125,7 +136,7 @@ The following items from the Stitch design spec `1794eb02d11a407b9b6343d72767012
 | Stitch Design Feature | Current Status & Handling in Code | Backend / Contract Dependency |
 | --- | --- | --- |
 | **User Ticket Leaderboard ("HarvestRam - 4,944 Tickets")** | **Omitted / Deferred**. Replaced by honest `Most Chapters` catalog widget. | Requires user engagement/gamification model (`tickets`, `donations`, `patreon`). Anti-slop rule forbids fake data. |
-| **Reader View Counts ("98.5k readers")** | **Omitted / Deferred**. Replaced with `translated_count` ("X chapters translated"). | Requires analytics/view-tracking database backend (`novel_views`, `chapter_views`). |
+| **Reader View Counts ("98.5k readers")** | **Omitted from detail/catalog surfaces**. Rankings use the implemented privacy-safe distinct novel-detail-view service; catalog cards still show `translated_count` ("X chapters translated") rather than popularity. | A separate detail-level view-count display contract is intentionally not exposed; ranking data is supplied by `public_novel.view` analytics events. |
 | **Manual Admin Spotlight Rotation** | **Catalog Fallback**. Current Spotlight dynamically picks the latest ongoing novel with a synopsis and readable chapter. | Requires `admin_spotlights` or `featured_novels` table + admin curation UI. |
 | **Author Detail Route (`/authors/[slug]`)** | **Deferred**. Author names render inline as text without links. | Requires stable `authors` table with author slug, alias mapping, and backend API endpoints. |
 
@@ -266,6 +277,24 @@ CDN propagation after takedown.
    forward-fix.
 9. Record rollback duration and responsible owner.
 
+#### G. Cross-source hierarchy persistence and long-running crawl acceptance
+
+The backend contract for persisted section hierarchy is now explicit: source
+metadata owns optional section fields, raw chapter identity remains stable,
+and a reconciliation creates a complete immutable generation before pointer
+activation. Reused chapters and their image assets are copied into the new
+generation; failed staging preserves the prior active pointer. Long-running
+scrape and onboarding-resume requests enqueue durable activities and must be
+accepted through activity status plus persisted-generation evidence, not an
+open HTTP request.
+
+Acceptance evidence still requires a live persisted representative from
+Syosetu, Novel18, and Kakuyomu, including grouped/flat public behavior,
+idempotent repeat reconciliation, no body-translation or glossary invalidation
+from metadata-only hierarchy changes, and rollback after an injected staging
+failure. This subsection records the contract and gate; it is not completion
+evidence by itself.
+
 ### DEBT-FE-01 — Frontend design rework
 
 Keep the full rework out of one giant change. Bounded slices, one per
@@ -278,7 +307,7 @@ PR/change, each with exact tests:
 | FE-04 | Shared search overlay, keyboard behavior, request cancellation, local recent searches — shipped (typecheck, 781 tests, build, backend 156 tests pass); original-title search added to catalog DB + storage fallback | FE-03 |
 | FE-05 | Browse/catalog layout, URL filter state, taxonomy/source canonical routes — shipped (typecheck, 790 tests, build, backend public-router 123 tests pass); authors route remains deferred pending stable identity/alias contract | FE-04 |
 | FE-06 | Homepage rails and honest featured-novel selection — rails, Continue Reading/guest state, catalog-derived genres, `/random`, real `updated_at` sort, single-CTA eligible Spotlight shipped (typecheck, 769 tests, build, backend public-router 125 tests pass); 2026-08-04 editorial hero upgrade (asymmetric cover card, source title, metadata row, genre chips) + honest NEW chips (14-day `added_at` freshness) shipped (847 tests); manual admin-curated rotation still needs an approved persistence/API contract | FE-05 |
-| FE-07 | Novel-detail sticky layout, URL tabs, chapter controls, single CTA — supported UI shipped (typecheck, 776 tests, 48-route build); pending backend contracts: chapter added/failure metadata for New/Failed markers and public review-list pagination | FE-03 |
+| FE-07 | Novel-detail reading-first hero, semantic URL tabs, truthful metadata, deterministic bookplate fallback, source section hierarchy, chapter search/order/anchors, one reading CTA, quiet report link, and closed request disclosure — Stage B implementation complete; Recommendations remain deferred pending a bounded related-novels contract | FE-03 |
 | FE-08 | Reader Aa panel, progress bar, resume position, quiet chrome — shipped (typecheck, 785 tests across 68 files, 48-route build); account progress + guest local-only persistence, keyboard navigation, strong end CTA | FE-03 |
 | FE-09 | Library board/list and account shell — shipped (lint, typecheck, 813 tests across 71 files, 47-page build; prior branch CI); pending backend contracts: plan-to-read/dropped status mutation, bulk status update, progress/title/recent-update fields/filter/badge | FE-03 |
 | FE-10 | `/faq`, `/news`, account reviews; `/random` and account overview already shipped — shipped (typecheck, lint, Vitest suite, 47+ page build, backend user-data router tests pass); `GET /api/user/reviews` added for the session user's own reviews; review moderation contract (status lifecycle, public listing, admin moderation, audit) implemented and merged | FE-03 |
@@ -288,7 +317,8 @@ Rules:
 - One slice per PR/change; no slice bundled with unrelated work.
 - No `/authors/[author-slug]` until a stable author-identity/alias backend
   contract is approved.
-- No fake rankings, recommendations, community metrics, or contribution UI.
+- No fake rankings, recommendations, or community metrics. Contributor UI must
+  remain API-backed and truthful; community editing is still out of scope.
 - Preserve `docs/DESIGN.md`; update its status only with owner direction.
 
 #### DEBT-FE-01A manual acceptance checklist (operator-evidence only)
@@ -314,7 +344,7 @@ new community review list `/novels/[slug]?tab=reviews`,
 | 10 | Forced colors mode (Windows High Contrast): borders, focus rings, status badges, and input boundaries remain visible. | Windows High Contrast |
 | 11 | Real-device mobile testing: tab bar, bottom sheets, gesture-bar safe areas, and reader controls functional on actual iOS/Android browsers. | Physical phone / tablet |
 
-Close DEBT-FE-01A only after a pass is recorded for every row above.
+Status: COMPLETED 2026-08-17 (Automated AX & responsive suite passed; operator attested physical mobile and native screen-reader acceptance).
 
 Per-slice validation:
 
@@ -333,10 +363,10 @@ graphify update . --no-cluster
 | Secret scanning | Partial (hosted scans passed) | PR #12 proved successful GitGuardian push and same-repo PR checks. Still require protected required-check configuration and sanitized incident/false-positive triage evidence. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
 | Alerts and monitoring | Blocked (tooling complete) | Configure `PRODUCTION_BASE_URL`, prove scheduled external runs and real operator delivery, cooldown/redaction, dashboards, escalation, and ownership. |
 | Recovery | Needs current run (tooling complete) | Current-head database restore and object snapshot restore into isolated targets. Backup-stale alert threshold, restore-freshness max age, and runtime-role verifier implemented locally. |
-| Accessibility | Manual | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast. |
-| Performance | Manual | Real-network API p95, request count, cache, long chapter, annotations, route JS. |
-| SEO | Manual | Hosted canonical, robots, sitemap, and structured-data validators. |
-| Legal propagation | Manual | HTTP 451, sitemap exclusion, and CDN cache propagation. |
+| Accessibility | Pass (COMPLETED 2026-08-17) | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast verified via automated test suite and operator physical device attestation. |
+| Performance | Partial / Fail (AUDITED 2026-08-17) | Catalog API p95 on hosted staging exceeds hard budget (reader direct p95=1001.60ms, Tailscale HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + S3 metadata list latency). Novel detail and Chapter APIs NOT RUN on hosted staging (no published novel/chapter fixture in DB). First-load JS passes (169.8 KiB <= 250 KiB). |
+| SEO | Staging Pass / Production Deferred (AUDITED 2026-08-17) | Staging robots.txt, sitemap.xml, Open Graph / Twitter metadata, canonical URLs verified on staging hostname; production domain SEO validation deferred until public domain cutover. |
+| Legal propagation | Pass (AUDITED 2026-08-17) | HTTP 451 legal takedown verified (Cache-Control: no-store, no private info leak); sitemap exclusion & 404 contracts verified; CDN purge deferred to public edge. |
 | Rollback | Blocked | Pause worker/scheduler, purge cache, disable reader, redeploy previous immutable version, rerun smoke. |
 | Ownership | Assigned | All nine gates owned by single operator; email on file in operator record (not committed). Legal owner: operator (temporary). No rollback/monitoring backup — waiver-eligible single-operator risk: risk = alert/rollback response may not reach a second person; reason = solo operation; mitigation = escalate via hosting provider support line on incident; owner = operator; approver = operator; expiry = GO-001. No unowned gate. |
 
@@ -435,25 +465,36 @@ Plan only; no implementation yet.
 6. Public/community lists require separate owner approval after private-list
    evidence.
 
-### DEBT-RANK-01 — Rankings
+### Completed: public rankings (formerly DEBT-RANK-01)
 
-Keep the honest placeholder until a data contract exists.
+Implemented as the current ranking contract. `GET /api/public/rankings` accepts
+only `daily`, `weekly`, and `monthly`, with 24-hour, 7-day, and 30-day windows.
+It counts distinct authenticated user ids and signed opaque anonymous viewer
+digests from `public_novel.view` only; chapter views, IP addresses, and All Time
+claims are excluded. The homepage tabs, Trending widget, and `/ranking` page
+consume this response and show truthful disabled/no-data states.
 
-1. Approve the ranking formula and eligible events.
-2. Define anti-manipulation and replay/idempotency rules.
-3. Exclude owner/admin/test traffic.
-4. Define update cadence and stale-data display.
-5. Validate against fixtures and abuse cases.
-6. Only then replace the static `/ranking` placeholder.
+Evidence: `PublicRankingService`, `public_rankings.py`, anonymous viewer-token
+tests, distinct-view/period/retention tests in
+`backend/tests/test_public_rankings.py`, and frontend ranking honesty/smoke
+tests. The weekly metric is the first reliable Trending signal; ratings, saves,
+and reviews remain future secondary signals.
 
 ### DEBT-120 — Unconnected Backend API Endpoints & Unconsumed Frontend Client Code
+
+Phase 3 also made the ranking path projection-joined and success-cacheable:
+the event aggregation uses the published `Novel` projection and composite
+event-time/viewer indexes, avoids per-result storage summary calls, and exposes
+bounded process-local cache metrics. The cache stores no disabled or empty
+response, and production-volume query plans plus multi-reader cache behavior
+remain acceptance work rather than fabricated completion evidence.
 
 Full-stack audit finding (2026-08-03), remediation (2026-08-03):
 
 1. **Split-Service vs Combined App Topology (RESOLVED)**: Production Compose (`deploy/Caddyfile`) routes `/api/public/*` to port 8001 (`main_reader.py`) and `/api/admin/*`, `/api/auth/*`, `/api/user/*` to port 8000 (`main_admin.py`). Public contact (`/api/public/contact/contact`), DMCA (`/api/public/dmca/dmca`), and analytics ingestion (`/api/public/analytics/*`) were registered in `app.py` but missing from `main_reader.py`; admin analytics/audit/takedown/reviews/users/metrics routers were missing from `main_admin.py`. All are now registered in their owning app. Analytics event ingestion is a public, anonymous, CSRF-free write and lives ONLY in the reader; a duplicate registration previously (and incorrectly) added to `main_admin.py` was removed.
 2. **Route ownership regression protection (RESOLVED)**: `backend/tests/test_microservice_split.py` now asserts strict ownership — the reader must serve public contact/DMCA/analytics-events, the admin must reject `/api/public/*`, the admin must serve all 26 admin/auth/user-client paths, and the combined app minus (admin ∪ reader) is empty (0 stranded endpoints). Verified: 185 combined endpoints = 175 admin + 12 reader, no `/api/public` in admin, no `/api/admin` in reader; all 26 public/user/auth and 77 admin client paths match deployed topology.
 3. **Dead client code (RESOLVED)**: Removed from `frontend/lib/api.ts` the 12 legacy `api` methods with zero callers in app/components/hooks and no test/docs references (`progress`, `readerNovel`, `readerChapter`, `runNextActivity`, `updateActivityStatus`, `sourceHealthDetail`, `validateProviderApiKey`, `clearProviderApiKey`, `refreshRuntimeState`, `createRequest`, `scrapeNow`, `translateNow`); removed `authApi.csrf` from `frontend/lib/public-api.ts` (internal CSRF path, not the exported method); removed now-unused `ReaderNovel`, `ReaderChapter`, `NovelProgress` from `frontend/lib/api-types.ts` (`ModelState` kept — it is used).
-4. **Audit claims corrected as stale**: The original audit listed `adminApi.analyticsSummary`, `adminApi.updateUserActive`, `adminApi.updateUserRole`, `adminApi.revokeUserSessions`, `userReadingApi.listHistory`, `userReadingApi.recordHistory`, `userReadingApi.listMyReviews`, and hooks `useAuthMe`, `usePublicAuthState`, `useMyReviews`, `useRequests`, `useNotifications`, `useReadAllNotifications`, `useArchiveNotification`, `useReadNotification`, `useUpdateProgress`, `useHistory`, `useRecordHistory`, `useUnreadCount` as unused. Verified current state: all have live UI callers (54 call sites across account/history, account/notifications, account/reviews, account/requests, chapter reader, request-novel, home, admin analytics, admin users pages and shared components). Those entries are not debt.
+4. **Audit claims corrected as stale**: The original audit listed `adminApi.analyticsSummary`, `adminApi.updateUserActive`, `adminApi.updateUserRole`, `adminApi.revokeUserSessions`, `userReadingApi.listHistory`, `userReadingApi.recordHistory`, `userReadingApi.listMyReviews`, and hooks `useAuthMe`, `usePublicAuthState`, `useMyReviews`, `useRequests`, `useNotifications`, `useReadAllNotifications`, `useArchiveNotification`, `useReadNotification`, `useUpdateProgress`, `useHistory`, `useRecordHistory`, `useUnreadCount` as unused. Verified current state: all have live UI callers (54 call sites across account/history, account/notifications, account/reviews, account/requests, chapter reader, account overview, home, admin analytics, admin users pages and shared components). Those entries are not debt.
 
 Completion criteria:
 - ~~Register public contact, DMCA, and analytics endpoints in `main_reader.py`~~ — done, regression-locked.
@@ -461,21 +502,126 @@ Completion criteria:
 - ~~Remove or connect orphaned API wrappers and hooks~~ — verified-orphan wrappers removed; claimed orphans re-verified as consumed.
 - Remaining (not UI debt): 57 admin orchestration backend-only endpoints, 3 admin takedown moderation endpoints, 3 operator/monitoring endpoints, and 58 other backend/CLI/test endpoints have no frontend caller by design — they are invoked by workers, CLI, tests, or operator tooling.
 
-### DEBT-CONTRIB-01 — Contribution credentials
+### Completed: contributor credentials (formerly DEBT-CONTRIB-01)
 
-Do not reuse owner/admin credential flows directly.
+The approved readiness gate is complete for v1. Contributor credentials use a
+separate encrypted domain and one Gemini credential per authenticated user.
+Consent/version checks, explicit-key validation, immediate activation on
+success, invalid-on-failure, ownership isolation, replacement, pause/resume,
+permanent deletion, owner emergency revoke, no-readback masking, provider
+isolation, per-credential RPM/TPM/RPD reservation, and sanitized usage ledger
+accounting are implemented. `credential_owner_user_id` and
+`requesting_user_id` remain separate throughout the translation pipeline.
 
-1. Approve consent, ownership, revocation, quotas, and provider-specific
-   rules.
-2. Add separately encrypted contributor credentials.
-3. Separate `requesting_user_id` from `credential_owner_user_id`.
-4. Enforce provider isolation and least privilege.
-5. Add validation, health, pause, revoke, removal, and deletion.
-6. Add usage ledger, per-owner limits, cost ceilings, and audit.
-7. Prevent raw credential readback.
-8. Add moderation/abuse controls.
-9. Run a security review.
-10. Replace unavailable contribution surfaces only after the gate passes.
+Evidence: migration `a8c4e2f7b901`, `ContributorCredentialService`, user and
+owner routers, translation-stage selection/ledger integration,
+`backend/tests/test_contributor_credentials.py`, focused backend suite, and
+live contribution hook/page tests. Production still requires the configured
+encryption key and the migration role to have schema DDL privileges.
+
+### Completed: public performance Phase 4
+
+Readiness now uses a short configured TTL with single-flight refresh and a
+non-mutating storage reachability probe. Full storage write/read/delete and S3
+usage checks remain in owner diagnostics. Safe public catalog, summary, and
+chapter projections use bounded process-local TTL/LRU caching with
+version-aware keys and publish/reconciliation/takedown invalidation. Public
+and server analytics events use a sanitized bounded asynchronous writer with
+explicit queue-drop and worker-failure metrics; public content requests no
+longer open a synchronous analytics database session.
+
+Evidence: commit `33c5c05`, focused health/analytics/cache/public-route tests,
+Ruff, Pyright, fresh backend/reader images, and live Caddy readiness with the
+one-second probe configuration and no temporary override. Production percentile
+readiness, slow-writer loss, populated ranking load, and multi-reader/shared
+cache economics remain open acceptance work. The Phase 4 checkpoint recorded
+the older storage-only `test_public_reader_availability.py` fixture as a
+projection test gap; the later continuation repaired it without restoring
+request-time storage fallback.
+
+### Completed locally: public performance Phase 5
+
+Long-running owner translation requests now enqueue durable translation
+activities and return `202` with an activity id; the dedicated Compose worker
+owns provider-backed execution while web services keep the in-process runner
+disabled. Activity state, leases, claims, idempotency, retry state, and bounded
+metadata now use the `activity_records` database table, with one-time legacy
+queue import. Gemini owner/contributor admission has global in-flight and
+token/request budgets, bounded deadline/backoff behavior, isolated reusable
+clients, and sanitized provider timing/usage accounting. Translation-cache
+maintenance uses an indexed SQLite WAL sidecar instead of recursive scans.
+
+Evidence: migration `d9f3a1b7c5e2`, `ActivityDatabaseBackend`, dedicated worker
+Compose service, provider/quota/cache implementations, `102` expanded focused
+backend tests, `69` activity/router/health tests, `40` focused frontend tests,
+Ruff, Pyright, frontend lint/typecheck/build, successful local PostgreSQL
+migration, healthy production Compose recreation, route/Markdown audit, and
+Graphify refresh. The full backend command timed out after `904 s`; the full
+frontend Vitest command timed out after about `243 s`; the Phase 5 checkpoint
+also recorded two known public-reader projection fixture failures. The later
+continuation repaired the availability fixture and passes all `22` tests. Phase
+5 is complete locally, while enqueue p95 under concurrent public probes and
+production-like provider load/failure behavior remain runtime acceptance work.
+
+### Phase 6 acceptance: repeatable local sample, review gate open
+
+The Phase 6 harness (`backend/tests/run_phase6_acceptance.py`) seeded and
+cleaned a namespaced local fixture with 48 published novels, 1,428 chapters,
+and 1,200 authenticated/anonymous novel-view events. Concurrent Caddy-routed
+public samples returned `200` for health, catalog, detail, chapter, search,
+ranking, and home routes with zero transport timeouts/errors. Caddy recorded no
+`502`, connection-refused, or `5xx` events. A deliberately missing provider
+configuration produced a durable sanitized failed activity with the expected
+provider configuration error.
+
+Browser verification covered guest home/ranking/detail/chapter routes and a
+disposable authenticated public contribution page session. The first home
+browser run found a clock-dependent React hydration error; the page now uses a
+hydration-aware timestamp, and the rebuilt routes report zero application
+console errors. Focused home tests pass (`29 tests`).
+
+Phase 6 remains open for review. Direct-mode owner enqueue produced two
+database-capacity `500` responses in an eight-request burst, while an isolated
+transaction-mode control returned five `202` and three configured
+translation-limit `429` responses with no database-capacity `500`s. A
+controlled 1.2-second S3-protocol delay made ten concurrent readiness requests
+return `503` with `storage=unhealthy` (p50 `1,351.488 ms`, p95 `1,382.913 ms`).
+The protected base runtime remains `DB_CONNECTION_MODE=direct` and was not
+changed. Production-equivalent R2/S3 telemetry, PostgreSQL slowest-query/
+query-count evidence, and representative worker/provider capacity remain
+unclaimed. Temporary Phase 6 fixture data, overlays, and isolated volumes are
+cleaned up after each run; the base Compose stack remains the runtime baseline.
+
+The database-capacity error path is now classified locally: recognized
+SQLAlchemy pool/server-capacity failures return sanitized retryable
+`503 DATABASE_CAPACITY_EXHAUSTED` responses, while unrelated database errors
+remain generic `500`s. After rebuilding the admin and reader images, a direct
+filesystem control repeated the eight-request enqueue burst with five `202`
+and three configured `429` responses and zero capacity `500`s. This resolves
+the unhandled application error path, but deployment-wide pooler budgeting and
+production storage/query/provider evidence remain open.
+
+A safe base-database snapshot reported `max_connections=60`,
+`superuser_reserved_connections=3`, `active_connections=19`, and
+`application_connections=13`; `pg_stat_statements` is unavailable. Compose
+has backend, reader, and worker pool processes with ten-connection theoretical
+ceilings, but that snapshot's configured aggregate budget was `20`. The source
+validator now enforces the explicit process-count and migration/readiness/
+operator-reserve calculation for direct/session mode. The protected base
+runtime was rebuilt and restarted with direct-mode budget `32`; the actual
+managed pooler and production storage/provider telemetry remain explicit Phase
+6 review gates.
+
+### Phase 6 continuation: F-32 resolved
+
+The stale public-reader availability fixture now creates the published
+`Novel`/`Chapter` projection through `CatalogService`, and its full focused
+suite passes (`22 passed`). The projection-first read context also preserves
+per-novel unavailable-policy metadata through migration `e5f7a9c1d3b2`.
+Focused catalog tests (`51 passed`), the public-router suite (`133 passed`),
+Ruff, Pyright, Graphify, and direct migration upgrade/downgrade smoke passed.
+The remaining open work is operator/production evidence, not this local
+fixture contract.
 
 ## Priority Recommendation
 
@@ -489,8 +635,8 @@ Do not reuse owner/admin credential flows directly.
    rollback rehearsal.
 7. `FE-02` — FE-01 manual accessibility/contrast acceptance.
 8. Remaining `DEBT-FE-01` slices.
-9. Deferred specs (`DEBT-SC-01`, `DEBT-QA-01`, `DEBT-REV-01`, `DEBT-COM-01`,
-   `DEBT-RANK-01`, `DEBT-CONTRIB-01`) only after launch blockers close.
+9. Deferred specs (`DEBT-SC-01`, `DEBT-QA-01`, `DEBT-REV-01`, and
+   `DEBT-COM-01`) only after launch blockers close.
 
 Reason: launch blockers first. Deferred features add risk, cost, moderation,
 and security burden without launch value.

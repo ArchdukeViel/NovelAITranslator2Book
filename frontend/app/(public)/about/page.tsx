@@ -18,7 +18,7 @@ export default function AboutPage() {
         },
         {
           title: "FAQ",
-          body: "The public catalog, reader, sign-in, library, and request features are available now. Community and contribution features are not yet ready and will be announced when their backend support is in place.",
+          body: "The public catalog, reader, sign-in, library, request, ranking, and contributor credential features are available now. Community editing remains outside the current product scope.",
         },
         {
           title: "Reader accounts",

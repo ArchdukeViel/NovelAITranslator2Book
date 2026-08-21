@@ -28,8 +28,9 @@ from novelai.sources.kakuyomu.parser import (
     extract_chapters_from_next_data,
     next_data_apollo_state,
 )
-from novelai.sources.quality import detect_age_gate_text, detect_block_page_text
+from novelai.sources.quality import detect_age_gate_page, detect_block_page_text
 from novelai.sources.status import publication_status_payload
+from novelai.sources.synopsis import normalize_synopsis_metadata
 from novelai.utils.text_normalization import normalize_text
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ class KakuyomuSource(SourceAdapter):
     BODY_SELECTORS = BODY_SELECTORS
     TITLE_SELECTORS = TITLE_SELECTORS
     AUTHOR_SELECTORS = (
+        "[class*='WorkAuthorBox_'] a[href^='/users/']",
         ".widget-authorName",
         "[itemprop='author']",
         "[rel='author']",
@@ -56,6 +58,11 @@ class KakuyomuSource(SourceAdapter):
         "[data-work-toc]",
         "#contentMain",
         "main",
+    )
+    STRUCTURAL_TOC_ROOT_SELECTORS = (
+        ".widget-toc",
+        ".widget-toc-main",
+        "[data-work-toc]",
     )
     EPISODE_TITLE_SELECTORS = (
         ".widget-toc-episode-episodeTitleLabel",
@@ -79,6 +86,14 @@ class KakuyomuSource(SourceAdapter):
         "一時停止",
         "停止",
         "中断",
+    )
+    UI_RANGE_LABEL_PATTERN = re.compile(r"^\s*\d+\s*[〜~]\s*\d+\s*$")
+    LAZY_TOC_LABELS = (
+        "show more",
+        "load more",
+        "もっと見る",
+        "さらに表示",
+        "続きを読む",
     )
 
     def __init__(self, fetch_service: FetchService | None = None) -> None:
@@ -139,7 +154,7 @@ class KakuyomuSource(SourceAdapter):
     def _preflight_check(html: str, url: str) -> None:
         if detect_block_page_text(html):
             raise SourceError(f"Kakuyomu page at {url} appears to be blocked (Cloudflare, CAPTCHA, or bot challenge).")
-        if detect_age_gate_text(html):
+        if detect_age_gate_page(html, final_url=url):
             raise SourceError(f"Kakuyomu page at {url} appears to require age verification or adult confirmation.")
 
     async def _fetch_page(self, url: str, *, on_retry: Callable[[int, Exception], None] | None = None) -> str:
@@ -195,7 +210,92 @@ class KakuyomuSource(SourceAdapter):
         content = meta.get("content") if isinstance(meta, Tag) else None
         return content.strip() if isinstance(content, str) and content.strip() else None
 
-    def _extract_synopsis(self, soup: BeautifulSoup) -> str | None:
+    @staticmethod
+    def _text_blocks(node: Tag) -> list[str]:
+        text = node.get_text("\n", strip=True)
+        return [normalized for normalized in (normalize_text(line) for line in text.splitlines()) if normalized]
+
+    def _overview_region(self, soup: BeautifulSoup) -> Tag | None:
+        heading = next(
+            (
+                candidate
+                for candidate in soup.find_all(("h2", "h3"))
+                if isinstance(candidate, Tag) and candidate.get_text(" ", strip=True) == "概要"
+            ),
+            None,
+        )
+        if not isinstance(heading, Tag) or not isinstance(heading.parent, Tag):
+            return None
+
+        heading_wrapper = heading.parent
+        parent = heading_wrapper.parent
+        if not isinstance(parent, Tag):
+            return None
+        children = [child for child in parent.find_all(recursive=False) if isinstance(child, Tag)]
+        try:
+            heading_index = children.index(heading_wrapper)
+        except ValueError:
+            return None
+
+        following = children[heading_index + 1 :]
+        if not following:
+            return None
+        # The first sibling after the 概要 heading is the overview content;
+        # status, author, reviews, and related works follow it in the page DOM.
+        return following[0]
+
+    def _extract_synopsis_blocks(self, soup: BeautifulSoup) -> list[dict[str, str]]:
+        region = self._overview_region(soup)
+        if region is None:
+            return []
+
+        nodes: list[tuple[Tag, str]] = []
+        for node in region.select("[class*='WorkIntroductionBox_catch_']"):
+            if isinstance(node, Tag):
+                nodes.append((node, "promotion"))
+        for node in region.select("[class*='CollapseTextWithKakuyomuLinks_']"):
+            if isinstance(node, Tag):
+                nodes.append((node, "narrative"))
+
+        if nodes:
+            descendants = list(region.descendants)
+            nodes.sort(key=lambda item: descendants.index(item[0]) if item[0] in descendants else len(descendants))
+            blocks: list[dict[str, str]] = []
+            for node, classification in nodes:
+                for text in self._text_blocks(node):
+                    blocks.append(
+                        {
+                            "id": f"b{len(blocks) + 1:04d}",
+                            "text": text,
+                            "classification": classification,
+                        }
+                    )
+            if blocks:
+                return blocks
+
+        # DOM fixtures and older Kakuyomu layouts may expose ordinary
+        # paragraphs without the current hashed component classes.  Restrict
+        # the fallback to the overview region so reviews and related works are
+        # never mistaken for synopsis text.
+        blocks = []
+        for node in region.find_all(("p", "blockquote")):
+            if not isinstance(node, Tag):
+                continue
+            for text in self._text_blocks(node):
+                blocks.append({"id": f"b{len(blocks) + 1:04d}", "text": text})
+        return blocks
+
+    def _extract_synopsis_metadata(self, soup: BeautifulSoup) -> dict[str, Any]:
+        blocks = self._extract_synopsis_blocks(soup)
+        if blocks:
+            raw = "\n".join(block["text"] for block in blocks)
+            return normalize_synopsis_metadata(
+                raw,
+                source_key=self.source_key,
+                blocks=blocks,
+                separator="\n",
+            )
+
         for selector in (
             ".widget-workSynopsis",
             ".widget-work-introduction",
@@ -208,11 +308,16 @@ class KakuyomuSource(SourceAdapter):
                 continue
             content = node.get("content")
             if isinstance(content, str) and content.strip():
-                return normalize_text(content)
+                return normalize_synopsis_metadata(content, source_key=self.source_key)
             text = node.get_text("\n", strip=True)
             if text:
-                return normalize_text(text)
-        return None
+                return normalize_synopsis_metadata(text, source_key=self.source_key)
+        return {}
+
+    def _extract_synopsis(self, soup: BeautifulSoup) -> str | None:
+        metadata = self._extract_synopsis_metadata(soup)
+        value = metadata.get("narrative_synopsis") or metadata.get("source_synopsis")
+        return value if isinstance(value, str) and value.strip() else None
 
     def _extract_episode_title(self, anchor: Tag, fallback_index: int) -> str:
         title = self._first_text(anchor, self.EPISODE_TITLE_SELECTORS)
@@ -221,22 +326,51 @@ class KakuyomuSource(SourceAdapter):
         text = anchor.get_text(" ", strip=True)
         return text or f"Episode {fallback_index}"
 
-    def _extract_chapters_from_html(self, soup: BeautifulSoup, url: str) -> list[dict[str, str | int]]:
+    @classmethod
+    def _is_ui_range_label(cls, text: str) -> bool:
+        return cls.UI_RANGE_LABEL_PATTERN.fullmatch(text) is not None
+
+    @classmethod
+    def _dom_incomplete_indicators(cls, soup: BeautifulSoup) -> tuple[list[str], list[str]]:
+        range_labels: list[str] = []
+        for element in soup.find_all(True):
+            if not isinstance(element, Tag):
+                continue
+            text = element.get_text(" ", strip=True)
+            if text and cls._is_ui_range_label(text) and text not in range_labels:
+                range_labels.append(text)
+
+        lazy_labels: list[str] = []
+        for element in soup.find_all(["button", "a"]):
+            if not isinstance(element, Tag):
+                continue
+            text = element.get_text(" ", strip=True)
+            if (
+                text
+                and text.casefold() in {label.casefold() for label in cls.LAZY_TOC_LABELS}
+                and text not in lazy_labels
+            ):
+                lazy_labels.append(text)
+        return range_labels, lazy_labels
+
+    def _extract_chapters_from_html(self, soup: BeautifulSoup, url: str) -> list[dict[str, Any]]:
         work_id = self.normalize_novel_id(url)
-        toc_roots: list[Tag] = []
+        toc_roots: list[tuple[Tag, bool]] = []
         for selector in self.TOC_ROOT_SELECTORS:
             node = soup.select_one(selector)
             if isinstance(node, Tag):
-                toc_roots.append(node)
+                toc_roots.append((node, selector in self.STRUCTURAL_TOC_ROOT_SELECTORS))
         if not toc_roots:
-            toc_roots.append(soup)
+            toc_roots.append((soup, False))
 
-        chapters: list[dict[str, str | int]] = []
+        chapters: list[dict[str, Any]] = []
         seen_urls: set[str] = set()
         base_url = httpx.URL(url)
-        current_part: str | None = None
+        current_section_title: str | None = None
+        current_section_ordinal: int | None = None
+        episodes_seen_since_section = False
 
-        for root in toc_roots:
+        for root, is_structural_toc_root in toc_roots:
             for element in root.find_all(["a", "h2", "h3", "h4", "div", "li", "span"], recursive=True):
                 if not isinstance(element, Tag):
                     continue
@@ -248,11 +382,16 @@ class KakuyomuSource(SourceAdapter):
                         "widget-toc-chapter" in cls_str
                         or "widget-toc-heading" in cls_str
                         or "chapter-title" in cls_str
-                        or element.name.lower() == "h2"
+                        or (is_structural_toc_root and element.name.lower() in {"h2", "h3", "h4"})
                     ):
                         heading_text = element.get_text(" ", strip=True)
-                        if heading_text:
-                            current_part = heading_text
+                        if heading_text and not self._is_ui_range_label(heading_text):
+                            if current_section_title is None:
+                                current_section_ordinal = 1
+                            elif heading_text != current_section_title or episodes_seen_since_section:
+                                current_section_ordinal = (current_section_ordinal or 0) + 1
+                            current_section_title = heading_text
+                            episodes_seen_since_section = False
                         continue
 
                 if element.name.lower() != "a":
@@ -276,17 +415,22 @@ class KakuyomuSource(SourceAdapter):
 
                 canonical_url = f"https://kakuyomu.jp/works/{work_id}/episodes/{match.group(2)}"
                 if canonical_url in seen_urls:
-                    # Update part mapping if duplicate link encountered under a real part heading
-                    if current_part:
+                    # A broad root can contain the same episode more than once.
+                    # Enrich an ungrouped first sighting, but never let a later
+                    # duplicate overwrite the source-order grouping.
+                    if current_section_title:
                         for existing_ch in chapters:
-                            if existing_ch.get("url") == canonical_url:
-                                existing_ch["part"] = current_part
+                            if existing_ch.get("url") == canonical_url and not existing_ch.get("section_title"):
+                                existing_ch["part"] = current_section_title
+                                existing_ch["section_title"] = current_section_title
+                                existing_ch["section_source_id"] = None
+                                existing_ch["section_ordinal"] = current_section_ordinal or 1
                     continue
                 seen_urls.add(canonical_url)
 
                 index = len(chapters) + 1
                 ep_id = match.group(2)
-                chapter_item: dict[str, str | int] = {
+                chapter_item: dict[str, Any] = {
                     "id": f"kakuyomu:{ep_id}",
                     "num": index,
                     "sequence_number": index,
@@ -294,18 +438,50 @@ class KakuyomuSource(SourceAdapter):
                     "url": canonical_url,
                     "source_episode_id": ep_id,
                 }
-                if current_part:
-                    chapter_item["part"] = current_part
+                if current_section_title:
+                    chapter_item["part"] = current_section_title
+                    chapter_item["section_title"] = current_section_title
+                    chapter_item["section_source_id"] = None
+                    chapter_item["section_ordinal"] = current_section_ordinal or 1
                 chapters.append(chapter_item)
+                episodes_seen_since_section = True
 
         return chapters
 
-    def _extract_chapters(self, soup: BeautifulSoup, url: str) -> tuple[list[dict[str, str | int]], dict[str, Any]]:
+    def _extract_chapters(self, soup: BeautifulSoup, url: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         chapters, provenance = extract_chapters_from_next_data(soup, self.normalize_novel_id(url))
-        if chapters:
+        expected_count = provenance.get("expected_episode_count")
+        if chapters and provenance.get("apollo_complete", True):
             return chapters, provenance
+
         html_chapters = self._extract_chapters_from_html(soup, url)
-        return html_chapters, {"metadata_extraction_mode": "html_dom", "chapter_index_extraction_mode": "html_dom"}
+        range_labels, lazy_labels = self._dom_incomplete_indicators(soup)
+        html_count = len(html_chapters)
+        if isinstance(expected_count, int) and html_count < expected_count:
+            raise SourceError(
+                "Kakuyomu chapter index is incomplete: "
+                f"expected {expected_count} public episodes but enumerated {html_count} from the available page data."
+            )
+        if (range_labels or lazy_labels) and not isinstance(expected_count, int):
+            indicators = ", ".join(range_labels + lazy_labels)
+            raise SourceError(
+                "Kakuyomu chapter index appears to be lazy or UI-paginated "
+                f"({indicators}); complete episode enumeration is unavailable."
+            )
+
+        if chapters and provenance.get("apollo_structurally_valid") and expected_count is None:
+            return chapters, provenance
+
+        fallback_provenance = {
+            "metadata_extraction_mode": "html_dom",
+            "chapter_index_extraction_mode": "html_dom",
+            "apollo_state_present": bool(provenance.get("apollo_state_present")),
+            "apollo_structurally_valid": bool(provenance.get("apollo_structurally_valid")),
+            "expected_episode_count": expected_count,
+            "extracted_episode_count": html_count,
+            "fallbacks_used": ["html_dom"],
+        }
+        return html_chapters, fallback_provenance
 
     def _extract_publication_status_text(self, soup: BeautifulSoup) -> str | None:
         apollo_state = next_data_apollo_state(soup)
@@ -386,7 +562,10 @@ class KakuyomuSource(SourceAdapter):
         novel_id = self.normalize_novel_id(url)
         title = self._extract_work_title(soup) or f"Work {novel_id}"
         author = self._extract_author(soup)
-        synopsis = self._extract_synopsis(soup)
+        synopsis_metadata = self._extract_synopsis_metadata(soup)
+        synopsis = synopsis_metadata.get("synopsis")
+        if not isinstance(synopsis, str) or not synopsis.strip():
+            synopsis = None
         chapters, provenance = self._extract_chapters(soup, url)
         status_text = self._extract_publication_status_text(soup)
         published_at, updated_at = self._extract_dates(soup)
@@ -402,6 +581,7 @@ class KakuyomuSource(SourceAdapter):
             "title": title,
             "author": author,
             "synopsis": synopsis,
+            **synopsis_metadata,
             "chapters": chapters,
             **provenance,
             **publication_status_payload(status_text),

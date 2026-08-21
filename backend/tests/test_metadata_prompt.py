@@ -8,8 +8,8 @@ from novelai.prompts.metadata import (
 
 
 class TestMetadataTranslationPrompt:
-    def test_version_is_v3(self) -> None:
-        assert METADATA_TRANSLATION_PROMPT_VERSION == "metadata-literal-v3"
+    def test_version_is_v4(self) -> None:
+        assert METADATA_TRANSLATION_PROMPT_VERSION == "metadata-literal-v4"
 
     def test_single_prompt_contains_banner_strip_rule(self) -> None:
         prompt = build_metadata_translation_prompt("test title", "title")
@@ -32,6 +32,11 @@ class TestMetadataTranslationPrompt:
     def test_single_prompt_no_banner_rule_for_synopsis(self) -> None:
         prompt = build_metadata_translation_prompt("Some synopsis.", "synopsis")
         assert "banner-style suffix" not in prompt
+
+    def test_single_prompt_labels_section_titles_as_title_metadata(self) -> None:
+        prompt = build_metadata_translation_prompt("第一部　天国篇", "section_title")
+        assert "novel section title" in prompt
+        assert "title-like" in prompt
 
     def test_batch_prompt_contains_banner_strip_rule(self) -> None:
         items = [{"id": "1", "field": "title", "source_text": "test"}]

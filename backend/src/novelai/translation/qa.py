@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import inspect
 import json
 import re
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
 
+from novelai.config.settings import settings
 from novelai.translation.pipeline.context import TranslationChunk
 
 # --- CJK residue thresholds (REQ-3.7)
@@ -615,6 +617,11 @@ async def evaluate_translation_quality_with_llm(
     source_text: str,
     translated_text: str,
     model: str | None = None,
+    *,
+    request_purpose: str = "llm_qa",
+    chapter_id: str | None = None,
+    chunk_id: str | None = None,
+    max_context_chars: int | None = None,
 ) -> float:
     """Grade translation quality using the provider LLM (DEBT-053).
 
@@ -636,16 +643,40 @@ async def evaluate_translation_quality_with_llm(
     if provider_key == "dummy":
         return 1.0
 
+    context_limit = max_context_chars or settings.LLM_QA_MAX_CONTEXT_CHARS
+
+    def _bound(value: str) -> str:
+        if len(value) <= context_limit:
+            return value
+        left = max(1, context_limit // 2)
+        right = max(1, context_limit - left)
+        return f"{value[:left]}\n[…bounded QA context…]\n{value[-right:]}"
+
     prompt = (
         "Evaluate the quality of this Japanese-to-English translation. "
         "Japanese source:\n"
-        f"{source_text}\n\n"
+        f"{_bound(source_text)}\n\n"
         "English translation:\n"
-        f"{translated_text}\n\n"
+        f"{_bound(translated_text)}\n\n"
+        "Do not invent omitted Japanese subjects, objects, pronouns, number, gender, relationships, "
+        "or speaker attribution. Prefer neutral restructuring when the source is ambiguous. "
         'Reply with a JSON object containing a quality score: {"score": <0.0 to 1.0>}'
     )
     try:
-        result = await provider.translate(prompt, model=model)
+        optional_kwargs = {
+            "model": model,
+            "max_tokens": 128,
+            "request_purpose": request_purpose,
+            "chapter_id": chapter_id,
+            "chunk_id": chunk_id,
+        }
+        try:
+            signature = inspect.signature(provider.translate)
+            if not any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values()):
+                optional_kwargs = {key: value for key, value in optional_kwargs.items() if key in signature.parameters}
+        except TypeError, ValueError:
+            pass
+        result = await provider.translate(prompt, **optional_kwargs)
     except Exception:  # grader failure must never fail a translation job
         return 1.0
     res_text = str(result.get("text", "") if isinstance(result, dict) else "")
@@ -660,7 +691,7 @@ async def evaluate_translation_quality_with_llm(
                 raw_score = float(data.get("score", 1.0))
                 if 0.0 <= raw_score <= 1.0:
                     return raw_score
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             pass
 
     # Final fallback: regex for the score field in the raw text.

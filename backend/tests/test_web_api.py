@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from collections import defaultdict
 from collections.abc import Sequence
@@ -15,6 +16,8 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, SecretStr
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -37,7 +40,7 @@ from novelai.api.routers.dependencies import (
     get_translation_cache,
     get_usage,
 )
-from novelai.config.settings import settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.core.errors import (
     ConfigError,
     NovelAIError,
@@ -59,7 +62,8 @@ from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from novelai.storage.service import StorageService
 
-_TMP = Path(__file__).resolve().parent / ".tmp" / "web_api"
+_XDIST_WORKER_ID = os.environ.get("PYTEST_XDIST_WORKER", "master")
+_TMP = Path(__file__).resolve().parent / ".tmp" / "web_api" / _XDIST_WORKER_ID
 
 
 # ---------------------------------------------------------------------------
@@ -454,6 +458,53 @@ def test_unhandled_generic_exception_hides_message_in_production(
     assert payload["message"] == "Internal Server Error"
     assert payload["detail"] == "Internal Server Error"
     assert "error" not in payload["details"]
+
+
+def test_database_capacity_error_is_retryable_and_redacted(
+    _session_auth_defaults: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bootstrap()
+    app = create_app()
+
+    @app.get("/debug/translate/db-capacity")
+    async def debug_database_capacity() -> None:
+        raise SQLAlchemyTimeoutError(
+            "QueuePool limit of size 5 overflow 5 reached, connection timed out, timeout 30.00"
+        )
+
+    monkeypatch.setattr(settings, "DEBUG_ERRORS", False)
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/debug/translate/db-capacity")
+    payload = response.json()
+
+    assert response.status_code == 503
+    assert payload["code"] == "DATABASE_CAPACITY_EXHAUSTED"
+    assert payload["category"] == "database"
+    assert payload["message"] == "Database connection capacity is temporarily exhausted."
+    assert payload["details"] == {"operation": "translation", "retryable": True}
+    assert "QueuePool" not in response.text
+
+
+def test_non_capacity_database_error_stays_internal(
+    _session_auth_defaults: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bootstrap()
+    app = create_app()
+
+    @app.get("/debug/db-error")
+    async def debug_database_error() -> None:
+        raise OperationalError("syntax error at or near SELECT", None, Exception("syntax error"))
+
+    monkeypatch.setattr(settings, "DEBUG_ERRORS", False)
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/debug/db-error")
+    payload = response.json()
+
+    assert response.status_code == 500
+    assert payload["code"] == "INTERNAL_ERROR"
+    assert payload["message"] == "Internal Server Error"
 
 
 def test_unhandled_value_error_keeps_validation_message_in_production(
@@ -2185,7 +2236,7 @@ class TestAdminNovelPublish:
         novel = isolated_db_session.query(Novel).filter_by(slug="unpublish-n1").one()
         assert novel.is_published is False
 
-    def test_published_adult_novel_stays_hidden_by_default(
+    def test_published_adult_novel_uses_normal_public_lifecycle(
         self,
         _session_auth_defaults: None,
         isolated_db_session: Session,
@@ -2215,11 +2266,15 @@ class TestAdminNovelPublish:
         publish_resp = c.post("/api/admin/novels/adult-publish/publish", headers=_csrf_headers(c))
         default_catalog = c.get("/api/public/catalog").json()
         adult_catalog = c.get("/api/public/catalog?include_adult=true").json()
+        detail = c.get("/api/public/novels/adult-publish")
+        reader = c.get("/api/public/novels/adult-publish/chapters/1")
 
         assert publish_resp.status_code == 200
-        assert publish_resp.json()["visibility_warnings"] == ["adult_hidden_by_default"]
-        assert default_catalog["novels"] == []
+        assert publish_resp.json()["visibility_warnings"] == []
+        assert [novel["novel_id"] for novel in default_catalog["novels"]] == ["adult-publish"]
         assert [novel["novel_id"] for novel in adult_catalog["novels"]] == ["adult-publish"]
+        assert detail.status_code == 200
+        assert reader.status_code == 200
 
     def test_public_route_does_not_expose_publish_operation(
         self,
@@ -2483,7 +2538,7 @@ class TestAdmin:
         assert status_resp.status_code == 200
         assert status_resp.json()["configured"] is False
         assert status_resp.json()["provider_key"] == "gemini"
-        assert status_resp.json()["provider_model"] == "gemini-3.1-flash-lite"
+        assert status_resp.json()["provider_model"] == GEMINI_DEFAULT_MODEL
         canonical_status_resp = c.get("/api/admin/provider-api-key/gemini")
         assert canonical_status_resp.status_code == 200
         assert canonical_status_resp.json()["provider_key"] == "gemini"
@@ -2502,11 +2557,11 @@ class TestAdmin:
         assert set_resp.status_code == 200
         assert set_resp.json()["configured"] is True
         assert set_resp.json()["preferred_provider_key"] == "gemini"
-        assert set_resp.json()["provider_model"] == "gemini-3.1-flash-lite"
+        assert set_resp.json()["provider_model"] == GEMINI_DEFAULT_MODEL
         assert set_resp.json()["validation_status"] == "working"
         assert preferences.get_api_key("gemini") == "AIza-test-key"
         assert preferences.get_preferred_provider() == "gemini"
-        assert preferences.get_preferred_model() == "gemini-3.1-flash-lite"
+        assert preferences.get_preferred_model() == GEMINI_DEFAULT_MODEL
         assert preferences.get_llm_step_config("body_translation")["provider_key"] == "gemini"
         canonical_credential_resp = c.get("/api/admin/providers/gemini")
         assert canonical_credential_resp.status_code == 200
@@ -2590,7 +2645,7 @@ class TestAdmin:
                 "provider_key": "gemini",
                 "api_key": "AIza-admin-safe-key",
                 "label": "Primary Gemini",
-                "provider_model": "gemini-3.1-flash-lite",
+                "provider_model": GEMINI_DEFAULT_MODEL,
                 "is_active": True,
             },
             headers=_csrf_headers(owner),
@@ -2629,7 +2684,7 @@ class TestAdmin:
         models_resp = c.get("/api/admin/providers/models")
         assert models_resp.status_code == 200
         models = {(item["provider"], item["model"]) for item in models_resp.json()["models"]}
-        assert ("gemini", "gemma-4-31b-it") in models
+        assert ("gemini", GEMINI_DEFAULT_MODEL) in models
         assert ("gemini", "google/gemma-4-31b-it") not in models
 
         rejected = c.put(
@@ -2687,7 +2742,7 @@ class TestAdmin:
             json={
                 "provider_key": "gemini",
                 "api_key": "AIza-policy-key",
-                "provider_model": "gemma-4-31b-it",
+                "provider_model": GEMINI_DEFAULT_MODEL,
                 "is_active": True,
             },
             headers=headers,
@@ -2698,7 +2753,7 @@ class TestAdmin:
             "/api/admin/providers/fallback-policy",
             json={
                 "default_provider_key": "gemini",
-                "default_provider_model": "gemma-4-31b-it",
+                "default_provider_model": GEMINI_DEFAULT_MODEL,
                 "default_credential_id": "gemini",
                 "allow_cross_provider_fallback": False,
                 "fallback_on_qa_failure": False,
@@ -2706,7 +2761,7 @@ class TestAdmin:
                     {
                         "priority_order": 0,
                         "provider_key": "gemini",
-                        "provider_model": "gemma-4-31b-it",
+                        "provider_model": GEMINI_DEFAULT_MODEL,
                         "credential_id": "gemini",
                         "enabled": True,
                     },
@@ -2717,12 +2772,12 @@ class TestAdmin:
         assert policy_resp.status_code == 200
         policy = policy_resp.json()
         assert policy["default_provider_key"] == "gemini"
-        assert policy["default_provider_model"] == "gemma-4-31b-it"
+        assert policy["default_provider_model"] == GEMINI_DEFAULT_MODEL
         assert policy["allow_cross_provider_fallback"] is False
         assert policy["fallback_on_qa_failure"] is False
         assert "qa_failure" in policy["disallowed_failure_reasons"]
         assert [(item["provider_key"], item["provider_model"]) for item in policy["candidates"]] == [
-            ("gemini", "gemma-4-31b-it"),
+            ("gemini", GEMINI_DEFAULT_MODEL),
         ]
 
     def test_provider_fallback_policy_rejects_legacy_provider_fields(
@@ -3488,7 +3543,8 @@ class TestRateLimit:
             headers = _csrf_headers(c)
             for _ in range(5):
                 resp = c.post("/api/admin/novels/test-n1/scrape", json=body, headers=headers)
-                assert resp.status_code == 200
+                assert resp.status_code == 202
+                assert resp.json()["status"] == "pending"
             # 6th should be rate-limited
             resp = c.post("/api/admin/novels/test-n1/scrape", json=body, headers=headers)
             assert resp.status_code == 429

@@ -2,7 +2,24 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Clock, Bell, Loader2, Library, History, Trophy, FileText, Heart, Info, LifeBuoy, Scale, Settings, LogOut, HelpCircle, Newspaper } from "lucide-react";
+import {
+  BookOpen,
+  Clock,
+  Bell,
+  Loader2,
+  Library,
+  History,
+  Trophy,
+  FileText,
+  Heart,
+  Info,
+  LifeBuoy,
+  Scale,
+  Settings,
+  LogOut,
+  HelpCircle,
+  Newspaper,
+} from "lucide-react";
 
 import { PublicThemeToggle } from "@/components/public/public-theme-toggle";
 import { useLogout, usePublicAuth } from "@/hooks/public/use-auth";
@@ -21,7 +38,7 @@ const mobileLibraryLinks = [
 const mobileMoreLinks = [
   { href: "/ranking", label: "Ranking", icon: Trophy },
   { href: "/account/request-novels", label: "Request Novels", icon: FileText },
-  { href: "/contribute", label: "Contribute", icon: Heart },
+  { href: "/account/contributions", label: "Contributions", icon: Heart },
   { href: "/faq", label: "FAQ", icon: HelpCircle },
   { href: "/news", label: "News", icon: Newspaper },
   { href: "/about", label: "About", icon: Info },
@@ -34,7 +51,9 @@ export default function AccountPage() {
   const { isAuthenticated, isPending } = usePublicAuth();
   const logout = useLogout();
   const { data: libraryData, isPending: libraryPending } = useLibrary();
-  const { data: historyData, isPending: historyPending } = useHistory({ limit: 1 });
+  const { data: historyData, isPending: historyPending } = useHistory({
+    limit: 1,
+  });
   const { data: unreadCount, isPending: unreadPending } = useUnreadCount();
 
   const isLoading = libraryPending || historyPending || unreadPending;
@@ -42,7 +61,10 @@ export default function AccountPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[40vh]">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden="true" />
+        <Loader2
+          className="h-5 w-5 animate-spin text-muted-foreground"
+          aria-hidden="true"
+        />
         <span className="sr-only">Loading account summary</span>
       </div>
     );
@@ -52,7 +74,8 @@ export default function AccountPage() {
     return null;
   }
 
-  const readingCount = libraryData?.filter((n) => n.status === "reading").length ?? 0;
+  const readingCount =
+    libraryData?.filter((n) => n.status === "reading").length ?? 0;
   const totalLibraryCount = libraryData?.length ?? 0;
   const historyItems = historyData?.items ?? [];
   const historyCount = historyItems.length;
@@ -62,22 +85,41 @@ export default function AccountPage() {
   return (
     <div>
       <header className="mb-8">
-        <h1 className="font-literary text-3xl font-semibold tracking-normal">Account</h1>
+        <h1 className="font-literary text-3xl font-semibold tracking-normal">
+          Account
+        </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Library shortcuts, settings, and more.
         </p>
       </header>
 
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        <section aria-labelledby="reading-heading" className="rounded-lg border border-border bg-card p-6">
+        <section
+          aria-labelledby="reading-heading"
+          className="rounded-lg border border-border bg-card p-6"
+        >
           <div className="flex items-center gap-2">
-            <BookOpen className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-            <h2 id="reading-heading" className="font-metadata text-sm font-medium uppercase tracking-wide text-muted-foreground">
+            <BookOpen
+              className="h-5 w-5 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <h2
+              id="reading-heading"
+              className="font-metadata text-sm font-medium uppercase tracking-wide text-muted-foreground"
+            >
               Currently Reading
             </h2>
           </div>
-          <p className="mt-4 text-3xl font-semibold" aria-live="polite" data-testid="reading-count">{readingCount}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{totalLibraryCount} total in library</p>
+          <p
+            className="mt-4 text-3xl font-semibold"
+            aria-live="polite"
+            data-testid="reading-count"
+          >
+            {readingCount}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {totalLibraryCount} total in library
+          </p>
           <Link
             href="/account/library"
             className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
@@ -87,19 +129,38 @@ export default function AccountPage() {
           </Link>
         </section>
 
-        <section aria-labelledby="history-heading" className="rounded-lg border border-border bg-card p-6">
+        <section
+          aria-labelledby="history-heading"
+          className="rounded-lg border border-border bg-card p-6"
+        >
           <div className="flex items-center gap-2">
-            <Clock className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-            <h2 id="history-heading" className="font-metadata text-sm font-medium uppercase tracking-wide text-muted-foreground">
+            <Clock
+              className="h-5 w-5 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <h2
+              id="history-heading"
+              className="font-metadata text-sm font-medium uppercase tracking-wide text-muted-foreground"
+            >
               Reading History
             </h2>
           </div>
-          <p className="mt-4 text-3xl font-semibold" aria-live="polite" data-testid="history-count">{historyCount}</p>
+          <p
+            className="mt-4 text-3xl font-semibold"
+            aria-live="polite"
+            data-testid="history-count"
+          >
+            {historyCount}
+          </p>
           {recentActivity ? (
             <div className="mt-4 space-y-1">
-              <p className="text-sm font-medium text-muted-foreground">Most Recent Activity</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                Most Recent Activity
+              </p>
               <p className="text-sm font-medium">{recentActivity.slug}</p>
-              <p className="text-sm text-muted-foreground">Ch. {recentActivity.chapter_number}</p>
+              <p className="text-sm text-muted-foreground">
+                Ch. {recentActivity.chapter_number}
+              </p>
             </div>
           ) : (
             <p className="mt-4 text-sm text-muted-foreground">No history yet</p>
@@ -113,14 +174,25 @@ export default function AccountPage() {
           </Link>
         </section>
 
-        <section aria-labelledby="notifications-heading" className="rounded-lg border border-border bg-card p-6">
+        <section
+          aria-labelledby="notifications-heading"
+          className="rounded-lg border border-border bg-card p-6"
+        >
           <div className="flex items-center gap-2">
-            <Bell className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-            <h2 id="notifications-heading" className="font-metadata text-sm font-medium uppercase tracking-wide text-muted-foreground">
+            <Bell
+              className="h-5 w-5 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <h2
+              id="notifications-heading"
+              className="font-metadata text-sm font-medium uppercase tracking-wide text-muted-foreground"
+            >
               Unread Notifications
             </h2>
           </div>
-          <p className="mt-4 text-3xl font-semibold" aria-live="polite">{unreadNotifications}</p>
+          <p className="mt-4 text-3xl font-semibold" aria-live="polite">
+            {unreadNotifications}
+          </p>
           {unreadNotifications > 0 ? (
             <p className="mt-1 text-sm text-muted-foreground">Tap to view</p>
           ) : (
@@ -136,9 +208,14 @@ export default function AccountPage() {
         </section>
       </div>
 
-      <nav className="lg:hidden border-t border-border bg-card mt-8" aria-label="Mobile account navigation">
+      <nav
+        className="lg:hidden border-t border-border bg-card mt-8"
+        aria-label="Mobile account navigation"
+      >
         <div className="px-4 py-3">
-          <h2 className="font-metadata text-xs font-medium uppercase tracking-wide text-muted-foreground">Your account</h2>
+          <h2 className="font-metadata text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Your account
+          </h2>
           <ul className="mt-2 grid gap-1" role="list">
             {mobileLibraryLinks.map((link) => {
               const Icon = link.icon;
@@ -163,7 +240,9 @@ export default function AccountPage() {
           </ul>
         </div>
         <div className="border-t border-border px-4 py-3">
-          <h2 className="font-metadata text-xs font-medium uppercase tracking-wide text-muted-foreground">More</h2>
+          <h2 className="font-metadata text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            More
+          </h2>
           <ul className="mt-2 grid gap-1" role="list">
             {mobileMoreLinks.map((link) => {
               const Icon = link.icon;

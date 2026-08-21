@@ -7,8 +7,10 @@ to the imports and ``__all__`` below.
 
 from __future__ import annotations
 
+from novelai.db.models.activity import ActivityRecord
 from novelai.db.models.analytics_event import AnalyticsEvent
 from novelai.db.models.chapter import Chapter
+from novelai.db.models.contributor import ContributorCredential, ContributorUsageLedger
 from novelai.db.models.genre import Genre, novel_genres
 from novelai.db.models.glossary import (
     NovelGlossaryAlias,
@@ -38,9 +40,12 @@ from novelai.db.models.users import (
 
 __all__ = [
     "REGISTERED_MODELS",
+    "ActivityRecord",
     "AnalyticsEvent",
     "AuditLog",
     "Chapter",
+    "ContributorCredential",
+    "ContributorUsageLedger",
     "CrawlJob",
     "EmailVerificationToken",
     "Genre",
@@ -75,9 +80,12 @@ __all__ = [
 
 REGISTERED_MODELS = (
     AnalyticsEvent,
+    ActivityRecord,
     AuditLog,
     Chapter,
     CrawlJob,
+    ContributorCredential,
+    ContributorUsageLedger,
     EmailVerificationToken,
     Genre,
     LibraryItem,

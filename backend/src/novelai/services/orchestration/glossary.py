@@ -1,17 +1,22 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from sqlalchemy import select
 
+from novelai.config.settings import settings
+from novelai.core.errors import ProviderError, ProviderErrorCode
 from novelai.core.platform import ChapterVersionKind
 from novelai.db.engine import session_scope as _session_scope
 from novelai.db.models.novel import Novel
 from novelai.glossary import extract_candidate_glossary_terms
+from novelai.providers.model_fallbacks import model_candidates
 from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 from novelai.services.glossary_apply_preview import (
     GlossaryApplyPreviewRequest,
@@ -25,6 +30,399 @@ from novelai.services.orchestration.common import (
 )
 
 logger = logging.getLogger(__name__)
+
+INCREMENTAL_GLOSSARY_DISCOVERY_PROMPT_VERSION = "incremental-glossary-v1"
+
+INCREMENTAL_GLOSSARY_DISCOVERY_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "chapter_id": {"type": "string"},
+                    "source": {"type": "string"},
+                    "target": {"type": "string"},
+                    "confidence": {"type": "number"},
+                },
+                "required": ["chapter_id", "source", "target", "confidence"],
+            },
+        }
+    },
+    "required": ["items"],
+}
+
+GLOSSARY_TRANSLATION_BATCH_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "id": {"type": "string"},
+                    "translation": {"type": "string"},
+                },
+                "required": ["id", "translation"],
+            },
+        }
+    },
+    "required": ["items"],
+}
+
+
+def _incremental_glossary_prompt(
+    chapters: list[dict[str, str]],
+    *,
+    source_language: str,
+    max_terms: int,
+) -> str:
+    payload = [{"chapter_id": item["chapter_id"], "text": item["text"]} for item in chapters]
+    return (
+        f"Discover at most {max_terms} recurring or story-critical glossary terms from these "
+        f"{source_language} novel excerpts before translation. Return one JSON object only.\n"
+        "Rules:\n"
+        "- Each item must use a chapter_id from the input exactly; do not invent ids.\n"
+        "- source must be an exact substring of that chapter excerpt.\n"
+        "- target is a conservative English translation or established romanization; do not invent facts.\n"
+        "- Never resolve omitted subjects, objects, pronouns, number, gender, relationships, or speakers as glossary terms.\n"
+        "- Confidence is evidence-based, not certainty: use a lower value for ambiguity.\n"
+        'Expected shape: {"items":[{"chapter_id":"...","source":"...","target":"...","confidence":0.0}]}\n'
+        "<chapters>\n"
+        f"{json.dumps({'chapters': payload}, ensure_ascii=False, sort_keys=True)}\n"
+        "</chapters>"
+    )
+
+
+def parse_incremental_glossary_response(
+    raw_text: str,
+    *,
+    source_text_by_chapter: Mapping[str, str],
+    max_terms: int,
+    strict: bool = False,
+) -> list[dict[str, Any]]:
+    """Parse and structurally validate a batched discovery response."""
+    text = raw_text.strip().removeprefix("```json").removesuffix("```").strip()
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        if strict:
+            raise ValueError("Incremental glossary response was not valid JSON.") from exc
+        return []
+    raw_items = payload.get("items") if isinstance(payload, dict) else payload
+    if not isinstance(raw_items, list):
+        if strict:
+            raise ValueError("Incremental glossary response must contain an items array.")
+        return []
+
+    threshold = settings.TRANSLATION_LOW_CONFIDENCE_ACTIVATION_THRESHOLD
+    results: list[dict[str, Any]] = []
+    seen_sources: set[str] = set()
+    allowed_ids = set(source_text_by_chapter)
+    for raw_item in raw_items:
+        if not isinstance(raw_item, dict):
+            continue
+        chapter_id = str(raw_item.get("chapter_id") or "").strip()
+        source = str(raw_item.get("source") or "").strip()
+        target = str(raw_item.get("target") or "").strip()
+        confidence_raw = raw_item.get("confidence")
+        if chapter_id not in allowed_ids or not source or not target:
+            continue
+        if not isinstance(confidence_raw, (int, float)) or isinstance(confidence_raw, bool):
+            continue
+        confidence = max(0.0, min(1.0, float(confidence_raw)))
+        source_text = source_text_by_chapter[chapter_id]
+        if source not in source_text or len(source) > 255 or len(target) > 255:
+            continue
+        if "\n" in source or "\n" in target or source.casefold() in seen_sources:
+            continue
+        # A model score is never sufficient by itself. Require source
+        # evidence, a valid target, and a non-identity translation for CJK
+        # terms before allowing automatic activation.
+        cjk_source = any("\u3040" <= char <= "\u9fff" for char in source)
+        structurally_safe = confidence >= threshold and (not cjk_source or target != source)
+        seen_sources.add(source.casefold())
+        results.append(
+            {
+                "chapter_id": chapter_id,
+                "source": source,
+                "target": target,
+                "confidence": confidence,
+                "safe_to_activate": structurally_safe,
+                "occurrence_count": source_text.count(source),
+            }
+        )
+        if len(results) >= max_terms:
+            break
+    return results
+
+
+async def discover_incremental_glossary_terms(
+    self: Any,
+    novel_id: str,
+    selected: list[Any],
+    *,
+    provider_key: str | None,
+    provider_model: str | None,
+    source_language: str,
+    existing_entries: list[dict[str, Any]] | None = None,
+    max_terms: int = 50,
+) -> dict[str, Any]:
+    """Discover new terms for the selected chapters before body translation.
+
+    Approved entries are immutable truth. New or ambiguous terms remain
+    pending and are excluded from body prompts; only structurally validated,
+    high-confidence proposals become active immediately.
+    """
+    source_text_by_chapter: dict[str, str] = {}
+    for record in selected:
+        raw_chapter_id = getattr(record, "chapter_id", None)
+        if raw_chapter_id is None and isinstance(record, dict):
+            raw_chapter_id = record.get("chapter_id")
+        chapter_id = str(raw_chapter_id or "")
+        chapter = self.storage.load_chapter(novel_id, chapter_id) or {}
+        text = chapter.get("text") if isinstance(chapter, dict) else None
+        if isinstance(text, str) and text.strip():
+            source_text_by_chapter[chapter_id] = text.strip()
+
+    current_entries = existing_entries if existing_entries is not None else self.storage.load_glossary(novel_id)
+    entries_by_source: dict[str, dict[str, Any]] = {
+        str(entry.get("source")): dict(entry)
+        for entry in current_entries
+        if isinstance(entry, dict) and str(entry.get("source") or "").strip()
+    }
+    heuristic_candidates = extract_candidate_glossary_terms(
+        list(source_text_by_chapter.values()), max_terms=max_terms, min_occurrences=2
+    )
+    heuristic_by_source = {candidate.source: candidate for candidate in heuristic_candidates}
+    pending_sources: set[str] = set()
+    for candidate in heuristic_candidates:
+        if candidate.source in entries_by_source:
+            continue
+        entries_by_source[candidate.source] = {
+            "source": candidate.source,
+            "target": candidate.source,
+            "locked": True,
+            "status": "pending",
+            "confidence": 0.35,
+            "notes": "Recurring term discovered during incremental preflight; manual review required.",
+            "context_history": list(candidate.context_history),
+            "context_summary": candidate.context_summary,
+            "occurrence_count": candidate.occurrence_count,
+            "last_seen_index": candidate.last_seen_index,
+        }
+        pending_sources.add(candidate.source)
+
+    provider_calls = 0
+    discovered: list[dict[str, Any]] = []
+    deferred = False
+    metadata = self.storage.load_metadata(novel_id) or {}
+    raw_discovery_state = metadata.get("incremental_glossary_discovery") if isinstance(metadata, dict) else None
+    raw_state = raw_discovery_state if isinstance(raw_discovery_state, dict) else {}
+    discovery_state: dict[str, dict[str, str]] = {
+        str(chapter_id): dict(state)
+        for chapter_id, state in raw_state.items()
+        if isinstance(state, dict) and isinstance(chapter_id, str)
+    }
+    unchanged_chapters: list[str] = []
+    changed_chapters = list(source_text_by_chapter)
+    resolved_provider: str | None = None
+    resolved_model: str | None = provider_model
+    provider: Any | None = None
+    if source_text_by_chapter and provider_key and provider_key.strip().lower() == "gemini":
+        resolved_provider, resolved_model_value = self._resolve_provider_and_model(provider_key, provider_model)
+        resolved_model = str(resolved_model_value)
+        changed_chapters = []
+        for chapter_id, text in source_text_by_chapter.items():
+            source_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            state = discovery_state.get(chapter_id, {})
+            if (
+                state.get("source_hash") == source_hash
+                and state.get("prompt_version") == INCREMENTAL_GLOSSARY_DISCOVERY_PROMPT_VERSION
+                and state.get("provider_model") == resolved_model
+            ):
+                unchanged_chapters.append(chapter_id)
+            else:
+                changed_chapters.append(chapter_id)
+
+    if changed_chapters and resolved_provider is not None and resolved_provider != "dummy":
+        provider = self._provider_factory(resolved_provider)
+        if str(getattr(provider, "key", resolved_provider)).strip().lower() != "gemini":
+            # Structured incremental discovery is enabled for the production
+            # Gemini contract. Test/dummy providers may intentionally return
+            # ordinary translation text and must not be treated as discovery
+            # responses.
+            changed_chapters = []
+
+    if changed_chapters and resolved_provider is not None and resolved_provider != "dummy" and provider is not None:
+        chapter_items = [
+            {"chapter_id": chapter_id, "text": source_text_by_chapter[chapter_id][:4000]}
+            for chapter_id in changed_chapters
+        ]
+        for start in range(0, len(chapter_items), 3):
+            batch = chapter_items[start : start + 3]
+            source_batch = {item["chapter_id"]: source_text_by_chapter[item["chapter_id"]] for item in batch}
+            max_attempts = max(1, int(settings.TRANSLATION_MAX_ATTEMPTS_PER_CHUNK or 1))
+            for attempt in range(max_attempts):
+                try:
+                    result = await provider.translate(
+                        prompt=_incremental_glossary_prompt(
+                            batch,
+                            source_language=source_language,
+                            max_terms=max_terms,
+                        ),
+                        model=resolved_model,
+                        max_tokens=2048,
+                        json_schema=INCREMENTAL_GLOSSARY_DISCOVERY_JSON_SCHEMA,
+                        request_purpose="glossary_discovery",
+                        retry_attempt=attempt,
+                        chapter_id=batch[0]["chapter_id"],
+                    )
+                    provider_calls += 1
+                    self._record_usage(provider.key, resolved_model, result.get("metadata"))
+                    discovered.extend(
+                        parse_incremental_glossary_response(
+                            str(result.get("text") or ""),
+                            source_text_by_chapter=source_batch,
+                            max_terms=max_terms,
+                            strict=True,
+                        )
+                    )
+                    for item in batch:
+                        discovery_state[item["chapter_id"]] = {
+                            "source_hash": hashlib.sha256(
+                                source_text_by_chapter[item["chapter_id"]].encode("utf-8")
+                            ).hexdigest(),
+                            "prompt_version": INCREMENTAL_GLOSSARY_DISCOVERY_PROMPT_VERSION,
+                            "provider_model": resolved_model or "",
+                        }
+                    break
+                except ProviderError as exc:
+                    retryable = exc.provider_error_code in {
+                        ProviderErrorCode.RATE_LIMITED,
+                        ProviderErrorCode.QUOTA_EXHAUSTED,
+                        ProviderErrorCode.TEMPORARY,
+                        ProviderErrorCode.TIMEOUT,
+                    }
+                    if not retryable:
+                        raise
+                    if exc.retry_after_seconds is not None or attempt + 1 >= max_attempts:
+                        deferred = True
+                        break
+                except ValueError, RuntimeError:
+                    if attempt + 1 >= max_attempts:
+                        raise
+            if deferred:
+                break
+
+    auto_activated: list[str] = []
+    for candidate in discovered:
+        source = str(candidate["source"])
+        existing = entries_by_source.get(source)
+        if existing is not None and str(existing.get("status") or "").lower() in {"approved", "translated"}:
+            # Approved truth is never overwritten by a new model suggestion.
+            continue
+        safe = bool(candidate.get("safe_to_activate"))
+        if source in heuristic_by_source and int(candidate.get("occurrence_count") or 0) < 2 and safe:
+            safe = False
+        entry = existing or {"source": source, "locked": True}
+        entry.update(
+            {
+                "target": str(candidate["target"]),
+                "confidence": float(candidate["confidence"]),
+                "status": "approved" if safe else "pending",
+                "notes": "Auto-activated after structural and confidence checks."
+                if safe
+                else "Proposed during incremental preflight; manual review required.",
+                "occurrence_count": max(
+                    int(entry.get("occurrence_count") or 0), int(candidate.get("occurrence_count") or 0)
+                ),
+            }
+        )
+        entries_by_source[source] = entry
+        if safe:
+            auto_activated.append(source)
+            pending_sources.discard(source)
+        else:
+            pending_sources.add(source)
+
+    ordered_entries = sorted(entries_by_source.values(), key=lambda item: str(item.get("source") or "").casefold())
+    if ordered_entries != current_entries:
+        self.storage.save_glossary(novel_id, ordered_entries)
+
+    if discovery_state != raw_state and isinstance(metadata, dict):
+        metadata["incremental_glossary_discovery"] = discovery_state
+        self.storage.save_metadata(novel_id, metadata)
+
+    # Keep the canonical DB glossary aligned when the platform row exists;
+    # failure here must not discard the file-backed audit record.
+    with contextlib.suppress(Exception), _session_scope() as session:
+        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        if novel is not None:
+            from novelai.services.glossary_repository import GlossaryRepository
+
+            repository = GlossaryRepository(session)
+            existing_db = {
+                entry.canonical_term: entry for entry in repository.list_glossary_entries_for_novel(int(novel.id))
+            }
+            for entry in ordered_entries:
+                source = str(entry.get("source") or "").strip()
+                if not source:
+                    continue
+                status = str(entry.get("status") or "pending").lower()
+                db_status = "approved" if status in {"approved", "translated"} else "candidate"
+                db_entry = existing_db.get(source)
+                if db_entry is not None and db_entry.status == "approved":
+                    continue
+                if db_entry is None:
+                    repository.create_glossary_entry(
+                        novel_id=int(novel.id),
+                        canonical_term=source,
+                        term_type="incremental_discovery",
+                        approved_translation=str(entry.get("target") or "") or None,
+                        status=db_status,
+                        confidence=entry.get("confidence")
+                        if isinstance(entry.get("confidence"), (int, float))
+                        else None,
+                        admin_notes=str(entry.get("notes") or "") or None,
+                        decision_source="incremental_preflight",
+                        rationale="Discovered from the selected chapter before body translation.",
+                    )
+                else:
+                    repository.update_glossary_entry(
+                        db_entry.id,
+                        novel_id=int(novel.id),
+                        approved_translation=str(entry.get("target") or "") or None,
+                        confidence=entry.get("confidence")
+                        if isinstance(entry.get("confidence"), (int, float))
+                        else None,
+                        admin_notes=str(entry.get("notes") or "") or None,
+                    )
+                    if db_entry.status != db_status:
+                        db_entry.status = db_status
+                        session.flush()
+
+    return {
+        "status": "deferred" if deferred else "completed",
+        "selected_chapters": len(source_text_by_chapter),
+        "provider_calls": provider_calls,
+        "discovered": len(discovered),
+        "auto_activated": sorted(auto_activated),
+        "pending": sorted(pending_sources),
+        "pending_count": len(pending_sources),
+        "confidence_threshold": settings.TRANSLATION_LOW_CONFIDENCE_ACTIVATION_THRESHOLD,
+        "batch_size": 3,
+        "provider_model": resolved_model or provider_model,
+        "discovery_state": discovery_state,
+        "unchanged_chapters": sorted(unchanged_chapters),
+        "changed_chapters": sorted(changed_chapters),
+        "discovery_prompt_version": INCREMENTAL_GLOSSARY_DISCOVERY_PROMPT_VERSION,
+    }
 
 
 async def extract_glossary_terms(
@@ -42,10 +440,16 @@ async def extract_glossary_terms(
     extraction_config = config if isinstance(config, dict) else {}
     effective_chapters = str(extraction_config.get("chapters") or chapters)
     max_terms_value = extraction_config.get("max_terms", max_terms)
-    effective_max_terms = int(max_terms_value) if isinstance(max_terms_value, int) or (isinstance(max_terms_value, str) and max_terms_value.isdigit()) else max_terms
+    effective_max_terms = (
+        int(max_terms_value)
+        if isinstance(max_terms_value, int) or (isinstance(max_terms_value, str) and max_terms_value.isdigit())
+        else max_terms
+    )
     effective_max_terms = max(1, effective_max_terms)
     include_existing = bool(extraction_config.get("include_existing", True))
-    extraction_mode = str(extraction_config.get("mode") or self._settings.get_glossary_extraction_mode()).strip().lower()
+    extraction_mode = (
+        str(extraction_config.get("mode") or self._settings.get_glossary_extraction_mode()).strip().lower()
+    )
     if extraction_mode not in {"heuristic", "llm", "hybrid"}:
         extraction_mode = "heuristic"
 
@@ -63,7 +467,8 @@ async def extract_glossary_terms(
         if isinstance(prompt_template_override, str) and prompt_template_override.strip()
         else (
             extraction_step_config.get("prompt_template")
-            if isinstance(extraction_step_config.get("prompt_template"), str) and str(extraction_step_config.get("prompt_template")).strip()
+            if isinstance(extraction_step_config.get("prompt_template"), str)
+            and str(extraction_step_config.get("prompt_template")).strip()
             else self._settings.get_glossary_extraction_prompt_template()
         )
     )
@@ -150,7 +555,9 @@ async def extract_glossary_terms(
         existing[source] = dict(candidate)
         added += 1
 
-    ordered_entries = sorted(existing.values(), key=lambda item: (str(item.get("source")).casefold(), str(item.get("source"))))
+    ordered_entries = sorted(
+        existing.values(), key=lambda item: (str(item.get("source")).casefold(), str(item.get("source")))
+    )
     self.storage.save_glossary(novel_id, ordered_entries)
     return self._phase_payload(
         phase="phase1_glossary_extraction",
@@ -221,6 +628,7 @@ async def _extract_glossary_terms_with_llm(
             prompt=prompt,
             model=resolved_model,
             json_schema=GLOSSARY_EXTRACTION_JSON_SCHEMA,
+            request_purpose="glossary_discovery",
             **llm_kwargs,
         )
         self._record_usage(provider.key, resolved_model, result.get("metadata"))
@@ -289,6 +697,95 @@ def _parse_llm_glossary_terms(raw_text: str, *, max_terms: int) -> list[str]:
     return deduped
 
 
+def _glossary_translation_cache_text(source: str) -> str:
+    return f"metadata:glossary_term:{settings.TRANSLATION_TARGET_LANGUAGE}:{source.strip()}"
+
+
+def _glossary_translation_prompt(items: list[dict[str, str]]) -> str:
+    payload = [{"id": item["id"], "source": item["source"], "context": item.get("context", "")[:400]} for item in items]
+    return (
+        "Translate each Japanese glossary source term into concise natural English or an established "
+        "romanization. Return one JSON object only with exactly one item per input id. "
+        "Do not add explanations, markdown, omitted facts, gender, relationships, or speaker information. "
+        "Approved glossary truth is authoritative; do not overwrite it.\n"
+        f"Input: {json.dumps({'items': payload}, ensure_ascii=False, sort_keys=True)}"
+    )
+
+
+def _parse_glossary_translation_batch(raw_text: str, expected_ids: set[str]) -> dict[str, str]:
+    text = raw_text.strip().removeprefix("```json").removesuffix("```").strip()
+    payload = json.loads(text)
+    raw_items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(raw_items, list):
+        raise ValueError("Glossary batch response must contain an items array.")
+    translations: dict[str, str] = {}
+    for raw_item in raw_items:
+        if not isinstance(raw_item, dict):
+            raise ValueError("Glossary batch response contains a non-object item.")
+        item_id = str(raw_item.get("id") or "").strip()
+        target = str(raw_item.get("translation") or "").strip()
+        if item_id not in expected_ids:
+            raise ValueError(f"Glossary batch response returned unknown item id {item_id!r}.")
+        if item_id in translations:
+            raise ValueError(f"Glossary batch response duplicated item id {item_id!r}.")
+        if not target or len(target) > 255 or "\n" in target:
+            raise ValueError(f"Glossary batch response returned an invalid translation for {item_id!r}.")
+        translations[item_id] = target
+    missing = expected_ids - set(translations)
+    if missing:
+        raise ValueError(f"Glossary batch response missing item ids: {', '.join(sorted(missing))}.")
+    return translations
+
+
+async def _translate_glossary_batch(
+    self: Any,
+    *,
+    provider: Any,
+    provider_key: str,
+    provider_model: str,
+    items: list[dict[str, str]],
+) -> tuple[dict[str, str], int]:
+    expected_ids = {item["id"] for item in items}
+    prompt = _glossary_translation_prompt(items)
+    max_attempts = max(1, int(settings.TRANSLATION_MAX_ATTEMPTS_PER_CHUNK or 1))
+    for attempt in range(max_attempts):
+        try:
+            result = await provider.translate(
+                prompt=prompt,
+                model=provider_model,
+                max_tokens=min(4096, max(256, len(items) * 96)),
+                json_schema=GLOSSARY_TRANSLATION_BATCH_JSON_SCHEMA,
+                request_purpose="glossary_translation",
+                retry_attempt=attempt,
+            )
+            translations = _parse_glossary_translation_batch(
+                str(result.get("text") or ""),
+                expected_ids,
+            )
+            self._record_usage(provider.key, provider_model, result.get("metadata"))
+            for item in items:
+                self._cache.set(
+                    _glossary_translation_cache_text(item["source"]),
+                    provider.key,
+                    provider_model,
+                    translations[item["id"]],
+                )
+            return translations, attempt + 1
+        except ProviderError as exc:
+            retryable = exc.provider_error_code in {
+                ProviderErrorCode.RATE_LIMITED,
+                ProviderErrorCode.QUOTA_EXHAUSTED,
+                ProviderErrorCode.TEMPORARY,
+                ProviderErrorCode.TIMEOUT,
+            }
+            if not retryable or exc.retry_after_seconds is not None or attempt + 1 >= max_attempts:
+                raise
+        except ValueError, RuntimeError:
+            if attempt + 1 >= max_attempts:
+                raise
+    raise RuntimeError("Glossary batch translation exhausted its same-model retry budget.")
+
+
 async def translate_glossary_terms(
     self: Any,
     novel_id: str,
@@ -315,43 +812,76 @@ async def translate_glossary_terms(
     effective_provider = provider_key or profile_provider
     effective_model = provider_model or profile_model
 
+    resolved_provider, resolved_model = self._resolve_provider_and_model(effective_provider, effective_model)
+    if resolved_provider == "dummy":
+        raise RuntimeError(
+            "Glossary translation skipped because no active Gemini provider is configured. "
+            "Add and use a provider API token in Settings."
+        )
+    provider = self._provider_factory(resolved_provider)
+    try:
+        supported_models = provider.available_models() or []
+    except Exception:
+        supported_models = []
+    candidates = model_candidates(resolved_provider, resolved_model, supported_models)
+    if not candidates:
+        raise RuntimeError(f"No translation model configured for provider {resolved_provider}.")
+    candidate_model = candidates[0]
+
     translated_count = 0
     skipped_count = 0
-    updated_entries: list[dict[str, Any]] = []
-
-    for entry in entries:
+    cache_hits = 0
+    updated_entries: list[dict[str, Any]] = [dict(entry) for entry in entries]
+    batch_items: list[dict[str, str]] = []
+    batch_indexes: dict[str, int] = {}
+    for index, entry in enumerate(entries):
         status = str(entry.get("status") or "pending").strip().lower()
-        if status == "ignored":
+        if status == "ignored" or (only_pending and status != "pending"):
             skipped_count += 1
-            updated_entries.append(dict(entry))
             continue
-        if only_pending and status != "pending":
-            skipped_count += 1
-            updated_entries.append(dict(entry))
-            continue
-
         source = str(entry.get("source") or "").strip()
         if not source:
             skipped_count += 1
-            updated_entries.append(dict(entry))
             continue
+        cache_key = _glossary_translation_cache_text(source)
+        cached = self._cache.get(cache_key, provider.key, candidate_model)
+        if cached is not None and cached.strip():
+            updated_entries[index]["target"] = cached.strip()
+            translated_count += 1
+            cache_hits += 1
+            continue
+        item_id = f"term:{len(batch_items):05d}"
+        context = str(entry.get("context_summary") or entry.get("notes") or "").strip()[:400]
+        batch_items.append({"id": item_id, "source": source, "context": context})
+        batch_indexes[item_id] = index
 
+    batch_size = max(1, int(settings.TRANSLATION_GLOSSARY_BATCH_SIZE or 1))
+    provider_calls = 0
+    failed_batches = 0
+    for start in range(0, len(batch_items), batch_size):
+        batch = batch_items[start : start + batch_size]
         try:
-            target = await self._translate_text(
-                source,
-                provider_key=effective_provider,
-                provider_model=effective_model,
+            translations, attempts_used = await _translate_glossary_batch(
+                self,
+                provider=provider,
+                provider_key=resolved_provider,
+                provider_model=candidate_model,
+                items=batch,
             )
-        except Exception:
-            # Keep the term as-is so one failure does not block the whole phase.
-            skipped_count += 1
-            updated_entries.append(dict(entry))
-            continue
-
-        updated = dict(entry)
-        updated["target"] = target
-        updated_entries.append(updated)
-        translated_count += 1
+            provider_calls += attempts_used
+            for item_id, target in translations.items():
+                index = batch_indexes[item_id]
+                updated_entries[index]["target"] = target
+                translated_count += 1
+        except Exception as exc:
+            failed_batches += 1
+            skipped_count += len(batch)
+            logger.warning(
+                "Glossary translation batch failed with %s/%s; retaining pending terms without individual fallback: %s",
+                resolved_provider,
+                candidate_model,
+                exc.__class__.__name__,
+            )
 
     ordered_entries = sorted(
         updated_entries,
@@ -370,8 +900,12 @@ async def translate_glossary_terms(
         translated=translated_count,
         skipped=skipped_count,
         total_terms=len(ordered_entries),
-        provider=effective_provider,
-        model=effective_model,
+        provider=resolved_provider,
+        model=candidate_model,
+        provider_calls=provider_calls,
+        batch_count=(len(batch_items) + batch_size - 1) // batch_size,
+        failed_batches=failed_batches,
+        cache_hits=cache_hits,
     )
 
 
@@ -419,7 +953,19 @@ async def review_glossary_terms(
             continue
 
         reviewed += 1
-        if auto_approve_translated and target and target.casefold() != source.casefold() and len(target) >= max(1, min_target_length):
+        confidence = updated.get("confidence")
+        confidence_is_high = (
+            isinstance(confidence, (int, float))
+            and not isinstance(confidence, bool)
+            and float(confidence) >= settings.TRANSLATION_LOW_CONFIDENCE_ACTIVATION_THRESHOLD
+        )
+        if (
+            auto_approve_translated
+            and confidence_is_high
+            and target
+            and target.casefold() != source.casefold()
+            and len(target) >= max(1, min_target_length)
+        ):
             updated["status"] = "approved"
             updated["review_reason"] = "auto_approved_rule"
             approved += 1
@@ -450,9 +996,7 @@ async def review_glossary_terms(
 
         with session_scope() as session:
             repo = GlossaryRepository(session)
-            sync_result = GlossarySyncService(repo, self.storage).sync_from_file(
-                novel_id, actor_user_id=None
-            )
+            sync_result = GlossarySyncService(repo, self.storage).sync_from_file(novel_id, actor_user_id=None)
         db_sync = {
             "created": sync_result.created,
             "updated": sync_result.updated,
@@ -466,9 +1010,7 @@ async def review_glossary_terms(
             logger.warning("Glossary DB sync failed: %s", exc)
             db_sync = {"skipped": True, "reason": "sync_error"}
     except Exception as exc:
-        logger.warning(
-            "Glossary DB sync failed after review: %s", exc.__class__.__name__
-        )
+        logger.warning("Glossary DB sync failed after review: %s", exc.__class__.__name__)
         db_sync = {"skipped": True, "reason": "sync_error"}
 
     return self._phase_payload(
@@ -571,9 +1113,7 @@ def _run_apply_glossary(
 
     with _session_scope() as db_session:
         # Resolve DB novel
-        novel_db = db_session.execute(
-            select(Novel).where(Novel.slug == novel_id)
-        ).scalar_one_or_none()
+        novel_db = db_session.execute(select(Novel).where(Novel.slug == novel_id)).scalar_one_or_none()
         if novel_db is None and novel_id.isdigit():
             novel_db = db_session.get(Novel, int(novel_id))
         if novel_db is None:
@@ -596,17 +1136,13 @@ def _run_apply_glossary(
             chapters_result = [
                 ChapterApplyResult(
                     chapter_id=ch.chapter_storage_id,
-                    status="skipped"
-                    if ch.safe_count == 0
-                    else "applied",
+                    status="skipped" if ch.safe_count == 0 else "applied",
                     replacements_made=max(ch.safe_count, ch.needs_review_count),
                     delta_fraction=ch.delta_fraction,
                 )
                 for ch in preview.chapters
             ]
-            total_applied = sum(
-                1 for c in chapters_result if c.status == "applied"
-            )
+            total_applied = sum(1 for c in chapters_result if c.status == "applied")
             return ApplyGlossaryResult(
                 novel_id=novel_id,
                 dry_run=True,
@@ -629,7 +1165,8 @@ def _run_apply_glossary(
         for ch in preview.chapters:
             # Determine safe replacements to apply
             safe_repls = [
-                r for r in ch.replacements
+                r
+                for r in ch.replacements
                 if r.risk_status == "safe" or (force_needs_review and r.risk_status == "needs_review")
             ]
             has_needs_review = any(r.risk_status == "needs_review" for r in ch.replacements)
@@ -757,9 +1294,7 @@ def _run_apply_glossary(
                 total_failed += 1
                 continue
 
-            new_version_id = str(
-                getattr(path, "stem", None) or ch.chapter_storage_id
-            )
+            new_version_id = str(getattr(path, "stem", None) or ch.chapter_storage_id)
             chapters_result.append(
                 ChapterApplyResult(
                     chapter_id=ch.chapter_storage_id,
@@ -783,4 +1318,3 @@ def _run_apply_glossary(
             total_blocked=total_blocked,
             total_failed=total_failed,
         )
-

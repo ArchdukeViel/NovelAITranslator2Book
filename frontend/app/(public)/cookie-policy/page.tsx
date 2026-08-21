@@ -30,7 +30,7 @@ export default function CookiePolicyPage() {
         },
         {
           title: "Analytics and ads",
-          body: "The current public app does not implement third-party advertising or analytics cookies. If that changes, the policy will be updated before those features are active.",
+          body: "The public reader does not use third-party advertising or analytics cookies. For guest novel-detail views, Dokushodo may set a first-party HTTP-only cookie named novelai_viewer containing a signed opaque viewer token. The server stores only a one-way digest of that token for distinct-view rankings, never an IP address. The token is retained only as long as the configured analytics retention window; when analytics is disabled, the ranking cookie is not created.",
         },
         {
           title: "Blocking cookies",
@@ -38,7 +38,7 @@ export default function CookiePolicyPage() {
         },
         {
           title: "Related privacy information",
-          body: "The Privacy Policy explains the account and reader data connected to signed-in use. This Cookie Policy focuses only on browser cookies, session state, and security tokens used by the current app.",
+          body: "The Privacy Policy explains account data and the privacy-safe anonymous viewer token. This Cookie Policy focuses only on browser cookies, session state, and security tokens used by the current app.",
         },
       ]}
     />

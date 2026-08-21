@@ -107,6 +107,7 @@ from novelai.storage.novels import (
     list_metadata_history,
     list_novels,
     load_metadata,
+    load_metadata_for_crawl,
     load_metadata_snapshot,
     load_source_state,
     resolve_onboarding_status,
@@ -284,7 +285,7 @@ class StorageService:
         """
         try:
             return str(int(stem))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return decode_physical_stem(stem)
 
     def _content_root(self, novel_id: str) -> Path:
@@ -305,9 +306,9 @@ class StorageService:
         checkpoints, ``generations/`` itself) always stay in the novel
         directory and are never generation-scoped.
         """
-        active = get_active_generation(self, novel_id)
-        if active is not None:
-            return self._generations_dir(novel_id) / active.generation_id
+        active_gen_id = resolve_active_generation_id(self, novel_id)
+        if active_gen_id is not None:
+            return self._generations_dir(novel_id) / active_gen_id
         return self._novel_dir(novel_id)
 
     def __init__(self, base_dir: Path | None = None, backend: Any | None = None) -> None:
@@ -333,6 +334,17 @@ class StorageService:
     def _rel(self, path: Path) -> str:
         """Convert absolute Path to backend-relative key."""
         return str(path.relative_to(self.base_dir))
+
+    def _read_text_optional(self, path: Path) -> str | None:
+        """Read text content if object exists, avoiding HEAD+GET round trips."""
+        try:
+            return self._backend.load(self._rel(path)).decode("utf-8")
+        except FileNotFoundError:
+            return None
+        except Exception as exc:
+            if type(exc).__name__ in {"NoSuchKey", "ClientError", "NotFound"}:
+                return None
+            raise
 
     def _read_text(self, path: Path) -> str:
         """Read text content via storage backend."""
@@ -414,6 +426,19 @@ class StorageService:
         finally:
             self._backend.delete(probe_path)
 
+    def probe_readiness(self) -> bool:
+        """Check backend availability without mutating storage.
+
+        Readiness probes run frequently from reverse-proxy health checks, so
+        they must not create and delete objects on every request. The full
+        write/read/delete verification remains available through ``probe``
+        for owner diagnostics and scheduled validation.
+        """
+        probe = getattr(self._backend, "probe_readiness", None)
+        if callable(probe):
+            return bool(probe())
+        return bool(self._backend.exists(self._rel(self.base_dir)))
+
     def _list_dir(self, path: Path) -> list[Path]:
         """List immediate children via storage backend."""
         return sorted(self.base_dir / key for key in self._backend.list_keys(self._rel(path)))
@@ -459,11 +484,11 @@ class StorageService:
         """
         try:
             raw = self._backend.load(key)
-        except (FileNotFoundError, OSError):
+        except FileNotFoundError, OSError:
             return None
         try:
             data = json.loads(raw.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except json.JSONDecodeError, UnicodeDecodeError:
             return None
         return data if isinstance(data, dict) else None
 
@@ -537,7 +562,7 @@ class StorageService:
     def _normalize_optional_int(value: Any) -> int | None:
         try:
             return int(value) if value is not None else None
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
     @staticmethod
@@ -618,6 +643,7 @@ class StorageService:
     delete_novel = delete_novel
     save_metadata = save_metadata
     load_metadata = load_metadata
+    load_metadata_for_crawl = load_metadata_for_crawl
     save_source_state = save_source_state
     load_source_state = load_source_state
     _generations_dir = _generations_dir

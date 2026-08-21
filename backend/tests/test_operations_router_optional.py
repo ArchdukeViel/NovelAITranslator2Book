@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -33,9 +34,14 @@ def _operations_service(
     storage.load_metadata.return_value = metadata
     orchestrator = MagicMock()
     orchestrator.translate_chapters = AsyncMock()
+    activity_log = MagicMock()
+    activity_log.create_translation_activity.return_value = {
+        "activity_id": "translation-test",
+        "status": "pending",
+    }
     service = OperationsService(
         orchestrator=orchestrator,
-        activity_log=MagicMock(),
+        activity_log=activity_log,
         storage=storage,
     )
     return service, orchestrator, storage
@@ -81,13 +87,10 @@ async def test_retranslate_stale_schedules_only_stale_canonical_versions() -> No
         "novel_id": "novel-1",
         "stale_chapter_count": 1,
         "scheduled_chapter_count": 1,
-        "activity_id": None,
+        "activity_id": "translation-test",
+        "status": "pending",
     }
-    orchestrator.translate_chapters.assert_awaited_once_with(
-        "kakuyomu",
-        "novel-1",
-        "1",
-        provider_key=None,
-        provider_model=None,
-        force=True,
-    )
+    orchestrator.translate_chapters.assert_not_awaited()
+    create_kwargs = cast(Any, service.activity_log.create_translation_activity).call_args.kwargs
+    assert create_kwargs["kind"] == "batch_retranslate"
+    assert create_kwargs["chapters"] == "1"

@@ -21,6 +21,7 @@ from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.dependencies import _rate_limit, get_db_session
 from novelai.config.settings import settings
 from novelai.services.analytics_service import AnalyticsService, validate_event_name
+from novelai.services.analytics_writer import enqueue_analytics_event
 
 router = APIRouter(
     prefix="/api/admin/analytics",
@@ -118,8 +119,6 @@ def analytics_summary(
 async def ingest_analytics_events(
     body: AnalyticsBatchPayload,
     request: Request,
-    db_session: Session = Depends(get_db_session),
-    svc: AnalyticsService = Depends(_get_service),
     user: SessionUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Record analytics events from frontend.
@@ -145,8 +144,7 @@ async def ingest_analytics_events(
     dropped = 0
     for event in body.events:
         try:
-            svc.record_event(
-                db_session,
+            accepted = enqueue_analytics_event(
                 event.event_name,
                 user_id=user.user_id,
                 novel_id=event.novel_id,
@@ -154,7 +152,10 @@ async def ingest_analytics_events(
                 metadata=event.metadata,
                 created_at=event.event_timestamp,
             )
-            recorded += 1
+            if accepted:
+                recorded += 1
+            else:
+                dropped += 1
         except Exception:
             dropped += 1
 

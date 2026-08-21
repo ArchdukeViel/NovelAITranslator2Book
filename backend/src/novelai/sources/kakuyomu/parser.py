@@ -63,6 +63,30 @@ def apollo_record(apollo_state: dict[str, Any], ref_or_key: str | None) -> dict[
     return record if isinstance(record, dict) else None
 
 
+def _positive_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value >= 0:
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return None
+
+
+def _work_episode_count(work: dict[str, Any]) -> int | None:
+    for key in (
+        "publicEpisodeCount",
+        "episodeCount",
+        "episode_count",
+        "numberOfEpisodes",
+        "totalEpisodeCount",
+    ):
+        count = _positive_int(work.get(key))
+        if count is not None:
+            return count
+    return None
+
+
 def next_data_apollo_state(soup: BeautifulSoup) -> dict[str, Any] | None:
     script = soup.find("script", id="__NEXT_DATA__")
     if not isinstance(script, Tag):
@@ -87,7 +111,21 @@ def extract_chapters_from_next_data(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     apollo_state = next_data_apollo_state(soup)
     if apollo_state is None:
-        return [], {"metadata_extraction_mode": "html_dom"}
+        return [], {
+            "metadata_extraction_mode": "html_dom",
+            "chapter_index_extraction_mode": "html_dom",
+            "apollo_state_present": False,
+            "apollo_structurally_valid": False,
+        }
+
+    base_provenance: dict[str, Any] = {
+        "metadata_extraction_mode": "next_data_apollo",
+        "chapter_index_extraction_mode": "next_data_apollo",
+        "apollo_state_present": True,
+        "apollo_record_count": len(apollo_state),
+        "parser_version": "kakuyomu-v4",
+        "fallbacks_used": [],
+    }
 
     work = apollo_record(apollo_state, f"Work:{work_id}")
     if work is None:
@@ -108,14 +146,25 @@ def extract_chapters_from_next_data(
                 break
 
     if work is None:
-        return [], {"metadata_extraction_mode": "html_dom", "apollo_record_count": len(apollo_state)}
+        return [], {
+            **base_provenance,
+            "apollo_work_found": False,
+            "apollo_structurally_valid": False,
+        }
 
     toc = work.get("tableOfContentsV2") or work.get("tableOfContents") or work.get("toc")
     if not isinstance(toc, list):
-        return [], {"metadata_extraction_mode": "next_data_apollo", "apollo_record_count": len(apollo_state)}
+        return [], {
+            **base_provenance,
+            "apollo_work_found": True,
+            "apollo_toc_present": False,
+            "apollo_structurally_valid": False,
+            "expected_episode_count": _work_episode_count(work),
+        }
 
     chapters: list[dict[str, Any]] = []
     seen_episode_ids: set[str] = set()
+    section_ordinal = 0
 
     for toc_item in toc:
         if isinstance(toc_item, dict):
@@ -126,13 +175,30 @@ def extract_chapters_from_next_data(
         if toc_record is None:
             continue
 
-        part: str | None = None
-        chapter_ref = apollo_ref(toc_record.get("chapter"))
-        chapter_record = apollo_record(apollo_state, chapter_ref) if chapter_ref else None
+        section_title: str | None = None
+        section_source_id: str | None = None
+        section_level: int | None = None
+        chapter_value = toc_record.get("chapter")
+        chapter_ref = apollo_ref(chapter_value)
+        chapter_record = (
+            apollo_record(apollo_state, chapter_ref)
+            if chapter_ref
+            else (chapter_value if isinstance(chapter_value, dict) else None)
+        )
         if chapter_record is not None:
             title = chapter_record.get("title")
             if isinstance(title, str) and title.strip():
-                part = title.strip()
+                section_title = title.strip()
+            source_id = chapter_record.get("id")
+            if isinstance(source_id, str) and source_id.strip():
+                section_source_id = source_id.strip()
+            elif isinstance(source_id, (int, float)) and not isinstance(source_id, bool):
+                section_source_id = str(source_id)
+            level = _positive_int(chapter_record.get("level"))
+            if level is None:
+                level = _positive_int(toc_record.get("level"))
+            section_level = level
+            section_ordinal += 1
 
         episode_refs = toc_record.get("episodeUnions") or toc_record.get("episodes") or toc_record.get("episodeList")
         if not isinstance(episode_refs, list):
@@ -164,18 +230,30 @@ def extract_chapters_from_next_data(
                 "url": f"https://kakuyomu.jp/works/{work_id}/episodes/{episode_id}",
                 "source_episode_id": episode_id,
             }
-            if part:
-                chapter["part"] = part
+            if chapter_record is not None:
+                if section_title:
+                    chapter["part"] = section_title
+                    chapter["section_title"] = section_title
+                if section_source_id is None:
+                    chapter["section_source_id"] = None
+                else:
+                    chapter["section_source_id"] = section_source_id
+                chapter["section_ordinal"] = section_ordinal
+                if section_level is not None:
+                    chapter["section_level"] = section_level
             published_at = episode_record.get("publishedAt") or episode_record.get("created")
             if isinstance(published_at, str) and published_at.strip():
                 chapter["date_added"] = published_at.strip()
             chapters.append(chapter)
 
+    expected_episode_count = _work_episode_count(work)
     provenance = {
-        "metadata_extraction_mode": "next_data_apollo",
-        "chapter_index_extraction_mode": "next_data_apollo",
-        "apollo_record_count": len(apollo_state),
-        "parser_version": "kakuyomu-v4",
-        "fallbacks_used": [],
+        **base_provenance,
+        "apollo_work_found": True,
+        "apollo_toc_present": True,
+        "apollo_structurally_valid": True,
+        "expected_episode_count": expected_episode_count,
+        "extracted_episode_count": len(chapters),
+        "apollo_complete": expected_episode_count is None or len(chapters) == expected_episode_count,
     }
     return chapters, provenance

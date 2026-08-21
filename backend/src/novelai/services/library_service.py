@@ -165,7 +165,11 @@ def _source_metadata_warnings(meta: dict[str, Any], *, metadata_missing: bool) -
         warnings.append("missing_source_url")
     if publication_status == "unknown":
         warnings.append("unknown_publication_status")
-    if not (_optional_string(meta.get("description")) or _optional_string(meta.get("synopsis"))):
+    if not (
+        _optional_string(meta.get("narrative_synopsis"))
+        or _optional_string(meta.get("description"))
+        or _optional_string(meta.get("synopsis"))
+    ):
         warnings.append("missing_synopsis")
     if _metadata_chapter_count(meta) == 0:
         warnings.append("no_chapters")
@@ -180,7 +184,13 @@ def _source_metadata_inspection_payload(
 ) -> dict[str, Any]:
     publication_status = normalize_publication_status(meta.get("publication_status"))
     source_title = _optional_string(meta.get("title"))
-    synopsis = _optional_string(meta.get("description")) or _optional_string(meta.get("synopsis"))
+    synopsis = (
+        _optional_string(meta.get("translated_narrative_synopsis"))
+        or _optional_string(meta.get("translated_synopsis"))
+        or _optional_string(meta.get("narrative_synopsis"))
+        or _optional_string(meta.get("description"))
+        or _optional_string(meta.get("synopsis"))
+    )
     author = _optional_string(meta.get("translated_author")) or _optional_string(meta.get("author"))
     display_title = _optional_string(meta.get("translated_title")) or source_title or novel_id
     return {

@@ -5,10 +5,11 @@ Tests probe logic, timeout behavior, redaction, and status aggregation.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -27,6 +28,9 @@ class FakeStorage:
             return probe_file.read_bytes() == b'{"status":"ok"}'
         finally:
             probe_file.unlink(missing_ok=True)
+
+    def probe_readiness(self) -> bool:
+        return self.base_dir.is_dir()
 
 
 class FakeRunner:
@@ -123,6 +127,44 @@ class TestReadiness:
         assert "path" not in checks_str.lower()
         assert "password" not in checks_str.lower()
         assert "secret" not in checks_str.lower()
+
+    @pytest.mark.asyncio
+    async def test_readiness_uses_short_ttl_cache(self, service: HealthService, monkeypatch) -> None:
+        monkeypatch.setattr(settings, "HEALTH_CACHE_TTL_SECONDS", 30)
+        probe = AsyncMock(return_value={"database": {"status": STATE_HEALTHY}, "storage": {"status": STATE_HEALTHY}})
+        service._run_probes = probe  # type: ignore[method-assign]
+
+        await service.readiness()
+        await service.readiness()
+
+        probe.assert_awaited_once_with()
+        stats = service.health_cache_stats()
+        assert stats.hits == 1
+        assert stats.misses == 1
+        assert stats.entries == 1
+
+    @pytest.mark.asyncio
+    async def test_concurrent_readiness_requests_share_one_probe(self, service: HealthService, monkeypatch) -> None:
+        monkeypatch.setattr(settings, "HEALTH_CACHE_TTL_SECONDS", 30)
+        started = asyncio.Event()
+        release = asyncio.Event()
+        calls = 0
+
+        async def run_probe():
+            nonlocal calls
+            calls += 1
+            started.set()
+            await release.wait()
+            return {"database": {"status": STATE_HEALTHY}}
+
+        service._run_probes = run_probe  # type: ignore[method-assign]
+        tasks = [asyncio.create_task(service.readiness()) for _ in range(3)]
+        await started.wait()
+        release.set()
+        results = await asyncio.gather(*tasks)
+
+        assert calls == 1
+        assert all(result["status"] == STATE_HEALTHY for result in results)
 
 
 class TestStorageUsage:

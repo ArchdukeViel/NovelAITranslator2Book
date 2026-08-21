@@ -24,7 +24,7 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_RESTORE_PASSWORD}
       POSTGRES_DB: novelai_restore_verify
     volumes:
-      - restore_db_data:/var/lib/postgresql/data
+      - restore_db_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U novelai_restore -d novelai_restore_verify"]
       interval: 10s
@@ -69,6 +69,11 @@ services:
       NODE_ENV: production
       NEXT_PUBLIC_API_BASE_URL: /api
       BACKEND_API_URL: http://backend:8000
+      READER_API_URL: http://reader:8001
+      BACKEND_API_HOST: ${BACKEND_API_HOST:-${SITE_DOMAIN:-localhost}}
+    depends_on:
+      reader:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
       interval: 30s
@@ -92,7 +97,9 @@ services:
       - DB_CONNECTION_MODE=${DB_CONNECTION_MODE:-direct}
       - DB_POOL_SIZE=${DB_POOL_SIZE:-5}
       - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-5}
-      - DB_CONNECTION_BUDGET=${DB_CONNECTION_BUDGET:-20}
+      - DB_POOL_PROCESS_COUNT=${DB_POOL_PROCESS_COUNT:-3}
+      - DB_CONNECTION_RESERVE=${DB_CONNECTION_RESERVE:-2}
+      - DB_CONNECTION_BUDGET=${DB_CONNECTION_BUDGET:-32}
       - DB_POOL_TIMEOUT_SECONDS=${DB_POOL_TIMEOUT_SECONDS:-30}
       - DB_POOL_RECYCLE_SECONDS=${DB_POOL_RECYCLE_SECONDS:-1800}
       - DB_CONNECT_TIMEOUT_SECONDS=${DB_CONNECT_TIMEOUT_SECONDS:-10}
@@ -128,7 +135,7 @@ services:
       - WEB_CORS_ORIGINS=${WEB_CORS_ORIGINS:-[]}
       - WEB_RATE_LIMITER_BACKEND=${WEB_RATE_LIMITER_BACKEND:-redis}
       - WEB_REQUEST_TIMEOUT_SECONDS=${WEB_REQUEST_TIMEOUT_SECONDS:-120}
-      - JOB_WORKER_ENABLED=${JOB_WORKER_ENABLED:-false}
+      - JOB_WORKER_ENABLED=false
       - JOB_WORKER_POLL_SECONDS=${JOB_WORKER_POLL_SECONDS:-3}
       - NOVEL_LIBRARY_DIR=/app/storage/novel_library
       - PROVIDER_DEFAULT=${PROVIDER_DEFAULT:-gemini}
@@ -166,6 +173,9 @@ services:
       - DB_CONNECTION_MODE=${DB_CONNECTION_MODE:-direct}
       - DB_POOL_SIZE=${DB_POOL_SIZE:-5}
       - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-5}
+      - DB_POOL_PROCESS_COUNT=${DB_POOL_PROCESS_COUNT:-3}
+      - DB_CONNECTION_RESERVE=${DB_CONNECTION_RESERVE:-2}
+      - DB_CONNECTION_BUDGET=${DB_CONNECTION_BUDGET:-32}
       - DB_POOL_TIMEOUT_SECONDS=${DB_POOL_TIMEOUT_SECONDS:-30}
       - DB_POOL_RECYCLE_SECONDS=${DB_POOL_RECYCLE_SECONDS:-1800}
       - DB_CONNECT_TIMEOUT_SECONDS=${DB_CONNECT_TIMEOUT_SECONDS:-10}
@@ -177,8 +187,14 @@ services:
       # M2a: Health probe settings
       - HEALTH_PROBE_TIMEOUT_MS=${HEALTH_PROBE_TIMEOUT_MS:-1000}
       - HEALTH_TOTAL_TIMEOUT_MS=${HEALTH_TOTAL_TIMEOUT_MS:-3000}
+      - HEALTH_CACHE_TTL_SECONDS=${HEALTH_CACHE_TTL_SECONDS:-5}
       - HEALTH_DISK_WARNING_FREE_PERCENT=${HEALTH_DISK_WARNING_FREE_PERCENT:-15}
       - HEALTH_DISK_CRITICAL_FREE_PERCENT=${HEALTH_DISK_CRITICAL_FREE_PERCENT:-5}
+      # Public read/analytics cache settings
+      - PUBLIC_PROJECTION_CACHE_ENABLED=${PUBLIC_PROJECTION_CACHE_ENABLED:-true}
+      - PUBLIC_PROJECTION_CACHE_TTL_SECONDS=${PUBLIC_PROJECTION_CACHE_TTL_SECONDS:-30}
+      - PUBLIC_PROJECTION_CACHE_MAX_ENTRIES=${PUBLIC_PROJECTION_CACHE_MAX_ENTRIES:-256}
+      - ANALYTICS_ASYNC_QUEUE_SIZE=${ANALYTICS_ASYNC_QUEUE_SIZE:-1000}
       # M2c: Backup settings
       - BACKUP_ENABLED=${BACKUP_ENABLED:-false}
       - BACKUP_SCHEDULE_CRON=${BACKUP_SCHEDULE_CRON:-0 2 * * *}
@@ -226,6 +242,56 @@ services:
     restart: unless-stopped
     stop_grace_period: 60s
 
+  worker:
+    # The worker owns provider-backed crawl and translation execution. Keep
+    # activity processing out of the public/admin web event loops.
+    image: ${ADMIN_IMAGE:-novelai-admin:local}
+    command: ["novelaibook", "worker"]
+    env_file:
+      - ./.env
+    environment:
+      - ENV=${ENV:-production}
+      - SERVICE_ROLE=worker
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - JOB_WORKER_ENABLED=false
+      - JOB_WORKER_POLL_SECONDS=${JOB_WORKER_POLL_SECONDS:-3}
+      - NOVEL_LIBRARY_DIR=/app/storage/novel_library
+      - PROVIDER_DEFAULT=${PROVIDER_DEFAULT:-gemini}
+      - PROVIDER_GEMINI_API_KEY
+      - PROVIDER_CREDENTIAL_ENCRYPTION_KEY=${PROVIDER_CREDENTIAL_ENCRYPTION_KEY:-}
+      - TRANSLATION_TARGET_LANGUAGE=${TRANSLATION_TARGET_LANGUAGE:-English}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-filesystem}
+      - S3_BUCKET=${S3_BUCKET:-}
+      - S3_REGION=${S3_REGION:-us-east-1}
+      - S3_KEY_PREFIX=${S3_KEY_PREFIX:-storage/novel_library}
+      - S3_ENDPOINT=${S3_ENDPOINT:-}
+      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID:-}
+      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY:-}
+      - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL}
+      - DB_CONNECTION_MODE=${DB_CONNECTION_MODE:-direct}
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-5}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-5}
+      - DB_POOL_PROCESS_COUNT=${DB_POOL_PROCESS_COUNT:-3}
+      - DB_CONNECTION_RESERVE=${DB_CONNECTION_RESERVE:-2}
+      - DB_CONNECTION_BUDGET=${DB_CONNECTION_BUDGET:-32}
+      - DB_POOL_TIMEOUT_SECONDS=${DB_POOL_TIMEOUT_SECONDS:-30}
+      - DB_POOL_RECYCLE_SECONDS=${DB_POOL_RECYCLE_SECONDS:-1800}
+      - DB_CONNECT_TIMEOUT_SECONDS=${DB_CONNECT_TIMEOUT_SECONDS:-10}
+      - DB_SSL_MODE=${DB_SSL_MODE:-require}
+      - DB_STATEMENT_TIMEOUT_MS=${DB_STATEMENT_TIMEOUT_MS:-120000}
+      - DB_LOCK_TIMEOUT_MS=${DB_LOCK_TIMEOUT_MS:-10000}
+      - DB_IDLE_IN_TRANSACTION_TIMEOUT_MS=${DB_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ${NOVEL_LIBRARY_HOST_DIR:-/opt/novelai/shared/storage/novel_library}:/app/storage/novel_library
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - novelai-net
+    restart: unless-stopped
+    stop_grace_period: 60s
+
   reader:
     # Local-only fallback; release.env overrides this with a digest-pinned image.
     image: ${READER_IMAGE:-novelai-reader:local}
@@ -249,6 +315,9 @@ services:
       - DB_CONNECTION_MODE=${DB_CONNECTION_MODE:-direct}
       - DB_POOL_SIZE=${DB_POOL_SIZE:-5}
       - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-5}
+      - DB_POOL_PROCESS_COUNT=${DB_POOL_PROCESS_COUNT:-3}
+      - DB_CONNECTION_RESERVE=${DB_CONNECTION_RESERVE:-2}
+      - DB_CONNECTION_BUDGET=${DB_CONNECTION_BUDGET:-32}
       - DB_POOL_TIMEOUT_SECONDS=${DB_POOL_TIMEOUT_SECONDS:-30}
       - DB_POOL_RECYCLE_SECONDS=${DB_POOL_RECYCLE_SECONDS:-1800}
       - DB_CONNECT_TIMEOUT_SECONDS=${DB_CONNECT_TIMEOUT_SECONDS:-10}
@@ -258,6 +327,15 @@ services:
       - DB_IDLE_IN_TRANSACTION_TIMEOUT_MS=${DB_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}
       - REDIS_URL=redis://redis:6379/0
       - STORAGE_BACKEND=${STORAGE_BACKEND:-filesystem}
+      - HEALTH_PROBE_TIMEOUT_MS=${HEALTH_PROBE_TIMEOUT_MS:-1000}
+      - HEALTH_TOTAL_TIMEOUT_MS=${HEALTH_TOTAL_TIMEOUT_MS:-3000}
+      - HEALTH_CACHE_TTL_SECONDS=${HEALTH_CACHE_TTL_SECONDS:-5}
+      - HEALTH_DISK_WARNING_FREE_PERCENT=${HEALTH_DISK_WARNING_FREE_PERCENT:-15}
+      - HEALTH_DISK_CRITICAL_FREE_PERCENT=${HEALTH_DISK_CRITICAL_FREE_PERCENT:-5}
+      - PUBLIC_PROJECTION_CACHE_ENABLED=${PUBLIC_PROJECTION_CACHE_ENABLED:-true}
+      - PUBLIC_PROJECTION_CACHE_TTL_SECONDS=${PUBLIC_PROJECTION_CACHE_TTL_SECONDS:-30}
+      - PUBLIC_PROJECTION_CACHE_MAX_ENTRIES=${PUBLIC_PROJECTION_CACHE_MAX_ENTRIES:-256}
+      - ANALYTICS_ASYNC_QUEUE_SIZE=${ANALYTICS_ASYNC_QUEUE_SIZE:-1000}
       - S3_BUCKET=${S3_BUCKET:-}
       - S3_REGION=${S3_REGION:-us-east-1}
       - S3_KEY_PREFIX=${S3_KEY_PREFIX:-storage/novel_library}

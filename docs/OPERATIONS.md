@@ -7,12 +7,51 @@ Solo-owner runbook for health, maintenance, backup, recovery, incidents, and rea
 | Endpoint | Expected behavior |
 |---|---|
 | `GET /health/live` | Process-only, unauthenticated, always 200; no dependency calls. |
-| `GET /health/ready` | Bounded DB/storage/worker/disk probes; 503 when any probe is unhealthy. |
+| `GET /health/ready` | Redacted, short-TTL cached/single-flight DB/lightweight-storage/worker/disk probes; 503 when the cached result is unhealthy. |
 | `GET /api/admin/health` | Owner-only detailed but redacted probe status and latency. |
 
 States: `healthy`, `degraded`, `unhealthy`. Investigate stale worker heartbeat,
-DB connectivity, storage writes/capacity, and disk before restart. Public health
-output never includes paths, hosts, credentials, or traces.
+DB connectivity, storage reachability/capacity, and disk before restart. Public
+readiness does not perform a mutating storage probe or S3 usage enumeration;
+`/api/admin/health` remains the fresh owner diagnostic for those checks.
+Public health output never includes paths, hosts, credentials, or traces.
+
+### Database connection capacity
+
+Treat `DB_CONNECTION_BUDGET` as a deployment-wide limit, not only a single
+web-process setting. Account for every backend, reader, worker, migration, and
+operator process using `DB_POOL_SIZE + DB_MAX_OVERFLOW`, then reserve capacity
+for readiness and emergency access. Verify the resulting aggregate against the
+managed pooler before changing `DB_CONNECTION_MODE` or scaling a service.
+Set `DB_POOL_PROCESS_COUNT` to the number of long-lived pool owners and
+`DB_CONNECTION_RESERVE` to the migration/readiness/operator reserve. Direct and
+session startup now fails closed when
+`DB_POOL_PROCESS_COUNT * (DB_POOL_SIZE + DB_MAX_OVERFLOW) +
+DB_CONNECTION_RESERVE` exceeds `DB_CONNECTION_BUDGET`. The current split
+Compose example therefore requires `32` for three processes with pools of
+`5 + 5` and a reserve of `2`; change the count and budget together when
+scaling or changing topology. Transaction mode still requires direct pooler
+concurrency verification because `NullPool` removes the fixed SQLAlchemy pool
+ceiling rather than proving a managed-pooler limit.
+
+When a recognized SQLAlchemy pool/server-capacity failure occurs, the API
+returns `503 DATABASE_CAPACITY_EXHAUSTED` with sanitized retryable details.
+Unrelated database errors remain internal failures. A capacity response is a
+signal to reduce admission or correct the pooler budget; do not hide it by
+raising pool timeouts or enabling unbounded overflow. Record the affected
+service, UTC window, status counts, and sanitized pooler evidence without
+recording connection URLs, credentials, cookies, or raw traces.
+
+Readiness defaults to a five-second cache (`HEALTH_CACHE_TTL_SECONDS`). The
+first request after expiry performs one bounded probe run and concurrent
+requests join it. Inspect
+`novelai_readiness_cache_hits_total`,
+`novelai_readiness_cache_misses_total`,
+`novelai_readiness_cache_entries`, and
+`novelai_readiness_cache_age_seconds` in the owning backend metrics. A
+healthy cache result is not proof that storage remains healthy after its
+timestamp; investigate repeated refresh failures rather than disabling the
+cache or increasing probe timeouts blindly.
 
 ## Worker, Scheduler, and Maintenance
 
@@ -32,6 +71,55 @@ output never includes paths, hosts, credentials, or traces.
 - Maintenance cleans allowlisted cache/events/activity/runtime-state roots and
   applies backup retention. Use dry-run before changed cleanup policy.
 - Never reintroduce APScheduler.
+
+### Long-running scrape and resume
+
+`POST /api/admin/{novel_id}/scrape` is an enqueue operation and returns
+`202 Accepted` with an `activity_id`; it does not wait for metadata or chapter
+fetching to finish. The durable `scrape` activity runs metadata reconciliation
+and chapter acquisition in one worker lease, renewing its heartbeat and
+preserving the standard staged-generation validation, activation, and rollback
+behavior. Resume of an interrupted onboarding flow queues a durable chapter
+activity using the same contract.
+
+Poll `GET /api/admin/activity/{activity_id}` for the redacted status record.
+With a worker disabled, an owner can execute one queued record through
+`POST /api/admin/activity/{activity_id}/run`; with the worker enabled, the
+background runner claims it. A request/network timeout applies to each
+individual outbound operation, while the activity lease and heartbeat govern
+the total crawl duration.
+
+### Long-running translation
+
+`POST /api/admin/{novel_id}/translate` returns `202 Accepted` with
+`activity_id` and `status=pending`; it never waits for provider calls or
+translation artifact commits. Supply an `Idempotency-Key` when a client may
+retry the enqueue request. Without one, the server derives a stable key from
+the non-secret operation parameters. Poll
+`GET /api/admin/activity/{activity_id}` and use the existing activity run,
+cancel, retry, and lease status controls.
+
+The Compose `worker` service is the normal execution owner. Keep
+`JOB_WORKER_ENABLED=false` on web services so the admin/reader processes do
+not duplicate provider work. The activity queue is backed by the
+`activity_records` table; claims are row-locked, expired leases are recovered,
+and bounded history/metadata limits prevent queue state from growing without
+control. Monitor `novelai_activity_queue_age_seconds`,
+`novelai_activity_queue_operation_total_ms`, and the activity status gauges.
+
+Provider overload should surface as queue age, bounded retry delay, or a
+truthful paused/failed activity—not as an unbounded web request. Owner Gemini
+uses global RPM/TPM/RPD and in-flight limits. Contributor credentials use the
+same dimensions per credential and remain isolated from owner-only jobs.
+Provider timing counters include admission wait, execution, retries, quota
+reservation, and usage-ledger write time; they intentionally contain no
+prompt or credential data.
+
+The translation cache's JSON entries are indexed by a SQLite WAL sidecar.
+Only initialization/backfill may scan the cache directory. Invalidation,
+statistics, and eviction operate on indexed metadata. If the sidecar is
+corrupt, stop the worker, preserve the JSON entries, and rebuild it during a
+maintenance window rather than deleting cache data blindly.
 
 Owner maintenance status:
 
@@ -77,6 +165,17 @@ Manual trigger:
 ```text
 POST /api/admin/backups
 ```
+
+### Backup Bucket Object Lock & Operator Retention Debt Procedure
+
+The Cloudflare R2 backup bucket `dokushodo-backup` operates with bucket-level Object Lock / retention policies. When automatic retention cleanup (`apply_retention()`) attempts to delete snapshots whose retention period has not expired, Cloudflare R2 rejects `DeleteObject` with `ObjectLockedByBucketPolicy: The object is locked by the bucket policy.`
+
+- **Operator Retention Debt**: Old snapshots (e.g. historical snapshots created before data-resets) remain immutable in `dokushodo-backup` until their lock period expires.
+- **Runbook Rule**:
+  1. Do not treat `ObjectLockedByBucketPolicy` errors as application backup failures; new snapshots and manifests are committed successfully.
+  2. Maintain `BACKUP_MIN_SUCCESSFUL_TO_KEEP` policy in application logic.
+  3. Once bucket retention locks expire, run standard retention prune via maintenance tasks or manual admin API call.
+  4. Never attempt force-deletion of locked objects; Cloudflare R2 bucket policy enforces compliance.
 
 ### Database
 
@@ -187,3 +286,92 @@ Each `tools/*.ps1` wrapper refuses to run when `.venv\Scripts\python.exe`
 is missing. The readme at `tools/README.md` lists the canonical extras.
 
 Current unresolved operator gates live in [`WORK.md`](WORK.md).
+
+## Contributor Credential Operations
+
+For an enabled contributor deployment, verify:
+
+1. Confirm `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` is present and not the owner
+   bootstrap or session secret.
+2. Confirm the current `CONTRIBUTOR_CONSENT_VERSION` is the version shown by
+   the frontend and record any consent copy change.
+3. Confirm per-credential RPM/TPM/RPD limits and the quota-state directory are
+   writable only by the backend runtime.
+4. Apply Alembic migrations with the elevated migration role before starting
+   the long-running services; the runtime role must have the required DML but
+   should not be granted broad schema-DDL privileges.
+5. Verify the user route returns masked metadata only, unsafe methods reject
+   missing CSRF, and a user cannot read or mutate another user's credential.
+
+Owners may pause or revoke a credential for emergency abuse remediation. A
+revoked credential cannot be resumed by a user. Permanent user deletion removes
+the encrypted credential row but preserves sanitized usage-ledger history for
+accounting and incident review. Do not delete ledger rows as part of ordinary
+credential removal.
+
+Rotation requires a maintenance window: pause contributor work, re-encrypt
+stored credentials, verify fingerprints and validation state, switch the
+configured key, resume only after a masked read and validation check, and
+record the operator/evidence in `HISTORY.md`. If re-encryption cannot complete,
+keep the old key available and fail closed rather than accepting new keys.
+
+## Ranking and Anonymous Viewer Retention
+
+`/api/public/rankings` is based on published novel-detail events retained by
+`ANALYTICS_RETENTION_DAYS`. Daily, Weekly, and Monthly mean 24 hours, 7 days,
+and 30 days from query time. Chapter views are excluded. When analytics is
+disabled or the retained set is empty, the API and UI expose an unavailable or
+no-data state; operators must not seed placeholder rows or describe it as All
+Time.
+
+Successful non-empty ranking responses use a bounded process-local TTL/LRU
+cache. The default TTL is 60 seconds and the default bound is 64 entries; the
+cache is an optimization only and is not shared between reader workers or
+replicas. Cache keys include the period, public-projection schema/update
+version, and limit, so publication or projection updates select a new key.
+Disabled analytics, no-data, and unavailable responses are never cached.
+Inspect `novelai_public_ranking_cache_hits_total`,
+`novelai_public_ranking_cache_misses_total`, and
+`novelai_public_ranking_cache_entries` in `/metrics`. If the deployment scales
+to multiple readers, measure duplicate origin work before moving this contract
+to a shared Redis cache.
+
+Migration `c8d2e4f6a1b3` adds the two composite analytics indexes used by the
+ranking predicate and authenticated/anonymous viewer identities. Verify the
+migration head and run a representative PostgreSQL `EXPLAIN (ANALYZE,
+BUFFERS)` before treating ranking latency as production-capacity evidence.
+
+### Public projection cache and analytics writer
+
+Catalog base pages, DB-backed summaries, and chapter metadata use a bounded
+30-second/256-entry process-local projection cache. Publication/reconciliation
+and approved takedown review invalidate it; versioned keys also prevent normal
+projection updates from reusing an older payload. Monitor
+`novelai_public_projection_cache_hits_total`,
+`novelai_public_projection_cache_misses_total`,
+`novelai_public_projection_cache_entries`, and
+`novelai_public_projection_cache_invalidations_total`. The reader process
+does not expose the admin metrics route by default, so collect these metrics
+from the owning operator process or add an approved reader telemetry path
+before using them for capacity claims.
+
+Public analytics writes use a bounded asynchronous queue (default 1,000). A
+request response with `recorded` means queue admission, not durable commit;
+`dropped` reports queue-full or unavailable admission. Monitor
+`novelai_analytics_writer_accepted_total`,
+`novelai_analytics_writer_dropped_total`,
+`novelai_analytics_writer_processed_total`,
+`novelai_analytics_writer_failures_total`, and
+`novelai_analytics_writer_queue_depth`. Sustained drops require capacity
+investigation; do not make the queue unbounded. The writer stores only
+sanitized fields and never stores raw IP addresses.
+
+Guest detail views may set the signed `novelai_viewer` first-party cookie. The
+server stores only a digest of the opaque token, never the raw token or an IP
+address. Clear the cookie or disable analytics when investigating identity
+collection; do not export raw cookie values into logs or incident evidence.
+
+The contributor usage ledger is pruned by the `contributor_usage_cleanup`
+maintenance task according to `CONTRIBUTOR_USAGE_RETENTION_DAYS`. Permanent
+credential deletion preserves rows until that retention task removes them;
+dry-run the task before changing the policy.

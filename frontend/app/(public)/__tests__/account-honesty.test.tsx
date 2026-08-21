@@ -26,9 +26,15 @@ const mocks = vi.hoisted(() => ({
   useHistoryMock: vi.fn(),
   useRequestsMock: vi.fn(),
   useRemoveFromLibraryMock: vi.fn(),
+  useContributionsMock: vi.fn(),
+  useContributionUsageMock: vi.fn(),
+  useReplaceContributionMock: vi.fn(),
+  useUpdateContributionStatusMock: vi.fn(),
+  useDeleteContributionMock: vi.fn(),
 }));
 
-const defaultLibraryData: { slug: string; status: string; added_at: string }[] = [];
+const defaultLibraryData: { slug: string; status: string; added_at: string }[] =
+  [];
 const defaultHistoryData = { items: [], next_cursor: null };
 const defaultRequestsData = { items: [], next_cursor: null };
 
@@ -38,7 +44,23 @@ vi.mock("@/hooks/public", () => ({
   useHistory: (params?: { limit?: number }) => mocks.useHistoryMock(),
   useRequests: (params?: { limit?: number }) => mocks.useRequestsMock(),
   useRemoveFromLibrary: (_slug: string) => mocks.useRemoveFromLibraryMock(),
+  useContributions: () => mocks.useContributionsMock(),
+  useContributionUsage: () => mocks.useContributionUsageMock(),
+  useReplaceContribution: () => mocks.useReplaceContributionMock(),
+  useUpdateContributionStatus: () => mocks.useUpdateContributionStatusMock(),
+  useDeleteContribution: () => mocks.useDeleteContributionMock(),
   useRecordProgress: () => ({ mutate: vi.fn() }),
+}));
+
+vi.mock("@/hooks/public/use-auth", () => ({
+  usePublicAuth: () => mocks.usePublicAuthMock(),
+}));
+
+vi.mock("@/components/public/public-theme-toggle", () => ({
+  PublicThemeToggle: () => <button data-testid="theme-toggle" />,
+  PublicThemeSegmentedControl: () => (
+    <div data-testid="theme-segmented-control" />
+  ),
 }));
 
 vi.mock("@/components/public/login-prompt", () => ({
@@ -50,10 +72,18 @@ vi.mock("@/components/public/auth-gate", () => ({
 }));
 
 vi.mock("@/components/ui/panel", () => ({
-  Panel: ({ children }: { children: React.ReactNode }) => <div data-testid="panel">{children}</div>,
-  PanelHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  PanelTitle: ({ children }: { children: React.ReactNode }) => <h3>{children}</h3>,
-  PanelBody: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Panel: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="panel">{children}</div>
+  ),
+  PanelHeader: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  PanelTitle: ({ children }: { children: React.ReactNode }) => (
+    <h3>{children}</h3>
+  ),
+  PanelBody: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
 }));
 
 vi.mock("@/components/ui/badge", () => ({
@@ -63,7 +93,10 @@ vi.mock("@/components/ui/badge", () => ({
 }));
 
 vi.mock("@/components/ui/button", () => ({
-  Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+  Button: ({
+    children,
+    ...props
+  }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button {...props}>{children}</button>
   ),
 }));
@@ -73,36 +106,57 @@ vi.mock("@/components/public/request-control", () => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ children, href, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
-    <a href={href} {...props}>{children}</a>
+  default: ({
+    children,
+    href,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
   ),
 }));
 
 vi.mock("lucide-react", () => {
-  const Svg = ({ className, children }: { className?: string; children?: React.ReactNode }) => (
-    <span className={className}>{children}</span>
-  );
+  const Svg = ({
+    className,
+    children,
+  }: {
+    className?: string;
+    children?: React.ReactNode;
+  }) => <span className={className}>{children}</span>;
   return {
     ArrowLeft: Svg,
     ArrowRight: Svg,
+    Bell: Svg,
     BookOpen: Svg,
     Bookmark: Svg,
     CheckCircle2: Svg,
     Clock: Svg,
     ExternalLink: Svg,
     FilePlus2: Svg,
+    Flame: Svg,
+    FolderHeart: Svg,
+    HeartHandshake: Svg,
     HelpCircle: Svg,
+    History: Svg,
     Info: Svg,
     LayoutGrid: Svg,
+    Library: Svg,
     List: Svg,
     Loader2: Svg,
     LogIn: Svg,
     MessageSquare: Svg,
+    Palette: Svg,
     Flag: Svg,
+    KeyRound: Svg,
     Lock: Svg,
     Search: Svg,
+    Shield: Svg,
     ShieldCheck: Svg,
     User: Svg,
+    Zap: Svg,
+    Activity: Svg,
     AlertTriangle: Svg,
     ShieldAlert: Svg,
     XCircle: Svg,
@@ -140,6 +194,34 @@ beforeEach(() => {
     mutate: vi.fn(),
     isPending: false,
   });
+  mocks.useContributionsMock.mockReturnValue({
+    data: {
+      enabled: true,
+      encryption_ready: true,
+      consent_version: "2026-08-19",
+      credentials: [],
+      limits: { rpm: 15, rpd: 500, tpm: 250000 },
+    },
+    isPending: false,
+    isError: false,
+  });
+  mocks.useContributionUsageMock.mockReturnValue({
+    data: undefined,
+    isPending: false,
+    isError: false,
+  });
+  mocks.useReplaceContributionMock.mockReturnValue({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  });
+  mocks.useUpdateContributionStatusMock.mockReturnValue({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  });
+  mocks.useDeleteContributionMock.mockReturnValue({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  });
 });
 
 afterEach(() => {
@@ -148,8 +230,12 @@ afterEach(() => {
 
 function renderWithProviders(ui: React.ReactNode) {
   const { QueryClient, QueryClientProvider } = require("@tanstack/react-query");
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -212,7 +298,15 @@ describe("Account requests — no fake rejection reason", () => {
     mocks.useRequestsMock.mockReturnValue({
       data: {
         items: [
-          { id: 1, request_type: "novel", status: "rejected", source_url: null, slug: null, chapter_id: null, created_at: "2025-01-01T00:00:00Z" },
+          {
+            id: 1,
+            request_type: "novel",
+            status: "rejected",
+            source_url: null,
+            slug: null,
+            chapter_id: null,
+            created_at: "2025-01-01T00:00:00Z",
+          },
         ],
         next_cursor: null,
       },
@@ -231,7 +325,15 @@ describe("Account requests — no fake rejection reason", () => {
     mocks.useRequestsMock.mockReturnValue({
       data: {
         items: [
-          { id: 1, request_type: "novel", status: "rejected", source_url: null, slug: null, chapter_id: null, created_at: "2025-01-01T00:00:00Z" },
+          {
+            id: 1,
+            request_type: "novel",
+            status: "rejected",
+            source_url: null,
+            slug: null,
+            chapter_id: null,
+            created_at: "2025-01-01T00:00:00Z",
+          },
         ],
         next_cursor: null,
       },
@@ -319,8 +421,8 @@ describe("Account settings — honest controls", () => {
     const { default: Page } = await import("../account/settings/page");
     renderWithProviders(<Page />);
     const buttons = document.querySelectorAll("button[disabled]");
-    const deleteBtn = Array.from(buttons).find(
-      (b) => b.getAttribute("aria-label")?.toLowerCase().includes("delete")
+    const deleteBtn = Array.from(buttons).find((b) =>
+      b.getAttribute("aria-label")?.toLowerCase().includes("delete"),
     );
     expect(deleteBtn).toBeTruthy();
   });
@@ -336,14 +438,6 @@ describe("Account pages — real route references", () => {
     const { default: Page } = await import("../account/history/page");
     renderWithProviders(<Page />);
     const link = document.querySelector('a[href="/account/library"]');
-    expect(link).toBeTruthy();
-  });
-
-  it("contributions page links to /contribute", async () => {
-    mocks.isAuthenticated = true;
-    const { default: Page } = await import("../account/contributions/page");
-    renderWithProviders(<Page />);
-    const link = document.querySelector('a[href="/contribute"]');
     expect(link).toBeTruthy();
   });
 

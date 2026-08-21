@@ -11,9 +11,11 @@ Probe states: ``healthy``, ``degraded``, ``unhealthy``.
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 import shutil
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -29,6 +31,16 @@ STATE_UNHEALTHY = "unhealthy"
 
 def _utc_now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+@dataclass(frozen=True)
+class HealthCacheStats:
+    """Low-cardinality readiness-cache metrics."""
+
+    hits: int
+    misses: int
+    entries: int
+    age_seconds: float | None
 
 
 class HealthService:
@@ -55,8 +67,10 @@ class HealthService:
         self._backup_service = backup_service
         self._database_backup_service = database_backup_service
         self._operator_alert_service = operator_alert_service
-        self._cache: dict[str, Any] = {}
-        self._cache_timestamp: float = 0.0
+        self._readiness_cache: tuple[float, dict[str, dict[str, Any]]] | None = None
+        self._readiness_task: asyncio.Task[dict[str, dict[str, Any]]] | None = None
+        self._readiness_cache_hits = 0
+        self._readiness_cache_misses = 0
 
     def liveness(self) -> dict[str, Any]:
         """Process-only liveness check. No DB/storage/worker calls.
@@ -76,7 +90,7 @@ class HealthService:
         Returns 503 if any probe is unhealthy.
         Never exposes credentials, paths, hostnames, or stack traces.
         """
-        results = await self._run_probes()
+        results = await self._get_readiness_results()
         overall = self._aggregate_status(results)
 
         return {
@@ -85,6 +99,52 @@ class HealthService:
             "timestamp": _utc_now_iso(),
             "checks": self._public_safe_checks(results),
         }
+
+    async def _get_readiness_results(self) -> dict[str, dict[str, Any]]:
+        """Return cached readiness results with one in-flight refresh.
+
+        The service is a process singleton in normal deployments. Task
+        creation happens before the first await, so concurrent requests in
+        the same event loop join one bounded probe run instead of starting a
+        probe storm. Admin diagnostics deliberately bypass this cache.
+        """
+        now = time.monotonic()
+        ttl = max(0, settings.HEALTH_CACHE_TTL_SECONDS)
+        cached = self._readiness_cache
+        if ttl > 0 and cached is not None and now - cached[0] < ttl:
+            self._readiness_cache_hits += 1
+            return copy.deepcopy(cached[1])
+
+        task = self._readiness_task
+        if task is None or task.done():
+            self._readiness_cache_misses += 1
+            task = asyncio.create_task(self._refresh_readiness())
+            self._readiness_task = task
+
+        try:
+            return copy.deepcopy(await task)
+        finally:
+            if task.done() and self._readiness_task is task:
+                self._readiness_task = None
+
+    async def _refresh_readiness(self) -> dict[str, dict[str, Any]]:
+        results = await self._run_probes()
+        self._readiness_cache = (time.monotonic(), copy.deepcopy(results))
+        return results
+
+    def health_cache_stats(self) -> HealthCacheStats:
+        """Return safe readiness-cache counters for operator metrics."""
+        age_seconds: float | None = None
+        entries = 0
+        if self._readiness_cache is not None:
+            entries = 1
+            age_seconds = max(0.0, time.monotonic() - self._readiness_cache[0])
+        return HealthCacheStats(
+            hits=self._readiness_cache_hits,
+            misses=self._readiness_cache_misses,
+            entries=entries,
+            age_seconds=age_seconds,
+        )
 
     async def admin_health(self) -> dict[str, Any]:
         """Owner-only detailed health diagnostics. Still redacted.
@@ -109,14 +169,14 @@ class HealthService:
 
         probes = {
             "database": self._probe_database,
-            "storage": self._probe_storage,
+            "storage": self._probe_storage if include_recovery else self._probe_storage_readiness,
             "worker": self._probe_worker,
             "disk": self._probe_disk,
-            "storage_usage": self._probe_storage_usage,
         }
         if include_recovery:
             probes.update(
                 {
+                    "storage_usage": self._probe_storage_usage,
                     "object_snapshot": self._probe_object_snapshot,
                     "database_backup": self._probe_database_backup,
                     "database_restore_verification": self._probe_database_restore_verification,
@@ -248,6 +308,39 @@ class HealthService:
             return {
                 "status": STATE_UNHEALTHY,
                 "message": "Storage probe failed",
+                "error_type": type(exc).__name__,
+                "latency_ms": latency,
+            }
+
+    async def _probe_storage_readiness(self) -> dict[str, Any]:
+        """Probe storage availability without a write/delete round trip."""
+        start = time.monotonic()
+        if self._storage is None:
+            return {
+                "status": STATE_DEGRADED,
+                "message": "Storage service not available",
+                "latency_ms": 0,
+            }
+        try:
+            probe = getattr(self._storage, "probe_readiness", None)
+            responsive = await asyncio.to_thread(probe if callable(probe) else self._storage.probe)
+            latency = int((time.monotonic() - start) * 1000)
+            if responsive:
+                return {
+                    "status": STATE_HEALTHY,
+                    "message": "Storage responsive",
+                    "latency_ms": latency,
+                }
+            return {
+                "status": STATE_UNHEALTHY,
+                "message": "Storage readiness probe returned unavailable",
+                "latency_ms": latency,
+            }
+        except Exception as exc:
+            latency = int((time.monotonic() - start) * 1000)
+            return {
+                "status": STATE_UNHEALTHY,
+                "message": "Storage readiness probe failed",
                 "error_type": type(exc).__name__,
                 "latency_ms": latency,
             }

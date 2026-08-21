@@ -344,6 +344,10 @@ class TestChangedChapterUpdate:
         # Verify both chapters stored
         stored = storage.list_stored_chapters("novel-1")
         assert len(stored) == 2
+        active_metadata = storage.load_metadata("novel-1")
+        assert active_metadata is not None
+        assert active_metadata["onboarding_status"] == "ready_for_translation"
+        assert active_metadata["body_scrape_required"] is False
 
         # Record fetch count before update
         count_before = source.fetch_count

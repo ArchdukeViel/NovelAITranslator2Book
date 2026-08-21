@@ -29,9 +29,7 @@ const sidebarLinks = [
   { href: "/account/settings", label: "Settings", icon: Settings },
 ];
 
-const unavailableLinks = [
-  { label: "Support", icon: LifeBuoy },
-];
+const unavailableLinks = [{ label: "Support", icon: LifeBuoy }];
 
 export function AccountShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -40,21 +38,27 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
   const logout = useLogout();
 
   useEffect(() => {
-    if (!isPending && !isAuthenticated) {
-      router.replace(`/login?mode=signin&callbackUrl=${encodeURIComponent(pathname)}`);
+    // Let guests view /account/library to see library tabs and the login prompt.
+    if (!isPending && !isAuthenticated && pathname !== "/account/library") {
+      router.replace(
+        `/login?mode=signin&callbackUrl=${encodeURIComponent(pathname)}`,
+      );
     }
   }, [isPending, isAuthenticated, pathname, router]);
 
   if (isPending) {
     return (
       <main className="mx-auto flex min-h-[50vh] max-w-7xl items-center justify-center px-4 py-8">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden="true" />
+        <Loader2
+          className="h-5 w-5 animate-spin text-muted-foreground"
+          aria-hidden="true"
+        />
         <span className="sr-only">Checking session</span>
       </main>
     );
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && pathname !== "/account/library") {
     return null;
   }
 
@@ -66,7 +70,9 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
         aria-label="Account navigation"
       >
         <div className="flex h-16 items-center px-6 border-b border-border">
-          <h2 className="font-literary text-xl font-semibold tracking-normal">Account</h2>
+          <h2 className="font-literary text-xl font-semibold tracking-normal">
+            Account
+          </h2>
         </div>
 
         <div className="flex flex-1 flex-col px-3 py-4">
@@ -97,7 +103,9 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
                 <div className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground">
                   <link.icon className="h-4 w-4" aria-hidden="true" />
                   <span>{link.label}</span>
-                  <span className="ml-auto text-xs text-muted-foreground/60">Unavailable</span>
+                  <span className="ml-auto text-xs text-muted-foreground/60">
+                    Unavailable
+                  </span>
                 </div>
               </li>
             ))}

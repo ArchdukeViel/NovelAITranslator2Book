@@ -7,11 +7,16 @@ import re
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, func, true
+from sqlalchemy.orm import Session, selectinload
 
+from novelai.db.models.chapter import Chapter
+from novelai.db.models.genre import Genre
 from novelai.db.models.novel import Novel
+from novelai.db.models.tag import Tag
 from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.public_glossary_annotations import find_annotations, select_public_terms
+from novelai.services.public_projection_cache import public_projection_cache
 from novelai.sources.status import normalize_publication_status
 from novelai.storage.service import StorageService
 
@@ -132,17 +137,23 @@ class PublicCatalogService:
 
     @staticmethod
     def public_slug_from_metadata(novel_id: str, meta: dict[str, Any]) -> str:
-        storage_slug = _optional_str(meta.get("storage_slug"))
-        if storage_slug:
-            return storage_slug
-        translated_title = _optional_str(meta.get("translated_title"))
-        if translated_title:
-            return PublicCatalogService.slugify_public_title(translated_title)
+        display_title = _optional_str(meta.get("translated_title")) or _optional_str(meta.get("title"))
+        if display_title:
+            public_slug = PublicCatalogService.slugify_public_title(display_title)
+            if public_slug != "novel":
+                return public_slug
         return novel_id
 
     @staticmethod
     def public_synopsis_from_metadata(meta: dict[str, Any]) -> str | None:
-        for key in ("translated_synopsis", "translated_description", "synopsis", "description"):
+        for key in (
+            "translated_narrative_synopsis",
+            "translated_synopsis",
+            "narrative_synopsis",
+            "synopsis",
+            "translated_description",
+            "description",
+        ):
             value = _optional_str(meta.get(key))
             if value:
                 return value
@@ -188,7 +199,328 @@ class PublicCatalogService:
     def is_db_catalog_base_request(*, sort_by: str | None) -> bool:
         return sort_by is None or sort_by in VALID_SORT_FIELDS
 
+    def public_catalog_cache_key(
+        self,
+        *,
+        sort_by: str,
+        order: str,
+        page: int,
+        page_size: int,
+    ) -> tuple[str, ...]:
+        """Return the cache identity for an unfiltered public catalog page."""
+        if self.db_session is None:
+            database_identity = "none"
+            catalog_version = "none"
+        else:
+            database_identity = str(id(self.db_session.get_bind()))
+            catalog_version = str(self.db_session.query(func.max(Novel.updated_at)).scalar())
+        return (
+            "catalog-v1",
+            database_identity,
+            catalog_version,
+            sort_by,
+            order,
+            str(page),
+            str(page_size),
+        )
+
+    def get_public_catalog_page(
+        self,
+        *,
+        q: str | None,
+        publication_status: str | None,
+        source_key: str | None,
+        effective_sort_by: str,
+        min_chapters: int | None,
+        max_chapters: int | None,
+        genre_include_set: set[str],
+        genre_exclude_set: set[str],
+        tag_include_set: set[str],
+        tag_exclude_set: set[str],
+        include_adult: bool,
+        page: int,
+        page_size: int,
+        order: str,
+    ) -> tuple[list[Novel], int, bool]:
+        """Return a filtered page of published catalog projection rows."""
+        if self.db_session is None:
+            return [], 0, True
+
+        query = self.db_session.query(Novel).filter(
+            Novel.is_published.is_(True),
+            Novel.title != Novel.slug,
+        )
+        search_text = _optional_str(q)
+        if search_text:
+            pattern = f"%{search_text}%"
+            query = query.filter(
+                Novel.title.ilike(pattern) | Novel.original_title.ilike(pattern) | Novel.author.ilike(pattern)
+            )
+        if publication_status:
+            query = query.filter(Novel.publication_status == publication_status)
+        if source_key:
+            query = query.filter(Novel.source_site == source_key)
+        if min_chapters is not None:
+            query = query.filter(Novel.chapter_count >= min_chapters)
+        if max_chapters is not None:
+            query = query.filter(Novel.chapter_count <= max_chapters)
+
+        active_public_genre = (
+            Genre.is_active.is_(True) if include_adult else and_(Genre.is_active.is_(True), Genre.is_adult.is_(False))
+        )
+        public_tag = true() if include_adult else Tag.is_adult.is_(False)
+        for genre_slug in sorted(genre_include_set):
+            query = query.filter(
+                Novel.genres.any(
+                    and_(
+                        Genre.slug == genre_slug,
+                        active_public_genre,
+                    )
+                )
+            )
+        if genre_exclude_set:
+            query = query.filter(
+                ~Novel.genres.any(
+                    and_(
+                        Genre.slug.in_(genre_exclude_set),
+                        active_public_genre,
+                    )
+                )
+            )
+        for tag_name in sorted(tag_include_set):
+            query = query.filter(
+                Novel.tags.any(
+                    and_(
+                        Tag.name == tag_name,
+                        public_tag,
+                    )
+                )
+            )
+        if tag_exclude_set:
+            query = query.filter(
+                ~Novel.tags.any(
+                    and_(
+                        Tag.name.in_(tag_exclude_set),
+                        public_tag,
+                    )
+                )
+            )
+
+        if effective_sort_by == "title":
+            order_field = Novel.title
+        elif effective_sort_by == "updated_at":
+            order_field = func.coalesce(Novel.latest_chapter_updated_at, Novel.updated_at)
+        elif effective_sort_by == "chapter_count":
+            order_field = Novel.chapter_count
+        else:
+            order_field = Novel.source_updated_at
+        if order == "asc":
+            order_columns = (order_field.asc().nulls_first(), Novel.id.asc())
+        else:
+            order_columns = (order_field.desc().nulls_last(), Novel.id.desc())
+
+        offset = (page - 1) * page_size
+        rows = (
+            query.add_columns(func.count(Novel.id).over().label("catalog_total"))
+            .options(selectinload(Novel.genres), selectinload(Novel.tags))
+            .order_by(*order_columns)
+            .offset(offset)
+            .limit(page_size)
+            .all()
+        )
+        if rows:
+            return [row[0] for row in rows], int(rows[0][1]), False
+
+        has_published_projection = (
+            self.db_session.query(Novel.id)
+            .filter(Novel.is_published.is_(True), Novel.title != Novel.slug)
+            .limit(1)
+            .first()
+            is not None
+        )
+        return [], 0, not has_published_projection
+
+    def list_public_genres(self, *, include_adult: bool) -> list[dict[str, Any]]:
+        """Return active public genres in their stable display order."""
+        if self.db_session is None:
+            return []
+        query = self.db_session.query(Genre).filter(Genre.is_active.is_(True))
+        if not include_adult:
+            query = query.filter(Genre.is_adult.is_(False))
+        return [
+            {
+                "slug": genre.slug,
+                "name_ja": genre.name_ja,
+                "name_en": genre.name_en,
+            }
+            for genre in query.order_by(Genre.display_order, Genre.name_ja).all()
+        ]
+
     # -- instance helpers (need storage / db) ----------------------------------
+
+    def get_public_novel_summary(
+        self,
+        slug: str,
+        *,
+        include_adult: bool = False,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """Resolve and build public novel summary.
+
+        Returns (summary_dict, novel_id) or (None, None).
+        Uses only the published DB projection. Missing or placeholder rows are
+        unavailable until projection reconciliation repairs them.
+        """
+        db_novel = self._load_published_db_novel(slug)
+        if db_novel is None:
+            return None, None
+        cache_key = (
+            "novel-summary-v1",
+            str(id(self.db_session.get_bind())) if self.db_session is not None else "none",
+            db_novel.slug,
+            str(db_novel.updated_at),
+            str(include_adult),
+        )
+        cached = public_projection_cache.get(cache_key)
+        if isinstance(cached, dict):
+            return cached, db_novel.slug
+        summary = self._db_novel_summary(db_novel, include_adult=include_adult)
+        public_projection_cache.set(cache_key, summary)
+        return summary, db_novel.slug
+
+    def build_public_novel_summary(
+        self,
+        novel: Novel,
+        *,
+        include_adult: bool = False,
+    ) -> dict[str, Any] | None:
+        """Build a summary from an already-loaded published projection row.
+
+        Ranking requests use this seam after joining the analytics aggregate to
+        ``Novel``. It preserves the public summary contract without resolving
+        each slug again or consulting object storage.
+        """
+        if novel.is_published is not True or self.db_title_is_placeholder(novel):
+            return None
+        return self._db_novel_summary(novel, include_adult=include_adult)
+
+    def get_public_read_context(
+        self,
+        slug: str,
+    ) -> tuple[str, str, dict[str, Any], list[dict[str, Any]]] | None:
+        """Return the complete DB-backed public novel/chapter projection.
+
+        Public metadata requests must not enumerate object storage. A missing
+        or underfed projection returns ``None`` so the router can return a
+        bounded unavailable/404 response while reconciliation repairs it.
+        Chapter text remains in storage and is loaded only by the reader
+        endpoint after this projection succeeds.
+        """
+        if self.db_session is None:
+            return None
+        db_novel = self._load_published_db_novel(slug)
+        if db_novel is None:
+            return None
+        cache_key = (
+            "chapter-context-v1",
+            str(id(self.db_session.get_bind())),
+            slug,
+            str(db_novel.updated_at),
+        )
+        cached = public_projection_cache.get(cache_key)
+        if isinstance(cached, dict):
+            novel_id = cached.get("novel_id")
+            public_slug = cached.get("public_slug")
+            metadata = cached.get("metadata")
+            chapters = cached.get("chapters")
+            if (
+                isinstance(novel_id, str)
+                and isinstance(public_slug, str)
+                and isinstance(metadata, dict)
+                and isinstance(chapters, list)
+            ):
+                return novel_id, public_slug, metadata, chapters
+
+        chapter_rows = (
+            self.db_session.query(Chapter)
+            .filter_by(novel_id=db_novel.id)
+            .order_by(
+                Chapter.sequence_number.asc().nulls_last(),
+                Chapter.chapter_number.asc(),
+                Chapter.id.asc(),
+            )
+            .all()
+        )
+        expected_chapters = max(db_novel.chapter_count or 0, db_novel.translated_count or 0)
+        if expected_chapters > len(chapter_rows):
+            return None
+
+        chapter_metadata = [
+            {
+                "id": chapter.logical_chapter_id,
+                "title": chapter.title,
+                "num": chapter.chapter_number,
+                "section_title": chapter.section_title,
+                "translated_section_title": chapter.translated_section_title,
+                "section_source_id": chapter.section_source_id,
+                "section_ordinal": chapter.section_ordinal,
+                "section_level": chapter.section_level,
+                "part": chapter.section_title,
+                "source_episode_id": chapter.source_episode_id,
+                "sequence_number": chapter.sequence_number,
+                "translated": (
+                    chapter.translation_status == "translated" or chapter.translated_storage_key is not None
+                ),
+            }
+            for chapter in chapter_rows
+        ]
+        summary = self._db_novel_summary(db_novel, include_adult=False)
+        metadata = {
+            "novel_id": db_novel.slug,
+            "title": db_novel.title,
+            "author": db_novel.author,
+            "language": db_novel.language,
+            "publication_status": db_novel.publication_status,
+            "chapters": chapter_metadata,
+        }
+        if db_novel.public_reader_unavailable_policy is not None:
+            metadata["public_reader_unavailable_policy"] = db_novel.public_reader_unavailable_policy
+        if len(chapter_metadata) <= 1_000:
+            public_projection_cache.set(
+                cache_key,
+                {
+                    "novel_id": db_novel.slug,
+                    "public_slug": str(summary["slug"]),
+                    "metadata": metadata,
+                    "chapters": chapter_metadata,
+                },
+            )
+        return db_novel.slug, str(summary["slug"]), metadata, chapter_metadata
+
+    def _load_published_db_novel(self, slug: str) -> Novel | None:
+        if self.db_session is None:
+            return None
+        candidates = (
+            self.db_session.query(Novel)
+            .options(selectinload(Novel.genres), selectinload(Novel.tags))
+            .filter(Novel.slug == slug)
+            .all()
+        )
+        if not candidates:
+            candidates = (
+                self.db_session.query(Novel)
+                .options(selectinload(Novel.genres), selectinload(Novel.tags))
+                .filter(Novel.public_slug == slug)
+                .limit(2)
+                .all()
+            )
+        if len(candidates) != 1:
+            return None
+        db_novel = candidates[0]
+        if db_novel.is_published is not True:
+            return None
+        if self.db_title_is_placeholder(db_novel):
+            return None
+        return db_novel
 
     def _novel_summary(
         self,
@@ -240,23 +572,12 @@ class PublicCatalogService:
         genres, tags = self.taxonomy_from_db_novel(novel, include_adult=include_adult)
         source_title = novel.original_title if (novel.original_title and novel.original_title != novel.title) else None
         pub_status = normalize_publication_status(novel.publication_status)
-        storage_summary: dict[str, Any] | None = None
-        resolved = self._resolve_storage_metadata_for_db_novel(
-            novel.slug,
-            allow_title_slug_scan=self.db_title_is_placeholder(novel),
-        )
-        if resolved is not None:
-            storage_novel_id, metadata, _ = resolved
-            storage_summary = self._novel_summary(
-                storage_novel_id,
-                metadata,
-                genres=genres,
-                tags=tags,
-            )
-        if storage_summary is not None and self.db_summary_needs_storage_hydration(novel, storage_summary):
-            storage_summary["added_at"] = _datetime_to_public_string(novel.created_at)
-            return storage_summary
-        public_slug = storage_summary.get("slug") if storage_summary is not None else novel.slug
+
+        # Public reads never hydrate placeholder/underfed rows from storage.
+        # Projection reconciliation must repair those rows before publication.
+        public_slug = novel.public_slug or self.slugify_public_title(novel.title) if novel.title else novel.slug
+        if public_slug == "novel" and novel.slug:
+            public_slug = novel.slug
         return {
             "novel_id": novel.slug,
             "slug": public_slug,
@@ -266,9 +587,9 @@ class PublicCatalogService:
             "language": novel.language,
             "synopsis": novel.synopsis,
             "publication_status": pub_status,
-            "chapter_count": novel.chapter_count,
-            "translated_count": novel.translated_count,
-            "added_at": _datetime_to_public_string(novel.created_at),
+            "chapter_count": novel.chapter_count or 0,
+            "translated_count": novel.translated_count or 0,
+            "added_at": _datetime_to_public_string(novel.source_updated_at or novel.created_at),
             "latest_chapter_id": novel.latest_chapter_id,
             "latest_chapter_number": novel.latest_chapter_number,
             "latest_chapter_title": novel.latest_chapter_title,
@@ -311,7 +632,14 @@ class PublicCatalogService:
         """Return (genre_info, tag_info, has_adult_genre)."""
         if self.db_session is None:
             return [], [], False
-        novel = self.db_session.query(Novel).filter_by(slug=slug).one_or_none()
+        from sqlalchemy.orm import selectinload
+
+        novel = (
+            self.db_session.query(Novel)
+            .options(selectinload(Novel.genres), selectinload(Novel.tags))
+            .filter_by(slug=slug)
+            .one_or_none()
+        )
         if novel is None:
             return [], [], False
         genre_info: list[dict[str, Any]] = []
@@ -362,12 +690,6 @@ class PublicCatalogService:
         self,
         slug: str,
     ) -> tuple[str, dict[str, Any], str] | None:
-        meta = self.storage.load_metadata(slug)
-        if meta is not None:
-            source_id = _optional_str(meta.get("novel_id")) or slug
-            if not self._db_row_allows_storage_catalog_entry(source_id):
-                return None
-            return source_id, meta, self.public_slug_from_metadata(source_id, meta)
         if self.db_session is not None:
             novel = self.db_session.query(Novel).filter_by(slug=slug).one_or_none()
             if novel is not None:
@@ -376,6 +698,12 @@ class PublicCatalogService:
                 meta = self.storage.load_metadata(novel.slug) or {}
                 source_id = _optional_str(meta.get("novel_id")) or novel.slug
                 return source_id, meta, self.public_slug_from_metadata(source_id, meta)
+        meta = self.storage.load_metadata(slug)
+        if meta is not None:
+            source_id = _optional_str(meta.get("novel_id")) or slug
+            if not self._db_row_allows_storage_catalog_entry(source_id):
+                return None
+            return source_id, meta, self.public_slug_from_metadata(source_id, meta)
         for novel_id in self.storage.list_novels():
             candidate_meta = self.storage.load_metadata(novel_id) or {}
             public_slug = self.public_slug_from_metadata(novel_id, candidate_meta)

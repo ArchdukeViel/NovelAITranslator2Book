@@ -178,6 +178,28 @@ def _mark_metadata_translation_failure(meta: dict[str, Any], exc: Exception, *, 
     meta["metadata_translation_error"] = _bounded_metadata_translation_error(exc)
 
 
+def _clear_stale_metadata_translations(
+    meta: dict[str, Any],
+    previous: dict[str, Any] | None,
+) -> None:
+    """Prevent an old synopsis translation from masking corrected source text."""
+    if not previous:
+        return
+    current_source = meta.get("narrative_synopsis") or meta.get("synopsis") or meta.get("description")
+    previous_source = (
+        previous.get("narrative_synopsis")
+        or previous.get("synopsis")
+        or previous.get("description")
+        or previous.get("summary")
+    )
+    if not isinstance(current_source, str) or not current_source.strip():
+        return
+    if not isinstance(previous_source, str) or current_source.strip() == previous_source.strip():
+        return
+    for key in ("translated_narrative_synopsis", "translated_synopsis", "translated_description"):
+        meta[key] = None
+
+
 async def _translate_and_mark_metadata(
     self: Any,
     meta: dict[str, Any],
@@ -236,7 +258,15 @@ def _bootstrap_source_texts(storage: Any, novel_id: str, meta: dict[str, Any]) -
     if texts:
         return texts
 
-    for key in ("title", "translated_title", "author", "synopsis", "description", "summary"):
+    for key in (
+        "title",
+        "translated_title",
+        "author",
+        "narrative_synopsis",
+        "synopsis",
+        "description",
+        "summary",
+    ):
         value = meta.get(key)
         if isinstance(value, str) and value.strip():
             texts.append(value)
@@ -350,6 +380,7 @@ async def scrape_metadata(
     meta.setdefault("input_adapter_key", "web")
     meta.setdefault("context_group_id", novel_id)
 
+    _clear_stale_metadata_translations(meta, existing_metadata)
     meta = await _translate_and_mark_metadata(self, meta, existing_metadata)
     self.storage.save_metadata(novel_id, meta)
     safely_refresh_catalog_projection_after_storage_write(
@@ -425,6 +456,7 @@ async def scrape_chapters(
     progress_callback: Callable[[str], None] | None = None,
     cancellation_check: Callable[[], bool] | None = None,
     progress_events_callback: Callable[[CrawlProgressEvent], None] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Fetch chapter content from the source site and persist it.
 
@@ -467,6 +499,7 @@ async def scrape_chapters(
             progress_callback,
             cancellation_check,
             progress_events_callback,
+            metadata=metadata,
         )
 
     terminal_status = result.get("terminal_status", TERMINAL_STATUS_FAILED)
@@ -499,6 +532,7 @@ async def _scrape_chapters_impl(
     progress_callback: Callable[[str], None] | None,
     cancellation_check: Callable[[], bool] | None = None,
     progress_events_callback: Callable[[CrawlProgressEvent], None] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Internal implementation of scrape_chapters (called under lock).
 
@@ -540,18 +574,25 @@ async def _scrape_chapters_impl(
     generation_id = f"gen-{uuid.uuid4().hex[:12]}"
 
     if mode == "full":
-        meta = await source.fetch_metadata(novel_id)
-        meta = _apply_metadata_quality_gate(meta, source_key=source_key, novel_id=novel_id)
-        if not meta.get("source_language"):
-            detected = self._infer_source_language(source_key, meta)
-            if detected:
-                meta["source_language"] = detected
-        meta.setdefault("origin_type", "url")
-        meta.setdefault("origin_uri_or_path", str(meta.get("source_url") or novel_id))
-        meta.setdefault("document_type", "web_novel")
-        meta.setdefault("input_adapter_key", "web")
-        meta.setdefault("context_group_id", novel_id)
-        meta = await _translate_and_mark_metadata(self, meta)
+        if isinstance(metadata, dict):
+            # A queued scrape has already completed metadata reconciliation.
+            # Carry that exact snapshot into the chapter phase so a long
+            # scrape does not refetch the source index or rerun metadata
+            # translation with a different identifier.
+            meta = dict(metadata)
+        else:
+            meta = await source.fetch_metadata(novel_id)
+            meta = _apply_metadata_quality_gate(meta, source_key=source_key, novel_id=novel_id)
+            if not meta.get("source_language"):
+                detected = self._infer_source_language(source_key, meta)
+                if detected:
+                    meta["source_language"] = detected
+            meta.setdefault("origin_type", "url")
+            meta.setdefault("origin_uri_or_path", str(meta.get("source_url") or novel_id))
+            meta.setdefault("document_type", "web_novel")
+            meta.setdefault("input_adapter_key", "web")
+            meta.setdefault("context_group_id", novel_id)
+            meta = await _translate_and_mark_metadata(self, meta)
         # Section 3: the legacy ``save_metadata`` live projection is NOT
         # written here. It is deferred until after ``commit_generation``
         # swaps the active pointer so a partial or failed run can never
@@ -560,7 +601,8 @@ async def _scrape_chapters_impl(
         # the source of truth after activation, and a failed stage is
         # rolled back without touching the legacy file.
     else:
-        meta = self.storage.load_metadata(novel_id)
+        load_metadata_for_crawl = getattr(self.storage, "load_metadata_for_crawl", self.storage.load_metadata)
+        meta = metadata if metadata is not None else load_metadata_for_crawl(novel_id)
         if not meta:
             raise RuntimeError("Metadata not found; run scrape-metadata first.")
 
@@ -772,6 +814,14 @@ async def _scrape_chapters_impl(
                     self.storage.seed_generation_from_active(novel_id, generation_id, [chapter_id])
                     skipped += 1
                     chapter_dispositions[chapter_id] = DISPOSITION_UNCHANGED_SELECTED
+                    scraped_chapters_for_state.append(
+                        {
+                            **chapter,
+                            "id": chapter_id,
+                            "source_episode_id": ep_id,
+                            "content_hash": new_signature,
+                        }
+                    )
                     _emit(
                         STAGE_BODY_CRAWL,
                         "skipped",
@@ -982,12 +1032,28 @@ async def _scrape_chapters_impl(
             metadata=meta,
             scraped_chapters=scraped_chapters_for_state,
         )
+        if terminal_status in (TERMINAL_STATUS_COMPLETED, TERMINAL_STATUS_COMPLETED_WITH_WARNINGS):
+            # Onboarding status is operational metadata, but the active
+            # generation is authoritative once it exists. Persist the final
+            # status in the staged snapshot so a metadata handoff from the
+            # preceding activity cannot leave a completed crawl appearing as
+            # chapters_pending to the next operation.
+            meta["onboarding_status"] = "ready_for_translation"
+            meta["body_scrape_required"] = False
+            meta.pop("onboarding_error_code", None)
+            meta.pop("onboarding_error_message", None)
+        elif terminal_status == TERMINAL_STATUS_COMPLETED_WITH_ERRORS:
+            meta["onboarding_status"] = "partially_scraped"
+            meta["body_scrape_required"] = True
+            meta["onboarding_error_code"] = "scrape_completed_with_errors"
+            meta["onboarding_error_message"] = (
+                f"Chapter scrape completed with errors: {succeeded} succeeded, {failed} failed."
+            )
         # Stage the source-state / chapter-index / metadata snapshots so the
         # committed generation is a complete, reproducible record of the run.
         self.storage.stage_generation_source_state(novel_id, generation_id, new_source_state)
         self.storage.stage_generation_chapter_index(novel_id, generation_id, meta.get("chapters", []))
-        if mode == "full":
-            self.storage.stage_generation_metadata(novel_id, generation_id, meta)
+        self.storage.stage_generation_metadata(novel_id, generation_id, meta)
 
         # Section 2/3: every current-index chapter must end the crawl with a
         # bundle or an explicit disposition. In update mode a scoped crawl may

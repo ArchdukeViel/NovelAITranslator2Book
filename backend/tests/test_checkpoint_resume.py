@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from novelai.core.chapter_state import ChapterState, TranslationState
-from novelai.core.errors import TranslationInProgressError
 from novelai.services.orchestration.operations import OperationError, OperationsService
 from novelai.services.pipeline.checkpoint import CHECKPOINT_MAX_AGE_DAYS, Checkpoint, CheckpointManager
 
@@ -18,59 +17,69 @@ pytestmark = pytest.mark.slow
 
 
 @pytest.mark.asyncio
-async def test_translate_novel_409_on_translation_in_progress() -> None:
-    """OperationsService.translate_novel maps TranslationInProgressError→OperationError(409)."""
+async def test_translate_novel_enqueues_instead_of_waiting_for_provider() -> None:
+    """Translation requests return a durable pending activity immediately."""
     orchestrator = MagicMock()
-    orchestrator.translate_chapters = AsyncMock(
-        side_effect=TranslationInProgressError("Translation already in progress for novel n1234")
-    )
+    orchestrator.translate_chapters = AsyncMock(side_effect=RuntimeError("provider must not run in the request"))
+    activity_log = MagicMock()
+    activity_log.find_active_translation.return_value = None
+    activity_log.create_translation_activity.return_value = {
+        "activity_id": "translation-test",
+        "status": "pending",
+    }
     svc = OperationsService(
         orchestrator=orchestrator,
-        activity_log=MagicMock(),
+        activity_log=activity_log,
         storage=MagicMock(),
     )
     # Guard: load_metadata returns non-None
     svc.storage.load_metadata.return_value = {"novel_id": "n1234"}  # type: ignore[attr-defined]
 
-    with pytest.raises(OperationError) as exc_info:
-        await svc.translate_novel(
-            novel_id="n1234",
-            source_key="source_a",
-            chapters="all",
-            provider_key=None,
-            provider_model=None,
-            force=False,
-            source_language="ja",
-            target_language="en",
-        )
-    assert exc_info.value.status_code == 409
-    assert "n1234" in str(exc_info.value.detail)
+    result = await svc.translate_novel(
+        novel_id="n1234",
+        source_key="source_a",
+        chapters="all",
+        provider_key=None,
+        provider_model=None,
+        force=False,
+        source_language="ja",
+        target_language="en",
+    )
+    assert result == {"novel_id": "n1234", "activity_id": "translation-test", "status": "pending"}
+    orchestrator.translate_chapters.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_translate_novel_504_on_timeout() -> None:
-    """TimeoutError → OperationError(504)."""
+async def test_translate_novel_request_does_not_report_worker_timeout() -> None:
+    """Provider timeouts are recorded by the worker, not the enqueue request."""
     orchestrator = MagicMock()
     orchestrator.translate_chapters = AsyncMock(side_effect=TimeoutError("timed out"))
+    activity_log = MagicMock()
+    activity_log.find_active_translation.return_value = None
+    activity_log.create_translation_activity.return_value = {
+        "activity_id": "translation-timeout",
+        "status": "pending",
+    }
     svc = OperationsService(
         orchestrator=orchestrator,
-        activity_log=MagicMock(),
+        activity_log=activity_log,
         storage=MagicMock(),
     )
     svc.storage.load_metadata.return_value = {"novel_id": "n5678"}  # type: ignore[attr-defined]
 
-    with pytest.raises(OperationError) as exc_info:
-        await svc.translate_novel(
-            novel_id="n5678",
-            source_key="source_a",
-            chapters="all",
-            provider_key=None,
-            provider_model=None,
-            force=False,
-            source_language="ja",
-            target_language="en",
-        )
-    assert exc_info.value.status_code == 504
+    result = await svc.translate_novel(
+        novel_id="n5678",
+        source_key="source_a",
+        chapters="all",
+        provider_key=None,
+        provider_model=None,
+        force=False,
+        source_language="ja",
+        target_language="en",
+    )
+    assert result["status"] == "pending"
+    assert result["activity_id"] == "translation-timeout"
+    orchestrator.translate_chapters.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -296,12 +305,18 @@ async def test_load_db_translation_state_defaults_to_pending() -> None:
 
 @pytest.mark.asyncio
 async def test_force_resets_all_chapters_to_pending() -> None:
-    """5: ?force=true resets all chapters — tested by verifying translate_chapters is called."""
+    """5: force=true is persisted on the queued activity for the worker."""
     orchestrator = MagicMock()
     orchestrator.translate_chapters = AsyncMock()
+    activity_log = MagicMock()
+    activity_log.find_active_translation.return_value = None
+    activity_log.create_translation_activity.return_value = {
+        "activity_id": "translation-force",
+        "status": "pending",
+    }
     svc = OperationsService(
         orchestrator=orchestrator,
-        activity_log=MagicMock(),
+        activity_log=activity_log,
         storage=MagicMock(),
     )
     svc.storage.load_metadata.return_value = {"novel_id": "n1"}  # type: ignore[attr-defined]
@@ -316,26 +331,30 @@ async def test_force_resets_all_chapters_to_pending() -> None:
         source_language="ja",
         target_language="en",
     )
-    assert result["status"] == "ok"
-    orchestrator.translate_chapters.assert_awaited_once()
-    # force=True is passed through
-    call_kwargs = orchestrator.translate_chapters.call_args.kwargs
-    assert call_kwargs["force"] is True
+    assert result["status"] == "pending"
+    orchestrator.translate_chapters.assert_not_awaited()
+    metadata = activity_log.create_translation_activity.call_args.kwargs["metadata"]
+    assert metadata["force"] is True
 
 
 @pytest.mark.asyncio
 async def test_skip_already_complete_chapters() -> None:
     """7.3: Chapters with translation_state == COMPLETE are skipped.
 
-    This is tested implicitly: when force=False, the orchestrator still
-    receives a call. The resume check happens *inside* translate_chapters
-    before the chapter loop — we verify the endpoint plumbing works.
+    The worker performs the resume check after the request has been queued;
+    this assertion verifies that the request carries force=False.
     """
     orchestrator = MagicMock()
     orchestrator.translate_chapters = AsyncMock()
+    activity_log = MagicMock()
+    activity_log.find_active_translation.return_value = None
+    activity_log.create_translation_activity.return_value = {
+        "activity_id": "translation-resume",
+        "status": "pending",
+    }
     svc = OperationsService(
         orchestrator=orchestrator,
-        activity_log=MagicMock(),
+        activity_log=activity_log,
         storage=MagicMock(),
     )
     svc.storage.load_metadata.return_value = {"novel_id": "n1"}  # type: ignore[attr-defined]
@@ -350,5 +369,7 @@ async def test_skip_already_complete_chapters() -> None:
         source_language="ja",
         target_language="en",
     )
-    assert result["status"] == "ok"
-    orchestrator.translate_chapters.assert_awaited_once()
+    assert result["status"] == "pending"
+    orchestrator.translate_chapters.assert_not_awaited()
+    metadata = activity_log.create_translation_activity.call_args.kwargs["metadata"]
+    assert metadata["force"] is False

@@ -23,10 +23,18 @@ class StubOrchestrator:
             raise RuntimeError("metadata failed")
         return {"chapters": [{"id": "1"}, {"id": "2"}]}
 
-    async def scrape_chapters(self, *args: object, **kwargs: object) -> None:
+    async def scrape_chapters(self, *args: object, **kwargs: object) -> dict[str, object]:
         self.calls.append(("scrape_chapters", args, kwargs))
         if self.fail:
             raise RuntimeError("chapters failed")
+        return {
+            "succeeded": 2,
+            "skipped": 0,
+            "failed": 0,
+            "failures": [],
+            "image_download_failures": 0,
+            "terminal_status": "completed",
+        }
 
     async def translate_chapters(self, *args: object, **kwargs: object) -> None:
         self.calls.append(("translate_chapters", args, kwargs))
@@ -80,6 +88,34 @@ async def test_run_crawl_metadata_activity(worker_env) -> None:
     assert orchestrator.calls[0][0] == "scrape_metadata"
     assert orchestrator.calls[0][1][:2] == ("syosetu_ncode", "novel-1")
     assert orchestrator.calls[0][2]["max_chapter"] == 2
+
+
+@pytest.mark.asyncio
+async def test_run_scrape_activity_runs_metadata_and_chapters_in_one_lease(worker_env) -> None:
+    _storage, activity_log, orchestrator, worker = worker_env
+    activity = activity_log.create_crawl_activity(
+        novel_id="novel-1",
+        source_key="syosetu_ncode",
+        kind="scrape",
+        chapters="all",
+        source_url="https://example.test/novel-1",
+        metadata={"mode": "full", "max_chapter": 2},
+    )
+
+    result = await worker.run_activity(activity["activity_id"])
+
+    assert result is not None
+    assert result["status"] == "completed"
+    assert result["metadata"]["activity_subtype"] == "scraping"
+    assert result["metadata"]["activity_phase"] == "novel_scrape"
+    assert result["metadata"]["result"]["metadata"]["chapter_count"] == 2
+    assert result["metadata"]["result"]["crawl_result"]["terminal_status"] == "completed"
+    assert [call[0] for call in orchestrator.calls[:2]] == ["scrape_metadata", "scrape_chapters"]
+    assert orchestrator.calls[0][2]["source_identifier"] == "https://example.test/novel-1"
+    assert orchestrator.calls[1][2]["mode"] == "full"
+    chapter_metadata = orchestrator.calls[1][2]["metadata"]
+    assert isinstance(chapter_metadata, dict)
+    assert chapter_metadata["chapters"] == [{"id": "1"}, {"id": "2"}]
 
 
 @pytest.mark.asyncio

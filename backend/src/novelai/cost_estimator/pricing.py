@@ -7,13 +7,8 @@ from novelai.cost_estimator.models import CurrencyConverter, ModelPricing
 TOKENS_PER_MILLION = 1_000_000
 
 DEFAULT_PRICING: dict[str, ModelPricing] = {
-    "gemini-3.1-flash-lite": ModelPricing(
-        model_name="gemini-3.1-flash-lite",
-        input_per_million_usd=0.0,
-        output_per_million_usd=0.0,
-    ),
-    "gemma-4-31b-it": ModelPricing(
-        model_name="gemma-4-31b-it",
+    "gemini-3.5-flash-lite": ModelPricing(
+        model_name="gemini-3.5-flash-lite",
         input_per_million_usd=0.0,
         output_per_million_usd=0.0,
     ),
@@ -37,9 +32,7 @@ def get_model_pricing(
         return catalog[model_name]
     except KeyError as exc:
         supported = ", ".join(list_supported_models(catalog))
-        raise ValueError(
-            f"Unsupported model '{model_name}'. Supported models: {supported}."
-        ) from exc
+        raise ValueError(f"Unsupported model '{model_name}'. Supported models: {supported}.") from exc
 
 
 def _validate_tokens(tokens: int) -> None:

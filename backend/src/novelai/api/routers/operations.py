@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
 from novelai.activity.queue import ActivityQueueService
@@ -72,7 +72,7 @@ def _raise_operation_error(exc: OperationError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
-@router.post("/{novel_id}/scrape")
+@router.post("/{novel_id}/scrape", status_code=202)
 async def scrape_novel(
     novel_id: str,
     body: ScrapeRequest,
@@ -138,14 +138,15 @@ async def import_document(
         raise AssertionError("unreachable") from None
 
 
-@router.post("/{novel_id}/translate")
+@router.post("/{novel_id}/translate", status_code=202)
 async def translate_novel(
     novel_id: str,
     body: TranslateRequest,
     request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     service: OperationsService = Depends(get_operations_service),
     _owner=Depends(require_role("owner")),
-) -> dict[str, str]:
+) -> dict[str, Any]:
     _rate_limit(request, "translate")
     try:
         return await service.translate_novel(
@@ -159,6 +160,7 @@ async def translate_novel(
             target_language=body.target_language,
             allow_cross_provider_fallback=body.allow_cross_provider_fallback,
             skip_glossary_gate=body.skip_glossary_gate,
+            idempotency_key=idempotency_key,
         )
     except OperationError as exc:
         _raise_operation_error(exc)

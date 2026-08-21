@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg-browse" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f3323"/>
+      <stop offset="50%" stop-color="#082015"/>
+      <stop offset="100%" stop-color="#03100a"/>
+    </linearGradient>
+    <linearGradient id="glow-emerald" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#047857" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="300" fill="url(#bg-browse)"/>
+  <circle cx="700" cy="90" r="160" fill="url(#glow-emerald)"/>
+  <!-- Forest Silhouettes -->
+  <path d="M0 240 L150 170 L300 230 L480 150 L640 210 L800 160 L800 300 L0 300 Z" fill="#092218" opacity="0.8"/>
+  <path d="M0 260 L180 210 L360 260 L540 190 L700 240 L800 220 L800 300 L0 300 Z" fill="#03110b" opacity="0.9"/>
+</svg>

@@ -13,9 +13,12 @@ file-per-entry cache with TTL) into a single module.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
+import sqlite3
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -234,8 +237,96 @@ class TranslationCache:
 class TranslationCacheService:
     def __init__(self, cache_dir: Path | None = None) -> None:
         self.cache_dir = (cache_dir or settings.NOVEL_LIBRARY_DIR / "translation_cache").resolve()
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.index_path = self.cache_dir / "translation_cache_index.sqlite3"
         self.hits = 0
         self.misses = 0
+        self.index_scans = 0
+        self.index_maintenance_ms = 0.0
+        self._ensure_index()
+
+    def _connect_index(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.index_path, timeout=10.0)
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA busy_timeout=10000")
+        return connection
+
+    def _ensure_index(self) -> None:
+        started = time.perf_counter()
+        with self._connect_index() as connection:
+            connection.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS cache_entries (
+                    cache_key TEXT PRIMARY KEY,
+                    path TEXT NOT NULL,
+                    novel_id TEXT,
+                    created_at TEXT,
+                    last_accessed_at REAL NOT NULL,
+                    size_bytes INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE INDEX IF NOT EXISTS ix_cache_entries_novel_id
+                    ON cache_entries (novel_id);
+                CREATE INDEX IF NOT EXISTS ix_cache_entries_last_accessed
+                    ON cache_entries (last_accessed_at);
+                CREATE TABLE IF NOT EXISTS cache_metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                """
+            )
+            initialized = connection.execute(
+                "SELECT value FROM cache_metadata WHERE key = 'directory_backfill_complete'"
+            ).fetchone()
+            if initialized is None:
+                self.index_scans += 1
+                for path in self.cache_dir.glob("**/*.json"):
+                    try:
+                        data = json.loads(path.read_text(encoding="utf-8"))
+                        entry = CacheEntry(**data)
+                    except Exception:
+                        continue
+                    now = time.time()
+                    connection.execute(
+                        """
+                        INSERT OR REPLACE INTO cache_entries
+                            (cache_key, path, novel_id, created_at, last_accessed_at, size_bytes)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            entry.key,
+                            str(path),
+                            entry.novel_id,
+                            entry.created_at,
+                            path.stat().st_mtime if path.exists() else now,
+                            path.stat().st_size if path.exists() else 0,
+                        ),
+                    )
+                connection.execute(
+                    "INSERT OR REPLACE INTO cache_metadata (key, value) VALUES ('directory_backfill_complete', '1')"
+                )
+        self.index_maintenance_ms += (time.perf_counter() - started) * 1000
+
+    def _index_entry(self, key: str, path: Path, entry: CacheEntry, *, accessed_at: float | None = None) -> None:
+        timestamp = accessed_at if accessed_at is not None else time.time()
+        with self._connect_index() as connection:
+            connection.execute(
+                """
+                INSERT INTO cache_entries
+                    (cache_key, path, novel_id, created_at, last_accessed_at, size_bytes)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(cache_key) DO UPDATE SET
+                    path = excluded.path,
+                    novel_id = excluded.novel_id,
+                    created_at = excluded.created_at,
+                    last_accessed_at = excluded.last_accessed_at,
+                    size_bytes = excluded.size_bytes
+                """,
+                (key, str(path), entry.novel_id, entry.created_at, timestamp, path.stat().st_size),
+            )
+
+    def _remove_index_entry(self, key: str) -> None:
+        with self._connect_index() as connection:
+            connection.execute("DELETE FROM cache_entries WHERE cache_key = ?", (key,))
 
     def _shard_path(self, key: str) -> Path:
         return self.cache_dir / key[:2] / f"{key}.json"
@@ -263,12 +354,20 @@ class TranslationCacheService:
                 age = (datetime.now(UTC) - created_dt).total_seconds()
                 if age > ttl:
                     path.unlink(missing_ok=True)
+                    self._remove_index_entry(key)
                     self.misses += 1
                     return None
+            with contextlib.suppress(Exception), self._connect_index() as connection:
+                connection.execute(
+                    "UPDATE cache_entries SET last_accessed_at = ?, size_bytes = ? WHERE cache_key = ?",
+                    (time.time(), path.stat().st_size, key),
+                )
             self.hits += 1
             return entry
         except Exception as exc:
             logger.warning("Failed to read cache entry %s: %s", key, exc)
+            with contextlib.suppress(Exception):
+                self._remove_index_entry(key)
             self.misses += 1
             return None
 
@@ -279,6 +378,7 @@ class TranslationCacheService:
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
             atomic_write(path, json.dumps(entry.model_dump(), ensure_ascii=False))
+            self._index_entry(key, path, entry)
             self._evict_if_needed()
         except Exception as exc:
             logger.warning("Failed to write cache entry %s: %s", key, exc)
@@ -289,17 +389,14 @@ class TranslationCacheService:
             return 0
         count = 0
         try:
-            if not self.cache_dir.exists():
-                return 0
-            for path in self.cache_dir.glob("**/*.json"):
-                try:
-                    with open(path, encoding="utf-8") as f:
-                        data = json.load(f)
-                    if data.get("novel_id") == novel_id:
-                        path.unlink(missing_ok=True)
-                        count += 1
-                except Exception:
-                    continue
+            with self._connect_index() as connection:
+                rows = connection.execute(
+                    "SELECT cache_key, path FROM cache_entries WHERE novel_id = ?", (novel_id,)
+                ).fetchall()
+                for key, raw_path in rows:
+                    Path(str(raw_path)).unlink(missing_ok=True)
+                    connection.execute("DELETE FROM cache_entries WHERE cache_key = ?", (key,))
+                    count += 1
         except Exception as exc:
             logger.warning("Cache invalidation failed for novel %s: %s", novel_id, exc)
         return count
@@ -308,11 +405,10 @@ class TranslationCacheService:
         total_entries = 0
         total_size = 0
         try:
-            if self.cache_dir.exists():
-                for path in self.cache_dir.glob("**/*.json"):
-                    if path.is_file():
-                        total_entries += 1
-                        total_size += path.stat().st_size
+            with self._connect_index() as connection:
+                total_entries, total_size = connection.execute(
+                    "SELECT COUNT(*), COALESCE(SUM(size_bytes), 0) FROM cache_entries"
+                ).fetchone()
         except Exception:
             pass
         return {
@@ -321,23 +417,27 @@ class TranslationCacheService:
             "total_entries": total_entries,
             "total_size_bytes": total_size,
             "total_size": total_size,
+            "index_backend": "sqlite",
+            "directory_scans": self.index_scans,
+            "maintenance_ms": round(self.index_maintenance_ms, 3),
         }
 
     def _evict_if_needed(self) -> None:
         max_entries = settings.TRANSLATION_CACHE_MAX_ENTRIES
         try:
-            if not self.cache_dir.exists():
-                return
-            files = []
-            for path in self.cache_dir.glob("**/*.json"):
-                if path.is_file():
-                    files.append(path)
-            if len(files) <= max_entries:
-                return
-            # Sort by modification time (oldest first)
-            files.sort(key=lambda p: p.stat().st_mtime)
-            excess = len(files) - max_entries
-            for path in files[:excess]:
-                path.unlink(missing_ok=True)
+            started = time.perf_counter()
+            with self._connect_index() as connection:
+                total = int(connection.execute("SELECT COUNT(*) FROM cache_entries").fetchone()[0])
+                if total <= max_entries:
+                    return
+                excess = total - max_entries
+                rows = connection.execute(
+                    "SELECT cache_key, path FROM cache_entries ORDER BY last_accessed_at ASC LIMIT ?",
+                    (excess,),
+                ).fetchall()
+                for key, raw_path in rows:
+                    Path(str(raw_path)).unlink(missing_ok=True)
+                    connection.execute("DELETE FROM cache_entries WHERE cache_key = ?", (key,))
+            self.index_maintenance_ms += (time.perf_counter() - started) * 1000
         except Exception as exc:
             logger.warning("Eviction failed: %s", exc)

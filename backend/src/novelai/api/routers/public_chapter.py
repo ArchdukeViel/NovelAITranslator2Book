@@ -19,7 +19,6 @@ from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.dependencies import (
     get_db_session,
     get_public_catalog_service,
-    metadata_chapters,
     reader_title,
 )
 from novelai.api.routers.public_contracts import (
@@ -31,6 +30,7 @@ from novelai.api.routers.public_contracts import (
     VALID_UNAVAILABLE_POLICIES,
     PublicTagSearchResult,
     _optional_str,
+    _public_section_fields,
 )
 from novelai.config.settings import settings
 from novelai.services.analytics_service import record_server_event
@@ -338,7 +338,7 @@ def _chapter_shell_response(
     chapter_id: str,
     chapter: dict[str, Any],
     chapters: list[dict[str, Any]],
-    storage: Any,
+    translated_ids: set[str],
 ) -> dict[str, Any]:
     """Build a reader-safe chapter shell response with no translated text."""
     chapter_ids = [str(ch.get("id", "")) for ch in chapters]
@@ -346,8 +346,6 @@ def _chapter_shell_response(
         index = chapter_ids.index(chapter_id)
     else:
         index = 0
-    translated_ids = set(storage.list_translated_chapters(novel_id))
-
     prev_id = chapter_ids[index - 1] if index > 0 else None
     next_id = chapter_ids[index + 1] if index + 1 < len(chapter_ids) else None
 
@@ -372,6 +370,7 @@ def _chapter_shell_response(
         "provider_key": None,
         "provider_model": None,
         "translated_at": None,
+        **_public_section_fields(chapter),
     }
 
 
@@ -421,8 +420,8 @@ async def get_chapter(
     db: Session = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Public translated chapter reader."""
-    resolved = service._resolve_public_novel(slug)
-    if resolved is None:
+    context = service.get_public_read_context(slug)
+    if context is None:
         raise HTTPException(status_code=404, detail="Novel not found.")
     # HTTP 451 — Unavailable For Legal Reasons
     takedown = TakedownService(db)
@@ -432,10 +431,9 @@ async def get_chapter(
             detail="Unavailable For Legal Reasons",
             headers={"Cache-Control": "no-store"},
         )
-    novel_id, meta, public_slug = resolved
-
-    chapters = metadata_chapters(meta)
+    novel_id, public_slug, meta, chapters = context
     chapter_ids = [str(ch.get("id", "")) for ch in chapters]
+    translated_ids = {str(ch.get("id", "")) for ch in chapters if ch.get("translated")}
     if chapter_id not in chapter_ids:
         raise HTTPException(status_code=404, detail="Chapter not found.")
 
@@ -488,7 +486,7 @@ async def get_chapter(
                 chapter_id=chapter_id,
                 chapter=chapter,
                 chapters=chapters,
-                storage=service.storage,
+                translated_ids=translated_ids,
             )
 
         if policy == "hard_404":
@@ -511,7 +509,6 @@ async def get_chapter(
 
     index = chapter_ids.index(chapter_id)
     chapter = chapters[index]
-    translated_ids = set(service.storage.list_translated_chapters(novel_id))
     previous_adjacent_id = chapter_ids[index - 1] if index > 0 else None
     next_adjacent_id = chapter_ids[index + 1] if index + 1 < len(chapter_ids) else None
     previous_chapter_id = previous_adjacent_id if previous_adjacent_id in translated_ids else None
@@ -529,6 +526,7 @@ async def get_chapter(
         "next_chapter_id": next_chapter_id,
         "previous_chapter_unavailable": previous_adjacent_id is not None and previous_chapter_id is None,
         "next_chapter_unavailable": next_adjacent_id is not None and next_chapter_id is None,
+        **_public_section_fields(chapter),
     }
     response.update(_availability_fields(translated, is_active_version=is_active_version))
 

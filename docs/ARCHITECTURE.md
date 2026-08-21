@@ -6,8 +6,12 @@ Canonical project architecture. This file wins when project documents conflict.
 
 ### Hybrid Crawl & Generation Contracts
 - **Syosetu / Novel18 Official API Enrichment**: Official JSON API array responses (Header `allcount` + work objects) provide initial title, author, genre codes, keywords, episode count, content length, timestamps, and status flags (`end=0` completed, `isstop=1` suspended). HTML crawling remains authoritative for chapter URLs, TOC structure, synopsis, and body text.
+- **Public age-gate handling**: Supported public age-confirmation interstitials are followed through the source's bounded cookie/redirect flow before parsing. Interstitial HTML is never treated as chapter text; unresolved or unsafe targets fail as structured source-fetch errors, and parsed prose is not classified as a gate merely because it mentions age restrictions.
+- **Novel18 as a first-class novel**: `novel18_syosetu` keeps source-specific host, cookie, API, and adult taxonomy provenance, but uses the same crawl, storage, translation, glossary, publication, catalog, detail, availability, and reader lifecycle as every other novel. Adult/R18 classification does not suppress an explicitly published novel from the default catalog; `include_adult` controls optional taxonomy exposure and filtering only.
 - **Kakuyomu Stable Chapter Identity**: Every chapter carries three identifiers: `chapter_id` (the stable logical key used everywhere downstream, e.g. `kakuyomu:<episode_id>`), `source_episode_id` (the source-native identifier exposed by adapters), and `sequence_number` (mutable display position). Selections like `"all"`, `"1-3;8"`, `"2"`, or the raw stable id all resolve through `resolve_chapter_selection` so Kakuyomu's percent-encoded ids and Syosetu numeric ids share one pipeline. `int(chapter["id"])` and `chapter_id.isdigit()` checks were removed from the request flow.
+- **Optional Cross-Source Section Hierarchy**: Source metadata may associate an existing reading unit with an optional structural section without changing chapter identity. The normalized optional fields are `section_title` (source display text), `section_source_id` (the real Kakuyomu `Chapter.id`, or `null` for Syosetu/Novel18 where no stable source id is observed), `section_ordinal` (source-order occurrence), and `section_level` when Kakuyomu supplies it. Syosetu and Novel18 derive sections only from structural TOC headings and carry the active heading across pagination; episode-title text never creates a section. Kakuyomu prefers `__NEXT_DATA__/__APOLLO_STATE__/Work/tableOfContentsV2` and its ordered `episodeUnions`, with a bounded DOM fallback that fails closed on unenumerated lazy/UI-paginated indexes. A Syosetu-style root-body short work is marked `work_structure="direct_body"`; ordinary episode indexes remain `work_structure="episodes"` so a direct short, a one-episode serial, and a one-episode Kakuyomu work stay distinct.
 - **Staged Raw Generations**: Crawl runs write to staged generation directories (`generations/<gen_id>/`) with manifest-last atomic pointer activation (`active_generation.json`). Full crawls never call destructive deletion on active data. Generation activation uses a cross-process compare-and-swap on `active_generation.json`: the filesystem backend wraps the read-compare-write in an `InterProcessFileLock`; the S3 backend uses a conditional `PUT` with `If-Match`/`If-None-Match` so concurrent activations cannot silently overwrite each other (loser receives `GenerationConflictError`).
+- **Durable Long-Running Crawl Operations**: `POST /api/admin/{novel_id}/scrape` returns `202 Accepted` after creating a durable `scrape` activity. The activity worker performs metadata reconciliation and chapter acquisition under the normal heartbeat, lease, cancellation, staging, validation, compare-and-swap activation, and rollback contracts. `GET /api/admin/activity/{activity_id}` is the status source; `POST /api/admin/activity/{activity_id}/run` is the explicit operator-run path when a background worker is not enabled. Onboarding resume queues the same durable chapter activity instead of holding an HTTP request open. Network and provider timeouts bound individual calls; they do not bound the total activity lifetime.
 - **Pre-Activation Validation**: `commit_generation` runs `validate_generation_activation` before swapping the pointer. Checks cover manifest status, metadata identity, chapter-index presence, every-index-entry-resolved (bundle or explicit unavailable/refresh-failed-retained record), image-asset resolution inside the stage, manifest hash reconciliation, and physical stem / chapter-id consistency. Index entry ids are normalized to logical ids (integer ids become strings) before reconciliation, and reconciliation is against physical bundles, not index entries alone; `source_state.json` must exist and manifest hashes must be non-empty and match staged bytes exactly. Every current-index chapter ends with exactly one canonical disposition: `fetched_new`, `fetched_replaced`, `reused_planner`, `carried_unselected`, `unchanged_selected`, `refresh_failed_retained`, or `unavailable`. Aggregate counts (`saved_chapters`, `reused_chapters`, `failed_chapters`, `carried_unselected_count`, `unchanged_selected_count`, `refresh_failed_retained_count`, `unavailable_count`, `failed_refresh_count`, `removed_count`) are derived from the disposition map and must reconcile with the physical staged state. The disposition map itself is mandatory on the normal commit path; missing or empty `chapter_dispositions` fails closed. There is no normal bypass flag. Removed episode IDs come from `crawl_plan.removed_episode_ids`; `commit_generation` persists the canonical removal set and derives `removed_count` from that set. Activation validation reconciles the count before pointer activation. No separate normal-path removal acknowledgment key is required. Failures roll the stage back and keep the prior active pointer. Explicit operator recovery uses `commit_generation_recovery(reason=..., evidence=...)` for recovery paths.
 - **Immutable Raw Generations + Translation Overlays**: A committed raw generation's `chapters/*.json` and `assets/images/**` are byte-immutable. All translation writes (machine translation, manual edit, rollback activation, edit history) land in `novels/<novel_id>/translations/<encoded_chapter_stem>.json` plus an `active/` pointer. Mutable OCR/re-embedding state lands in a novel-root media overlay (`media/<encoded-chapter-stem>.json`, schema `media_overlay_v1`) composed over the bundle at read time. Readers compose the raw bundle with the per-chapter overlay at read time so machine translation never rewrites raw bytes; while a generation is active, raw bundle writes are refused outright (persist, imports, checkpoint raw restores, rollback bundle-pop) instead of being silently rewritten. Carrying a chapter forward from generation A to generation B uses `seed_generation_from_active` which copies both the bundle and image assets.
 - **Episode Order & Convergence**: `update_source_state` persists `ordered_episode_ids` matching the complete current index plus per-episode `source_availability` / `first_seen_at` / `last_seen_at` / `missing_since`. Episodes absent from the index become `missing_from_current_index` (raw + translated history retained). A subsequent crawl with the same order produces an empty `reordered_episode_ids` / `removed_episode_ids` delta. `create_crawl_plan` uses the persisted `ordered_episode_ids` as the previous order (never `episode_map` insertion order); `removed_episode_ids` emits only newly missing episodes; episodes already marked `missing_from_current_index` are not re-emitted as new removals; a second identical crawl yields an empty delta.
@@ -25,7 +29,8 @@ public-reading system.
 | Owner | Crawling, imports, translation, editing, providers, users, requests, takedowns, and operations. |
 | Guest | Public catalog, novel detail, chapter list, and reader. |
 | User | Google OAuth or email/password session; private library, progress, history, reviews, and requests. |
-| Deferred | Contribution credentials, community features, rankings, billing, organizations, and multiple admins. |
+| Enabled | User-owned contributor credentials and public rankings. |
+| Deferred | Community features, billing, organizations, and multiple admins. |
 
 Generated translated-novel downloads are outside scope. Do not add PDF, EPUB,
 HTML, Markdown, manifests, freshness, or downloads without an approved spec.
@@ -37,12 +42,15 @@ historical generated files.
 - `novelai.api.app:app`: monolith.
 - `novelai.main_admin:app`: owner/user control plane, port 8000.
 - `novelai.main_reader:app`: public reader, port 8001.
+- `novelaibook worker`: dedicated provider-backed crawl/translation worker;
+  it claims durable database activities and is not exposed through Caddy.
 - `DEPLOY_MODE=monolith|split` selects topology.
 - Next.js serves admin and public pages on port 3000.
 - PostgreSQL owns relational state; filesystem or S3/R2 owns chapter content.
 - Redis provides distributed queueing, rate limiting, and coordination.
 - Scheduler loops, long translation jobs, and restore verification need
-  always-on compute; the backend runs in the always-on Docker services.
+  always-on compute; provider-backed activities run in the dedicated worker
+  service so web processes do not consume their event loops for translation.
 
 ## Deployment Topologies
 
@@ -75,6 +83,14 @@ The production topology is the target.
     either long-running API process starts.
 - **Database**: managed PostgreSQL (Supabase / RDS / Cloud SQL) with:
   - TLS required, connection pool with transaction-level budgeting.
+  - `DB_POOL_PROCESS_COUNT` explicitly counts long-lived backend, reader,
+    worker, and replica pool owners; `DB_CONNECTION_RESERVE` accounts for
+    migration, readiness, and operator access.
+  - In direct/session mode, startup fails closed unless
+    `DB_POOL_PROCESS_COUNT * (DB_POOL_SIZE + DB_MAX_OVERFLOW) +
+    DB_CONNECTION_RESERVE` fits within `DB_CONNECTION_BUDGET`. This source
+    guard does not replace verification against the managed pooler. Transaction
+    mode uses `NullPool` and still requires measured pooler concurrency review.
   - Dedicated direct-database role (not ``anon``/``authenticated``) used by
     backend SQLAlchemy connections. It owns application tables or has the
     audited privileges required to operate while RLS denies Data API roles.
@@ -150,8 +166,17 @@ chapter storage -> paragraph IDs -> chunks/bundles -> prompt + glossary
 - QA checks empty/source-identical output, suspicious length, placeholders,
   refusals/errors, and mapping integrity before save.
 - Durable scheduler state records cooldown, exhaustion, heartbeat, and next eligibility.
-- Provider chain is Gemini only: `gemini-3.1-flash-lite`, then
-  `gemma-4-31b-it` through Gemini API.
+- Production translation uses the one discovered Gemini model
+  `gemini-3.5-flash-lite` (`models/gemini-3.5-flash-lite` in discovery
+  responses). There is no model or provider fallback: rate limits, temporary
+  failures, quota exhaustion, and 5xx responses wait, retry, or defer on that
+  same model; permanent configuration, credential, model, or request errors
+  fail closed.
+- All Gemini work shares hard request accounting: 15 requests/minute,
+  250,000 tokens/minute, and 500 requests/day. Body, metadata, chapter-title,
+  glossary discovery/translation, optional LLM QA, validation, cache
+  reconciliation, and retries are mapped by purpose and persisted through the
+  Gemini quota state and sanitized provider-request usage records.
 
 ## Storage and Database Ownership
 
@@ -168,6 +193,15 @@ chapter storage -> paragraph IDs -> chunks/bundles -> prompt + glossary
 - The `chapters` table carries stable-identity columns
   (`logical_chapter_id`, `source_episode_id`, `sequence_number`) for
   Kakuyomu-style percent-encoded ids and Syosetu numeric ids.
+- Section metadata remains on the existing storage metadata chapter index; it
+  does not require a `sections` SQL table, new R2 body objects, or a chapter
+  identity change. Reconciliation treats the current source TOC as
+  authoritative for present grouping, so section rename, move, order changes,
+  flat/grouped transitions, and Kakuyomu Chapter-title updates converge by
+  existing episode identity. Section metadata is display context: it refreshes
+  the catalog projection and optional metadata-title translations, but does
+  not invalidate raw body hashes, body translations, glossary identity, or
+  chapter selection/cache keys.
 - **Canonical DB identity invariant**: `UNIQUE(novel_id, logical_chapter_id)` with
   `logical_chapter_id` `NOT NULL` (String(512)). The ORM and migration agree
   exactly: migration `c7a8b9d0e1f2` adds the three columns, backfills existing
@@ -180,6 +214,11 @@ chapter storage -> paragraph IDs -> chunks/bundles -> prompt + glossary
   never by title; reorder updates `sequence_number` in place without creating
   new rows; same-title chapters remain distinct rows.
 - SQL chapter counts are projections; canonical counts come from storage.
+- `Novel.public_reader_unavailable_policy` is an optional projection of the
+  per-novel availability policy from canonical metadata. Migration
+  `e5f7a9c1d3b2` persists it so projection-first public chapter reads retain
+  policy behavior without a request-time metadata fallback or object-storage
+  enumeration.
 - S3/R2 directories are virtual prefixes; no host-filesystem assumptions.
 - Preserve raw scraped chapters and historical generated files.
 - `storage/novel_library` is private and never served directly.
@@ -208,7 +247,10 @@ fields, fallback readers, compatibility routes, or import shims.
 - `/api/admin/*`: owner operations.
 - `/api/auth/*`: owner and public authentication.
 - `/api/user/*`: session-authenticated user data through admin process.
-- `/api/public/*`: guest-safe reader through reader process.
+- `/api/public/*`: guest-safe reader and rankings through reader process.
+- `/api/user/contributions`: authenticated user-owned contributor credentials
+  through the admin process; identity is session-derived and unsafe methods are
+  CSRF-protected.
 - `/health/*`: liveness/readiness through admin process.
 - `/novels/*`: frontend pages, not backend aliases.
 
@@ -232,6 +274,9 @@ Roles are `guest`, `user`, and exactly one `owner`.
 - Public login never calls owner bootstrap `/api/auth/login`.
 - Identity comes from session, never client-supplied `user_id`.
 - Cookie-authenticated mutations require CSRF protection.
+- **Worker process** (``admin.Dockerfile``) claims database-backed crawl and
+  translation activities through ``novelaibook worker``. It has no public port
+  and does not run an in-process web worker.
 - Disabled users cannot log in or continue sessions.
 - Never log or return keys, cookies, auth headers, encryption keys, database
   URLs, bootstrap secrets, private paths, or raw traces.
@@ -244,16 +289,101 @@ Roles are `guest`, `user`, and exactly one `owner`.
 - Takedowns use exact decoded paths, safe HTTP 451, `no-store`, sitemap
   exclusion, and no complainant/private details.
 
-Contribution credentials stay unavailable until encrypted storage, consent,
-validation, revocation, usage limits/ledger, provider isolation, audit, abuse
-controls, and owner approval exist.
+### Contributor credential contract
+
+Contributor credentials are enabled behind `CONTRIBUTOR_CREDENTIALS_ENABLED`.
+V1 permits one Gemini credential per authenticated user. The submitted key is
+encrypted at rest with `PROVIDER_CREDENTIAL_ENCRYPTION_KEY`; responses expose
+only the credential id, provider/model, last four characters, fingerprint,
+status, consent version, validation state, timestamps, and failure count.
+Raw keys, prompts, authorization headers, and provider responses are never
+stored in the usage ledger, logs, or API responses.
+
+Registration requires the current `CONTRIBUTOR_CONSENT_VERSION`. Validation uses
+the explicit submitted key without hydrating owner preferences. A successful
+validation activates the credential immediately; a failed validation persists
+an invalid state and the key cannot enter the contributor pool. Users may
+replace, pause, resume, and permanently delete their own credential. Owners
+have separate pause, resume, and revoke emergency controls.
+
+Contributor translation selects only active, valid Gemini credentials and uses
+per-credential RPM, TPM, RPD, and in-flight concurrency reservations. The usage ledger records only
+credential/owner/requesting-user identity, provider/model, request/job/activity
+ids, contribution mode, sanitized status, token accounting, estimated cost,
+timing fields, and timestamps. `credential_owner_user_id` and `requesting_user_id` remain
+distinct. Owner-only jobs never consume contributor credentials.
+
+### Durable translation activity contract
+
+`POST /api/admin/{novel_id}/translate` is an enqueue operation and returns
+`202 Accepted` with `activity_id` and `status=pending`. The optional
+`Idempotency-Key` is stored only as a bounded opaque request key; when omitted,
+the service derives a stable hash from non-secret operation parameters. The
+database-backed `activity_records` table owns status, leases, heartbeats,
+retry count, provider/model, and sanitized progress metadata. Claims use row
+locking and `skip_locked` where supported, expired leases are recovered, and
+history/list queries are bounded. The legacy JSON queue is imported once for
+compatibility but is not the production control plane.
+
+The worker passes the activity id as both `job_id` and `activity_id` to the
+translation pipeline. Provider calls are globally bounded per owner key or
+contributor credential, have a deadline and bounded exponential retry delay,
+and write sanitized provider timing/usage records. The worker is the normal
+execution owner; direct operator execution remains an explicit single-activity
+recovery path.
+
+### Public ranking contract
+
+`GET /api/public/rankings?period=daily|weekly|monthly&limit=...` ranks published
+novels by distinct novel-detail viewers from `public_novel.view` events only:
+24 hours, 7 days, or 30 days. Authenticated user ids and signed opaque
+first-party anonymous viewer-token digests are counted separately; IP addresses
+are never stored. Chapter events do not contribute. When analytics is disabled
+or there is no retained data, the API returns `available=false` with a truthful
+reason. There is no All Time period because the retention-backed event table
+cannot provide that claim.
+
+Ranking aggregation joins the published `Novel` projection, uses composite
+event-time/novel/viewer indexes, and loads taxonomy with bounded database
+queries rather than per-result storage-backed summaries. Successful non-empty
+responses use a short process-local TTL/LRU cache keyed by period, public
+projection schema/update version, and limit. Disabled, empty, and unavailable
+responses remain explicit and uncached; cache metrics are exposed through
+`/metrics`. A shared cache or durable rollup requires measured multi-reader
+load evidence and an explicit invalidation contract.
+
+Safe public catalog pages, novel summaries, and chapter metadata also use a
+bounded process-local `PublicProjectionCache`. Catalog keys include the
+published projection timestamp; novel-summary and chapter-context keys include
+the current novel timestamp. Catalog publication/reconciliation and approved
+takedown review invalidate the projection cache. Search text, identity,
+progress, history, cookies, and chapter text are never cached. This cache is
+an origin optimization and does not restore request-time object-storage
+enumeration.
+
+Public detail, chapter, and approved frontend analytics events cross a bounded
+asynchronous writer. Metadata is sanitized before queue admission; the queue
+contains only canonical event fields and no raw IP, prompt, authorization
+header, or unsanitized payload. Queue-full events are dropped and counted,
+worker failures are suppressed and counted, and each worker event uses its own
+database transaction. Writer shutdown drains briefly during app lifespan
+shutdown. The signed anonymous viewer digest and retention policy remain
+unchanged.
 
 ## Operational Contracts
 
 - `/health/live`: process-only, unauthenticated, always 200, no dependencies.
-- `/health/ready`: bounded DB/storage/worker/disk probes; 503 when unhealthy.
+- `/health/ready`: redacted, cached/single-flight DB/lightweight-storage/
+  worker/disk probes; 503 when the cached result is unhealthy.
+- Recognized SQLAlchemy pool/server-capacity failures return a sanitized
+  retryable `503 DATABASE_CAPACITY_EXHAUSTED`; unrelated database errors remain
+  internal failures. This response classification does not replace
+  deployment-wide pooler-budget verification.
 - `/api/admin/health`: owner-only detailed but redacted diagnostics.
 - Probe states: `healthy`, `degraded`, `unhealthy`.
+- Public readiness does not run full storage write/read/delete or S3 usage
+  scans. Those remain owner-only or scheduled diagnostics so reverse-proxy
+  health checks do not amplify object-storage latency.
 - Scheduled backup, maintenance, and database dumps use renewable PostgreSQL
   leases plus local file locks where needed.
 - Each registered maintenance task writes start/success/failure transitions to
@@ -279,6 +409,24 @@ controls, and owner approval exist.
   the effective `prompt_template_version`, the `qa_policy_fingerprint`,
   finalized counts (`expected_count`, `completed_count`, `skipped_count`,
   `review_count`, `failed_count`) and the in-source-order `chapter_ids`.
+- Long-running scrape and resume operations are activity records, not request
+  lifetimes. The activity lease is renewed by the worker heartbeat and the
+  durable status is polled through the activity API. A failed activity must
+  leave the previous active generation visible; a staged generation is only
+  reader-visible after complete-snapshot validation and pointer activation.
+- Translation activities use the database queue rather than full-file JSON
+  rewrites. `ACTIVITY_HISTORY_MAX_ENTRIES`, metadata-size, and retry-history
+  limits bound durable state; queue metrics expose pending age and claim,
+  heartbeat, list, and update timings.
+- Gemini admission reserves request/token/day quota plus a global in-flight
+  limit. `TRANSLATION_PROVIDER_DEADLINE_SECONDS` and bounded retry backoff
+  limit provider work. Provider runtime metrics and the sanitized usage ledger
+  record wait, execution, retry, quota-reservation, and usage-write duration
+  without prompts, keys, authorization headers, or response secrets.
+- Translation cache entries remain file-backed but metadata is indexed in a
+  SQLite WAL sidecar. Invalidation, statistics, and LRU eviction use indexed
+  rows; the recursive directory scan is limited to one migration/backfill and
+  never runs on the request path.
 
 ## Reader Contracts
 
@@ -295,7 +443,7 @@ controls, and owner approval exist.
 
 ## Forbidden Work
 
-- No contribution/community/ranking features before moderation and security gates.
+- No community features before their separate moderation and security gate.
 - No fake APIs or frontend-only security controls.
 - No raw SQL outside Alembic and explicit `backend/sql/` policy files.
 - No APScheduler.

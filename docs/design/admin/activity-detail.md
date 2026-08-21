@@ -4,7 +4,10 @@
 Design the per-run activity detail with phase tabs and item actions.
 
 ## Product Context
-Reached from the activity log for one novel; shows the run detail for each chapter.
+Reached from the activity log for one novel; shows the durable activity state,
+lease-safe phase detail, and per-chapter progress when available. Provider
+credentials, prompts, authorization headers, and raw provider responses never
+appear in the detail surface.
 
 ## Global Visual Snapshot
 The admin console is a dense, quiet, data-first workspace for operating Dokushodo. It uses a near-black Midnight Slate dark theme and a cool light theme, with vermillion reserved for the primary action of each panel and for attention-required or destructive actions. The shell is a persistent left sidebar with grouped navigation and a compact top bar with theme and view controls; content is a full-bleed workspace of tables, panels, and status summaries. Tables are the default record surface: high row density, monospace identifiers, status badges in semantic colors, and direct row actions such as approve, reject, retry, run, and delete. Typography is sans-serif only; serif never appears, and public-facing motifs such as sakura accents do not appear. Elevation is flat with thin borders, six pixel card corners, and no floating elements. Empty tables show a plain message and a clear next action. Status truthfulness is absolute: schedules, health, credentials, and runtime state render exactly what the system reports, with no fabricated metrics. The settled state is orderly, legible, fast to scan, and free of decorative motion and imagery.
@@ -28,6 +31,7 @@ Retrying a failed item.
 ## Desktop Composition
 - Phase tabs above the item table
 - Table rows with item title, status badge, duration, and timestamp
+- Activity lifecycle with queue time, execution time, retry count, and bounded retry history
 - Per-row retry action for failed items
 - Row click opens a detail dialog with timestamps and messages, redacted of secrets
 
@@ -63,6 +67,8 @@ A focused phase table under quiet tabs; failed rows carry a clear retry affordan
 - Empty phase
 - All succeeded state
 - Detail dialog open
+- Lease recovered and requeued
+- Failed activity with Retry action
 
 ## Interaction Cues
 - Retry runs the item again and updates the row

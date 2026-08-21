@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from novelai.config.settings import GEMINI_DEFAULT_MODEL
 from novelai.core.chapter_state import ChapterState
 from novelai.core.errors import ProviderError, ProviderErrorCode
 from novelai.logging_config import setup_logging
@@ -38,7 +39,7 @@ class FallbackPipelineProvider:
 
     def available_models(self) -> list[str]:
         if self.key == "gemini":
-            return ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite"]
+            return [GEMINI_DEFAULT_MODEL]
         return ["google/gemma-4-31b-it"]
 
     async def translate(self, prompt: str, model: str | None = None, **kwargs: object) -> dict[str, object]:
@@ -47,7 +48,7 @@ class FallbackPipelineProvider:
             raise ProviderError(
                 code=ProviderErrorCode.QUOTA_EXHAUSTED,
                 provider_key="gemini",
-                provider_model=model or "gemini-3.1-flash-lite",
+                provider_model=model or GEMINI_DEFAULT_MODEL,
                 message="Gemini daily quota exceeded",
             )
         return {"text": f"[{model}] {prompt}", "metadata": {"usage": {"total_tokens": 7}}}
@@ -260,7 +261,7 @@ async def test_full_translation_pipeline(integration_fixture):
     assert result.chunk_states
     first_chunk_state = next(iter(result.chunk_states.values()))
     assert first_chunk_state["provider_key"] == "mock"
-    assert first_chunk_state["provider_model"] == "gemini-3.1-flash-lite"
+    assert first_chunk_state["provider_model"] == GEMINI_DEFAULT_MODEL
     assert first_chunk_state["status"] == "translated"
 
 
@@ -318,7 +319,7 @@ async def test_translate_stage_falls_back_from_gemini_to_dummy(integration_fixtu
     dummy_provider = FallbackPipelineProvider("dummy")
     fixture.add_source_chapter("http://example.com/fallback", "ãƒ†ã‚¹ãƒˆã§ã™ã€‚")
     fixture.settings_service.set_preferred_provider("gemini")
-    fixture.settings_service.set_preferred_model("gemini-3.1-flash-lite")
+    fixture.settings_service.set_preferred_model(GEMINI_DEFAULT_MODEL)
     fixture.settings_service.set_api_key("gemini-key", provider_key="gemini")
 
     pipeline = TranslationPipeline(
@@ -347,7 +348,7 @@ async def test_translate_stage_falls_back_from_gemini_to_dummy(integration_fixtu
         await pipeline.run(context)
     assert isinstance(exc_info.value.__cause__, SchedulerPausedError)
 
-    assert "gemini-3.1-flash-lite" in gemini_provider.models_seen
+    assert GEMINI_DEFAULT_MODEL in gemini_provider.models_seen
     assert dummy_provider.models_seen == []
 
 

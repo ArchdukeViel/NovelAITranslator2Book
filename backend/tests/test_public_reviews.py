@@ -50,6 +50,14 @@ class FakeCatalogService:
             return None
         return novel.id, {}, slug
 
+    def get_public_novel_summary(self, slug: str, *, include_adult: bool = False):
+        del include_adult
+        resolved = self._resolve_public_novel(slug)
+        if resolved is None:
+            return None, None
+        novel_id, _metadata, public_slug = resolved
+        return {"novel_id": str(novel_id), "slug": public_slug}, str(novel_id)
+
 
 @pytest.fixture()
 def app(db_session):

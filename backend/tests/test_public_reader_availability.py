@@ -34,6 +34,7 @@ from novelai.api.routers.public_chapter import router as public_chapter_router
 from novelai.api.routers.public_novel import router as public_novel_router
 from novelai.config.settings import settings
 from novelai.db.base import Base
+from novelai.services.catalog_service import CatalogService
 from novelai.storage.service import StorageService
 
 # ---------------------------------------------------------------------------
@@ -75,6 +76,8 @@ def app(storage: StorageService, db_session):
     _app.include_router(public_chapter_router)
     _app.dependency_overrides[get_storage] = lambda: storage
     _app.dependency_overrides[get_db_session] = lambda: db_session
+    test_session_attr = "_test_db_session"
+    setattr(storage, test_session_attr, db_session)
     return _app
 
 
@@ -125,6 +128,12 @@ def _seed_novel(
     if "public_reader_unavailable_policy" in kwargs:
         meta["public_reader_unavailable_policy"] = kwargs["public_reader_unavailable_policy"]
     storage.save_metadata(novel_id, meta)
+    db_session = getattr(storage, "_test_db_session", None)
+    if db_session is not None:
+        catalog = CatalogService(storage, db_session)
+        novel = catalog.get_or_create_novel(novel_id, meta)
+        novel.is_published = True
+        db_session.commit()
 
 
 def _seed_translated(
@@ -143,6 +152,10 @@ def _seed_translated(
         provider_key=provider_key,
         provider_model=provider_model,
     )
+    db_session = getattr(storage, "_test_db_session", None)
+    if db_session is not None:
+        CatalogService(storage, db_session).recompute_catalog_projection(novel_id)
+        db_session.commit()
 
 
 def _overlay_first_version_id(path: Path) -> str:

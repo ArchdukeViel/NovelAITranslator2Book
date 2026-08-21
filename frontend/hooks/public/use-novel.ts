@@ -6,7 +6,8 @@ import { publicApi } from "@/lib/public-api";
 export function useNovel(slug: string) {
   return useQuery({
     queryKey: ["public", "novel", slug],
-    queryFn: () => publicApi.novel(slug),
+    queryFn: ({ signal }) => publicApi.novel(slug, signal),
     enabled: !!slug,
+    retry: false,
   });
 }

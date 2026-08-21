@@ -324,7 +324,7 @@ describe("Novel detail page — report action", () => {
   it("links to /contact instead of claiming backend phase", () => {
     renderPage();
     expect(screen.queryByText(/later backend phase/i)).not.toBeInTheDocument();
-    const contactLink = screen.getByText("Contact us").closest("a");
+    const contactLink = screen.getByRole("link", { name: "Report an issue" });
     expect(contactLink).toHaveAttribute("href", "/contact");
   });
 
@@ -357,12 +357,104 @@ describe("Novel detail page — chapter list", () => {
     renderPage();
     expect(screen.getByText("Chapter One")).toBeInTheDocument();
   });
+
+  it("renders named sections without creating a header for flat chapters", () => {
+    mocks.chaptersQuery.mockReturnValue({
+      data: [
+        {
+          chapter_id: "1",
+          title: "Episode One",
+          chapter_number: 1,
+          translated: true,
+          section_title: "Part One",
+          section_source_id: "section-1",
+          section_ordinal: 1,
+        },
+        {
+          chapter_id: "2",
+          title: "Episode Two",
+          chapter_number: 2,
+          translated: true,
+          section_title: "Part One",
+          section_source_id: "section-1",
+          section_ordinal: 1,
+        },
+        {
+          chapter_id: "3",
+          title: "Episode Three",
+          chapter_number: 3,
+          translated: true,
+          section_title: null,
+          section_source_id: null,
+          section_ordinal: null,
+        },
+      ],
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    renderPage();
+
+    expect(screen.getByText("Part One")).toBeInTheDocument();
+    expect(screen.getByText("Episode Three")).toBeInTheDocument();
+    expect(screen.queryByText("Section")).not.toBeInTheDocument();
+  });
+
+  it("preserves source order across disjoint grouped and ungrouped runs", () => {
+    mocks.chaptersQuery.mockReturnValue({
+      data: [
+        { chapter_id: "1", title: "Episode One", chapter_number: 1, translated: true },
+        {
+          chapter_id: "2",
+          title: "Episode Two",
+          chapter_number: 2,
+          translated: true,
+          section_title: "Part One",
+          section_source_id: "section-1",
+          section_ordinal: 1,
+        },
+        {
+          chapter_id: "3",
+          title: "Episode Three",
+          chapter_number: 3,
+          translated: true,
+          section_title: "Part One",
+          section_source_id: "section-1",
+          section_ordinal: 1,
+        },
+        { chapter_id: "4", title: "Episode Four", chapter_number: 4, translated: true },
+        {
+          chapter_id: "5",
+          title: "Episode Five",
+          chapter_number: 5,
+          translated: true,
+          section_title: "Part Two",
+          section_source_id: "section-2",
+          section_ordinal: 2,
+        },
+      ],
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    renderPage();
+
+    expect(screen.getAllByRole("link", { name: "Read" }).map((link) => link.getAttribute("href"))).toEqual([
+      "/novels/test-slug/chapter/1",
+      "/novels/test-slug/chapter/2",
+      "/novels/test-slug/chapter/3",
+      "/novels/test-slug/chapter/4",
+      "/novels/test-slug/chapter/5",
+    ]);
+  });
 });
 
 describe("Novel detail page — FE-07 tabs and controls", () => {
   it("writes tab selection to a shareable URL", () => {
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: /^chapters$/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /^chapters$/i }));
     expect(mocks.pushMock).toHaveBeenCalledWith("/novels/test-slug?tab=chapters", { scroll: false });
   });
 
@@ -377,7 +469,52 @@ describe("Novel detail page — FE-07 tabs and controls", () => {
     mocks.useProgressMock.mockReturnValue({ data: { chapter_id: "2", chapter_number: 2 }, isPending: false, isError: false, error: null });
     renderPage();
     expect(screen.queryByRole("link", { name: "Start Reading" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Continue from Ch. 2" })).toHaveLength(1);
+    expect(screen.getAllByRole("link", { name: /Continue Reading from Ch\. 2/ })).toHaveLength(1);
+  });
+
+  it("exposes semantic tabs and a labelled active panel", () => {
+    renderPage();
+    const tablist = screen.getByRole("tablist", { name: "Novel sections" });
+    expect(within(tablist).getAllByRole("tab")).toHaveLength(3);
+    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "novel-tab-overview");
+  });
+
+  it("keeps the request form out of Overview and behind a Chapters disclosure", () => {
+    renderPage();
+    expect(screen.queryByText("Submit a Request")).not.toBeInTheDocument();
+
+    mocks.searchParamsMock.mockReturnValue(new URLSearchParams("tab=chapters"));
+    renderPage();
+    const disclosure = screen.getByText("Request translation").closest("details");
+    expect(disclosure).toBeInTheDocument();
+    expect(disclosure).not.toHaveAttribute("open");
+    expect(within(disclosure as HTMLElement).getByText("Submit a Request")).toBeInTheDocument();
+  });
+
+  it("does not attach Japanese taxonomy labels to a non-Japanese work", () => {
+    mocks.novelQuery.mockReturnValue({
+      data: makeNovelData({ language: "zh" }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    renderPage();
+    expect(screen.queryByText("ファンタジー")).not.toBeInTheDocument();
+    expect(screen.getByText("fantasy")).toBeInTheDocument();
+  });
+
+  it("does not repeat generated numbering when a source title already includes it", () => {
+    mocks.searchParamsMock.mockReturnValue(new URLSearchParams("tab=chapters"));
+    mocks.chaptersQuery.mockReturnValue({
+      data: [{ chapter_id: "1", title: "1話　聖水要員", chapter_number: 1, translated: true }],
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    renderPage();
+    expect(screen.getByText(/1話\s+聖水要員/)).toBeInTheDocument();
+    expect(screen.queryByText("Chapter 1")).not.toBeInTheDocument();
   });
 
   it("filters chapters and reverses their order", () => {

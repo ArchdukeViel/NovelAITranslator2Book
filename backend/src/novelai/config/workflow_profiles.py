@@ -34,7 +34,7 @@ def default_workflow_defaults() -> dict[str, Any]:
     return {
         "style_preset": None,
         "consistency_mode": False,
-        "honorific_policy": None,
+        "honorific_policy": "contextual",
     }
 
 

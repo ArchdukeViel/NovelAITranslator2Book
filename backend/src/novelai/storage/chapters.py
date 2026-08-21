@@ -43,7 +43,7 @@ def _chapter_filename(chapter_id: str) -> str:
     try:
         num = int(raw)
         return f"{num:04d}.json"
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         safe = validate_storage_identifier(raw, "chapter_id")
         return f"{encode_physical_stem(safe)}.json"
 
@@ -94,9 +94,18 @@ def _chapter_path(self: Any, novel_id: str, chapter_id: str) -> Path:
 def _load_chapter_bundle(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
     """Load a current-schema chapter bundle from the canonical chapter directory."""
     chapter_path = self._chapter_path(novel_id, chapter_id)
-    if self._path_exists(chapter_path):
+    read_text_optional = getattr(self, "_read_text_optional", None)
+    text: str | None
+    if callable(read_text_optional):
+        candidate = read_text_optional(chapter_path)
+        text = candidate if isinstance(candidate, str) else None
+    elif self._path_exists(chapter_path):
+        text = self._read_text(chapter_path)
+    else:
+        text = None
+    if text is not None:
         try:
-            data = json.loads(self._read_text(chapter_path))
+            data = json.loads(text)
             if isinstance(data, dict):
                 validate_storage_schema_version(
                     data,
@@ -104,7 +113,7 @@ def _load_chapter_bundle(self: Any, novel_id: str, chapter_id: str) -> dict[str,
                     artifact_type="chapter bundle",
                 )
                 return self._normalize_media_fields(data)
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             logger.warning("Failed to parse chapter bundle %s/%s.", novel_id, chapter_id)
             return None
 
@@ -335,7 +344,7 @@ def list_stored_chapters(self: Any, novel_id: str) -> list[str]:
         for chapter_path in self._glob(chapter_dir, "*.json"):
             try:
                 payload = json.loads(self._read_text(chapter_path))
-            except (json.JSONDecodeError, OSError):
+            except json.JSONDecodeError, OSError:
                 logger.debug("Skipping unreadable chapter file %s.", chapter_path)
                 continue
             if not isinstance(payload, dict):
@@ -360,7 +369,7 @@ def list_stored_chapters(self: Any, novel_id: str) -> list[str]:
                 continue
             try:
                 payload = json.loads(self._read_text(overlay_path))
-            except (json.JSONDecodeError, OSError):
+            except json.JSONDecodeError, OSError:
                 continue
             if not isinstance(payload, dict):
                 continue
@@ -387,7 +396,7 @@ def get_chapters_by_state(self: Any, novel_id: str, state: ChapterState) -> list
             state_data = json.loads(self._read_text(state_file))
             if ChapterState(state_data["current_state"]) == state:
                 chapters.append(state_data["chapter_id"])
-        except (json.JSONDecodeError, OSError, KeyError, ValueError):
+        except json.JSONDecodeError, OSError, KeyError, ValueError:
             logger.debug("Skipping unreadable state file %s.", state_file)
             continue
 
@@ -409,7 +418,7 @@ def get_chapter_progress(self: Any, novel_id: str) -> dict[str, int]:
             state_data = json.loads(self._read_text(state_file))
             current_state = state_data["current_state"]
             progress[current_state] += 1
-        except (json.JSONDecodeError, OSError, KeyError, ValueError):
+        except json.JSONDecodeError, OSError, KeyError, ValueError:
             logger.debug("Skipping unreadable state file %s.", state_file)
             continue
 
@@ -461,7 +470,7 @@ def get_scraping_progress(self: Any, novel_id: str) -> dict[str, Any]:
             total_files += 1
             if state_data.get("error_count", 0) > 0:
                 error_count += 1
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             logger.debug("Skipping unreadable state file %s.", state_file)
             continue
 

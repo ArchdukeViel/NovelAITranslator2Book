@@ -1,11 +1,5 @@
 /**
- * Ranking page visual honesty.
- *
- * Confirms the ranking page source text uses honest copy and does not
- * contain "Metrics pending", "Trending Now", or fake stat labels.
- *
- * The ranking page is a server component, so we verify the source
- * directly rather than rendering it through jsdom.
+ * Ranking page contract checks.
  *
  * Feature: visual-atmosphere-polish
  */
@@ -18,6 +12,10 @@ import { describe, it, expect } from "vitest";
 const __root = dirname(fileURLToPath(import.meta.url));
 const rankingPageSrc = readFileSync(
   join(__root, "..", "ranking", "page.tsx"),
+  "utf-8"
+);
+const rankingClientSrc = readFileSync(
+  join(__root, "..", "ranking", "ranking-client.tsx"),
   "utf-8"
 );
 
@@ -44,24 +42,25 @@ describe("Ranking page source honesty", () => {
     expect(rankingPageSrc).not.toMatch(/\d+\s*likes/i);
   });
 
-  it('contains "Ranking is not live yet" badge text', () => {
-    expect(rankingPageSrc).toContain("Ranking is not live yet");
+  it("uses the live ranking API and current periods", () => {
+    expect(rankingClientSrc).toContain("usePublicRankings");
+    expect(rankingClientSrc).toContain('"daily"');
+    expect(rankingClientSrc).toContain('"weekly"');
+    expect(rankingClientSrc).toContain('"monthly"');
+    expect(rankingClientSrc).not.toContain("All Time");
   });
 
-  it('contains honest "Not available yet" aside', () => {
-    expect(rankingPageSrc).toContain("Not available yet");
+  it("uses the backend unique-view metric without fabricated counts", () => {
+    expect(rankingClientSrc).toContain("unique_views");
+    expect(rankingClientSrc).toContain("analytics_disabled");
+    expect(rankingClientSrc).not.toContain("125 views");
   });
 
   it('does not contain "Data contract pending" jargon', () => {
     expect(rankingPageSrc).not.toContain("Data contract pending");
   });
 
-  it('contains honest disclaimer about what is not shown', () => {
-    // The page should honestly state that specific metrics are absent
-    expect(rankingPageSrc).toMatch(/no\s+views/i);
-  });
-
-  it('contains "Rankings are not live" subheading', () => {
-    expect(rankingPageSrc).toContain("Rankings are not live");
+  it("keeps metadata on the route wrapper", () => {
+    expect(rankingPageSrc).toContain("Public rankings based on distinct novel-detail views.");
   });
 });

@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from novelai.config.settings import GEMINI_DEFAULT_MODEL
 from novelai.core.chapter_state import ChapterState
 from novelai.providers.base import TranslationProvider
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
@@ -575,7 +576,7 @@ async def test_llm_qa_below_threshold_advisory_keeps_translated(monkeypatch):
     grader = _StubLLMGrader(score=0.40)
     monkeypatch.setattr(settings, "LLM_QA_ENABLED", True)
     monkeypatch.setattr(settings, "LLM_QA_PROVIDER", "gemini")
-    monkeypatch.setattr(settings, "LLM_QA_MODEL", "gemini-3.1-flash-lite")
+    monkeypatch.setattr(settings, "LLM_QA_MODEL", GEMINI_DEFAULT_MODEL)
     monkeypatch.setattr(settings, "LLM_QA_MIN_SCORE", 0.75)
     monkeypatch.setattr(settings, "LLM_QA_MAX_RETRY_ATTEMPTS", 1)
     monkeypatch.setattr(settings, "LLM_QA_POLICY", "advisory")
@@ -608,7 +609,7 @@ async def test_llm_qa_blocking_retry_marks_chunk_needs_retry(monkeypatch):
     grader = _StubLLMGrader(score=0.40)
     monkeypatch.setattr(settings, "LLM_QA_ENABLED", True)
     monkeypatch.setattr(settings, "LLM_QA_PROVIDER", "gemini")
-    monkeypatch.setattr(settings, "LLM_QA_MODEL", "gemini-3.1-flash-lite")
+    monkeypatch.setattr(settings, "LLM_QA_MODEL", GEMINI_DEFAULT_MODEL)
     monkeypatch.setattr(settings, "LLM_QA_MIN_SCORE", 0.75)
     monkeypatch.setattr(settings, "LLM_QA_MAX_RETRY_ATTEMPTS", 1)
     monkeypatch.setattr(settings, "LLM_QA_POLICY", "blocking_retry")
@@ -636,7 +637,7 @@ async def test_llm_qa_blocking_retry_exhausted_moves_to_review(monkeypatch):
     grader = _StubLLMGrader(score=0.40)
     monkeypatch.setattr(settings, "LLM_QA_ENABLED", True)
     monkeypatch.setattr(settings, "LLM_QA_PROVIDER", "gemini")
-    monkeypatch.setattr(settings, "LLM_QA_MODEL", "gemini-3.1-flash-lite")
+    monkeypatch.setattr(settings, "LLM_QA_MODEL", GEMINI_DEFAULT_MODEL)
     monkeypatch.setattr(settings, "LLM_QA_MIN_SCORE", 0.75)
     monkeypatch.setattr(settings, "LLM_QA_MAX_RETRY_ATTEMPTS", 1)
     monkeypatch.setattr(settings, "LLM_QA_POLICY", "blocking_retry")
@@ -664,7 +665,7 @@ async def test_llm_qa_review_policy_marks_needs_review(monkeypatch):
     grader = _StubLLMGrader(score=0.40)
     monkeypatch.setattr(settings, "LLM_QA_ENABLED", True)
     monkeypatch.setattr(settings, "LLM_QA_PROVIDER", "gemini")
-    monkeypatch.setattr(settings, "LLM_QA_MODEL", "gemini-3.1-flash-lite")
+    monkeypatch.setattr(settings, "LLM_QA_MODEL", GEMINI_DEFAULT_MODEL)
     monkeypatch.setattr(settings, "LLM_QA_MIN_SCORE", 0.75)
     monkeypatch.setattr(settings, "LLM_QA_MAX_RETRY_ATTEMPTS", 1)
     monkeypatch.setattr(settings, "LLM_QA_POLICY", "review")
@@ -690,7 +691,7 @@ async def test_llm_qa_above_threshold_keeps_passed_status(monkeypatch):
     grader = _StubLLMGrader(score=0.90)
     monkeypatch.setattr(settings, "LLM_QA_ENABLED", True)
     monkeypatch.setattr(settings, "LLM_QA_PROVIDER", "gemini")
-    monkeypatch.setattr(settings, "LLM_QA_MODEL", "gemini-3.1-flash-lite")
+    monkeypatch.setattr(settings, "LLM_QA_MODEL", GEMINI_DEFAULT_MODEL)
     monkeypatch.setattr(settings, "LLM_QA_MIN_SCORE", 0.75)
     monkeypatch.setattr(settings, "LLM_QA_MAX_RETRY_ATTEMPTS", 1)
     import novelai.translation.pipeline.stages.translation_qa as stage_mod
@@ -724,7 +725,7 @@ async def test_evaluate_translation_quality_with_llm_returns_one_on_failure():
         _ExplodingProvider(),
         source_text="こんにちは",
         translated_text="Hello",
-        model="gemini-3.1-flash-lite",
+        model=GEMINI_DEFAULT_MODEL,
     )
     assert score == 1.0
 

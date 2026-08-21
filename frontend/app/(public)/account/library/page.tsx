@@ -2,18 +2,40 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Bookmark, BookOpen, LayoutGrid, List, Loader2 } from "lucide-react";
+import {
+  Bookmark,
+  BookOpen,
+  FolderHeart,
+  Flame,
+  History,
+  LayoutGrid,
+  Library,
+  List,
+  Loader2,
+  LogIn,
+} from "lucide-react";
 
+import {
+  useLibrary,
+  usePublicAuth,
+  useRemoveFromLibrary,
+} from "@/hooks/public";
 import { LoginPrompt } from "@/components/public/login-prompt";
-import { useLibrary, usePublicAuth, useRemoveFromLibrary } from "@/hooks/public";
 import { publicNovelHref } from "@/lib/public-routes";
 import type { LibraryItem } from "@/lib/public-types";
 
+type TopTab = "library" | "updates" | "history" | "folders";
 type GroupKey = "reading" | "plan" | "completed" | "dropped" | "unknown";
 type SortKey = "slug-asc" | "slug-desc" | "added-desc" | "added-asc";
 type ViewMode = "board" | "list";
 
-const GROUP_ORDER: GroupKey[] = ["reading", "plan", "completed", "dropped", "unknown"];
+const GROUP_ORDER: GroupKey[] = [
+  "reading",
+  "plan",
+  "completed",
+  "dropped",
+  "unknown",
+];
 
 const GROUP_LABEL: Record<GroupKey, string> = {
   reading: "Reading",
@@ -51,6 +73,7 @@ function formatAddedAt(value: string): string {
 export default function LibraryPage() {
   const { isAuthenticated, isPending: authPending } = usePublicAuth();
   const library = useLibrary();
+  const [activeTab, setActiveTab] = useState<TopTab>("library");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("added-desc");
   const [view, setView] = useState<ViewMode | null>(null);
@@ -59,7 +82,10 @@ export default function LibraryPage() {
   // Default: list on mobile, board on desktop (md+). Read after mount to avoid
   // hydration mismatch; explicit Board/List toggle overrides the media default.
   useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
       return;
     }
     const mql = window.matchMedia("(min-width: 768px)");
@@ -107,22 +133,96 @@ export default function LibraryPage() {
         Back to Browse
       </Link>
 
-      <header className="mt-6 mb-8">
-        <h1 className="font-literary text-3xl font-semibold tracking-normal">My Library</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Novels you have saved for later.
+      <header className="mt-6 mb-6">
+        <h1 className="font-literary text-3xl font-semibold tracking-normal">
+          My Library
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Track reading progress, chapter updates, and saved novels.
         </p>
       </header>
+
+      {/* Top Tab list (WTR-LAB style) */}
+      <div
+        className="mb-6 flex flex-wrap gap-1 border-b border-border/60 pb-2"
+        role="tablist"
+        aria-label="Library sections"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "library"}
+          onClick={() => setActiveTab("library")}
+          className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            activeTab === "library"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          <Library className="h-4 w-4" />
+          <span>Library</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "updates"}
+          onClick={() => setActiveTab("updates")}
+          className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            activeTab === "updates"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          <Flame className="h-4 w-4 text-accent" />
+          <span>Updates</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "history"}
+          onClick={() => setActiveTab("history")}
+          className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            activeTab === "history"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          <History className="h-4 w-4" />
+          <span>History</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "folders"}
+          onClick={() => setActiveTab("folders")}
+          className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            activeTab === "folders"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          <FolderHeart className="h-4 w-4" />
+          <span>Followed Folders</span>
+        </button>
+      </div>
 
       {authPending ? (
         <LoadingState label="Checking session" />
       ) : !isAuthenticated ? (
-        <LoginPrompt />
+        <WtrLabGuestBanner />
+      ) : activeTab === "history" ? (
+        <HistoryTabContent />
+      ) : activeTab === "updates" ? (
+        <UpdatesTabContent />
+      ) : activeTab === "folders" ? (
+        <FoldersTabContent />
       ) : library.isPending ? (
         <LoadingState label="Loading library" />
       ) : library.isError ? (
         <section className="rounded-md border border-border bg-muted/40 p-4">
-          <p className="text-sm text-destructive">Could not load your library.</p>
+          <p className="text-sm text-destructive">
+            Could not load your library.
+          </p>
           <p className="mt-1 text-xs text-muted-foreground">
             Try refreshing the page, or return to browse.
           </p>
@@ -144,12 +244,78 @@ export default function LibraryPage() {
           />
           <div className="mt-6 space-y-10">
             {GROUP_ORDER.map((key) => (
-              <LibraryGroup items={grouped[key]} key={key} title={GROUP_LABEL[key]} view={effectiveView} />
+              <LibraryGroup
+                items={grouped[key]}
+                key={key}
+                title={GROUP_LABEL[key]}
+                view={effectiveView}
+              />
             ))}
           </div>
         </>
       )}
     </main>
+  );
+}
+
+function WtrLabGuestBanner() {
+  return (
+    <div className="rounded-lg border border-border/80 bg-card p-8 text-center shadow-xs">
+      <Library className="mx-auto h-10 w-10 text-muted-foreground/60" />
+      <p className="mt-3 text-base font-semibold text-foreground">
+        You need to login to use Library features.
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground max-w-md mx-auto">
+        Track chapter updates, continue where you left off, and manage saved
+        novels in your personalized reading library.
+      </p>
+      <div className="mt-5">
+        <LoginPrompt />
+      </div>
+    </div>
+  );
+}
+
+function UpdatesTabContent() {
+  return (
+    <section className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+      <Flame className="mx-auto h-8 w-8 text-accent mb-2" />
+      <p className="font-medium text-foreground">No new updates right now</p>
+      <p className="mt-1 text-xs">
+        When novels in your library release translated chapters, they will
+        appear here.
+      </p>
+    </section>
+  );
+}
+
+function HistoryTabContent() {
+  return (
+    <section className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+      <History className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
+      <p className="font-medium text-foreground">No recent reading history</p>
+      <p className="mt-1 text-xs">
+        Chapters you read will automatically record your progress.
+      </p>
+      <Link
+        href="/browse-novels"
+        className="mt-3 inline-block text-xs font-medium text-primary underline"
+      >
+        Browse novels to read
+      </Link>
+    </section>
+  );
+}
+
+function FoldersTabContent() {
+  return (
+    <section className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+      <FolderHeart className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
+      <p className="font-medium text-foreground">No followed folders</p>
+      <p className="mt-1 text-xs">
+        Follow community novel lists to get notified when new titles are added.
+      </p>
+    </section>
   );
 }
 
@@ -226,7 +392,11 @@ function LibraryControls({
           <option value="slug-desc">Slug Z-A</option>
         </select>
       </label>
-      <div aria-label="View" className="flex rounded-md border border-border p-0.5" role="group">
+      <div
+        aria-label="View"
+        className="flex rounded-md border border-border p-0.5"
+        role="group"
+      >
         <button
           aria-label="Board view"
           aria-pressed={view === "board"}
@@ -319,7 +489,10 @@ function LibraryRow({ item }: { item: LibraryItem }) {
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <Link className="truncate text-sm font-medium hover:text-accent" href={novelHref}>
+        <Link
+          className="truncate text-sm font-medium hover:text-accent"
+          href={novelHref}
+        >
           {item.slug}
         </Link>
         <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">

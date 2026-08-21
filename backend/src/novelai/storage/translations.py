@@ -194,10 +194,11 @@ def _build_overlay_payload(
 def _load_translation_overlay(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
     """Read the chapter's overlay payload (returns ``None`` when absent)."""
     path = self._translation_overlay_path(novel_id, chapter_id)
-    if not self._path_exists(path):
+    text = self._read_text_optional(path)
+    if not text:
         return None
     try:
-        return json.loads(self._read_text(path))
+        return json.loads(text)
     except Exception as exc:
         logger.warning("Failed to parse translation overlay %s/%s: %s", novel_id, chapter_id, exc)
         return None
@@ -737,25 +738,13 @@ def list_translated_chapters(self: Any, novel_id: str) -> list[str]:
                 continue
             try:
                 payload = json.loads(self._read_text(entry))
-            except (json.JSONDecodeError, OSError):
+            except json.JSONDecodeError, OSError:
                 continue
             if not isinstance(payload, dict):
                 continue
             chapter_id = payload.get("chapter_id") or stem
             if isinstance(chapter_id, str) and chapter_id and payload.get("active_translation_version_id"):
                 ids.add(chapter_id)
-    chapter_dir = self._content_root(novel_id) / "chapters"
-    if self._is_dir_present(chapter_dir):
-        for chapter_path in self._glob(chapter_dir, "*.json"):
-            try:
-                payload = json.loads(self._read_text(chapter_path))
-            except (json.JSONDecodeError, OSError):
-                continue
-            if not isinstance(payload, dict):
-                continue
-            versions = _translation_versions_from_payload_compat(self, payload)
-            if versions and isinstance(payload.get("active_translation_version_id"), str):
-                ids.add(self.logical_id_from_stem(chapter_path.stem))
     return sorted(ids)
 
 

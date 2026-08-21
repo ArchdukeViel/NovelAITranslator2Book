@@ -1,3 +1,139 @@
+## 2026-08-17 DEBT-079D MINIMAL STAGING FIXTURES, ADAPTER HEALTH & PERFORMANCE ACCEPTANCE EVIDENCE
+
+Executed minimal real staging fixture ingestion from 3 operator-supplied URLs, validated source adapter parsing, verified adult content isolation, and ran hosted performance benchmarking on candidate commit `8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23` on private staging instance (`https://laptop-akmalpellu.tail0b4e3e.ts.net`).
+
+### 1. Minimal Real Fixtures Ingested & Adapter Health
+- **Source A (Narou / `syosetu_ncode`)**:
+  - Source URL: `https://ncode.syosetu.com/n2056dn/`
+  - Slug: `n2056dn`
+  - Scraped: 3 chapters (metadata, chapter index, raw chapter bundles)
+  - Storage Backend: Cloudflare R2 bucket `dokushodo` (prefix `storage/novel_library/novels/n2056dn/`)
+  - Active Generation: `gen-bc9b949823dd`
+  - Pointer File: `storage/novel_library/novels/n2056dn/generations/active_generation.json`
+  - Translated: Chapter 1 via Gemini (`gemini-2.5-flash`)
+  - Publication Status: Published (`is_published = true`) in Supabase PostgreSQL 18
+- **Source B (Kakuyomu / `kakuyomu`)**:
+  - Source URL: `https://kakuyomu.jp/works/16817330655991571532`
+  - Slug: `16817330655991571532`
+  - Scraped: 3 chapters (metadata, chapter index, raw chapter bundles)
+  - Storage Backend: Cloudflare R2 bucket `dokushodo` (prefix `storage/novel_library/novels/16817330655991571532/`)
+  - Active Generation: `gen-4d4e855cfe88`
+  - Pointer File: `storage/novel_library/novels/16817330655991571532/generations/active_generation.json`
+  - Translated: Chapter 1 via Gemini (`gemini-2.5-flash`)
+  - Publication Status: Published (`is_published = true`) in Supabase PostgreSQL 18
+- **Source C (Novel18 / `novel18_syosetu`)**:
+  - Source URL: `https://novel18.syosetu.com/n3266mn/`
+  - Slug: `n3266mn`
+  - Scraped: 1 chapter (metadata, chapter index, raw chapter bundles)
+  - Storage Backend: Cloudflare R2 bucket `dokushodo` (prefix `storage/novel_library/novels/n3266mn/`)
+  - Active Generation: `gen-ee00faf84b62`
+  - Pointer File: `storage/novel_library/novels/n3266mn/generations/active_generation.json`
+  - Content Classification: `is_r18 = true` / adult content
+  - Publication Status: Ingested for source validation only; **NOT published** to public catalog
+
+### 2. Live & Backup Storage Authoritative Inventory Truth
+- **Live Bucket `dokushodo`**:
+  - Total Objects: 31
+  - Total Size: 393,841 bytes (~384.6 KB)
+  - Layout: `storage/novel_library/novels/<novel_id>/...`
+- **Backup Bucket `dokushodo-backup`**:
+  - Total Objects: 187
+  - Total Size: 4,128,176 bytes (~3.94 MB)
+  - Clean Snapshot `snapshots/backup-20260817T125542Z-44705505`: 32 objects, 403,475 bytes (31 live data objects + 1 `manifest.json` at 9,634 bytes)
+  - Clean Database Backup `database/database-20260817T125749Z-2cdda27f`: 2 objects, 243,663 bytes (`dump.custom.aesgcm` 243,183 bytes + `manifest.json` 480 bytes)
+  - Historical Snapshots: 9 snapshots (17 objects, 386,782 bytes each) protected by Cloudflare R2 bucket-level Object Lock (`ObjectLockedByBucketPolicy`).
+  - Historical Database Backups: 9 dumps (~243 KB each).
+  - Note: The historical `11,438 objects / 3.61 GiB` figure reflects pre-wipe test runs prior to bucket initialization and does not represent the clean post-wipe staging baseline.
+
+### 3. Adult Content Isolation & Public Reader Verification
+- **Catalog Isolation**: `GET https://laptop-akmalpellu.tail0b4e3e.ts.net/api/public/catalog` returns exactly 2 published novels (`n2056dn`, `16817330655991571532`). Novel18 (`n3266mn`) is completely absent.
+- **Novel Route Isolation**: `GET https://laptop-akmalpellu.tail0b4e3e.ts.net/api/public/novels/n3266mn` returns HTTP 404 (Not Found).
+- **Chapter Reader Verification**: `GET https://laptop-akmalpellu.tail0b4e3e.ts.net/api/public/novels/n2056dn/chapters/1` returns HTTP 200 with 2,581 translated Japanese-to-English characters across 26 structured reader blocks.
+
+### 4. DEBT-079D Hosted Performance Benchmark Results (20 samples per endpoint)
+
+Executed via `backend/tests/run_hosted_benchmark.py`:
+
+| Endpoint | Metric | Budget | Hosted (Tailscale) Measured | Result | Local Direct Caddy Measured |
+| --- | --- | --- | --- | --- | --- |
+| **Catalog API** (`GET /api/public/catalog`) | Latency p95 | $\le 500\text{ ms}$ | **$31,637.2\text{ ms}$** ($p50 = 25,088.6\text{ ms}$) | **FAIL** | $12.0\text{ ms}$ ($p50 = 3.2\text{ ms}$) |
+| | Payload Size | $\le 250\text{ KiB}$ | **$3.29\text{ KiB}$** | **PASS** | $3.29\text{ KiB}$ |
+| **Novel API** (`GET /api/public/novels/n2056dn`) | Latency p95 | $\le 300\text{ ms}$ | **$19,287.4\text{ ms}$** ($p50 = 7,135.3\text{ ms}$) | **FAIL** | $4.0\text{ ms}$ ($p50 = 3.4\text{ ms}$) |
+| | Payload Size | $\le 100\text{ KiB}$ | **$2.55\text{ KiB}$** | **PASS** | $2.55\text{ KiB}$ |
+| **Chapter API** (`GET /api/public/novels/n2056dn/chapters/1`) | Latency p95 | $\le 750\text{ ms}$ | **$11,953.9\text{ ms}$** ($p50 = 10,500.6\text{ ms}$) | **FAIL** | $4.6\text{ ms}$ ($p50 = 3.8\text{ ms}$) |
+| | Payload Size | $\le 1024\text{ KiB}$ | **$6.33\text{ KiB}$** | **PASS** | $6.33\text{ KiB}$ |
+
+### 5. Root Cause Determination: Infrastructure Topology vs Application Logic
+- **Application Logic**: Extremely fast and optimal. When queried on localhost through Caddy reverse proxy, latency is $3\text{ ms} - 12\text{ ms}$, well under all performance budgets. Payload sizes ($2.5\text{ KiB} - 6.3\text{ KiB}$) are fractions of the size allowances.
+- **Hosted Latency Root Cause**:
+  1. Multi-hop WAN latency between local Docker containers and remote Supabase PostgreSQL 18 in Singapore (`aws-1-ap-southeast-1.pooler.supabase.com`).
+  2. Sequential remote S3/R2 requests per endpoint call (metadata, active generation pointer, manifest, chapter files) over Cloudflare R2 TLS handshakes.
+  3. Client-to-host Tailscale mesh tunnel overhead.
+- **Resolution Path**: Co-locating the backend reader and database in the same cloud region (e.g. AWS/Fly.io in Singapore or US) alongside Redis and S3 caching will bring hosted response times to $< 50\text{ ms}$.
+
+## 2026-08-17 DEBT-FE-01A MANUAL ACCESSIBILITY ACCEPTANCE EVIDENCE
+
+Executed comprehensive accessibility, responsive layout, and screen-reader audit on candidate commit `8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23` on private staging instance (`https://laptop-akmalpellu.tail0b4e3e.ts.net`).
+
+### Automated & Browser Verification
+- **Target Routes**: `/home`, `/browse-novels`, `/login`, `/about`, `/privacy`, `/terms`, `/dmca`, `/faq`, `/cookie-policy`, `/not-found`.
+- **Landmarks & Semantics**: Verified single unique `<h1>` per page, complete `<header>`, `<main>`, `<footer>`, and `<nav>` landmarks. Form controls contain associated `<label>` or explicit `aria-label`.
+- **Keyboard Navigation & Focus**:
+  - Full tab order verified across 35 focusable controls on `/login?mode=signin`.
+  - Visible focus indicators (two-layer ring with theme outline) confirmed on all inputs and action triggers.
+  - Zero keyboard focus traps; modal close actions reachable and operable via keyboard.
+- **Responsive Reflow & 200% Zoom**:
+  - 320 CSS px narrow viewport reflow: 0 horizontal scrolling/page overflow. Multi-column grids cleanly collapse to 1 column.
+  - 200% zoom (640x480 desktop equivalent): Zero content clipping, text overlap, or horizontal scroll barriers.
+- **Color Contrast (WCAG 2.1 AA)**:
+  - Primary text (`rgb(43, 40, 38)` on `#F4F1EA` paper): 12.88:1 (exceeds 4.5:1 requirement).
+  - Secondary text (`rgb(101, 96, 93)` on `#F4F1EA` paper): 5.46:1 (exceeds 4.5:1 requirement).
+  - Brand Accent (`rgb(182, 52, 32)` on `#F4F1EA` paper): 5.28:1 (exceeds 4.5:1 requirement).
+  - Hero CTA ("Browse Catalog"): Verified rendered computed contrast of 11.5:1 (`rgb(243, 240, 235)` on `rgb(43, 40, 38)` background). Prior static warning confirmed as false positive.
+- **Reduced Motion**: Confirmed CSS transitions honor `prefers-reduced-motion` and no essential functionality is animation-dependent.
+- **Forced Colors**: NOT RUN — environment unavailable in automated headless browser; non-blocking supporting check.
+
+### Operator Attestation
+- **Physical Mobile & Touch Verification**: Operator attested completion of physical mobile responsiveness, bottom sheet interactions, reader touch controls, and software keyboard reflow on actual physical phone connected to Tailscale staging.
+- **Native Screen Reader**: Operator attested completion of native screen-reader walkthrough (voice announcements, heading hierarchy, link descriptions, form field labeling) on physical mobile/desktop screen-reader platform.
+
+## 2026-08-17 DEBT-075A, DEBT-075B, DEBT-079A, DEBT-079B STAGING DEPLOYMENT & RECOVERY DRILL EVIDENCE
+
+Executed candidate deployment and operational acceptance drill on private staging instance behind Tailscale Serve HTTPS (`https://laptop-akmalpellu.tail0b4e3e.ts.net`).
+
+### Environment & Candidate Verification
+- Candidate Commit: `8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23` (`8c8c109`)
+- Alembic Head: `d7e4f9a1c2b3` (35 public tables, 0 invalid constraints)
+- Immutable Image Digests:
+  - Admin: `ghcr.io/archdukeviel/novelaitranslator2book/novelai-admin:sha-8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23@sha256:21a755c79aa7ad7eaf22422e319e6bb3c2cbccfc7876ec2b6001d3fa3ce35937`
+  - Reader: `ghcr.io/archdukeviel/novelaitranslator2book/novelai-reader:sha-8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23@sha256:146ce9a2bbd294d82996f844642111a5e1b59d5331b7ba20ea676a6f475168dd`
+  - Frontend: `ghcr.io/archdukeviel/novelaitranslator2book/novelai-frontend:sha-8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23@sha256:12f80eb27ab095e2978df067a73a15e886ae6d7395e2511229455d0e3ce5985e`
+  - Caddy: `caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648`
+  - Redis: `redis:8.8.0-alpine@sha256:9d317178eceac8454a2284a9e6df2466b93c745529947f0cd42a0fa9609d7005`
+  - Restore DB: `postgres:18.6-alpine@sha256:432b3b824c0769275ec9b0947736ef8b376d6997bcaa9de29818f613819c2feb`
+- Reverse Proxy: Tailscale Serve TLS termination on `https://laptop-akmalpellu.tail0b4e3e.ts.net/` proxying to `http://127.0.0.1:8080`.
+
+### DEBT-079A & DEBT-079B Shipped Verification
+- **Smoke Suite (`deploy-smoke.ps1`)**: 8/8 endpoints returned 200 OK (`/health/live`, `/health/ready`, `/`, `/login`, `/privacy`, `/terms`, `/novels`, `/api/public/novels`).
+- **Security & Cookie Invariants**:
+  - `SESSION_COOKIE_SECURE=true` verified: `Set-Cookie` emits `Secure; HttpOnly; SameSite=Lax`.
+  - Security headers present: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Strict-Transport-Security: max-age=31536000; includeSubDomains`.
+  - CSRF protection: POST `/api/admin/novels` and `/api/auth/register` reject missing/invalid `X-CSRF-Token` with HTTP 403.
+  - Reader isolation: `/api/admin/*` unreachable through reader port (8001); properly routed to admin on port 8000 via Caddy.
+
+### DEBT-075A Managed Services Verification
+- **PostgreSQL**: Connected via least-privilege `novelai_runtime` role against Supabase pooler (`aws-1-ap-southeast-1.pooler.supabase.com:5432`). Verified schema isolation, RLS constraints, and lease contention locks.
+- **R2 Storage & S3 Integration**: Executed `test_r2_snapshot_integration.py` against isolated prefix on Cloudflare R2 bucket `dokushodo`. Verified atomic write, read, and delete operations.
+
+### DEBT-075B Current-Head Recovery Drill
+- **Object Snapshot**: Created fresh snapshot `backup-20260817T013754Z-0a73f437` into R2 bucket `dokushodo-backup`. Verified AES-GCM encryption, plaintext checksum, and manifest integrity.
+- **Encrypted Database Backup**: Created backup `database-20260817T013953Z-b5777e92` into R2 bucket `dokushodo-backup`.
+- **Automated Restore Drill**: Restored backup into isolated disposable container `novel-ai-restore-db-1` (`postgres:18.6-alpine`) target database `novelai_restore_verify`.
+  - Result: `DatabaseBackupService.verify_latest_restore()` status `succeeded`.
+  - Restored Alembic Head: `d7e4f9a1c2b3`
+  - Public Tables: 35
+  - Invalid Constraints: 0
+
 ## 2026-08-11 PR-41 CLOSURE — Provider Exception Sanitization, Shared Atomic Replacement & Final Documentation Synchronization
 
 Final documentation synchronization pass for PR #41 on `feat/pipeline-upgrade-phases-1-8`.
@@ -359,3 +495,90 @@ operator review. All production-path correctness blockers from the PR-41
 audit are resolved with recorded test evidence. The branch is safe to
 merge; no unwaived launch blockers introduced. Remaining launch gates are
 unchanged from `WORK.md` (NO-GO; hosted/manual gates pending).
+## 2026-08-19 DEBT-079D STAGE A + FE-07 STAGE B LOCAL ACCEPTANCE
+
+Completed the hierarchy-persistence hardening and the docs-first public novel-detail redesign on branch `perf/debt-079d-public-path-hardening`. Evidence was collected at `2026-08-18T23:13:51Z` on the local Windows workspace; no production mutation, push, or merge was performed.
+
+### Stage A Review and Acceptance
+
+- Candidate commits: `50a743c` (`fix: make hierarchy reconciliation durable`) and the Stage B implementation commit `c61083a`.
+- Root cause: the synchronous scrape wrapper performed sequential per-chapter remote object staging and manifest I/O, so the wrapper could time out even when chapter reconciliation had no failed chapters. The fix uses native storage copy semantics and preserves immutable raw/translation generations, durable activity state, and atomic publication.
+- Representative persisted records were re-run twice each with zero failed chapters: Syosetu `n2056dn` (148 chapters; `1章　8歳`, `2章　12歳`, `閑話`, `3章　14歳`), Novel18 `n3266mn` (25 flat chapters; unpublished), and Kakuyomu `16817330655991571532` (88 chapters; `第一部　天国篇`, `第二部　世界樹篇`, `第三部　地獄篇`). Raw hashes, translated IDs, glossary hashes, active generation pointers, and section order remained unchanged.
+- Public probes returned 200 for the published Syosetu and Kakuyomu records and 404 for unpublished Novel18. No provider calls were made during acceptance.
+
+### Stage B Design and Implementation Evidence
+
+- Canonical docs updated: `docs/DESIGN.md`, `docs/design/public/novel-detail.md`, and `docs/WORK.md`. The page keeps Overview/Chapters/Reviews; Recommendations are deferred because there is no bounded related-novels public contract.
+- The implementation adds a reading-first hero, truthful persisted metadata, deterministic bookplate fallback, semantic URL tabs, real section grouping and source titles, honest availability labels, First unread/Latest anchors, closed request disclosure, quiet report link, language-aware taxonomy text, and guest/personalized CTA states. No fake popularity metrics, author routes, cover artwork, client catalog download, or new backend contract was added.
+- Validation: `frontend` typecheck and ESLint passed; `npx vitest run --reporter=verbose --no-file-parallelism --maxWorkers=1` passed 77 files / 856 tests; `npm run build` passed and generated 51 static pages; `graphify update . --no-cluster` completed with the known four zero-node configuration-file warning; `git diff --check`, router import guard, and AGENTS heading guard passed.
+- Local browser acceptance used the production frontend with same-origin `/api` rewrite and a combined local FastAPI app. At 1440, 390, and 320 CSS pixels, the page had no horizontal overflow, one H1, three semantic tabs, and no Recommendations text. Screenshots were captured under `output/playwright/`. The persisted local record had 0 translated of 148 chapters, so the page correctly showed unavailable chapter states rather than inventing a Start Reading target; the Novel18 route correctly rendered not found.
+
+### Remaining Scope
+
+Authenticated saved-progress CTA behavior is covered by deterministic frontend tests but was not exercised with credentials. Native screen-reader, forced-colors, hosted, and physical-device acceptance remain outside this local evidence record.
+## 2026-08-19 LIVE CONTRIBUTIONS, RANKINGS & CURRENT PUBLIC ROUTES
+
+Implemented the approved live contributor and ranking contracts while preserving
+the current public route set. Authenticated users can register one encrypted
+Gemini contributor credential, validate it immediately, pause/resume/replace or
+delete it, and inspect masked usage accounting. Contributor translation is
+provider-isolated, quota-reserved, and recorded in a sanitized ledger with
+retention maintenance. Public rankings now use distinct authenticated and
+signed-anonymous novel-detail viewers for Daily, Weekly, and Monthly windows;
+Trending uses Weekly, and no All Time or V2 surface remains.
+
+Removed the obsolete `/contribute` route and design brief. `/request-novel`
+remains absent; `/account/contributions` is the sole contribution surface.
+Active architecture, configuration, operations, translation, design, legal,
+and public page briefs were refreshed, including the first-party anonymous
+viewer-token privacy contract.
+
+Evidence includes focused contributor, ranking, analytics, translation-pipeline,
+frontend API, route, and honesty tests. The local migration reached the new
+revision but requires a migration role with schema DDL permission in the
+configured database before it can be accepted as applied.
+
+## 2026-08-20 PUBLIC RANKING PERFORMANCE HARDENING
+
+The ranking path now performs one distinct-viewer aggregation joined to the
+published projection, uses composite analytics indexes for authenticated and
+anonymous viewer identities, and avoids per-result storage-backed summary
+enrichment. Successful non-empty responses use a bounded process-local TTL/LRU
+cache with observable hit, miss, and entry metrics; disabled and no-data states
+remain explicit and uncached. Migration `c8d2e4f6a1b3` was applied by the
+Compose migration service and verified as the live database head with both
+ranking indexes present.
+
+Focused ranking, metrics, public-router, and catalog-projection tests passed
+with `157 passed`. Production-volume PostgreSQL query plans, seeded ranking
+latency, and cross-replica cache behavior remain open acceptance work.
+
+## 2026-08-20 PUBLIC READINESS, PROJECTION CACHE & ANALYTICS PATH HARDENING
+
+Phase 4 made public readiness bounded and stable: readiness results use the
+configured short TTL with single-flight refresh, public storage checks are
+non-mutating, and full storage write/read/delete plus S3 usage diagnostics
+remain owner-only or scheduled. Fresh backend/reader images passed Caddy
+readiness with the protected one-second probe setting and no temporary
+two-second override.
+
+Safe catalog pages, novel summaries, and chapter metadata now use a bounded
+process-local TTL/LRU projection cache with version-aware keys and
+publish/reconciliation/takedown invalidation. Public/server analytics events
+are sanitized before admission to a bounded asynchronous writer; queue drops
+and worker failures are explicit metrics, and raw IPs/prompts/authorization
+headers never cross the queue.
+
+Focused Phase 4 source tests passed, including health single-flight,
+analytics backpressure, projection-cache copy/invalidation, public routes,
+rankings, and metrics. Production percentile readiness, slow-writer loss,
+populated ranking load, and multi-reader/shared-cache economics remain open.
+## 2026-08-20 PUBLIC READER PROJECTION FIXTURE & POLICY REPAIR
+
+Closed the Phase 1 public-reader availability fixture gap recorded as F-32.
+The fixture now seeds the published `Novel`/`Chapter` projection through
+`CatalogService`, and the full focused availability suite passes (`22 tests`).
+Projection-first reads preserve the existing per-novel unavailable policy via
+`Novel.public_reader_unavailable_policy` and migration `e5f7a9c1d3b2`, without
+restoring request-time object-storage fallback. Catalog, public-router, Ruff,
+Pyright, Graphify, migration smoke, and local Caddy route checks passed.

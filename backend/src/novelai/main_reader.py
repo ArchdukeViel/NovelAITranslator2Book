@@ -23,6 +23,7 @@ from novelai.api.routers.public_chapter import router as public_chapter_router
 from novelai.api.routers.public_contact import router as public_contact_router
 from novelai.api.routers.public_dmca import router as public_dmca_router
 from novelai.api.routers.public_novel import router as public_novel_router
+from novelai.api.routers.public_rankings import router as public_rankings_router
 from novelai.config.production_validator import assert_production_config
 from novelai.config.settings import settings
 from novelai.runtime.bootstrap import bootstrap
@@ -38,6 +39,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        from novelai.services.analytics_writer import shutdown_analytics_writer
+
+        shutdown_analytics_writer()
         from novelai.infrastructure.http.fetch_service import get_default_fetch_service
 
         await get_default_fetch_service().aclose()
@@ -71,6 +75,7 @@ add_error_handlers(app)
 # Public endpoints (guest-accessible)
 app.include_router(public_catalog_router)
 app.include_router(public_novel_router)
+app.include_router(public_rankings_router)
 app.include_router(public_chapter_router)
 app.include_router(public_contact_router)
 app.include_router(public_dmca_router)

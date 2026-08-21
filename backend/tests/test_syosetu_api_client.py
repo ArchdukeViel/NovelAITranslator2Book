@@ -52,7 +52,7 @@ def test_parse_novel_entry_maps_regular_genre_and_status():
     assert entry["published_at"] == "2023-05-10T03:00:00Z"
     assert entry["updated_at"] == "2024-02-01T06:30:00Z"
     assert entry["publication_status"] == "completed"
-    assert entry["status"] == "completed"
+    assert "status" not in entry
     assert entry["source_publication_status"] == "完結済"
     assert typed_meta.ncode == "n1234ab"
     assert typed_meta.episode_count == 12

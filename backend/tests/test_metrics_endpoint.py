@@ -64,6 +64,9 @@ def test_metrics_handler_emits_process_gauges():
     assert "novelai_cpu_count_total" in metrics
     assert "novelai_active_threads_count" in metrics
     assert "novelai_gc_tracked_objects_count" in metrics
+    assert "novelai_public_ranking_cache_hits_total" in metrics
+    assert "novelai_public_ranking_cache_misses_total" in metrics
+    assert "novelai_public_ranking_cache_entries" in metrics
     assert metrics["novelai_process_uptime_seconds"] >= 0.0
     assert metrics["novelai_cpu_count_total"] >= 0
 

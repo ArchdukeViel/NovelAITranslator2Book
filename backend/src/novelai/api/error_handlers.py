@@ -14,6 +14,8 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from novelai.config.settings import settings
@@ -78,6 +80,7 @@ _EXPLANATION_BY_CODE: dict[str, str] = {
     "BAD_REQUEST": "The request payload could not be accepted. Check the input values and try again.",
     "CONFIGURATION_ERROR": "The backend configuration is incomplete or invalid.",
     "CONFLICT": "The requested change conflicts with the current stored state.",
+    "DATABASE_CAPACITY_EXHAUSTED": "The database connection capacity is temporarily exhausted. Retry the request shortly.",
     "FAILED_DEPENDENCY": "This action could not complete because a required internal dependency failed.",
     "INSUFFICIENT_STORAGE": "The storage layer could not complete the operation with the current storage state.",
     "INTERNAL_ERROR": "The backend hit an unexpected condition. Check the Activity Log or server logs with the trace ID.",
@@ -198,6 +201,28 @@ def _is_storage_exhaustion(exc: BaseException) -> bool:
         if any(
             marker in message for marker in ("no space left", "disk full", "insufficient storage", "quota exceeded")
         ):
+            return True
+    return False
+
+
+def _is_database_capacity_exhaustion(exc: BaseException) -> bool:
+    """Recognize pool/server capacity failures without broad DB-error masking."""
+    markers = (
+        "connection pool",
+        "pool timeout",
+        "pool limit",
+        "queuepool limit",
+        "remaining connection slots",
+        "too many clients",
+        "too many connections",
+        "connection limit exceeded",
+        "timeout waiting for connection",
+    )
+    for item in _exception_chain(exc):
+        if not isinstance(item, (DBAPIError, SQLAlchemyTimeoutError)):
+            continue
+        message = str(item).lower()
+        if any(marker in message for marker in markers):
             return True
     return False
 
@@ -420,6 +445,16 @@ def _classify_unhandled_error(request: Request, exc: Exception) -> ErrorClassifi
             None,
             details,
             "storage",
+        )
+
+    if _is_database_capacity_exhaustion(exc):
+        return ErrorClassification(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "DATABASE_CAPACITY_EXHAUSTED",
+            "Database connection capacity is temporarily exhausted.",
+            None,
+            {"operation": operation, "retryable": True},
+            "database",
         )
 
     if isinstance(exc, ValueError):

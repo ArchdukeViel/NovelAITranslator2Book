@@ -26,11 +26,12 @@ const mocks = vi.hoisted(() => ({
   useRouterMock: vi.fn(() => ({ replace: vi.fn() })),
 }));
 
-const defaultLibraryData: { slug: string; status: string; added_at: string }[] = [
-  { slug: "novel-1", status: "reading", added_at: "2025-01-01T00:00:00Z" },
-  { slug: "novel-2", status: "completed", added_at: "2025-01-02T00:00:00Z" },
-  { slug: "novel-3", status: "paused", added_at: "2025-01-03T00:00:00Z" },
-];
+const defaultLibraryData: { slug: string; status: string; added_at: string }[] =
+  [
+    { slug: "novel-1", status: "reading", added_at: "2025-01-01T00:00:00Z" },
+    { slug: "novel-2", status: "completed", added_at: "2025-01-02T00:00:00Z" },
+    { slug: "novel-3", status: "paused", added_at: "2025-01-03T00:00:00Z" },
+  ];
 
 const defaultHistoryData = {
   items: [
@@ -63,18 +64,31 @@ vi.mock("@/hooks/public/use-notifications", () => ({
 
 vi.mock("@/components/public/public-theme-toggle", () => ({
   PublicThemeToggle: () => <button data-testid="theme-toggle" />,
+  PublicThemeSegmentedControl: () => (
+    <div data-testid="theme-segmented-control" />
+  ),
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ children, href, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
-    <a href={href} {...props}>{children}</a>
+  default: ({
+    children,
+    href,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
   ),
 }));
 
 vi.mock("lucide-react", () => {
-  const Svg = ({ className, children }: { className?: string; children?: React.ReactNode }) => (
-    <span className={className}>{children}</span>
-  );
+  const Svg = ({
+    className,
+    children,
+  }: {
+    className?: string;
+    children?: React.ReactNode;
+  }) => <span className={className}>{children}</span>;
   return {
     AlertTriangle: Svg,
     ArrowRight: Svg,
@@ -83,6 +97,7 @@ vi.mock("lucide-react", () => {
     Clock: Svg,
     FileText: Svg,
     Heart: Svg,
+    HeartHandshake: Svg,
     HelpCircle: Svg,
     History: Svg,
     Info: Svg,
@@ -92,8 +107,10 @@ vi.mock("lucide-react", () => {
     Lock: Svg,
     LogOut: Svg,
     Newspaper: Svg,
+    Palette: Svg,
     Scale: Svg,
     Settings: Svg,
+    Shield: Svg,
     Star: Svg,
     Trophy: Svg,
     User: Svg,
@@ -117,7 +134,10 @@ beforeEach(() => {
     isLoading: false,
     isFetching: false,
     refetch: vi.fn(),
-    authState: { status: "authenticated", user: { is_authenticated: true, role: "user" } },
+    authState: {
+      status: "authenticated",
+      user: { is_authenticated: true, role: "user" },
+    },
     user: { is_authenticated: true, role: "user" },
     isAuthenticated: true,
     isPublicUser: true,
@@ -150,8 +170,12 @@ afterEach(() => {
 
 function renderWithProviders(ui: React.ReactNode) {
   const { QueryClient, QueryClientProvider } = require("@tanstack/react-query");
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
 }
 
 describe("Account desktop shell", () => {
@@ -162,7 +186,7 @@ describe("Account desktop shell", () => {
     renderWithProviders(
       <Layout>
         <Page />
-      </Layout>
+      </Layout>,
     );
 
     const nav = screen.getByRole("navigation", { name: "Account navigation" });
@@ -181,13 +205,17 @@ describe("Account desktop shell", () => {
     for (const href of links) {
       // Hyphens in the href (e.g. request-novels) match the spaced label (Request Novels)
       const namePattern = (href.split("/").pop() || "").replace(/-/g, "[ -]");
-      const link = within(nav).getByRole("link", { name: new RegExp(namePattern, "i") });
+      const link = within(nav).getByRole("link", {
+        name: new RegExp(namePattern, "i"),
+      });
       expect(link).toBeInTheDocument();
       expect(link).toHaveAttribute("href", href);
     }
 
     // Unavailable items render as plain text, not links
-    expect(within(nav).queryByRole("link", { name: /support/i })).not.toBeInTheDocument();
+    expect(
+      within(nav).queryByRole("link", { name: /support/i }),
+    ).not.toBeInTheDocument();
     expect(within(nav).getByText(/support/i)).toBeInTheDocument();
   });
 
@@ -198,10 +226,12 @@ describe("Account desktop shell", () => {
     renderWithProviders(
       <Layout>
         <Page />
-      </Layout>
+      </Layout>,
     );
 
-    const desktopNav = screen.getByRole("navigation", { name: "Account navigation" });
+    const desktopNav = screen.getByRole("navigation", {
+      name: "Account navigation",
+    });
 
     const supportText = within(desktopNav).getByText(/support/i);
 
@@ -223,11 +253,15 @@ describe("Account desktop shell", () => {
     renderWithProviders(
       <Layout>
         <Page />
-      </Layout>
+      </Layout>,
     );
 
-    const desktopNav = screen.getByRole("navigation", { name: "Account navigation" });
-    const libraryLink = within(desktopNav).getByRole("link", { name: /library/i });
+    const desktopNav = screen.getByRole("navigation", {
+      name: "Account navigation",
+    });
+    const libraryLink = within(desktopNav).getByRole("link", {
+      name: /library/i,
+    });
     expect(libraryLink).toHaveAttribute("aria-current", "page");
   });
 });
@@ -240,7 +274,7 @@ describe("Account landing summary", () => {
     renderWithProviders(
       <Layout>
         <Page />
-      </Layout>
+      </Layout>,
     );
 
     expect(screen.getByText("Currently Reading")).toBeInTheDocument();
@@ -255,7 +289,7 @@ describe("Account landing summary", () => {
     renderWithProviders(
       <Layout>
         <Page />
-      </Layout>
+      </Layout>,
     );
 
     expect(screen.getByText("Reading History")).toBeInTheDocument();
@@ -272,7 +306,7 @@ describe("Account landing summary", () => {
     renderWithProviders(
       <Layout>
         <Page />
-      </Layout>
+      </Layout>,
     );
 
     expect(screen.getByText("Unread Notifications")).toBeInTheDocument();
@@ -293,7 +327,7 @@ describe("Account landing summary", () => {
     renderWithProviders(
       <Layout>
         <Page />
-      </Layout>
+      </Layout>,
     );
 
     expect(screen.getByText("Currently Reading")).toBeInTheDocument();
@@ -314,7 +348,7 @@ describe("Account landing summary", () => {
     renderWithProviders(
       <Layout>
         <Page />
-      </Layout>
+      </Layout>,
     );
 
     expect(screen.getByText("Reading History")).toBeInTheDocument();
@@ -336,7 +370,7 @@ describe("Account landing summary", () => {
     renderWithProviders(
       <Layout>
         <Page />
-      </Layout>
+      </Layout>,
     );
 
     expect(screen.getByText("Unread Notifications")).toBeInTheDocument();
@@ -353,12 +387,16 @@ describe("Mobile hub hidden on desktop", () => {
     renderWithProviders(
       <Layout>
         <Page />
-      </Layout>
+      </Layout>,
     );
 
-    const desktopNav = screen.getByRole("navigation", { name: "Account navigation" });
+    const desktopNav = screen.getByRole("navigation", {
+      name: "Account navigation",
+    });
 
-    const mobileNavHeading = screen.getByRole("heading", { name: /your account/i });
+    const mobileNavHeading = screen.getByRole("heading", {
+      name: /your account/i,
+    });
     const mobileMoreHeading = screen.getByRole("heading", { name: /more/i });
 
     expect(mobileNavHeading).toBeInTheDocument();
@@ -393,7 +431,7 @@ describe("Loading and auth states", () => {
     renderWithProviders(
       <Layout>
         <Page />
-      </Layout>
+      </Layout>,
     );
 
     expect(screen.getByText("Checking session")).toBeInTheDocument();
@@ -411,7 +449,10 @@ describe("Loading and auth states", () => {
       isLoading: false,
       isFetching: false,
       refetch: vi.fn(),
-      authState: { status: "guest", user: { is_authenticated: false, role: "guest" } },
+      authState: {
+        status: "guest",
+        user: { is_authenticated: false, role: "guest" },
+      },
       user: { is_authenticated: false, role: "guest" },
       isAuthenticated: false,
       isPublicUser: false,
@@ -424,10 +465,12 @@ describe("Loading and auth states", () => {
     renderWithProviders(
       <Layout>
         <Page />
-      </Layout>
+      </Layout>,
     );
 
-    expect(replaceMock).toHaveBeenCalledWith("/login?mode=signin&callbackUrl=%2Faccount");
+    expect(replaceMock).toHaveBeenCalledWith(
+      "/login?mode=signin&callbackUrl=%2Faccount",
+    );
   });
 
   it("redirects to login preserving deep account pathname", async () => {
@@ -442,7 +485,10 @@ describe("Loading and auth states", () => {
       isLoading: false,
       isFetching: false,
       refetch: vi.fn(),
-      authState: { status: "guest", user: { is_authenticated: false, role: "guest" } },
+      authState: {
+        status: "guest",
+        user: { is_authenticated: false, role: "guest" },
+      },
       user: { is_authenticated: false, role: "guest" },
       isAuthenticated: false,
       isPublicUser: false,
@@ -454,10 +500,12 @@ describe("Loading and auth states", () => {
     renderWithProviders(
       <Layout>
         <div />
-      </Layout>
+      </Layout>,
     );
 
-    expect(replaceMock).toHaveBeenCalledWith("/login?mode=signin&callbackUrl=%2Faccount%2Fsettings");
+    expect(replaceMock).toHaveBeenCalledWith(
+      "/login?mode=signin&callbackUrl=%2Faccount%2Fsettings",
+    );
   });
 });
 
@@ -469,7 +517,7 @@ describe("Main landmark", () => {
     renderWithProviders(
       <Layout>
         <Page />
-      </Layout>
+      </Layout>,
     );
 
     // Shell content wrapper is a non-landmark div; the child page owns the single main landmark

@@ -1,31 +1,35 @@
 # Dokushodo - Contributions
 
 ## Design Task
-Design the contribution dashboard with honest not-available panels.
+Design the live contributor credential dashboard with clear lifecycle and usage states.
 
 ## Product Context
-Public key contribution is not available yet; the dashboard structure exists with honest unavailable panels.
+Authenticated users can add one Gemini credential, validate it explicitly, pause/resume it, replace it, delete it, and review sanitized usage. The key is never read back.
 
 ## Global Visual Snapshot
-Dokushodo is a quiet Japanese literary reading platform for translated web novels. The interface favors a restrained warm-light aesthetic: a washi paper background with near-black ink text, vermillion reserved for the single primary action on a card or screen, and soft teal used only for secondary surfaces. The desktop shell is a slim header with the brand mark on the left, inline navigation, a search overlay trigger, a theme toggle, and a user menu, above a persistent footer with catalog, help, legal, and account links. Mobile replaces the header with a compact bar and a fixed bottom tab bar offering Home, Browse, Search, Library, and Account. Cards are quiet: white paper, thin borders, six pixel corners, no shadow. Imagery is limited to the brand mark, gradient book covers generated from title and author, and three restrained illustrations for empty, error, and maintenance states. Serif typography is reserved for novel titles and reading matter; sans-serif covers interface text; monospace marks metadata such as identifiers and timestamps. Motion is subtle and short, never decorative. The platform tells the truth: unavailable features state that they are unavailable, ranking shows a quiet not-live notice, and empty states point to a clear next step. The settled state is calm, legible, and free of noise.
+Dokushodo is a quiet Japanese literary reading platform for translated web novels. The interface uses a restrained warm-light aesthetic: washi paper, near-black ink, vermillion for the primary action, and muted teal for secondary surfaces. The desktop shell is a fixed 56px header with the brand mark, search, notifications, account controls, and a collapsible navigation panel up to 320px wide; navigation reflects the current Home, News, Library, Browse Novels, Ranking, Random Novel, Request Novels, Contributions, and FAQ surfaces. Mobile uses a compact header and fixed bottom tabs for Home, Browse, Search, Library, and Account. Cards use quiet paper surfaces, thin borders, six-pixel corners, and restrained elevation. Covers use deterministic bookplate or gradient treatments; illustrations are reserved for empty, error, and maintenance states. Serif typography carries titles and reading matter, sans-serif handles interface text, and monospace is reserved for metadata. Motion is brief and functional. The platform presents truthful ranking periods, loading, unavailable, and no-data states, while contribution settings show masked credential lifecycle and usage states without exposing key material. The settled state is calm, legible, tactile, and free of digital clutter.
 
 ## Page Goal
-Present the contribution dashboard structure without implying it is live.
+Present the API-backed contribution dashboard without inventing health, quota, or usage values.
 
 ## Audience and Access
 Signed-in readers only.
 
 ## Primary Action
-None; informational until the program is live.
+Add or replace a Gemini contributor credential after accepting the current consent version.
 
 ## Information Hierarchy
 - Page heading Contribution Dashboard
-- Not-available notice
-- Panels: Key Health, Usage Stats, Pause, Remove
+- Credential intake with consent checkbox and masked key ending
+- Validation, active, invalid, paused, revoked, and unavailable states
+- Usage summary with real request/token limits and recent ledger entries
+- Pause, resume, replace, and permanent delete controls
 
 ## Desktop Composition
-- Notice callout at top
-- Panel grid with Key Health, Usage Stats, Pause, and Remove cards, each showing not available
+- Consent and key-entry panel at the top
+- Credential status panel with provider, fingerprint, validation timestamp, and lifecycle action
+- Usage panel with current-minute/today counters, configured limits, and recent activity
+- Security copy explaining encryption, ownership isolation, and no-readback behavior
 
 ## Mobile Composition
 - Panels stack full width
@@ -38,25 +42,29 @@ None; informational until the program is live.
 - Public footer
 
 ## Key Components
-- Notice callout
-- Key Health panel
-- Usage Stats panel
-- Pause panel
-- Remove panel
+- Credential intake form
+- Credential status card
+- Usage summary card
+- Lifecycle action controls
+- Security notice
 
 ## Representative Content
-- Contribution Dashboard
-- Public key contribution is not available yet.
-- Key Health, Usage Stats, Pause, Remove
+- Contributions
+- Add a Google Gemini API key
+- Active, Invalid, Paused, Revoked
+- Usage, requests per minute, tokens per minute, requests per day
 
 ## Normal Settled State
-Four quiet panels under one honest notice; no metrics, no toggles.
+One quiet intake/status surface with masked credential metadata and API-backed usage; no raw key readback or fabricated health text.
 
 ## Alternate Visual States
-- Future live state with real key health and usage numbers
+- Guest sign-in prompt
+- Loading, service error, disabled/encryption-unready, invalid validation, paused, revoked, and usage-error states
 
 ## Interaction Cues
-- Panels are non-interactive in the current state
+- Consent gates the submit action
+- Successful validation activates the credential immediately
+- Pause/resume, replace, and delete use explicit confirmation where destructive
 
 ## Accessibility and Legibility
 - WCAG AA contrast in both themes
@@ -69,14 +77,12 @@ Four quiet panels under one honest notice; no metrics, no toggles.
 ## Assets
 
 ## Preserve Exactly
-- The exact not-available wording
-- Panel names
-- No fabricated usage numbers
+- No complete key value is displayed after submission
+- Status and usage text comes only from the authenticated API response
+- Current consent version and configured limits remain visible
 
 ## Avoid
-- Fake key health bars
-- Enrollment forms
-- Success messaging
+- Raw credential values, fake quota counters, fake health scores, or owner-only controls
 
 ## Stitch Output Requirements
 - Produce the settled state as a 1440 px desktop frame and a 390 px mobile frame

@@ -31,6 +31,7 @@ TASK_SCHEDULER_STATE = "scheduler_runtime_state_cleanup"
 TASK_BACKUP_RETENTION = "backup_retention_cleanup"
 TASK_ANALYTICS_EVENTS = "analytics_events_cleanup"
 TASK_NOTIFICATIONS = "notifications_cleanup"
+TASK_CONTRIBUTOR_USAGE = "contributor_usage_cleanup"
 
 MAINTENANCE_TASK_KEYS = (
     TASK_FETCH_CACHE,
@@ -40,6 +41,7 @@ MAINTENANCE_TASK_KEYS = (
     TASK_BACKUP_RETENTION,
     TASK_ANALYTICS_EVENTS,
     TASK_NOTIFICATIONS,
+    TASK_CONTRIBUTOR_USAGE,
 )
 
 
@@ -62,6 +64,7 @@ class MaintenanceService:
         scheduler_runtime_state_service: Any | None = None,
         analytics_service: Any | None = None,
         notification_cleanup: Any | None = None,
+        contributor_usage_cleanup: Any | None = None,
     ) -> None:
         self._storage = storage
         self._activity_log = activity_log
@@ -69,6 +72,7 @@ class MaintenanceService:
         self._scheduler_state_service = scheduler_runtime_state_service
         self._analytics_service = analytics_service
         self._notification_cleanup = notification_cleanup
+        self._contributor_usage_cleanup = contributor_usage_cleanup
 
     def run_maintenance(
         self,
@@ -157,6 +161,8 @@ class MaintenanceService:
             return self._cleanup_analytics_events(dry_run=dry_run)
         if task_key == TASK_NOTIFICATIONS:
             return self._cleanup_notifications(dry_run=dry_run)
+        if task_key == TASK_CONTRIBUTOR_USAGE:
+            return self._cleanup_contributor_usage(dry_run=dry_run)
         return {"task_key": task_key, "status": "skipped", "message": "Not implemented"}
 
     def _cleanup_fetch_cache(self, *, dry_run: bool) -> dict[str, Any]:
@@ -420,6 +426,30 @@ class MaintenanceService:
             }
         count = self._notification_cleanup(retention_days, settings.NOTIFICATION_RETENTION_BATCH_SIZE)
         return {"task_key": TASK_NOTIFICATIONS, "status": "succeeded", "dry_run": False, "items_deleted": count}
+
+    def _cleanup_contributor_usage(self, *, dry_run: bool) -> dict[str, Any]:
+        """Prune sanitized contributor usage rows under their retention policy."""
+        if self._contributor_usage_cleanup is None:
+            return {
+                "task_key": TASK_CONTRIBUTOR_USAGE,
+                "status": "skipped",
+                "message": "Contributor usage service not available",
+            }
+        retention_days = settings.CONTRIBUTOR_USAGE_RETENTION_DAYS
+        if dry_run:
+            return {
+                "task_key": TASK_CONTRIBUTOR_USAGE,
+                "status": "succeeded",
+                "dry_run": True,
+                "message": f"Would clean contributor usage rows older than {retention_days}d",
+            }
+        count = self._contributor_usage_cleanup(retention_days)
+        return {
+            "task_key": TASK_CONTRIBUTOR_USAGE,
+            "status": "succeeded",
+            "dry_run": False,
+            "items_deleted": count,
+        }
 
     async def _cleanup_backup_retention_async(self, *, dry_run: bool) -> dict[str, Any]:
         """Async backup retention cleanup."""

@@ -83,6 +83,22 @@ class S3Backend(StorageBackend):
         resp["Body"].close()
         return body
 
+    def copy_object(self, source: str | Path, destination: str | Path) -> None:
+        """Copy an immutable object with the provider's server-side primitive."""
+        source_key = self._key(source)
+        destination_key = self._key(destination)
+        logger.debug(
+            "S3 copy: bucket=%s source=%s destination=%s",
+            self._bucket,
+            source_key,
+            destination_key,
+        )
+        self._client.copy_object(
+            Bucket=self._bucket,
+            Key=destination_key,
+            CopySource={"Bucket": self._bucket, "Key": source_key},
+        )
+
     def delete(self, path: str | Path) -> None:
         key = self._key(path)
         logger.debug("S3 delete: bucket=%s key=%s", self._bucket, key)
@@ -145,6 +161,12 @@ class S3Backend(StorageBackend):
 
     def mkdirs(self, path: str | Path) -> None:
         pass  # S3 has no directories; objects are created implicitly
+
+    def probe_readiness(self) -> bool:
+        """Perform one bounded bucket request without requiring an object."""
+        prefix = f"{self._key_prefix}/" if self._key_prefix else ""
+        self._client.list_objects_v2(Bucket=self._bucket, Prefix=prefix, MaxKeys=1)
+        return True
 
     def compare_and_swap(self, path: str | Path, expected: bytes | None, new_value: bytes) -> bool:
         """True compare-and-swap against the current object version.

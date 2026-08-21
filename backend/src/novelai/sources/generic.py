@@ -24,10 +24,11 @@ from novelai.sources.base import SourceAdapter
 from novelai.sources.html_parsers import HTMLParserMixin
 from novelai.sources.quality import (
     QualityGateResult,
-    detect_age_gate_text,
+    detect_age_gate_page,
     detect_block_page_text,
 )
 from novelai.sources.status import publication_status_payload
+from novelai.sources.synopsis import normalize_synopsis_metadata
 from novelai.utils.text_normalization import normalize_text as _shared_normalize_text
 
 # Selectors tried in order to find the main story text.
@@ -145,7 +146,7 @@ class GenericSource(SourceAdapter):
         """
         if detect_block_page_text(html):
             raise SourceError(f"Page at {url} appears to be blocked (Cloudflare, CAPTCHA, or bot challenge).")
-        if detect_age_gate_text(html):
+        if detect_age_gate_page(html, final_url=url):
             raise SourceError(f"Page at {url} appears to require age verification or adult confirmation.")
 
     @staticmethod
@@ -388,12 +389,17 @@ class GenericSource(SourceAdapter):
         if not chapters and self._find_body(soup) is not None:
             chapters = [{"id": "1", "num": 1, "title": title or "Chapter 1", "url": url}]
 
+        synopsis_metadata = normalize_synopsis_metadata(
+            synopsis,
+            source_key=self.source_key,
+        )
         return {
             "source_key": self.source_key,
             "source_url": url,
             "title": title,
             "author": author,
             "synopsis": synopsis,
+            **synopsis_metadata,
             "chapters": chapters,
             "generic_confidence": confidence.to_dict(),
             "source_quality_status": "needs_review" if confidence.score < 0.75 else "passed",

@@ -21,9 +21,9 @@ vi.mock("next/link", () => ({
   default: ({
     children,
     ...props
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children: React.ReactNode }) => (
-    <a {...props}>{children}</a>
-  ),
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+    children: React.ReactNode;
+  }) => <a {...props}>{children}</a>,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -37,9 +37,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/hooks/public", async () => {
-  const actual = await vi.importActual<typeof import("@/hooks/public")>(
-    "@/hooks/public"
-  );
+  const actual =
+    await vi.importActual<typeof import("@/hooks/public")>("@/hooks/public");
   return {
     ...actual,
     usePublicAuth: () => ({
@@ -84,7 +83,11 @@ beforeEach(() => {
           added_at: "2026-06-17T08:00:00Z",
           genres: [
             { slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" },
-            { slug: "slice-of-life", name_ja: "日常", name_en: "Slice of Life" },
+            {
+              slug: "slice-of-life",
+              name_ja: "日常",
+              name_en: "Slice of Life",
+            },
           ],
           tags: [
             { name: "magic", name_ja: "魔法" },
@@ -101,7 +104,9 @@ beforeEach(() => {
           chapter_count: 120,
           translated_count: 120,
           added_at: "2026-06-16T10:00:00Z",
-          genres: [{ slug: "adventure", name_ja: "冒険", name_en: "Adventure" }],
+          genres: [
+            { slug: "adventure", name_ja: "冒険", name_en: "Adventure" },
+          ],
           tags: [],
         },
         {
@@ -137,7 +142,7 @@ function renderHome() {
   return render(
     <QueryClientProvider client={queryClient}>
       <HomePage />
-    </QueryClientProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -154,8 +159,12 @@ describe("Home page visual honesty", () => {
 
   it("uses labeled rails instead of the old grouped date stack", () => {
     renderHome();
-    expect(screen.getByRole("region", { name: "New releases" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Recently updated" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "New releases" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Recently updated" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Today")).not.toBeInTheDocument();
   });
 
@@ -166,7 +175,7 @@ describe("Home page visual honesty", () => {
 
   it("does not display Trending Now as a marketing label", () => {
     renderHome();
-    // "trending" appears as the Stitch widget title ("Trending V2"),
+    // "trending" appears as the current widget title ("Trending"),
     // but never as a fake marketing claim like "Trending Now"
     expect(screen.queryByText("Trending Now")).not.toBeInTheDocument();
   });
@@ -184,13 +193,16 @@ describe("Home page visual honesty", () => {
     expect(screen.queryByText("Ranking Preview")).not.toBeInTheDocument();
   });
 
-  it("shows honest Surprise Me entry instead of ranking placeholder", () => {
+  it("shows honest random novel entry instead of ranking placeholder", () => {
     renderHome();
     // The old "Ranking data is not live yet" placeholder is removed.
     expect(
-      screen.queryByText(/ranking data is not live/i)
+      screen.queryByText(/ranking data is not live/i),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /surprise me/i })).toHaveAttribute("href", "/random");
+    expect(screen.getByRole("link", { name: /random novel/i })).toHaveAttribute(
+      "href",
+      "/random",
+    );
   });
 
   it("does not display a fake library stats label", () => {

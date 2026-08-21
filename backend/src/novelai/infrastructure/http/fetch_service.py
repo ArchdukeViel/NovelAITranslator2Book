@@ -103,7 +103,7 @@ def _parse_retry_after(value: str | None) -> float | None:
         pass
     try:
         parsed = parsedate_to_datetime(text)
-    except (TypeError, ValueError, OverflowError):
+    except TypeError, ValueError, OverflowError:
         return None
     delta = (parsed - datetime.now(UTC)).total_seconds()
     return max(0.0, delta)
@@ -181,6 +181,7 @@ class FetchService:
         on_retry: Callable[[int, Exception], None] | None = None,
         profile: str | None = None,
         kind: str = "html",
+        use_cache: bool = True,
     ) -> FetchResult:
         return await self._fetch(
             url,
@@ -191,6 +192,7 @@ class FetchService:
             on_retry=on_retry,
             kind=kind,
             profile=profile,
+            use_cache=use_cache,
         )
 
     async def get_bytes(
@@ -227,12 +229,14 @@ class FetchService:
         kind: str,
         profile: str | None,
         on_retry: Callable[[int, Exception], None] | None = None,
+        use_cache: bool = True,
     ) -> FetchResult:
         requested_url = validate_safe_url(url)
         request_headers = dict(headers or {})
         if referer and referer.strip():
             request_headers["Referer"] = referer.strip()
-        request_headers.update(self._cache.conditional_headers(source_key, requested_url, profile=profile))
+        if use_cache:
+            request_headers.update(self._cache.conditional_headers(source_key, requested_url, profile=profile))
 
         started = perf_counter()
         try:
@@ -259,6 +263,8 @@ class FetchService:
         elapsed = perf_counter() - started
         final_url = validate_safe_url(fetched.final_url)
         if fetched.status_code == 304:
+            if not use_cache:
+                raise SourceError(f"{source_key} returned 304 for uncached request {requested_url}.")
             cached = self._cache.get(source_key, requested_url, profile=profile)
             if cached is None:
                 raise SourceError(f"{source_key} returned 304 for {requested_url}, but no cached response exists.")
@@ -290,20 +296,21 @@ class FetchService:
             from_cache=False,
             elapsed_seconds=elapsed,
         )
-        self._cache.set(
-            FetchCacheEntry(
-                requested_url=requested_url,
-                final_url=result.final_url,
-                status_code=result.status_code,
-                headers=headers_payload,
-                text=text,
-                body=body,
-                source_key=source_key,
-                fetched_at=result.fetched_at,
-                kind=kind,
-                profile=profile,
+        if use_cache:
+            self._cache.set(
+                FetchCacheEntry(
+                    requested_url=requested_url,
+                    final_url=result.final_url,
+                    status_code=result.status_code,
+                    headers=headers_payload,
+                    text=text,
+                    body=body,
+                    source_key=source_key,
+                    fetched_at=result.fetched_at,
+                    kind=kind,
+                    profile=profile,
+                )
             )
-        )
         return result
 
     async def _request(

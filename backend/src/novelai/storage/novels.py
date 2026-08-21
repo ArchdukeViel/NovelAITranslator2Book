@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import unicodedata
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -46,11 +47,13 @@ def _index_path(self: Any) -> Path:
 
 def _load_index(self: Any) -> dict[str, dict[str, Any]]:
     path = self._index_path()
-    if not self._path_exists(path):
+    content = self._read_text_optional(path)
+    if content is None:
         return {}
     try:
-        return json.loads(self._read_text(path))
-    except (json.JSONDecodeError, OSError):
+        data = json.loads(content)
+        return data if isinstance(data, dict) else {}
+    except json.JSONDecodeError, OSError:
         logger.warning("Corrupted novel index at %s; resetting to empty.", path)
         return {}
 
@@ -70,7 +73,7 @@ def _backup_metadata_file(self: Any, metadata_path: Path, *, keep: int = METADAT
 
     try:
         existing_payload = json.loads(self._read_text(metadata_path))
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError, OSError:
         return None
 
     backup_dir = _metadata_backup_dir(metadata_path.parent)
@@ -270,7 +273,7 @@ def _folder_in_use_by_other_novel(self: Any, folder_name: str, novel_id: str, in
         return True
     try:
         payload = json.loads(self._read_text(metadata_path))
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError, OSError:
         return True
     if not isinstance(payload, dict):
         return True
@@ -324,15 +327,9 @@ def _get_folder_name(self: Any, novel_id: str) -> str:
     folder_name = entry.get("folder_name") if isinstance(entry, dict) else None
     if isinstance(folder_name, str):
         try:
-            folder_name = self._validate_folder_name(folder_name)
+            return self._validate_folder_name(folder_name)
         except ValueError:
             logger.warning("Ignoring unsafe folder name in novel index for %s.", normalized_id)
-            folder_name = None
-    if folder_name and self._is_dir_present(self._folder_path(folder_name)):
-        return folder_name
-
-    if folder_name:
-        return folder_name
     return normalized_id
 
 
@@ -451,12 +448,12 @@ def load_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
     active = self.get_active_generation(novel_id)
     if active is not None:
         gen_metadata_path = self._generations_dir(novel_id) / str(active.generation_id) / "metadata.json"
-        if not self._path_exists(gen_metadata_path):
+        content = self._read_text_optional(gen_metadata_path)
+        if content is None:
             raise RuntimeError(
                 f"Active generation {active.generation_id} for {novel_id} has no staged metadata.json; "
                 "refusing silent legacy fallback."
             )
-        content = self._read_text(gen_metadata_path)
         try:
             payload = json.loads(content)
         except json.JSONDecodeError as exc:
@@ -506,12 +503,64 @@ def load_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
     return _load_legacy_metadata(self, novel_id)
 
 
+def _parse_metadata_timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _chapter_index_signature(metadata: dict[str, Any]) -> str | None:
+    chapters = metadata.get("chapters")
+    if not isinstance(chapters, list):
+        return None
+    return json.dumps(chapters, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def load_metadata_for_crawl(self: Any, novel_id: str) -> dict[str, Any] | None:
+    """Load metadata for a crawl handoff without changing read authority.
+
+    Normal readers must continue using :func:`load_metadata`, whose active
+    generation snapshot is authoritative.  A metadata crawl writes the
+    newly discovered index to the legacy root projection before a separate
+    chapter activity consumes it, though, so a chapter crawl needs a narrow
+    handoff read that can see that newer projection.  The active generation's
+    creation time prevents an older root projection from regressing a newer
+    committed snapshot.
+    """
+    novel_id = self._normalize_library_novel_id(novel_id) or novel_id
+    active = load_metadata(self, novel_id)
+    legacy = _load_legacy_metadata(self, novel_id)
+    if active is None:
+        return legacy
+    if legacy is None:
+        return active
+
+    active_manifest = self.get_active_generation(novel_id)
+    active_timestamp = _parse_metadata_timestamp(active.get("updated_at"))
+    if active_timestamp is None and active_manifest is not None:
+        active_timestamp = _parse_metadata_timestamp(active_manifest.created_at)
+    legacy_timestamp = _parse_metadata_timestamp(legacy.get("updated_at"))
+
+    if legacy_timestamp is not None and (active_timestamp is None or legacy_timestamp >= active_timestamp):
+        return legacy
+    if legacy_timestamp is None and active_timestamp is None:
+        if _chapter_index_signature(legacy) != _chapter_index_signature(active):
+            return legacy
+    return active
+
+
 def _load_legacy_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
     """Legacy novel-root metadata read (used only when no active generation exists)."""
     path = self._novel_dir(novel_id) / "metadata.json"
-    if not self._path_exists(path):
+    content = self._read_text_optional(path)
+    if content is None:
         return None
-    content = self._read_text(path)
     try:
         payload = json.loads(content)
     except json.JSONDecodeError as exc:
@@ -659,7 +708,8 @@ def update_onboarding_status(
         raise ValueError(f"Invalid onboarding status: {status!r}. Valid values: {sorted(VALID_ONBOARDING_STATUSES)}")
 
     novel_id = self._normalize_library_novel_id(novel_id) or novel_id
-    meta = self.load_metadata(novel_id)
+    load_metadata_for_crawl = getattr(self, "load_metadata_for_crawl", self.load_metadata)
+    meta = load_metadata_for_crawl(novel_id)
     if meta is None:
         raise ValueError(f"No metadata found for novel {novel_id!r}")
 

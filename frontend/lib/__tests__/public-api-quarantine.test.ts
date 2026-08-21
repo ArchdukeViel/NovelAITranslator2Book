@@ -13,7 +13,7 @@ describe("public API quarantine", () => {
     expect(publicApi).toContain("/api/public/novels/");
   });
 
-  it("exposes only reading-state and B5 engagement public user API methods", () => {
+  it("exposes reading-state, engagement, and authenticated contribution API methods", () => {
     const publicApi = readFileSync("lib/public-api.ts", "utf8");
 
     expect(publicApi).toContain("userReadingApi");
@@ -24,8 +24,8 @@ describe("public API quarantine", () => {
     expect(publicApi).toContain("/api/user/reviews");
     expect(publicApi).toContain("/api/user/requests");
     expect(publicApi).not.toContain("userApi");
-    expect(publicApi).not.toContain("/api/user/contributions");
-    expect(publicApi).not.toContain("submitContribution");
+    expect(publicApi).toContain("userContributionApi");
+    expect(publicApi).toContain("/api/user/contributions");
   });
 
   it("exports only safe reading-state and engagement hooks from the hook barrel", () => {
@@ -43,6 +43,8 @@ describe("public API quarantine", () => {
     expect(publicHooks).toContain("useCreateRequest");
     expect(publicHooks).toContain("useUpsertReview");
     expect(publicHooks).toContain("useDeleteReview");
-    expect(publicHooks).not.toContain("useContribution");
+    expect(publicHooks).toContain("useContributions");
+    expect(publicHooks).toContain("useReplaceContribution");
+    expect(publicHooks).toContain("useContributionUsage");
   });
 });

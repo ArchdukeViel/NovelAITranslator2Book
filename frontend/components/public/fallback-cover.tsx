@@ -86,16 +86,13 @@ export function FallbackCover({
       role="img"
       aria-label={`Generated Dokushodo bookplate for ${safeTitle}`}
       className={cn(
-        "relative flex h-full w-full overflow-hidden rounded-lg border border-border bg-card shadow-sm",
+        "relative flex h-full w-full overflow-hidden rounded-md border border-border bg-card",
         aspectRatio === "1/1" ? "aspect-square" : "aspect-[2/3]",
         palette.root,
         className
       )}
     >
-      <div
-        className="absolute inset-0 bg-gradient-to-b from-background/20 via-background/45 to-background/90"
-        aria-hidden="true"
-      />
+      <div className="absolute inset-0 bg-background/65" aria-hidden="true" />
       <div
         className="absolute inset-y-0 left-0 w-[12%] border-r border-border/60 bg-background/30"
         aria-hidden="true"
@@ -122,7 +119,7 @@ export function FallbackCover({
         <div className="mx-auto flex max-w-[11rem] flex-col items-center gap-4">
           <span
             className={cn(
-              "flex h-16 w-16 items-center justify-center rounded-md border font-literary text-xl font-medium shadow-sm backdrop-blur-[1px]",
+              "flex h-16 w-16 items-center justify-center rounded-md border font-literary text-xl font-medium",
               palette.mark
             )}
             aria-hidden="true"

@@ -6,7 +6,8 @@ import { publicApi } from "@/lib/public-api";
 export function useChapter(slug: string, chapterId: string) {
   return useQuery({
     queryKey: ["public", "chapter", slug, chapterId],
-    queryFn: () => publicApi.chapter(slug, chapterId),
+    queryFn: ({ signal }) => publicApi.chapter(slug, chapterId, signal),
     enabled: !!slug && !!chapterId,
+    retry: false,
   });
 }

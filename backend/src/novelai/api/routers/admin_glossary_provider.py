@@ -42,6 +42,7 @@ class _TranslationProviderGlossarySuggestionAdapter:
                 model=self.provider_model,
                 max_tokens=4096,
                 expect_json=True,
+                request_purpose="glossary_discovery",
             )
         except ProviderError:
             raise

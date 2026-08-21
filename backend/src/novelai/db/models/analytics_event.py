@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Integer, String, Text, func
+from sqlalchemy import DateTime, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from novelai.db.base import Base
@@ -23,6 +23,22 @@ class AnalyticsEvent(Base):
     """A single privacy-safe analytics event record."""
 
     __tablename__ = "analytics_events"
+    __table_args__ = (
+        Index(
+            "ix_analytics_events_rank_event_time_novel_user",
+            "event_name",
+            "created_at",
+            "novel_id",
+            "user_id",
+        ),
+        Index(
+            "ix_analytics_events_rank_event_time_novel_session",
+            "event_name",
+            "created_at",
+            "novel_id",
+            "session_id",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     event_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)

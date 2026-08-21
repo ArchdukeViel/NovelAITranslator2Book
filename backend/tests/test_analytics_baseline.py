@@ -13,6 +13,8 @@ from sqlalchemy import DateTime, create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.admin_analytics import ingestion_router, router
@@ -51,6 +53,16 @@ def client(db_session):
     app.include_router(ingestion_router)
     app.state.current_user = current
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def inline_public_analytics_writer(monkeypatch, db_session) -> None:
+    """Keep ingestion assertions deterministic without using the app database."""
+
+    def enqueue(event_name: str, **kwargs: Any) -> bool:
+        return AnalyticsService().record_event(db_session, event_name, **kwargs)
+
+    monkeypatch.setattr("novelai.api.routers.admin_analytics.enqueue_analytics_event", enqueue)
 
 
 def test_metadata_drops_private_values() -> None:
@@ -256,20 +268,14 @@ def test_best_effort_recording_failure_isolated(monkeypatch) -> None:
 async def test_public_novel_hook_does_not_break_response(monkeypatch) -> None:
     monkeypatch.setattr(settings, "ANALYTICS_ENABLED", True)
     monkeypatch.setattr(
-        AnalyticsService,
-        "record_event_best_effort",
+        "novelai.services.analytics_writer.enqueue_analytics_event",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("down")),
     )
 
     class Service:
-        def _resolve_public_novel(self, _slug: str):
-            return "n1", {}, "novel"
-
-        def _load_taxonomy_for_novel(self, *_args, **_kwargs):
-            return [], [], False
-
-        def _novel_summary(self, novel_id: str, _meta: dict, **_kwargs):
-            return {"novel_id": novel_id}
+        def get_public_novel_summary(self, _slug: str, *, include_adult: bool = False):
+            assert include_adult is False
+            return {"novel_id": "n1"}, "n1"
 
     result = await get_novel(
         "novel",
@@ -278,3 +284,24 @@ async def test_public_novel_hook_does_not_break_response(monkeypatch) -> None:
         SessionUser(user_id=None, email=None, role="guest"),
     )
     assert result == {"novel_id": "n1"}
+
+
+@pytest.mark.asyncio
+async def test_public_novel_does_not_set_anonymous_cookie_when_analytics_disabled(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "ANALYTICS_ENABLED", False)
+
+    class Service:
+        def get_public_novel_summary(self, _slug: str, *, include_adult: bool = False):
+            return {"novel_id": "n1"}, "n1"
+
+    response = Response()
+    request = Request({"type": "http", "headers": []})
+    await get_novel(
+        "novel",
+        False,
+        cast(Any, Service()),
+        SessionUser(user_id=None, email=None, role="guest"),
+        response=response,
+        request=request,
+    )
+    assert "set-cookie" not in response.headers

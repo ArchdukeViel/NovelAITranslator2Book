@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from novelai.config.settings import settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.core.errors import ProviderConfigError, ProviderErrorCode
 from novelai.providers.base import TranslationProvider
 from novelai.providers.gemini_provider import GeminiProvider
@@ -78,8 +78,8 @@ class TestProviderRegistry:
 
     def test_available_models_returns_gemini_models(self) -> None:
         models = available_models("gemini")
-        assert models == ["gemini-3.1-flash-lite", "gemma-4-31b-it"]
+        assert models == [GEMINI_DEFAULT_MODEL]
 
     def test_gemini_provider_lists_gemini_api_gemma_model_id(self) -> None:
         models = GeminiProvider().available_models()
-        assert models == ["gemini-3.1-flash-lite", "gemma-4-31b-it"]
+        assert models == [GEMINI_DEFAULT_MODEL]

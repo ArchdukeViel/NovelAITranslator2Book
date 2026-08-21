@@ -1,17 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
+import time
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from novelai.config.settings import settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.core.errors import PipelineStageError, ProviderConfigError, ProviderError, ProviderErrorCode
 from novelai.prompts.models import TranslationRequest
 from novelai.providers.base import TranslationProvider
 from novelai.providers.model_fallbacks import model_candidates
+from novelai.services.contributor_credentials import (
+    ContributorCredentialLease,
+    ContributorCredentialService,
+)
 from novelai.services.glossary_diagnostics import (
     normalize_glossary_diagnostics,
 )
@@ -90,6 +96,24 @@ logger = logging.getLogger(__name__)
 MAX_ATTEMPTS_EXCEEDED_ERROR_CODE = "max_attempts_exceeded"
 
 
+def _provider_kwargs(provider: Any, values: dict[str, Any]) -> dict[str, Any]:
+    """Keep optional request metadata compatible with narrow test providers.
+
+    The production provider interface accepts ``**kwargs``. A few legacy test
+    doubles implement only the three required positional parameters; filtering
+    optional audit fields for those doubles preserves the provider contract
+    without changing real Gemini calls.
+    """
+    try:
+        parameters = inspect.signature(provider.translate).parameters.values()
+    except TypeError, ValueError:
+        return values
+    if any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters):
+        return values
+    accepted = set(inspect.signature(provider.translate).parameters)
+    return {key: value for key, value in values.items() if key in accepted}
+
+
 class TranslateStage(PipelineStage):
     """Translate chunks using a configured provider.
 
@@ -130,8 +154,22 @@ class TranslateStage(PipelineStage):
         configured_max_attempts = settings.TRANSLATION_MAX_ATTEMPTS_PER_CHUNK
         self._max_attempts_per_chunk = configured_max_attempts if configured_max_attempts > 0 else 3
 
-    def _resolve_provider_and_model(self, provider_key: str, model: str) -> tuple[str, str]:
-        if provider_key == "gemini" and not self._settings.get_api_key(provider_key):
+    def _resolve_provider_and_model(
+        self,
+        provider_key: str,
+        model: str,
+        *,
+        contributor_mode: bool = False,
+    ) -> tuple[str, str]:
+        if provider_key == "gemini" and model != GEMINI_DEFAULT_MODEL:
+            raise ProviderConfigError(
+                ProviderErrorCode.CONFIGURATION,
+                provider_key=provider_key,
+                provider_model=model,
+                message=f"Gemini production model must be {GEMINI_DEFAULT_MODEL}; model fallback is disabled.",
+                details={"expected_model": GEMINI_DEFAULT_MODEL},
+            )
+        if provider_key == "gemini" and not contributor_mode and not self._settings.get_api_key(provider_key):
             raise ProviderConfigError(
                 ProviderErrorCode.CONFIGURATION,
                 provider_key=provider_key,
@@ -200,6 +238,41 @@ class TranslateStage(PipelineStage):
         except Exception:
             supported = []
         candidates = model_candidates(provider_key, model, supported)
+        if provider_key == "gemini":
+            # A Gemini request has exactly one production candidate. Rate,
+            # quota, temporary, and 5xx failures are handled by the same
+            # model's scheduler state; no alternate model is eligible.
+            candidates = [GEMINI_DEFAULT_MODEL]
+        if context.metadata.get("contribution_mode") == "contributor":
+            if provider_key != "gemini":
+                raise ProviderConfigError(
+                    ProviderErrorCode.CONFIGURATION,
+                    provider_key=provider_key,
+                    provider_model=model,
+                    message="Contributor credentials are isolated to Gemini and cannot cross provider boundaries.",
+                )
+            configs = normalize_model_configs(
+                [
+                    {
+                        "provider_key": "gemini",
+                        "provider_model": GEMINI_DEFAULT_MODEL,
+                        "priority_order": 0,
+                        "rpm_limit": settings.CONTRIBUTOR_RPM_LIMIT,
+                        "rpd_limit": settings.CONTRIBUTOR_RPD_LIMIT,
+                    }
+                ],
+                default_provider_key="gemini",
+                default_models=[GEMINI_DEFAULT_MODEL],
+            )
+            context.metadata["provider_lock"] = "gemini"
+            context.metadata["allow_cross_provider_fallback"] = False
+            return TranslationScheduler.from_configs(
+                configs,
+                policy=normalize_policy(
+                    context.metadata.get("scheduler_policy") or settings.TRANSLATION_SCHEDULER_POLICY
+                ),
+                existing_state=context.scheduler_state,
+            )
         policy = normalize_policy(context.metadata.get("scheduler_policy") or settings.TRANSLATION_SCHEDULER_POLICY)
         raw_policy = context.metadata.get("scheduler_models")
         admin_policy_consulted = False
@@ -243,12 +316,32 @@ class TranslateStage(PipelineStage):
                     "priority_order": 0,
                 },
             ]
-        configs = normalize_model_configs(
-            raw_policy,
-            default_provider_key=provider_key,
-            default_models=candidates,
-            allow_empty=admin_policy_intentionally_empty,
-        )
+        if provider_key == "gemini":
+            configs = normalize_model_configs(
+                []
+                if admin_policy_intentionally_empty
+                else [
+                    {
+                        "provider_key": "gemini",
+                        "provider_model": GEMINI_DEFAULT_MODEL,
+                        "priority_order": 0,
+                        "rpm_limit": settings.GEMINI_RPM_LIMIT,
+                        "rpd_limit": settings.GEMINI_RPD_LIMIT,
+                    }
+                ],
+                default_provider_key="gemini",
+                default_models=[GEMINI_DEFAULT_MODEL],
+                allow_empty=admin_policy_intentionally_empty,
+            )
+            context.metadata["provider_lock"] = "gemini"
+            context.metadata["allow_cross_provider_fallback"] = False
+        else:
+            configs = normalize_model_configs(
+                raw_policy,
+                default_provider_key=provider_key,
+                default_models=candidates,
+                allow_empty=admin_policy_intentionally_empty,
+            )
         existing_state = context.scheduler_state
         job_id = safe_job_id(context)
         if job_id is not None:
@@ -376,7 +469,11 @@ class TranslateStage(PipelineStage):
         request: TranslationRequest | None,
         glossary_hash: str | None = None,
     ) -> tuple[str, str, str, bool] | None:
-        p_key, p_model = self._resolve_provider_and_model(provider_key, provider_model)
+        p_key, p_model = self._resolve_provider_and_model(
+            provider_key,
+            provider_model,
+            contributor_mode=context.metadata.get("contribution_mode") == "contributor",
+        )
         return cached_translation(
             self._cache,
             self._cache_service,
@@ -403,15 +500,186 @@ class TranslateStage(PipelineStage):
         chunk: str,
         request: TranslationRequest | None = None,
         glossary_hash: str | None = None,
+        deadline: float | None = None,
     ) -> tuple[str, str, str, bool]:
-        provider_key, provider_model = self._resolve_provider_and_model(provider_key, provider_model)
-        provider = self._provider_factory(provider_key)
+        contributor_mode = context.metadata.get("contribution_mode") == "contributor"
+        provider_key, provider_model = self._resolve_provider_and_model(
+            provider_key,
+            provider_model,
+            contributor_mode=contributor_mode,
+        )
+        lease: ContributorCredentialLease | None = None
+        if contributor_mode:
+            lease = ContributorCredentialService.acquire_runtime_lease(
+                provider_key=provider_key,
+                provider_model=provider_model,
+                requesting_user_id=(
+                    context.metadata.get("requesting_user_id")
+                    if isinstance(context.metadata.get("requesting_user_id"), int)
+                    else None
+                ),
+            )
+            if lease is None:
+                raise ProviderConfigError(
+                    ProviderErrorCode.CONFIGURATION,
+                    provider_key=provider_key,
+                    provider_model=provider_model,
+                    message="No active validated contributor credential is available.",
+                )
+            from novelai.providers.gemini_provider import GeminiProvider
+
+            provider: TranslationProvider = GeminiProvider(
+                api_key=lease.api_key,
+                quota_controller=lease.quota_controller,
+                usage_service=self._usage,
+            )
+            context.metadata["credential_id"] = lease.credential_id
+            context.metadata["credential_owner_user_id"] = lease.credential_owner_user_id
+            context.metadata["credential_scope"] = "contributor"
+        else:
+            provider = self._provider_factory(provider_key)
 
         started_at = utc_now_iso()
         try:
             logger.debug("Translating chunk %s (len=%s) with %s/%s", chunk_id, len(chunk), provider.key, provider_model)
-            result = await provider.translate(prompt=chunk, model=provider_model, request=request)
+            provider_call = provider.translate(
+                prompt=chunk,
+                model=provider_model,
+                **_provider_kwargs(
+                    provider,
+                    {
+                        "request": request,
+                        "request_purpose": "body_translation",
+                        "request_id": context.metadata.get("request_id"),
+                        "chapter_id": context.chapter_id,
+                        "chunk_id": chunk_id,
+                        "retry_attempt": attempt_number,
+                        "cache_status": "miss",
+                        "credential_id": lease.credential_id if lease is not None else None,
+                        "credential_owner_user_id": lease.credential_owner_user_id if lease is not None else None,
+                        "requesting_user_id": context.metadata.get("requesting_user_id"),
+                        "credential_scope": "contributor" if lease is not None else "owner",
+                        "contribution_mode": "contributor" if lease is not None else "owner",
+                    },
+                ),
+            )
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("Translation provider deadline exceeded")
+                result = await asyncio.wait_for(provider_call, timeout=remaining)
+            else:
+                result = await provider_call
+            if lease is not None:
+                usage_metadata = result.get("metadata") if isinstance(result, dict) else None
+                usage = usage_metadata.get("usage") if isinstance(usage_metadata, dict) else None
+                ContributorCredentialService.record_usage(
+                    credential_id=lease.credential_id,
+                    credential_owner_user_id=lease.credential_owner_user_id,
+                    requesting_user_id=(
+                        context.metadata.get("requesting_user_id")
+                        if isinstance(context.metadata.get("requesting_user_id"), int)
+                        else None
+                    ),
+                    provider_key=provider_key,
+                    provider_model=provider_model,
+                    request_id=context.metadata.get("request_id")
+                    if isinstance(context.metadata.get("request_id"), str)
+                    else None,
+                    job_id=context.job_id,
+                    activity_id=context.activity_id,
+                    status="success",
+                    input_tokens=usage.get("input_tokens")
+                    if isinstance(usage, dict) and isinstance(usage.get("input_tokens"), int)
+                    else None,
+                    output_tokens=usage.get("output_tokens")
+                    if isinstance(usage, dict) and isinstance(usage.get("output_tokens"), int)
+                    else None,
+                    total_tokens=usage.get("total_tokens")
+                    if isinstance(usage, dict) and isinstance(usage.get("total_tokens"), int)
+                    else None,
+                    estimated_input_tokens=None,
+                    estimated_output_tokens=None,
+                )
+        except TimeoutError as exc:
+            if lease is not None:
+                ContributorCredentialService.mark_runtime_unhealthy(lease.credential_id, error_code="timeout")
+                ContributorCredentialService.record_usage(
+                    credential_id=lease.credential_id,
+                    credential_owner_user_id=lease.credential_owner_user_id,
+                    requesting_user_id=context.metadata.get("requesting_user_id")
+                    if isinstance(context.metadata.get("requesting_user_id"), int)
+                    else None,
+                    provider_key=provider_key,
+                    provider_model=provider_model,
+                    request_id=context.metadata.get("request_id")
+                    if isinstance(context.metadata.get("request_id"), str)
+                    else None,
+                    job_id=context.job_id,
+                    activity_id=context.activity_id,
+                    status="failed",
+                    input_tokens=None,
+                    output_tokens=None,
+                    total_tokens=None,
+                    estimated_input_tokens=None,
+                    estimated_output_tokens=None,
+                    error_code="timeout",
+                )
+            finished_at = utc_now_iso()
+            provider_error = ProviderError(
+                ProviderErrorCode.TIMEOUT,
+                provider_key=provider.key,
+                provider_model=provider_model,
+                message="Translation provider deadline exceeded",
+                details={"deadline_seconds": settings.TRANSLATION_PROVIDER_DEADLINE_SECONDS},
+            )
+            self._storage.save_provider_request_record(
+                provider_request_record(
+                    context,
+                    chunk_id=chunk_id,
+                    chunk_text=chunk,
+                    request=request,
+                    provider_key=provider.key,
+                    provider_model=provider_model,
+                    glossary_hash=glossary_hash,
+                    chapter_ids=chapter_ids,
+                    paragraph_ids=paragraph_ids,
+                    attempt_number=attempt_number,
+                    scheduler_policy=scheduler_policy,
+                    selection_reason=selection_reason,
+                    started_at=started_at,
+                    finished_at=finished_at,
+                    success=False,
+                    error=provider_error,
+                )
+            )
+            raise provider_error from exc
         except ProviderError as exc:
+            if lease is not None:
+                error_code = exc.provider_error_code.value
+                if error_code in {"configuration", "quota_exhausted", "rate_limited"}:
+                    ContributorCredentialService.mark_runtime_unhealthy(lease.credential_id, error_code=error_code)
+                ContributorCredentialService.record_usage(
+                    credential_id=lease.credential_id,
+                    credential_owner_user_id=lease.credential_owner_user_id,
+                    requesting_user_id=context.metadata.get("requesting_user_id")
+                    if isinstance(context.metadata.get("requesting_user_id"), int)
+                    else None,
+                    provider_key=provider_key,
+                    provider_model=provider_model,
+                    request_id=context.metadata.get("request_id")
+                    if isinstance(context.metadata.get("request_id"), str)
+                    else None,
+                    job_id=context.job_id,
+                    activity_id=context.activity_id,
+                    status="failed",
+                    input_tokens=None,
+                    output_tokens=None,
+                    total_tokens=None,
+                    estimated_input_tokens=None,
+                    estimated_output_tokens=None,
+                    error_code=error_code,
+                )
             finished_at = utc_now_iso()
             self._storage.save_provider_request_record(
                 provider_request_record(
@@ -435,8 +703,32 @@ class TranslateStage(PipelineStage):
             )
             raise
         except Exception as exc:
+            if lease is not None:
+                ContributorCredentialService.mark_runtime_unhealthy(lease.credential_id, error_code="unknown")
             finished_at = utc_now_iso()
             provider_error = provider_error_from_generic(exc, provider_key=provider.key, provider_model=provider_model)
+            if lease is not None:
+                ContributorCredentialService.record_usage(
+                    credential_id=lease.credential_id,
+                    credential_owner_user_id=lease.credential_owner_user_id,
+                    requesting_user_id=context.metadata.get("requesting_user_id")
+                    if isinstance(context.metadata.get("requesting_user_id"), int)
+                    else None,
+                    provider_key=provider_key,
+                    provider_model=provider_model,
+                    request_id=context.metadata.get("request_id")
+                    if isinstance(context.metadata.get("request_id"), str)
+                    else None,
+                    job_id=context.job_id,
+                    activity_id=context.activity_id,
+                    status="failed",
+                    input_tokens=None,
+                    output_tokens=None,
+                    total_tokens=None,
+                    estimated_input_tokens=None,
+                    estimated_output_tokens=None,
+                    error_code=provider_error.provider_error_code.value,
+                )
             self._storage.save_provider_request_record(
                 provider_request_record(
                     context,
@@ -473,7 +765,8 @@ class TranslateStage(PipelineStage):
             usage_entry["tokens"] = usage.get("total_tokens")
             logger.debug("Translation tokens: %s", usage_entry["tokens"])
 
-        self._usage.record(usage_entry)
+        if not (isinstance(metadata, dict) and metadata.get("usage_accounting_recorded") is True):
+            self._usage.record(usage_entry)
 
         cache_key: str | None = None
         entry: CacheEntry | None = None
@@ -554,14 +847,22 @@ class TranslateStage(PipelineStage):
             context.metadata["request_id"] = request_id
         provider_key = context.provider_key or self._settings.get_preferred_provider()
         model = context.provider_model or self._settings.get_provider_model()
-        provider_key, model = self._resolve_provider_and_model(provider_key, model)
+        provider_key, model = self._resolve_provider_and_model(
+            provider_key,
+            model,
+            contributor_mode=context.metadata.get("contribution_mode") == "contributor",
+        )
         context.provider_key = provider_key
         context.provider_model = model
         scheduler = self._build_scheduler(context, provider_key=provider_key, model=model)
-        context.metadata["model_fallbacks"] = [
-            state["provider_model"]
+        context.metadata["model_fallbacks"] = []
+        context.metadata["model_policy"] = [
+            {
+                "provider_key": state["provider_key"],
+                "provider_model": state["provider_model"],
+                "fallback": False,
+            }
             for state in scheduler.to_model_state_list()
-            if state.get("provider_key") == provider_key
         ]
         load_persisted_chunk_states(self._storage, context)
         save_chunk_records(self._storage, context, chunks)
@@ -685,8 +986,21 @@ class TranslateStage(PipelineStage):
                 )
                 last_provider_error_code: str | None = None
                 last_provider_error_message: str | None = None
+                chunk_deadline = time.monotonic() + settings.TRANSLATION_PROVIDER_DEADLINE_SECONDS
                 try:
                     while True:
+                        if time.monotonic() >= chunk_deadline:
+                            timeout_error = ProviderError(
+                                ProviderErrorCode.TIMEOUT,
+                                provider_key=provider_key,
+                                provider_model=model,
+                                message="Translation provider deadline exceeded",
+                                details={
+                                    "deadline_seconds": settings.TRANSLATION_PROVIDER_DEADLINE_SECONDS,
+                                    "retry_budget_exhausted": True,
+                                },
+                            )
+                            raise timeout_error
                         async with scheduler_lock:
                             recorder = SchedulerDecisionRecorder(
                                 request_id=context.metadata.get("request_id"),
@@ -735,7 +1049,13 @@ class TranslateStage(PipelineStage):
 
                         push_scheduler_decision(decision_dict)
 
-                        attempted_models.add((used_provider_key, used_provider_model))
+                        # Gemini is a same-model-only contract. Keep its model
+                        # eligible after a cooldown so a resumed attempt can
+                        # retry the exact model; alternate providers/models
+                        # retain the legacy attempted-model exclusion used by
+                        # the general scheduler.
+                        if provider_key != "gemini":
+                            attempted_models.add((used_provider_key, used_provider_model))
                         # Blocker C: a chunk marked needs_retry/needs_review/
                         # qa_failed must bypass BOTH caches — its previous
                         # output was rejected and must never be reused. Only a
@@ -770,6 +1090,23 @@ class TranslateStage(PipelineStage):
                         if cached is not None:
                             translated, used_provider_key, used_provider_model, _cache_hit = cached
                             cache_hit = True
+                            self._usage.record_provider_request(
+                                timestamp=utc_now_iso(),
+                                provider_key=used_provider_key,
+                                provider_model=used_provider_model,
+                                purpose="body_translation",
+                                input_tokens=None,
+                                output_tokens=None,
+                                total_tokens=None,
+                                estimated_input_tokens=0,
+                                estimated_output_tokens=0,
+                                success=True,
+                                retry_attempt=0,
+                                chapter_id=context.chapter_id,
+                                chunk_id=chunk_id,
+                                cache_status="hit",
+                                request_made=False,
+                            )
                             logger.debug(
                                 "Cache hit for chunk %s using %s/%s", chunk_id, used_provider_key, used_provider_model
                             )
@@ -903,6 +1240,7 @@ class TranslateStage(PipelineStage):
                                 chunk=chunk_text,
                                 request=request,
                                 glossary_hash=prompt_glossary_hash,
+                                deadline=chunk_deadline,
                             )
                         except ProviderError as exc:
                             last_provider_error_code = exc.provider_error_code.value
@@ -944,9 +1282,35 @@ class TranslateStage(PipelineStage):
                             if exc.provider_error_code in {
                                 ProviderErrorCode.RATE_LIMITED,
                                 ProviderErrorCode.QUOTA_EXHAUSTED,
-                                ProviderErrorCode.MODEL_UNAVAILABLE,
-                                ProviderErrorCode.MODEL_DEPRECATED,
+                                ProviderErrorCode.TEMPORARY,
+                                ProviderErrorCode.TIMEOUT,
                             }:
+                                remaining = chunk_deadline - time.monotonic()
+                                if remaining <= 0:
+                                    raise ProviderError(
+                                        ProviderErrorCode.TIMEOUT,
+                                        provider_key=exc.provider_key,
+                                        provider_model=exc.provider_model,
+                                        message="Translation provider deadline exceeded",
+                                        details={
+                                            "deadline_seconds": settings.TRANSLATION_PROVIDER_DEADLINE_SECONDS,
+                                            "last_error_code": exc.provider_error_code.value,
+                                        },
+                                    ) from exc
+                                base_backoff = max(
+                                    0.0,
+                                    float(settings.TRANSLATION_PROVIDER_RETRY_BACKOFF_BASE_SECONDS),
+                                )
+                                max_backoff = max(
+                                    base_backoff,
+                                    float(settings.TRANSLATION_PROVIDER_RETRY_BACKOFF_MAX_SECONDS),
+                                )
+                                exponential = base_backoff * (2 ** max(0, attempt_number - 1))
+                                provider_retry_after = exc.retry_after_seconds or 0
+                                delay = min(max_backoff, max(exponential, float(provider_retry_after)))
+                                delay = min(delay, remaining)
+                                if delay > 0:
+                                    await asyncio.sleep(delay)
                                 continue
                             raise
 
@@ -1014,6 +1378,7 @@ class TranslateStage(PipelineStage):
                 "context_summary": term.context_summary,
                 "occurrence_count": term.occurrence_count,
                 "last_seen_index": term.last_seen_index,
+                "confidence": term.confidence,
             }
             for term in sorted(glossary_state.values(), key=lambda item: (item.source.casefold(), item.source))
         ]

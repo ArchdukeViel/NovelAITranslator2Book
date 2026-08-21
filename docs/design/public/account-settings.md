@@ -4,25 +4,27 @@
 Design the account settings page with profile, login methods, and key contribution.
 
 ## Product Context
-Account settings currently cover linked login methods; profile and key contribution are not available yet.
+Account settings expose authenticated profile/session facts, appearance, reader defaults, notifications, security, and a link to the live contributor dashboard. Profile editing and account deletion remain unavailable.
 
 ## Global Visual Snapshot
-Dokushodo is a quiet Japanese literary reading platform for translated web novels. The interface favors a restrained warm-light aesthetic: a washi paper background with near-black ink text, vermillion reserved for the single primary action on a card or screen, and soft teal used only for secondary surfaces. The desktop shell is a slim header with the brand mark on the left, inline navigation, a search overlay trigger, a theme toggle, and a user menu, above a persistent footer with catalog, help, legal, and account links. Mobile replaces the header with a compact bar and a fixed bottom tab bar offering Home, Browse, Search, Library, and Account. Cards are quiet: white paper, thin borders, six pixel corners, no shadow. Imagery is limited to the brand mark, gradient book covers generated from title and author, and three restrained illustrations for empty, error, and maintenance states. Serif typography is reserved for novel titles and reading matter; sans-serif covers interface text; monospace marks metadata such as identifiers and timestamps. Motion is subtle and short, never decorative. The platform tells the truth: unavailable features state that they are unavailable, ranking shows a quiet not-live notice, and empty states point to a clear next step. The settled state is calm, legible, and free of noise.
+Dokushodo is a quiet Japanese literary reading platform for translated web novels. The interface uses a restrained warm-light aesthetic: washi paper, near-black ink, vermillion for the primary action, and muted teal for secondary surfaces. The desktop shell is a fixed 56px header with the brand mark, search, notifications, account controls, and a collapsible navigation panel up to 320px wide; navigation reflects the current Home, News, Library, Browse Novels, Ranking, Random Novel, Request Novels, Contributions, and FAQ surfaces. Mobile uses a compact header and fixed bottom tabs for Home, Browse, Search, Library, and Account. Cards use quiet paper surfaces, thin borders, six-pixel corners, and restrained elevation. Covers use deterministic bookplate or gradient treatments; illustrations are reserved for empty, error, and maintenance states. Serif typography carries titles and reading matter, sans-serif handles interface text, and monospace is reserved for metadata. Motion is brief and functional. The platform presents truthful ranking periods, loading, unavailable, and no-data states, while contribution settings show masked credential lifecycle and usage states without exposing key material. The settled state is calm, legible, tactile, and free of digital clutter.
 
 ## Page Goal
-Show what can be managed today and state honestly what cannot.
+Provide structured reader and account preferences (Account Profile, Appearance & Display, Reading Defaults, Notifications, and Account Security).
 
 ## Audience and Access
 Signed-in readers only.
 
 ## Primary Action
-Managing a linked login method.
+Updating reader and account preferences.
 
 ## Information Hierarchy
 - Page heading Account Settings
-- Profile card: not available
-- Linked Login Methods card with Google
-- API Key Contribution card: not available
+- Account Profile card (Email, User ID, Role badge)
+- Appearance & Display card (Theme selector, Density)
+- Reading Preferences card (Font size, Line spacing, Reader background)
+- Notifications Shortcut card
+- Account Security & Danger Zone card (Sign out, Account deletion info)
 
 ## Desktop Composition
 - Stacked cards in one column
@@ -36,7 +38,7 @@ Managing a linked login method.
 - Page heading block
 - Profile card
 - Linked Login Methods card
-- API Key Contribution card
+- API Key Contributions card linking to the live credential dashboard
 - Public footer
 
 ## Key Components
@@ -52,7 +54,7 @@ Managing a linked login method.
 - API Key Contribution
 
 ## Normal Settled State
-Three quiet cards; each unavailable feature states so in plain words.
+Quiet preference and security cards; contribution availability is represented by a real dashboard link, while unsupported profile/deletion controls remain plainly unavailable.
 
 ## Alternate Visual States
 - Single login method with no removal option
@@ -73,7 +75,7 @@ Three quiet cards; each unavailable feature states so in plain words.
 ## Preserve Exactly
 - Card names
 - Google as the login method label
-- Honest not-available wording
+- Honest not-available wording for profile editing and account deletion
 
 ## Avoid
 - Password change forms the system does not support

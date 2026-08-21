@@ -8,8 +8,10 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
-GEMINI_DEFAULT_MODEL = "gemini-3.1-flash-lite"
-GEMINI_FALLBACK_MODEL = "gemma-4-31b-it"
+GEMINI_DEFAULT_MODEL = "gemini-3.5-flash-lite"
+# Kept as a compatibility name for older configuration imports. It is not a
+# second candidate: the production contract uses one exact Gemini model.
+GEMINI_FALLBACK_MODEL = GEMINI_DEFAULT_MODEL
 
 
 def _default_novel_library_dir() -> Path:
@@ -113,6 +115,24 @@ class AppSettings(BaseSettings):
     )
     JOB_WORKER_ENABLED: bool = False
     JOB_WORKER_POLL_SECONDS: float = 2.0
+    ACTIVITY_HISTORY_MAX_ENTRIES: int = Field(
+        default=10_000,
+        ge=100,
+        le=1_000_000,
+        description="Maximum activity history returned by bounded operator/list queries.",
+    )
+    ACTIVITY_METADATA_MAX_BYTES: int = Field(
+        default=256_000,
+        ge=4_096,
+        le=4_000_000,
+        description="Maximum serialized progress/result metadata stored on one activity.",
+    )
+    ACTIVITY_RETRY_HISTORY_MAX_ENTRIES: int = Field(
+        default=100,
+        ge=1,
+        le=10_000,
+        description="Maximum retry snapshots retained inside one activity metadata record.",
+    )
 
     # --- Outbound fetch hardening (bounded redirects, streaming size limits)
     HTTP_MAX_REDIRECTS: int = Field(default=5, ge=1, le=20)
@@ -180,12 +200,46 @@ class AppSettings(BaseSettings):
     PROVIDER_CREDENTIAL_ENCRYPTION_KEY: SecretStr | None = None
     PROVIDER_GEMINI_DEFAULT_MODEL: str = GEMINI_DEFAULT_MODEL
     PROVIDER_GEMINI_MODEL_FALLBACKS: list[str] = Field(
-        default_factory=lambda: [GEMINI_FALLBACK_MODEL],
-        description=(
-            "Gemini-only text model fallback order. Default: Gemma 4 31B as the "
-            "fallback/alternative to the primary Gemini 3.1 Flash Lite."
-        ),
+        default_factory=list,
+        description="Deprecated compatibility setting. Gemini model fallback is disabled.",
     )
+
+    @field_validator("PROVIDER_GEMINI_DEFAULT_MODEL", mode="before")
+    @classmethod
+    def _enforce_gemini_model_contract(cls, value: Any) -> str:
+        """Reject explicit model drift instead of silently selecting another model."""
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return GEMINI_DEFAULT_MODEL
+        if str(value).strip() != GEMINI_DEFAULT_MODEL:
+            raise ValueError(
+                f"PROVIDER_GEMINI_DEFAULT_MODEL must be {GEMINI_DEFAULT_MODEL}; model fallback is disabled."
+            )
+        return GEMINI_DEFAULT_MODEL
+
+    @field_validator("PROVIDER_GEMINI_MODEL_FALLBACKS", mode="before")
+    @classmethod
+    def _disable_gemini_model_fallbacks(cls, value: Any) -> list[str]:
+        """Reject configured alternatives while retaining the legacy field."""
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return []
+        if isinstance(value, (list, tuple, set)) and not value:
+            return []
+        raise ValueError("PROVIDER_GEMINI_MODEL_FALLBACKS must be empty; model fallback is disabled.")
+
+    # --- Public contributor credentials
+    CONTRIBUTOR_CREDENTIALS_ENABLED: bool = Field(
+        default=True,
+        description="Enable authenticated contributor credential intake and contributor-backed translation jobs.",
+    )
+    CONTRIBUTOR_CONSENT_VERSION: str = Field(
+        default="2026-08-19",
+        description="Consent text version accepted when a user registers a contributor credential.",
+    )
+    CONTRIBUTOR_MAX_ACTIVE_PER_USER: int = Field(default=1, ge=1, le=1)
+    CONTRIBUTOR_RPM_LIMIT: int = Field(default=15, ge=1)
+    CONTRIBUTOR_TPM_LIMIT: int = Field(default=250_000, ge=1)
+    CONTRIBUTOR_RPD_LIMIT: int = Field(default=500, ge=1)
+    CONTRIBUTOR_USAGE_RETENTION_DAYS: int = Field(default=365, ge=1)
 
     # --- Scraping
     SCRAPE_DELAY_SECONDS: float = Field(
@@ -211,7 +265,16 @@ class AppSettings(BaseSettings):
     TRANSLATION_ALLOW_MULTI_CHAPTER_BUNDLES: bool = True
     TRANSLATION_MAX_CHAPTERS_PER_BUNDLE: int = 3
     TRANSLATION_MAX_ATTEMPTS_PER_CHUNK: int = 3
+    TRANSLATION_PROVIDER_DEADLINE_SECONDS: int = Field(
+        default=600,
+        ge=1,
+        le=86_400,
+        description="Maximum provider/retry time for one translation chunk before failing fast.",
+    )
+    TRANSLATION_PROVIDER_RETRY_BACKOFF_BASE_SECONDS: float = Field(default=1.0, ge=0.0, le=60.0)
+    TRANSLATION_PROVIDER_RETRY_BACKOFF_MAX_SECONDS: float = Field(default=30.0, ge=0.0, le=300.0)
     TRANSLATION_METADATA_CHAPTER_TITLE_BATCH_SIZE: int = 25
+    TRANSLATION_GLOSSARY_BATCH_SIZE: int = Field(default=25, ge=1, le=100)
     TRANSLATION_ADAPTIVE_CHUNKING_ENABLED: bool = True
     TRANSLATION_ADAPTIVE_SOFT_TARGET_CHARS: int = 5800
     TRANSLATION_ADAPTIVE_HARD_MAX_CHARS: int = 7000
@@ -234,6 +297,28 @@ class AppSettings(BaseSettings):
     COST_PER_TOKEN_USD: float = 0.000002
     TRANSLATION_TARGET_LANGUAGE: str = "English"
     TRANSLATION_LOW_CONFIDENCE_ACTIVATION_THRESHOLD: float = 0.55
+    GEMINI_RPM_LIMIT: int = Field(default=15, ge=1)
+    GEMINI_TPM_LIMIT: int = Field(default=250_000, ge=1)
+    GEMINI_RPD_LIMIT: int = Field(default=500, ge=1)
+    GEMINI_CONCURRENCY_LIMIT: int = Field(
+        default=4,
+        ge=1,
+        le=256,
+        description="Global in-flight Gemini request limit shared by all processes using the owner key.",
+    )
+    CONTRIBUTOR_CONCURRENCY_LIMIT: int = Field(
+        default=2,
+        ge=1,
+        le=256,
+        description="Global in-flight request limit per contributor credential.",
+    )
+    PROVIDER_RESERVATION_TTL_SECONDS: int = Field(
+        default=900,
+        ge=60,
+        le=86_400,
+        description="Maximum age of a provider admission reservation before it stops counting as in-flight.",
+    )
+    GEMINI_ESTIMATED_OUTPUT_TOKENS: int = Field(default=1024, ge=1)
 
     # --- Database
     DATABASE_URL: str | None = None
@@ -241,6 +326,22 @@ class AppSettings(BaseSettings):
     DB_CONNECTION_MODE: Literal["direct", "session", "transaction"] = "direct"
     DB_POOL_SIZE: int = Field(default=5, ge=1)
     DB_MAX_OVERFLOW: int = Field(default=5, ge=0)
+    DB_POOL_PROCESS_COUNT: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Number of long-lived processes/replicas that can own a configured "
+            "database pool in the deployment topology."
+        ),
+    )
+    DB_CONNECTION_RESERVE: int = Field(
+        default=2,
+        ge=0,
+        description=(
+            "Connections reserved for migration, readiness, and emergency "
+            "operator access outside long-lived application pool ceilings."
+        ),
+    )
     DB_CONNECTION_BUDGET: int = Field(default=20, ge=1)
     DB_POOL_TIMEOUT_SECONDS: int = Field(default=30, ge=1)
     DB_POOL_RECYCLE_SECONDS: int = Field(default=1800, ge=0)
@@ -288,6 +389,12 @@ class AppSettings(BaseSettings):
     TRANSLATION_CACHE_ENABLED: bool = True
     TRANSLATION_CACHE_MAX_ENTRIES: int = 100_000
     TRANSLATION_CACHE_TTL_SECONDS: int = 0
+    PUBLIC_RANKING_CACHE_ENABLED: bool = True
+    PUBLIC_RANKING_CACHE_TTL_SECONDS: int = Field(default=60, ge=1, le=300)
+    PUBLIC_RANKING_CACHE_MAX_ENTRIES: int = Field(default=64, ge=1, le=1024)
+    PUBLIC_PROJECTION_CACHE_ENABLED: bool = True
+    PUBLIC_PROJECTION_CACHE_TTL_SECONDS: int = Field(default=30, ge=1, le=300)
+    PUBLIC_PROJECTION_CACHE_MAX_ENTRIES: int = Field(default=256, ge=1, le=2048)
     USAGE_LOG_MAX_ENTRIES: int = 10_000
 
     # --- Semantic Cache (future feature, disabled by default)
@@ -317,11 +424,14 @@ class AppSettings(BaseSettings):
     # left "translated" while claiming a retry state.
     LLM_QA_ENABLED: bool = False
     LLM_QA_PROVIDER: str = "gemini"
-    LLM_QA_MODEL: str = "gemini-3.1-flash-lite"
+    LLM_QA_MODEL: str = GEMINI_DEFAULT_MODEL
     LLM_QA_COST_TRACKING_ENABLED: bool = True
     LLM_QA_MIN_SCORE: float = 0.75
     LLM_QA_MAX_RETRY_ATTEMPTS: int = 1
     LLM_QA_POLICY: str = "advisory"
+    LLM_QA_SAMPLE_RATE: float = Field(default=0.10, ge=0.0, le=1.0)
+    LLM_QA_RISK_SCORE_THRESHOLD: float = Field(default=0.90, ge=0.0, le=1.0)
+    LLM_QA_MAX_CONTEXT_CHARS: int = Field(default=6000, ge=500)
 
     @field_validator("LLM_QA_POLICY", mode="after")
     @classmethod
@@ -354,6 +464,8 @@ class AppSettings(BaseSettings):
     )
     HEALTH_CACHE_TTL_SECONDS: int = Field(
         default=5,
+        ge=0,
+        le=300,
         description="Short-TTL cache for readiness results to reduce probe load.",
     )
     HEALTH_DISK_WARNING_FREE_PERCENT: int = Field(
@@ -583,6 +695,12 @@ class AppSettings(BaseSettings):
         ge=1_024,
         le=262_144,
         description="Maximum public analytics ingestion request body size.",
+    )
+    ANALYTICS_ASYNC_QUEUE_SIZE: int = Field(
+        default=1_000,
+        ge=1,
+        le=10_000,
+        description="Bounded process-local queue capacity for asynchronous analytics writes.",
     )
 
     # --- File lock (M2c, DEBT-035)

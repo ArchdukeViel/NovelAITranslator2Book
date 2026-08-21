@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from collections import deque
 from collections.abc import Callable
 from contextlib import AbstractContextManager, suppress
@@ -27,15 +28,18 @@ from novelai.services.library_summary_service import invalidate_library_summary_
 from novelai.services.taxonomy_persistence import persist_taxonomy_assignments
 from novelai.sources.status import normalize_publication_status
 from novelai.storage.service import StorageService
+from novelai.utils.chapter_selection import _chapter_logical_id
 
 logger = logging.getLogger(__name__)
 
 
 CATALOG_PROJECTION_FIELDS = (
+    "public_slug",
     "title",
     "original_title",
     "synopsis",
     "publication_status",
+    "public_reader_unavailable_policy",
     "source_updated_at",
     "chapter_count",
     "translated_count",
@@ -46,6 +50,16 @@ CATALOG_PROJECTION_FIELDS = (
     "glossary_status",
     "glossary_revision",
 )
+
+_PUBLIC_SLUG_MAX_LENGTH = 160
+
+
+def _public_slug_from_title(title: str | None, novel_id: str) -> str:
+    if not title:
+        return novel_id
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    slug = slug[:_PUBLIC_SLUG_MAX_LENGTH].strip("-") or "novel"
+    return novel_id if slug == "novel" else slug
 
 
 @dataclass(frozen=True)
@@ -128,7 +142,14 @@ def _metadata_original_title(metadata: dict) -> str | None:
 
 
 def _metadata_public_synopsis(metadata: dict) -> str | None:
-    for key in ("translated_synopsis", "translated_description", "synopsis", "description"):
+    for key in (
+        "translated_narrative_synopsis",
+        "translated_synopsis",
+        "narrative_synopsis",
+        "synopsis",
+        "translated_description",
+        "description",
+    ):
         value = _optional_string(metadata.get(key))
         if value:
             return value
@@ -271,6 +292,7 @@ class CatalogService:
                 source_url=metadata.get("source_url"),
                 language=metadata.get("language", "ja"),
                 publication_status=publication_status,
+                public_reader_unavailable_policy=_optional_string(metadata.get("public_reader_unavailable_policy")),
                 source_updated_at=source_updated_at,
                 synopsis=_metadata_public_synopsis(metadata),
             )
@@ -292,6 +314,9 @@ class CatalogService:
             metadata,
             source_key=str(source_key) if source_key else None,
         )
+        from novelai.services.public_projection_cache import invalidate_public_projection_cache
+
+        invalidate_public_projection_cache()
         return novel
 
     # ------------------------------------------------------------------
@@ -348,10 +373,22 @@ class CatalogService:
             sequence_number=sequence_number,
             source_url=source_url,
         )
+        # The raw-chapter write is allowed to carry authoritative ordering and
+        # identity values.  Recomputing the catalog projection reconciles the
+        # metadata index too, but must not immediately overwrite the values
+        # just supplied (or an existing row's ordering when they were omitted).
+        preserved_chapter_fields = {
+            "chapter_number": chapter.chapter_number,
+            "sequence_number": chapter.sequence_number,
+            "source_episode_id": chapter.source_episode_id,
+            "source_url": chapter.source_url,
+        }
         chapter.raw_storage_key = f"{storage_key}:{checksum[:8]}"
         chapter.raw_status = "fetched"
         self._session.add(chapter)
         self.recompute_catalog_projection(novel_id, novel=novel)
+        for field, value in preserved_chapter_fields.items():
+            setattr(chapter, field, value)
         invalidate_library_summary_cache()
         return chapter
 
@@ -417,12 +454,19 @@ class CatalogService:
 
         metadata = metadata if metadata is not None else (self._storage.load_metadata(novel_id) or {})
         translated_count = self._storage.count_translated_chapters(novel_id)
+        translated_ids = set(self._storage.list_translated_chapters(novel_id))
         metadata_chapters = _metadata_chapters(metadata)
         chapter_count = len(metadata_chapters) or max(
             self._storage.count_stored_chapters(novel_id),
             translated_count,
         )
         latest_chapter = self._latest_translated_chapter(novel_id, metadata_chapters)
+
+        self._reconcile_chapter_projection(
+            novel,
+            metadata_chapters,
+            translated_ids=translated_ids,
+        )
 
         if metadata:
             novel.title = _metadata_public_title(novel_id, metadata)
@@ -431,6 +475,8 @@ class CatalogService:
                 metadata.get("author")
             )
             novel.synopsis = _metadata_public_synopsis(metadata)
+            novel.public_reader_unavailable_policy = _optional_string(metadata.get("public_reader_unavailable_policy"))
+        novel.public_slug = _public_slug_from_title(novel.title, novel.slug)
         novel.chapter_count = chapter_count
         novel.translated_count = translated_count
         novel.latest_chapter_id = latest_chapter["id"] if latest_chapter else None  # type: ignore[reportAttributeAccessIssue]
@@ -438,6 +484,69 @@ class CatalogService:
         novel.latest_chapter_title = latest_chapter["title"] if latest_chapter else None  # type: ignore[reportAttributeAccessIssue]
         novel.latest_chapter_updated_at = latest_chapter["updated_at"] if latest_chapter else None  # type: ignore[reportAttributeAccessIssue]
         return novel
+
+    def _reconcile_chapter_projection(
+        self,
+        novel: Novel | None,
+        metadata_chapters: list[dict],
+        *,
+        translated_ids: set[str],
+    ) -> None:
+        """Synchronize lightweight chapter metadata into the DB projection.
+
+        This runs from write/reconciliation paths, never from public reads.
+        Chapter text and raw/translated artifacts remain in storage; the DB
+        rows only provide ordering, titles, identity, and availability.
+        """
+        if novel is None or novel.id is None:
+            return
+
+        for index, metadata in enumerate(metadata_chapters):
+            chapter_id = _chapter_logical_id(metadata)
+            if not chapter_id:
+                continue
+            raw_number = metadata.get("num") or metadata.get("chapter_number")
+            if isinstance(raw_number, int):
+                chapter_number = raw_number
+            else:
+                try:
+                    chapter_number = int(raw_number) if raw_number is not None else index + 1
+                except TypeError, ValueError:
+                    chapter_number = index + 1
+            raw_sequence = metadata.get("sequence_number")
+            sequence_number = raw_sequence if isinstance(raw_sequence, int) else index + 1
+            chapter = self._get_or_create_chapter(
+                novel_db_id=novel.id,
+                chapter_id=chapter_id,
+                chapter_number=chapter_number,
+                title=_optional_string(metadata.get("translated_title"))
+                or _optional_string(metadata.get("title"))
+                or chapter_id,
+                source_episode_id=_optional_string(metadata.get("source_episode_id")),
+                sequence_number=sequence_number,
+                source_url=_optional_string(metadata.get("source_url")),
+            )
+            chapter.title = (
+                _optional_string(metadata.get("translated_title"))
+                or _optional_string(metadata.get("title"))
+                or chapter.title
+                or chapter_id
+            )
+            chapter.section_title = _optional_string(
+                metadata.get("section_title") or metadata.get("part") or metadata.get("volume")
+            )
+            chapter.translated_section_title = _optional_string(metadata.get("translated_section_title"))
+            chapter.section_source_id = _optional_string(metadata.get("section_source_id"))
+            raw_ordinal = metadata.get("section_ordinal")
+            chapter.section_ordinal = (
+                raw_ordinal if isinstance(raw_ordinal, int) and not isinstance(raw_ordinal, bool) else None
+            )
+            raw_level = metadata.get("section_level")
+            chapter.section_level = (
+                raw_level if isinstance(raw_level, int) and not isinstance(raw_level, bool) else None
+            )
+            chapter.translation_status = "translated" if chapter_id in translated_ids else "pending"
+            self._session.add(chapter)
 
     def reconcile_catalog_projection(
         self,
@@ -479,6 +588,9 @@ class CatalogService:
         changed_fields = [
             field for field in CATALOG_PROJECTION_FIELDS if before is None or before.get(field) != after.get(field)
         ]
+        from novelai.services.public_projection_cache import invalidate_public_projection_cache
+
+        invalidate_public_projection_cache()
         return CatalogProjectionReconciliation(
             novel_id=novel_id,
             created=created,
@@ -607,11 +719,14 @@ class CatalogService:
         novel.is_published = is_published
         self._session.add(novel)
         self._session.flush()
+        from novelai.services.public_projection_cache import invalidate_public_projection_cache
 
-        visibility_warnings: list[str] = []
-        if is_published and any(genre.is_adult for genre in novel.genres if genre.is_active):
-            visibility_warnings.append("adult_hidden_by_default")
-        return CatalogPublicationResult(novel=novel, visibility_warnings=visibility_warnings)
+        invalidate_public_projection_cache()
+
+        # Adult/R18 classification remains available to taxonomy and source
+        # provenance code, but it does not create a separate publication
+        # lifecycle or hide an explicitly published novel.
+        return CatalogPublicationResult(novel=novel, visibility_warnings=[])
 
     def _latest_translated_chapter(
         self,

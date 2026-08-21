@@ -231,14 +231,20 @@ def validate_production_config(settings: AppSettings) -> ValidationResult:
         result.add(Severity.FATAL, "database", "DATABASE_URL is required in production.")
     if settings.DB_SSL_MODE not in {"require", "verify-ca", "verify-full"}:
         result.add(Severity.FATAL, "database", "DB_SSL_MODE must require TLS in production.")
+    if settings.DB_CONNECTION_RESERVE > settings.DB_CONNECTION_BUDGET:
+        result.add(
+            Severity.FATAL,
+            "database",
+            "DB_CONNECTION_RESERVE exceeds DB_CONNECTION_BUDGET.",
+        )
     if settings.DB_CONNECTION_MODE != "transaction":
         per_process_limit = settings.DB_POOL_SIZE + settings.DB_MAX_OVERFLOW
-        combined_limit = per_process_limit * 2
+        combined_limit = per_process_limit * settings.DB_POOL_PROCESS_COUNT + settings.DB_CONNECTION_RESERVE
         if combined_limit > settings.DB_CONNECTION_BUDGET:
             result.add(
                 Severity.FATAL,
                 "database",
-                "Combined admin and reader pools exceed DB_CONNECTION_BUDGET.",
+                "Aggregate database pool ceiling exceeds DB_CONNECTION_BUDGET.",
             )
 
     # --- Storage backend
@@ -299,6 +305,13 @@ def validate_production_config(settings: AppSettings) -> ValidationResult:
             Severity.FATAL,
             "csrf",
             "CSRF_TRUSTED_ORIGINS is required in production.",
+        )
+
+    if settings.CONTRIBUTOR_CREDENTIALS_ENABLED and not settings.PROVIDER_CREDENTIAL_ENCRYPTION_KEY:
+        result.add(
+            Severity.FATAL,
+            "contributors",
+            "PROVIDER_CREDENTIAL_ENCRYPTION_KEY is required when contributor credentials are enabled.",
         )
 
     # --- Backup

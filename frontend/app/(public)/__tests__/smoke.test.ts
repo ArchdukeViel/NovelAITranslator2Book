@@ -46,4 +46,10 @@ describe("PBT harness smoke test", () => {
     expect(nextConfig).not.toContain("/novel/:slug");
     expect(nextConfig).not.toContain("redirects()");
   });
+
+  it("keeps contribution routes current-only", () => {
+    expect(existsSync("app/(public)/account/contributions/page.tsx")).toBe(true);
+    expect(existsSync("app/(public)/contribute/page.tsx")).toBe(false);
+    expect(existsSync("app/(public)/request-novel/page.tsx")).toBe(false);
+  });
 });

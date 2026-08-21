@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Any
 
-from novelai.config.settings import settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.providers.registry import get_provider
 from novelai.shared.pipeline import ChunkTranslationStatus
 from novelai.storage.service import StorageService
@@ -47,6 +48,20 @@ def _resolve_llm_grader() -> Any | None:
     if getattr(provider, "key", None) == "dummy":
         return None
     return provider
+
+
+def _should_run_llm_qa(context: PipelineState, chunk: TranslationChunk, index: int, score: float) -> bool:
+    """Select stable risk/sample coverage without grading every chunk."""
+    if score < settings.LLM_QA_RISK_SCORE_THRESHOLD:
+        return True
+    if index == 0:
+        return True
+    sample_rate = settings.LLM_QA_SAMPLE_RATE
+    if sample_rate <= 0:
+        return False
+    seed = f"{context.metadata.get('translation_run_id', '')}:{chunk.chunk_id}".encode()
+    bucket = int.from_bytes(hashlib.sha256(seed).digest()[:8], "big") / 2**64
+    return bucket < sample_rate
 
 
 async def _resolve_llm_grader_async() -> Any | None:
@@ -177,6 +192,8 @@ class TranslationQAStage(PipelineStage):
         # never raise.
         llm_qa_policy = settings.LLM_QA_POLICY
         llm_retry_counts: dict[str, int] = {}
+        llm_qa_evaluated: list[str] = []
+        llm_qa_skipped: list[str] = []
 
         for index, translated in enumerate(raw_translations):
             chunk = self._chunk_for_index(context, index)
@@ -217,12 +234,21 @@ class TranslationQAStage(PipelineStage):
                 # Section 9: persist the exact accepted attempt identity.
                 self._stamp_accepted_attempt(context, chunk_state, chunk_id)
                 # DEBT-053: optional LLM grader for passed chunks only.
-                if llm_grader is not None:
+                if llm_grader is not None and _should_run_llm_qa(context, chunk, index, result.score):
+                    llm_qa_evaluated.append(chunk_id)
                     llm_score = await evaluate_translation_quality_with_llm(
                         llm_grader,
                         source_text=self._source_for_chunk(chunk),
                         translated_text=normalized_text,
-                        model=settings.LLM_QA_MODEL or None,
+                        model=(
+                            GEMINI_DEFAULT_MODEL
+                            if getattr(llm_grader, "key", None) == "gemini"
+                            else settings.LLM_QA_MODEL or None
+                        ),
+                        request_purpose="llm_qa",
+                        chapter_id=chunk.chapter_ids[0] if chunk.chapter_ids else None,
+                        chunk_id=chunk_id,
+                        max_context_chars=settings.LLM_QA_MAX_CONTEXT_CHARS,
                     )
                     chunk_state["llm_qa_score"] = llm_score
                     if llm_score < settings.LLM_QA_MIN_SCORE:
@@ -261,6 +287,9 @@ class TranslationQAStage(PipelineStage):
                                 *list(result.warnings),
                                 "llm_qa_below_threshold",
                             ]
+                elif llm_grader is not None:
+                    llm_qa_skipped.append(chunk_id)
+                    chunk_state["llm_qa_status"] = "skipped_selective_sampling"
             else:
                 chunk_state["status"] = ChunkTranslationStatus.QA_FAILED.value
                 chunk_state["qa_status"] = "qa_failed"
@@ -282,6 +311,10 @@ class TranslationQAStage(PipelineStage):
             context.metadata["llm_qa_enabled"] = True
             context.metadata["llm_qa_retry_counts"] = llm_retry_counts
             context.metadata["llm_qa_min_score"] = settings.LLM_QA_MIN_SCORE
+            context.metadata["llm_qa_evaluated_chunks"] = llm_qa_evaluated
+            context.metadata["llm_qa_skipped_chunks"] = llm_qa_skipped
+            context.metadata["llm_qa_sample_rate"] = settings.LLM_QA_SAMPLE_RATE
+            context.metadata["llm_qa_risk_score_threshold"] = settings.LLM_QA_RISK_SCORE_THRESHOLD
         else:
             context.metadata["llm_qa_enabled"] = False
         if combined.warnings:

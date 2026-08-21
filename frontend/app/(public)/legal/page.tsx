@@ -28,7 +28,7 @@ export default function LegalPage() {
         },
         {
           title: "Cookie Notice",
-          body: 'Dokushodo uses HTTP-only session cookies for signed-in functionality and CSRF tokens for state-changing actions. No third-party advertising or analytics cookies are used. See the Cookie Policy page for full details.',
+          body: 'Dokushodo uses HTTP-only session cookies for signed-in functionality and CSRF tokens for state-changing actions. Guest novel-detail views may also receive a first-party signed anonymous viewer token for distinct-view rankings; no IP address is stored. No third-party advertising or analytics cookies are used. See the Cookie Policy page for full details.',
         },
         {
           title: "Disclaimer",

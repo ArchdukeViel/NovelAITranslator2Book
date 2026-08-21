@@ -17,6 +17,7 @@ import pytest
 from novelai.services.maintenance_service import (
     TASK_ACTIVITY_LOG,
     TASK_BACKUP_RETENTION,
+    TASK_CONTRIBUTOR_USAGE,
     TASK_FETCH_CACHE,
     TASK_NOTIFICATIONS,
     TASK_PIPELINE_EVENTS,
@@ -117,6 +118,15 @@ class FakeNotificationCleanup:
     def __call__(self, retention_days: int, batch_size: int) -> int:
         self.calls.append((retention_days, batch_size))
         return 4
+
+
+class FakeContributorUsageCleanup:
+    def __init__(self) -> None:
+        self.calls: list[int] = []
+
+    def __call__(self, retention_days: int) -> int:
+        self.calls.append(retention_days)
+        return 6
 
 
 def test_run_records_durable_task_transitions(storage: FakeStorage) -> None:
@@ -276,6 +286,26 @@ class TestNotificationCleanup:
         service = MaintenanceService(storage=storage, notification_cleanup=cleanup)
 
         result = service.run_maintenance(dry_run=True, tasks=[TASK_NOTIFICATIONS])
+
+        assert result["tasks"][0]["status"] == "succeeded"
+        assert cleanup.calls == []
+
+
+class TestContributorUsageCleanup:
+    def test_contributor_usage_retention_uses_wired_persistence_boundary(self, storage: FakeStorage) -> None:
+        cleanup = FakeContributorUsageCleanup()
+        service = MaintenanceService(storage=storage, contributor_usage_cleanup=cleanup)
+
+        result = service.run_maintenance(dry_run=False, tasks=[TASK_CONTRIBUTOR_USAGE])
+
+        assert result["tasks"][0]["items_deleted"] == 6
+        assert cleanup.calls
+
+    def test_contributor_usage_retention_dry_run_does_not_call_persistence(self, storage: FakeStorage) -> None:
+        cleanup = FakeContributorUsageCleanup()
+        service = MaintenanceService(storage=storage, contributor_usage_cleanup=cleanup)
+
+        result = service.run_maintenance(dry_run=True, tasks=[TASK_CONTRIBUTOR_USAGE])
 
         assert result["tasks"][0]["status"] == "succeeded"
         assert cleanup.calls == []

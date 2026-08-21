@@ -10,8 +10,9 @@ Canonical deployment topology, release, rollback, and GitHub-control contract. F
 |---|---|
 | `caddy` | Internal HTTP proxy behind the browser-facing HTTPS entry point, compression, security headers, ordered routing. |
 | `frontend` | Next.js public/admin UI, port 3000. |
-| `backend` | Admin/auth/user API, worker/scheduler, port 8000. |
+| `backend` | Admin/auth/user API and scheduler, port 8000; no normal provider worker. |
 | `reader` | Guest public API, port 8001. |
+| `worker` | Dedicated database-backed crawl/translation worker; no host port. |
 | `migrate` | One-shot Alembic migration profile before APIs. |
 | `redis` | Shared limits, queue, coordination where enabled. |
 | `restore-db` | Isolated disposable PostgreSQL 18 restore verifier (profile: `recovery`). |
@@ -37,7 +38,9 @@ everything else -> frontend:3000
 ```
 
 `DEPLOY_MODE=monolith` serves all routers in one process. `split` uses admin and
-reader entry points and requires shared Redis for distributed behavior.
+reader entry points and requires shared Redis for distributed behavior. In the
+canonical Compose topology, both web services keep `JOB_WORKER_ENABLED=false`
+and the `worker` service runs `novelaibook worker` against the shared database.
 
 ### Tailscale staging access
 
@@ -89,6 +92,9 @@ Startup fails closed for fatal production defects. Validate:
 - TLS DB connection and reviewed per-process connection budget;
 - backup encryption, SMTP/recipient when alerts enabled;
 - worker/scheduler settings consistent with topology.
+- the `worker` service is running the same admin image revision as `backend`,
+  has no published port, and claims the `activity_records` queue after the
+  migration has succeeded;
 
 Validator output remains redacted.
 
@@ -100,13 +106,15 @@ Validator output remains redacted.
 4. Start backend/reader/frontend with `docker compose up --wait`; require
    container health and `/health/ready` through Caddy before advancing the
    current-release symlink.
-5. Run authenticated production smoke:
+5. Verify the worker claims one queued activity and renews its lease without a
+   second worker claiming the same record.
+6. Run authenticated production smoke:
    - `deploy/scripts/deploy-smoke.ps1 -Production` requires `NOVELAI_SMOKE_SESSION_COOKIE`;
      validates recovery probes (object snapshot, DB backup, restore) all healthy.
    - `deploy/scripts/verify-runtime-role.py` inside backend image with runtime
      `DATABASE_URL`; transactional checks cover identity, DML, role reachability,
      schema scope, and denied admin DDL.
-6. Verify liveness/readiness, public catalog, owner auth boundary, CSRF/OAuth,
+7. Verify liveness/readiness, public catalog, owner auth boundary, CSRF/OAuth,
    storage scope, and frontend.
 7. Record release commit, immutable tags, UTC time, and sanitized evidence.
 

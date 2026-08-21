@@ -30,7 +30,7 @@ export default function TermsPage() {
         },
         {
           title: "Credential contributions",
-          body: "Public provider credential contribution is not available in the current product. Do not submit real API keys through preview screens. If credential contribution is enabled later, only contribute credentials you control and understand may be used for translation work.",
+          body: "Authenticated users may contribute one Gemini API key they control through the Contributions page. The key may be used for explicitly marked contributor translation work, subject to validation, per-credential quotas, pause/revocation, usage accounting, and abuse controls. Do not submit a key you do not control. You may pause, replace, or permanently delete your own credential.",
         },
         {
           title: "Availability and changes",

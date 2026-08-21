@@ -9,6 +9,12 @@ from collections import Counter
 from fastapi import APIRouter
 from fastapi.responses import Response
 
+from novelai.services.analytics_writer import analytics_writer_stats
+from novelai.services.health_service import HealthCacheStats
+from novelai.services.provider_metrics import provider_runtime_stats
+from novelai.services.public_projection_cache import public_projection_cache_stats
+from novelai.services.public_ranking_cache import public_ranking_cache_stats
+
 router = APIRouter()
 
 _START_TIME = time.time()
@@ -29,6 +35,16 @@ def _load_container_activity_log():
         return None
 
 
+def _load_container_health_service():
+    """Return the shared health service without allowing metrics to fail."""
+    try:
+        from novelai.runtime.container import container
+
+        return getattr(container, "health_service", None)
+    except Exception:
+        return None
+
+
 def _activity_counts() -> dict[str, int]:
     """Pull queue depth from the activity log (best-effort, fail closed)."""
     counts: Counter[str] = Counter()
@@ -45,6 +61,36 @@ def _activity_counts() -> dict[str, int]:
         status = str(activity.get("status") or "unknown").lower()
         counts[status] += 1
     return dict(counts)
+
+
+def _activity_queue_stats() -> dict[str, object]:
+    activity_log = _load_container_activity_log()
+    if activity_log is None:
+        return {}
+    try:
+        stats = activity_log.queue_stats()
+    except Exception:
+        return {}
+    return stats if isinstance(stats, dict) else {}
+
+
+def _queue_age_seconds(stats: dict[str, object]) -> float:
+    value = stats.get("queue_age_seconds")
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
+
+
+def _queue_operation_total_ms(stats: dict[str, object]) -> float:
+    operations = stats.get("operations")
+    if not isinstance(operations, dict):
+        return 0.0
+    total = 0.0
+    for operation in operations.values():
+        if not isinstance(operation, dict):
+            continue
+        value = operation.get("total_ms")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            total += float(value)
+    return total
 
 
 def _activity_failures_per_source() -> dict[str, int]:
@@ -84,6 +130,17 @@ def get_metrics() -> Response:
     gc_objects = len(gc.get_objects())
 
     activity_counts = _activity_counts()
+    ranking_cache = public_ranking_cache_stats()
+    projection_cache = public_projection_cache_stats()
+    analytics_writer = analytics_writer_stats()
+    activity_queue = _activity_queue_stats()
+    provider_runtime = provider_runtime_stats()
+    health_service = _load_container_health_service()
+    health_cache = (
+        health_service.health_cache_stats()
+        if health_service is not None
+        else HealthCacheStats(hits=0, misses=0, entries=0, age_seconds=None)
+    )
     pending = activity_counts.get("pending", 0)
     queued = activity_counts.get("queued", 0)
     running = activity_counts.get("running", 0)
@@ -131,6 +188,81 @@ def get_metrics() -> Response:
         "# HELP novelai_activity_cancelled_count Activities that were cancelled",
         "# TYPE novelai_activity_cancelled_count gauge",
         f"novelai_activity_cancelled_count {cancelled}",
+        "# HELP novelai_activity_queue_age_seconds Age of the oldest pending activity",
+        "# TYPE novelai_activity_queue_age_seconds gauge",
+        f"novelai_activity_queue_age_seconds {_queue_age_seconds(activity_queue):.3f}",
+        "# HELP novelai_activity_queue_operation_total_ms Total activity queue operation time",
+        "# TYPE novelai_activity_queue_operation_total_ms gauge",
+        f"novelai_activity_queue_operation_total_ms {_queue_operation_total_ms(activity_queue):.3f}",
+        "# HELP novelai_provider_calls_total Provider calls observed by this process",
+        "# TYPE novelai_provider_calls_total counter",
+        f"novelai_provider_calls_total {provider_runtime.calls}",
+        "# HELP novelai_provider_failures_total Provider call failures observed by this process",
+        "# TYPE novelai_provider_failures_total counter",
+        f"novelai_provider_failures_total {provider_runtime.failures}",
+        "# HELP novelai_provider_retries_total Provider retry attempts observed by this process",
+        "# TYPE novelai_provider_retries_total counter",
+        f"novelai_provider_retries_total {provider_runtime.retries}",
+        "# HELP novelai_provider_wait_ms_total Provider admission wait time",
+        "# TYPE novelai_provider_wait_ms_total counter",
+        f"novelai_provider_wait_ms_total {provider_runtime.wait_ms_total:.3f}",
+        "# HELP novelai_provider_execution_ms_total Provider execution time",
+        "# TYPE novelai_provider_execution_ms_total counter",
+        f"novelai_provider_execution_ms_total {provider_runtime.execution_ms_total:.3f}",
+        "# HELP novelai_provider_quota_reservation_ms_total Provider quota reservation time",
+        "# TYPE novelai_provider_quota_reservation_ms_total counter",
+        f"novelai_provider_quota_reservation_ms_total {provider_runtime.quota_reservation_ms_total:.3f}",
+        "# HELP novelai_provider_usage_write_ms_total Provider usage-ledger write time",
+        "# TYPE novelai_provider_usage_write_ms_total counter",
+        f"novelai_provider_usage_write_ms_total {provider_runtime.usage_write_ms_total:.3f}",
+        "# HELP novelai_public_ranking_cache_hits_total Successful public ranking cache lookups",
+        "# TYPE novelai_public_ranking_cache_hits_total counter",
+        f"novelai_public_ranking_cache_hits_total {ranking_cache.hits}",
+        "# HELP novelai_public_ranking_cache_misses_total Public ranking cache misses",
+        "# TYPE novelai_public_ranking_cache_misses_total counter",
+        f"novelai_public_ranking_cache_misses_total {ranking_cache.misses}",
+        "# HELP novelai_public_ranking_cache_entries Current public ranking cache entries",
+        "# TYPE novelai_public_ranking_cache_entries gauge",
+        f"novelai_public_ranking_cache_entries {ranking_cache.entries}",
+        "# HELP novelai_public_projection_cache_hits_total Successful public projection cache lookups",
+        "# TYPE novelai_public_projection_cache_hits_total counter",
+        f"novelai_public_projection_cache_hits_total {projection_cache.hits}",
+        "# HELP novelai_public_projection_cache_misses_total Public projection cache misses",
+        "# TYPE novelai_public_projection_cache_misses_total counter",
+        f"novelai_public_projection_cache_misses_total {projection_cache.misses}",
+        "# HELP novelai_public_projection_cache_entries Current public projection cache entries",
+        "# TYPE novelai_public_projection_cache_entries gauge",
+        f"novelai_public_projection_cache_entries {projection_cache.entries}",
+        "# HELP novelai_public_projection_cache_invalidations_total Public projection cache invalidations",
+        "# TYPE novelai_public_projection_cache_invalidations_total counter",
+        f"novelai_public_projection_cache_invalidations_total {projection_cache.invalidations}",
+        "# HELP novelai_readiness_cache_hits_total Cached readiness responses served",
+        "# TYPE novelai_readiness_cache_hits_total counter",
+        f"novelai_readiness_cache_hits_total {health_cache.hits}",
+        "# HELP novelai_readiness_cache_misses_total Readiness probe refreshes started",
+        "# TYPE novelai_readiness_cache_misses_total counter",
+        f"novelai_readiness_cache_misses_total {health_cache.misses}",
+        "# HELP novelai_readiness_cache_entries Current readiness cache entries",
+        "# TYPE novelai_readiness_cache_entries gauge",
+        f"novelai_readiness_cache_entries {health_cache.entries}",
+        "# HELP novelai_readiness_cache_age_seconds Age of cached readiness results",
+        "# TYPE novelai_readiness_cache_age_seconds gauge",
+        f"novelai_readiness_cache_age_seconds {health_cache.age_seconds or 0.0:.2f}",
+        "# HELP novelai_analytics_writer_accepted_total Analytics events accepted by the bounded writer",
+        "# TYPE novelai_analytics_writer_accepted_total counter",
+        f"novelai_analytics_writer_accepted_total {analytics_writer.accepted}",
+        "# HELP novelai_analytics_writer_dropped_total Analytics events dropped by the bounded writer",
+        "# TYPE novelai_analytics_writer_dropped_total counter",
+        f"novelai_analytics_writer_dropped_total {analytics_writer.dropped}",
+        "# HELP novelai_analytics_writer_processed_total Analytics events persisted by the writer",
+        "# TYPE novelai_analytics_writer_processed_total counter",
+        f"novelai_analytics_writer_processed_total {analytics_writer.processed}",
+        "# HELP novelai_analytics_writer_failures_total Analytics writer failures",
+        "# TYPE novelai_analytics_writer_failures_total counter",
+        f"novelai_analytics_writer_failures_total {analytics_writer.failures}",
+        "# HELP novelai_analytics_writer_queue_depth Current analytics writer queue depth",
+        "# TYPE novelai_analytics_writer_queue_depth gauge",
+        f"novelai_analytics_writer_queue_depth {analytics_writer.queue_depth}",
     ]
 
     for source_key, count in sorted(_activity_failures_per_source().items()):

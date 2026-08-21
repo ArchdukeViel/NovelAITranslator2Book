@@ -6,7 +6,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from novelai.config.settings import settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.config.workflow_profiles import normalize_workflow_profile_step
 from novelai.core.errors import ProviderConfigError, ProviderErrorCode
 from novelai.inputs.base import DocumentAdapter
@@ -356,7 +356,13 @@ class NovelOrchestrationService:
                 message=f"Translation provider {key!r} could not be created: {type(exc).__name__}.",
             ) from None
 
-    def _assert_special_provider_guards(self, key: str, *, model: str | None = None) -> None:
+    def _assert_special_provider_guards(
+        self,
+        key: str,
+        *,
+        model: str | None = None,
+        contributor_mode: bool = False,
+    ) -> None:
         """Preserve the established fail-closed configuration guards.
 
         Gemini requires a configured API key and ``dummy`` is available only
@@ -364,7 +370,7 @@ class NovelOrchestrationService:
         TranslationRunManifest is created — the pipeline stage never discovers
         these misconfigurations late.
         """
-        if self._provider_requires_api_key(key) and not self._settings.get_api_key(key):
+        if self._provider_requires_api_key(key) and not contributor_mode and not self._settings.get_api_key(key):
             raise ProviderConfigError(
                 ProviderErrorCode.CONFIGURATION,
                 provider_key=key,
@@ -386,6 +392,7 @@ class NovelOrchestrationService:
         metadata: dict[str, Any] | None,
         provider_key: str | None,
         provider_model: str | None,
+        contributor_mode: bool = False,
     ) -> tuple[str, str]:
         """Resolve the authoritative provider/model contract identity for a
         workflow step as ONE validated pair.
@@ -446,8 +453,18 @@ class NovelOrchestrationService:
         #    the model is even chosen, so a manifest is never created for a
         #    provider that does not exist or cannot authenticate.
         provider = self._provider_instance(resolved_provider, for_model=explicit_model)
-        self._assert_special_provider_guards(resolved_provider, model=explicit_model)
+        self._assert_special_provider_guards(
+            resolved_provider,
+            model=explicit_model,
+            contributor_mode=contributor_mode,
+        )
         supported = self._available_models_for(provider)
+
+        if resolved_provider == "gemini" and explicit_model is None:
+            # Stored workflow/preferences may still carry a retired model
+            # name. Resolve the known production contract explicitly instead
+            # of treating that stale value as a fallback candidate.
+            return resolved_provider, GEMINI_DEFAULT_MODEL
 
         # 3) Validate an explicit model up front (fail closed, do not silently
         #    fall back to a default — the caller asked for a specific model).
@@ -524,6 +541,8 @@ class NovelOrchestrationService:
         )
 
     def _record_usage(self, provider_key: str, model: str, metadata: Any) -> None:
+        if isinstance(metadata, dict) and metadata.get("usage_accounting_recorded") is True:
+            return
         usage = metadata.get("usage") if isinstance(metadata, dict) else None
         self._usage.record(
             {
