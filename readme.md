@@ -2,7 +2,8 @@
 
 Web-first Japanese novel ingestion, translation, editing, and public reader.
 FastAPI owns APIs and jobs; Next.js owns public/admin UI; PostgreSQL owns
-relational state; filesystem or S3/R2 owns chapter content.
+relational state and exact artifact references; Cloudflare R2 owns immutable
+novel content and independent recovery objects.
 
 ## Project Status
 
@@ -162,7 +163,7 @@ known unrelated cost; do not substitute broad checks for focused evidence.
 backend/       FastAPI package, migrations, and tests
 frontend/      Next.js public/admin package
 deploy/        Compose, Caddy, Dockerfiles, scripts, env examples
-storage/       Local runtime data; ignored by Git
+storage/       Disposable local runtime data; ignored by Git
 docs/          Nine canonical project documents
 .agents/kiro/  Active approved specifications only
 ```

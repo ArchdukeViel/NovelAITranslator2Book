@@ -1,5 +1,11 @@
 ## 2026-08-17 DEBT-079D MINIMAL STAGING FIXTURES, ADAPTER HEALTH & PERFORMANCE ACCEPTANCE EVIDENCE
 
+The evidence in this section predates the R2-only content rearchitecture. Its
+`storage/novel_library` prefix and active-pointer files describe the historical
+pre-cutover layout; they are not the current storage contract. Current
+requirements and implementation evidence live in [`STORAGE.md`](STORAGE.md)
+and [`R2-ONLY-CONFORMANCE.md`](R2-ONLY-CONFORMANCE.md).
+
 Executed minimal real staging fixture ingestion from 3 operator-supplied URLs, validated source adapter parsing, verified adult content isolation, and ran hosted performance benchmarking on candidate commit `8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23` on private staging instance (`https://laptop-akmalpellu.tail0b4e3e.ts.net`).
 
 ### 1. Minimal Real Fixtures Ingested & Adapter Health

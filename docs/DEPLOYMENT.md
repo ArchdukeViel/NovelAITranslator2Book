@@ -87,8 +87,10 @@ Startup fails closed for fatal production defects. Validate:
 - HTTPS public URL and OAuth callback;
 - explicit CORS, CSRF origins, and allowed hosts;
 - Redis backend/URL for multi-instance deployment;
-- supported storage backend and complete S3/R2 credential sets;
-- independent backup bucket/prefix and split least-privilege credentials;
+- R2-only application bucket `dokushodo`, exact `R2_*` credentials, and no
+  local content volume;
+- independent `dokushodo-backup` bucket and split least-privilege source/read
+  and backup/write credentials;
 - TLS DB connection and reviewed per-process connection budget;
 - backup encryption, SMTP/recipient when alerts enabled;
 - worker/scheduler settings consistent with topology.
@@ -273,14 +275,16 @@ Required deployment configuration:
 - Caddy is the only host-published entry point; it routes the frontend and API
   services while backend, reader, Redis, and PostgreSQL remain private.
 - Register exact HTTPS Google callback for each deployed environment.
-- R2 application and backup scopes remain private and separate.
+- R2 application and backup scopes remain private and separate. The application
+  uses exact PostgreSQL-referenced keys; only inventory, backup, migration, and
+  GC jobs list R2 prefixes.
 - Supabase remains PostgreSQL behind SQLAlchemy/Alembic; dashboard changes do
   not replace repository migrations.
 
 ## Staging Host Limits and Scaling
 
 This release is a single WSL/Docker host, not HA. Frontend and reader processes
-are stateless and can be replicated later while Supabase and S3 remain external.
+are stateless and can be replicated later while Supabase and R2 remain external.
 Redis and Caddy remain single-host components. Backend replicas must respect the
 database connection budget and the worker/scheduler lease model; do not scale
 backend replicas without reviewing `DB_CONNECTION_BUDGET`, Redis coordination,

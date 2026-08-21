@@ -209,7 +209,12 @@ Full architecture and operator detail belongs in canonical docs. Preserve these 
 - Caddy routes `/api/admin/*`, `/api/auth/*`, `/api/user/*`, and `/health/*` to admin on 8000; `/api/public/*` to reader on 8001; remaining routes to frontend on 3000.
 - Compose healthcheck uses `python -c "import urllib.request; ..."` for image portability.
 - `DATABASE_URL` uses `postgresql+psycopg://`, not `postgresql://`.
-- `STORAGE_BACKEND` is `filesystem` or `s3`. S3/R2 directories are virtual prefixes: use backend listing/prefix operations such as `has_keys()`, never `Path.exists()`, `Path.is_dir()`, or host-filesystem assumptions.
+- Novel content is R2-only: `dokushodo` stores immutable artifacts and
+  `dokushodo-backup` stores independent recovery material. PostgreSQL owns
+  exact artifact references; Redis/Valkey owns transient coordination. The
+  local runtime directory is disposable. R2 directories are virtual prefixes:
+  use exact-key reads and paginated listing only in inventory/backup/GC jobs;
+  never use host `Path.exists()` or `Path.is_dir()` as content truth.
 - Object-store lifecycle rules are not backups. Claim backup coverage only with an independently restorable copy and verified restore procedure.
 - Split or multi-instance mode requires Redis for shared rate limits and distributed jobs. Canonical environment variable is `ENV`, not `APP_ENV`.
 
@@ -247,9 +252,13 @@ Full architecture and operator detail belongs in canonical docs. Preserve these 
 - Public Google OAuth and email/password registration create `role="user"` only. Public auth must never create or promote an owner.
 - Cookie-authenticated state-changing endpoints require CSRF protection. Never bypass auth or CSRF for tests.
 - Derive identity from authenticated session; never accept client-supplied `user_id` as authenticated identity.
-- `storage/novel_library` must never be served directly as static files. Do not delete raw chapters; they are audit data.
+- The configured runtime directory must never be served directly as static
+  files. Do not delete immutable R2 artifacts without a verified reference,
+  backup/grace-period check, and an explicit GC/migration operation.
 - Production `WEB_CORS_ORIGINS` must be explicit, never `*`.
-- Do not implement public contribution credentials before readiness gate in `docs/ARCHITECTURE.md`.
+- Contributor credentials are enabled only through the documented consent,
+  encryption, validation, quota, isolation, and revocation contract in
+  `docs/ARCHITECTURE.md`.
 - Do not mutate production secrets, schema, data, functions, storage, or deployment without explicit target/action authorization.
 
 ## Code Intelligence

@@ -5,8 +5,10 @@ Resolved work belongs in [`HISTORY.md`](HISTORY.md), not this file.
 
 ## Current Decision
 
-**NO-GO.** Local implementation is mature, but hosted security, monitoring,
-alerting, browser/network acceptance, and rollback evidence remain incomplete.
+**Implementation GO; production acceptance remains open.** The local R2-only
+implementation and its backend/static verification are in place, but hosted
+security, monitoring, alerting, browser/network acceptance, destructive
+cutover evidence, and rollback/restore evidence remain incomplete.
 
 ## Execution Policy
 
@@ -21,6 +23,21 @@ alerting, browser/network acceptance, and rollback evidence remain incomplete.
   operator, exact command/URL, sanitized result, blocker, waiver, and expiry.
 - Work closes only after evidence is recorded in `HISTORY.md`; passing local
   tests never substitutes for hosted/manual evidence.
+
+## R2-only Content Storage Cutover
+
+The approved hard cutover is implemented locally under
+[`R2-ONLY-CONFORMANCE.md`](R2-ONLY-CONFORMANCE.md). It replaces the historical
+filesystem/S3-prefix content model with immutable R2 objects in `dokushodo`, exact
+PostgreSQL artifact references, Redis/Valkey coordination, and disposable local
+runtime state. It also includes incremental backup manifests, protected
+garbage collection, and an operator-confirmed reset/repopulation workflow for
+the three existing novel identities.
+
+This implementation item is closed locally, but not by local tests alone.
+Production bucket reset, repopulation,
+public URL verification, production telemetry, and isolated restore evidence
+remain explicit acceptance gates until sanitized live evidence is recorded.
 
 ## Novel Detail Stage B Decision (2026-08-19)
 
@@ -165,7 +182,7 @@ Existing tooling: `.github/workflows/managed-services-verification.yml`,
 
 Existing tooling:
 `backend/src/novelai/services/scheduler_service.py::_run_database_restore_verification`,
-`backend/src/novelai/storage/backends/s3_snapshot.py`,
+`backend/src/novelai/storage/r2_backup.py`,
 `deploy/compose.yml` (`restore-db` service), `docs/OPERATIONS.md` restore
 procedure.
 
@@ -364,7 +381,7 @@ graphify update . --no-cluster
 | Alerts and monitoring | Blocked (tooling complete) | Configure `PRODUCTION_BASE_URL`, prove scheduled external runs and real operator delivery, cooldown/redaction, dashboards, escalation, and ownership. |
 | Recovery | Needs current run (tooling complete) | Current-head database restore and object snapshot restore into isolated targets. Backup-stale alert threshold, restore-freshness max age, and runtime-role verifier implemented locally. |
 | Accessibility | Pass (COMPLETED 2026-08-17) | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast verified via automated test suite and operator physical device attestation. |
-| Performance | Partial / Fail (AUDITED 2026-08-17) | Catalog API p95 on hosted staging exceeds hard budget (reader direct p95=1001.60ms, Tailscale HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + S3 metadata list latency). Novel detail and Chapter APIs NOT RUN on hosted staging (no published novel/chapter fixture in DB). First-load JS passes (169.8 KiB <= 250 KiB). |
+| Performance | Partial / Fail (AUDITED 2026-08-17) | Catalog API p95 on hosted staging exceeds hard budget (reader direct p95=1001.60ms, Tailscale HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + object-store metadata-list latency in the pre-cutover measurement). Novel detail and Chapter APIs NOT RUN on hosted staging (no published novel/chapter fixture in DB). First-load JS passes (169.8 KiB <= 250 KiB). |
 | SEO | Staging Pass / Production Deferred (AUDITED 2026-08-17) | Staging robots.txt, sitemap.xml, Open Graph / Twitter metadata, canonical URLs verified on staging hostname; production domain SEO validation deferred until public domain cutover. |
 | Legal propagation | Pass (AUDITED 2026-08-17) | HTTP 451 legal takedown verified (Cache-Control: no-store, no private info leak); sitemap exclusion & 404 contracts verified; CDN purge deferred to public edge. |
 | Rollback | Blocked | Pause worker/scheduler, purge cache, disable reader, redeploy previous immutable version, rerun smoke. |
@@ -584,10 +601,10 @@ Phase 6 remains open for review. Direct-mode owner enqueue produced two
 database-capacity `500` responses in an eight-request burst, while an isolated
 transaction-mode control returned five `202` and three configured
 translation-limit `429` responses with no database-capacity `500`s. A
-controlled 1.2-second S3-protocol delay made ten concurrent readiness requests
+controlled 1.2-second object-store protocol delay made ten concurrent readiness requests
 return `503` with `storage=unhealthy` (p50 `1,351.488 ms`, p95 `1,382.913 ms`).
 The protected base runtime remains `DB_CONNECTION_MODE=direct` and was not
-changed. Production-equivalent R2/S3 telemetry, PostgreSQL slowest-query/
+changed. Production-equivalent R2 telemetry, PostgreSQL slowest-query/
 query-count evidence, and representative worker/provider capacity remain
 unclaimed. Temporary Phase 6 fixture data, overlays, and isolated volumes are
 cleaned up after each run; the base Compose stack remains the runtime baseline.
@@ -596,7 +613,7 @@ The database-capacity error path is now classified locally: recognized
 SQLAlchemy pool/server-capacity failures return sanitized retryable
 `503 DATABASE_CAPACITY_EXHAUSTED` responses, while unrelated database errors
 remain generic `500`s. After rebuilding the admin and reader images, a direct
-filesystem control repeated the eight-request enqueue burst with five `202`
+direct-mode control repeated the eight-request enqueue burst with five `202`
 and three configured `429` responses and zero capacity `500`s. This resolves
 the unhandled application error path, but deployment-wide pooler budgeting and
 production storage/query/provider evidence remain open.

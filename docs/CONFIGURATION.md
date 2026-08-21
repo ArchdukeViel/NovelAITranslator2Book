@@ -51,7 +51,7 @@ Generate secrets with `python -c "import secrets; print(secrets.token_hex(32))"`
 | Origins | Explicit `WEB_CORS_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, `ALLOWED_HOSTS`; no wildcard with credentials. |
 | Provider | Gemini key/model configuration; production never uses dummy provider. |
 | Credentials | `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` before storing provider keys. |
-| Storage | `STORAGE_BACKEND=filesystem|s3`; complete S3/R2 endpoint/bucket/credentials for `s3`. |
+| Storage | R2-only: `R2_BUCKET=dokushodo`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`; no filesystem content backend. |
 | Distributed runtime | Redis URL and Redis rate limiter for split/multi-instance mode. |
 
 ## Private HTTPS Staging
@@ -68,9 +68,28 @@ file contains an explicit false override.
 
 ## Storage and Recovery Groups
 
-Application S3/R2 uses `S3_*`. Independent object snapshots use `BACKUP_S3_*`
-plus separate read-only `SNAPSHOT_SOURCE_S3_*` credentials. Application bucket,
-backup bucket, and prefixes must not collapse into one unrestricted scope.
+Application R2 uses `R2_*` and the fixed bucket `dokushodo`. Independent object
+snapshots use `R2_BACKUP_*` and separate read-only `R2_SOURCE_*` credentials;
+the backup bucket is fixed to `dokushodo-backup`. Application and backup
+credentials must not collapse into one unrestricted scope. Application keys
+begin directly with `novels/`; there is no key-prefix setting.
+
+Required R2 settings:
+
+| Setting | Meaning |
+|---|---|
+| `R2_BUCKET` | Application bucket; production must be `dokushodo`. |
+| `R2_ENDPOINT` | Cloudflare account endpoint, for example `https://<account>.r2.cloudflarestorage.com`. |
+| `R2_REGION` | `auto` for Cloudflare R2. |
+| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Application least-privilege token. |
+| `R2_BACKUP_BUCKET` | Independent recovery bucket; production must be `dokushodo-backup`. |
+| `R2_BACKUP_ENDPOINT` / `R2_BACKUP_ACCESS_KEY_ID` / `R2_BACKUP_SECRET_ACCESS_KEY` | Backup-target write credentials. |
+| `R2_SOURCE_ACCESS_KEY_ID` / `R2_SOURCE_SECRET_ACCESS_KEY` | Source-read credentials for backup/inventory jobs only. |
+| `RUNTIME_DIR` | Disposable local cache/checkpoint/log/scratch root. It is not a content library. |
+
+`R2_*` credentials are never returned by diagnostics. Rotate application,
+source-read, and backup-write tokens independently and verify access scopes
+against an isolated bucket before a production cutover.
 
 `BACKUP_ENABLED` controls object snapshots. `DATABASE_BACKUP_ENABLED` controls
 encrypted PostgreSQL dumps and requires backup encryption key, independent DB
@@ -186,7 +205,7 @@ operator metrics process.
 `HEALTH_CACHE_TTL_SECONDS` defaults to `5` seconds and accepts `0..300`;
 `0` disables result reuse while retaining one in-flight refresh. Public
 `/health/ready` is process-safe and redacted: it checks database, lightweight
-storage reachability, worker, and disk. Full storage write/read/delete and S3
+R2 reachability, worker, and disk. Full storage write/read/delete and R2
 usage diagnostics are owner-only or scheduled checks. `/health/live` remains
 process-only and does not use the cache.
 
@@ -305,8 +324,9 @@ services keep `JOB_WORKER_ENABLED=false`; the `worker` service runs
 `ACTIVITY_METADATA_MAX_BYTES` bounds one progress envelope, and
 `ACTIVITY_RETRY_HISTORY_MAX_ENTRIES` bounds retained retry snapshots.
 
-The file-backed translation cache maintains a SQLite WAL metadata index at
+The local runtime translation cache maintains a SQLite WAL metadata index at
 `translation_cache_index.sqlite3`. A one-time backfill may scan existing JSON
 entries; subsequent get, invalidate, statistics, and eviction operations use
-indexed rows. Do not delete the sidecar while the cache is live; rebuild it
-only through a controlled cache maintenance window.
+indexed rows. This cache is disposable and is never a canonical content
+source or an R2 artifact. Do not delete the sidecar while the cache is live;
+rebuild it only through a controlled cache maintenance window.

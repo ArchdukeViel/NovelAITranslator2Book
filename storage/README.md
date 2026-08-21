@@ -1,25 +1,18 @@
-# Storage
+# Runtime storage
 
-Runtime files live here during local development and production-style deployments.
+This directory is disposable local runtime space. It is not the novel library
+and it is not a production content store.
 
-- `novel_library/`: private backend runtime data: novel metadata, chapter JSON,
-  assets, runtime caches, activity logs, scheduler state, and traceability.
-  Layout, ownership, and restore contract live in
-  [`../docs/STORAGE.md`](../docs/STORAGE.md).
-- `novel_library/novels/`: canonical novel folders, one per novel by
-  storage slug. Each contains `metadata.json`, bounded `metadata_backups/`,
-  `chapters/<chapter_id>.json`, and chapter-scoped asset directories.
-  `novels/index.json` maps logical novel IDs and source IDs to those folders.
-- Source-derived caches, fetch and translation caches, activity logs, and
-  scheduler state live under dedicated runtime roots inside `novel_library/`.
-  They are disposable/prunable per [`../docs/OPERATIONS.md`](../docs/OPERATIONS.md)
-  and never become canonical content.
+Canonical novel artifacts are stored in Cloudflare R2 bucket `dokushodo`.
+Incremental recovery material is stored in `dokushodo-backup`. PostgreSQL owns
+novel identity, catalog state, and exact object references; Redis/Valkey owns
+short-lived coordination. See [`../docs/STORAGE.md`](../docs/STORAGE.md).
 
-These runtime subfolders are ignored by git. Configure `NOVEL_LIBRARY_DIR`
-when production should mount a different disk or volume.
+The runtime root may contain temporary fetch/translation caches, checkpoints,
+logs, worker scratch files, and other prunable state. It must never contain
+canonical chapter, translation, generation, media, or asset data and must not
+be served directly by the frontend.
 
-Do not commit runtime data from this folder unless it has been intentionally
-sanitized and documented as a fixture or example. `storage/novel_library` is
-private backend runtime data and must not be served directly by the frontend
-or static file hosting. Generated translated-novel downloads are out of scope;
-see [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) for the product boundary.
+Do not commit or manually delete runtime files as part of a cutover. Use the
+R2 inventory, migration, backup, verification, and garbage-collection
+procedures in [`../docs/OPERATIONS.md`](../docs/OPERATIONS.md).

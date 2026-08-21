@@ -12,7 +12,7 @@ Solo-owner runbook for health, maintenance, backup, recovery, incidents, and rea
 
 States: `healthy`, `degraded`, `unhealthy`. Investigate stale worker heartbeat,
 DB connectivity, storage reachability/capacity, and disk before restart. Public
-readiness does not perform a mutating storage probe or S3 usage enumeration;
+readiness does not perform a mutating storage probe or R2 usage enumeration;
 `/api/admin/health` remains the fresh owner diagnostic for those checks.
 Public health output never includes paths, hosts, credentials, or traces.
 
@@ -58,12 +58,11 @@ cache or increasing probe timeouts blindly.
 - Check owner worker/scheduler status and `SchedulerRuntimeState` heartbeat,
   last result, cooldown/exhaustion, and next eligible run.
 - Scheduled jobs use cron/timezone evaluation and renewable PostgreSQL leases.
-- Local filesystem writes/retention also use `InterProcessFileLock` where needed.
-- Generation pointer activation uses `compare_and_swap_active_pointer`: the
-  filesystem backend wraps the read-compare-write in an `InterProcessFileLock`;
-  the S3 backend uses a conditional `PUT` with `If-Match`/`If-None-Match`.
-  Concurrent activations cannot silently overwrite each other; the loser
-  receives `GenerationConflictError` and must roll its stage back.
+- Local disk is runtime-only; it is never used for canonical novel content or
+  retention. Redis/Valkey owns distributed leases and coordination.
+- Generation activation verifies immutable R2 objects and changes the active
+  PostgreSQL reference with optimistic concurrency. There is no R2 pointer
+  object, filesystem compare-and-swap, or local-generation fallback.
 - Explicit operator recovery from a failed generation activation uses
   `commit_generation_recovery(reason=..., evidence=...)` — both arguments are
   required non-empty strings that are logged for audit. This bypasses the
@@ -140,7 +139,7 @@ Admin UI: /admin/maintenance
 Every allowlisted task records best-effort start/success/failure transitions in
 `SchedulerRuntimeState`. Observability-write failure is logged safely and does
 not turn successful cleanup into failed cleanup. DB state is durable truth;
-absence remains explicit and no filesystem cache may manufacture success.
+absence remains explicit and no local runtime cache may manufacture success.
 
 Manual novel cache invalidation:
 
@@ -153,10 +152,13 @@ POST /api/admin/novels/{novel_id}/cache/invalidate
 ### Object storage
 
 - `BACKUP_ENABLED=true` enables scheduled snapshots.
-- R2/S3 production snapshots require independent target bucket and credentials.
+- R2 production snapshots use independent `dokushodo-backup` target
+  credentials.
 - Application CRUD, snapshot-source read, and backup-target write credentials
   remain separate and least privilege.
-- Snapshot success requires manifest-last commit plus byte-length and SHA-256 verification.
+- Snapshot success requires a manifest-last commit plus byte-length, checksum,
+  and referenced-object verification. Incremental manifests copy only new
+  content-addressed objects and reference prior verified snapshots.
 - Retention preserves newest successful backup and
   `BACKUP_MIN_SUCCESSFUL_TO_KEEP`; lifecycle/locks are safeguards, not copies.
 
@@ -165,6 +167,35 @@ Manual trigger:
 ```text
 POST /api/admin/backups
 ```
+
+### R2-only cutover and migration
+
+The hard cutover is an operator-gated data operation, not a startup migration.
+Before any destructive action:
+
+1. Pause crawl, import, translation, worker, and maintenance writers.
+2. Record the three PostgreSQL novel IDs, slugs, source URLs, publication
+   states, chapter counts, active generations, and exact current references.
+3. Inventory `dokushodo` and `dokushodo-backup` with fully paginated listings,
+   checksums, byte totals, and sanitized manifests.
+4. Verify an independent backup and an isolated restore before reset.
+5. Require an explicit confirmation naming both buckets and the migration ID.
+
+The reset tool may delete only the named buckets after the confirmation gate;
+it must verify zero objects, keep both buckets, repopulate immutable objects,
+upload manifests, commit PostgreSQL references, and verify all three previous
+public URLs. It must refuse legacy prefixes, guessed buckets, incomplete
+identity evidence, or a live writer. A dry-run is the default. Production
+object counts and repopulation are not claimed until sanitized live evidence is
+recorded in the conformance ledger.
+
+### Garbage collection
+
+GC is mark-and-sweep over exact PostgreSQL references plus protected rollback,
+backup, and in-progress migration manifests. It lists R2 only in the GC job,
+archives or verifies backup presence before deletion, applies the configured
+grace period (seven days initially), and emits a dry-run report. Active,
+current, protected, referenced, or grace-period objects are never deleted.
 
 ### Backup Bucket Object Lock & Operator Retention Debt Procedure
 

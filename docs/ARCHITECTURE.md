@@ -10,10 +10,10 @@ Canonical project architecture. This file wins when project documents conflict.
 - **Novel18 as a first-class novel**: `novel18_syosetu` keeps source-specific host, cookie, API, and adult taxonomy provenance, but uses the same crawl, storage, translation, glossary, publication, catalog, detail, availability, and reader lifecycle as every other novel. Adult/R18 classification does not suppress an explicitly published novel from the default catalog; `include_adult` controls optional taxonomy exposure and filtering only.
 - **Kakuyomu Stable Chapter Identity**: Every chapter carries three identifiers: `chapter_id` (the stable logical key used everywhere downstream, e.g. `kakuyomu:<episode_id>`), `source_episode_id` (the source-native identifier exposed by adapters), and `sequence_number` (mutable display position). Selections like `"all"`, `"1-3;8"`, `"2"`, or the raw stable id all resolve through `resolve_chapter_selection` so Kakuyomu's percent-encoded ids and Syosetu numeric ids share one pipeline. `int(chapter["id"])` and `chapter_id.isdigit()` checks were removed from the request flow.
 - **Optional Cross-Source Section Hierarchy**: Source metadata may associate an existing reading unit with an optional structural section without changing chapter identity. The normalized optional fields are `section_title` (source display text), `section_source_id` (the real Kakuyomu `Chapter.id`, or `null` for Syosetu/Novel18 where no stable source id is observed), `section_ordinal` (source-order occurrence), and `section_level` when Kakuyomu supplies it. Syosetu and Novel18 derive sections only from structural TOC headings and carry the active heading across pagination; episode-title text never creates a section. Kakuyomu prefers `__NEXT_DATA__/__APOLLO_STATE__/Work/tableOfContentsV2` and its ordered `episodeUnions`, with a bounded DOM fallback that fails closed on unenumerated lazy/UI-paginated indexes. A Syosetu-style root-body short work is marked `work_structure="direct_body"`; ordinary episode indexes remain `work_structure="episodes"` so a direct short, a one-episode serial, and a one-episode Kakuyomu work stay distinct.
-- **Staged Raw Generations**: Crawl runs write to staged generation directories (`generations/<gen_id>/`) with manifest-last atomic pointer activation (`active_generation.json`). Full crawls never call destructive deletion on active data. Generation activation uses a cross-process compare-and-swap on `active_generation.json`: the filesystem backend wraps the read-compare-write in an `InterProcessFileLock`; the S3 backend uses a conditional `PUT` with `If-Match`/`If-None-Match` so concurrent activations cannot silently overwrite each other (loser receives `GenerationConflictError`).
+- **Content-Addressed Raw Generations**: Crawl runs upload immutable chapter and asset objects to R2, then upload a small manifest at `novels/<novel_id>/generations/<generation_id>.json.gz`. PostgreSQL activates the verified manifest and exact chapter references in one optimistic-concurrency transaction. There is no R2 active-pointer object and no local content directory. A failed activation leaves the previous PostgreSQL generation reference unchanged.
 - **Durable Long-Running Crawl Operations**: `POST /api/admin/{novel_id}/scrape` returns `202 Accepted` after creating a durable `scrape` activity. The activity worker performs metadata reconciliation and chapter acquisition under the normal heartbeat, lease, cancellation, staging, validation, compare-and-swap activation, and rollback contracts. `GET /api/admin/activity/{activity_id}` is the status source; `POST /api/admin/activity/{activity_id}/run` is the explicit operator-run path when a background worker is not enabled. Onboarding resume queues the same durable chapter activity instead of holding an HTTP request open. Network and provider timeouts bound individual calls; they do not bound the total activity lifetime.
-- **Pre-Activation Validation**: `commit_generation` runs `validate_generation_activation` before swapping the pointer. Checks cover manifest status, metadata identity, chapter-index presence, every-index-entry-resolved (bundle or explicit unavailable/refresh-failed-retained record), image-asset resolution inside the stage, manifest hash reconciliation, and physical stem / chapter-id consistency. Index entry ids are normalized to logical ids (integer ids become strings) before reconciliation, and reconciliation is against physical bundles, not index entries alone; `source_state.json` must exist and manifest hashes must be non-empty and match staged bytes exactly. Every current-index chapter ends with exactly one canonical disposition: `fetched_new`, `fetched_replaced`, `reused_planner`, `carried_unselected`, `unchanged_selected`, `refresh_failed_retained`, or `unavailable`. Aggregate counts (`saved_chapters`, `reused_chapters`, `failed_chapters`, `carried_unselected_count`, `unchanged_selected_count`, `refresh_failed_retained_count`, `unavailable_count`, `failed_refresh_count`, `removed_count`) are derived from the disposition map and must reconcile with the physical staged state. The disposition map itself is mandatory on the normal commit path; missing or empty `chapter_dispositions` fails closed. There is no normal bypass flag. Removed episode IDs come from `crawl_plan.removed_episode_ids`; `commit_generation` persists the canonical removal set and derives `removed_count` from that set. Activation validation reconciles the count before pointer activation. No separate normal-path removal acknowledgment key is required. Failures roll the stage back and keep the prior active pointer. Explicit operator recovery uses `commit_generation_recovery(reason=..., evidence=...)` for recovery paths.
-- **Immutable Raw Generations + Translation Overlays**: A committed raw generation's `chapters/*.json` and `assets/images/**` are byte-immutable. All translation writes (machine translation, manual edit, rollback activation, edit history) land in `novels/<novel_id>/translations/<encoded_chapter_stem>.json` plus an `active/` pointer. Mutable OCR/re-embedding state lands in a novel-root media overlay (`media/<encoded-chapter-stem>.json`, schema `media_overlay_v1`) composed over the bundle at read time. Readers compose the raw bundle with the per-chapter overlay at read time so machine translation never rewrites raw bytes; while a generation is active, raw bundle writes are refused outright (persist, imports, checkpoint raw restores, rollback bundle-pop) instead of being silently rewritten. Carrying a chapter forward from generation A to generation B uses `seed_generation_from_active` which copies both the bundle and image assets.
+- **Pre-Activation Validation**: `R2GenerationActivationService` validates the candidate manifest before PostgreSQL activation. Every chapter reference must use the requested novel's exact `novels/<novel_id>/chapters|translations|media/<chapter_id>/...json.gz` namespace, have a matching logical SHA-256 in R2 metadata, and resolve by exact HEAD; the manifest identity and expected active-generation value must also match. The service uploads the immutable generation manifest, locks the PostgreSQL novel row, updates the active generation and chapter references in one transaction, and fails closed on a missing object, checksum mismatch, unknown chapter, or stale writer. There is no R2 active pointer, local atomic rename, staged `metadata.json`, or filesystem recovery bypass. Uploaded objects that are not committed because validation or activation fails remain harmless and are handled by the reference-aware grace-period GC workflow.
+- **Immutable Content-Addressed Artifacts**: Raw chapters, translations, media state, and assets are immutable R2 objects. Their keys are `novels/<novel_id>/chapters/<chapter_id>/<source_hash>.json.gz`, `translations/<chapter_id>/<translation_hash>.json.gz`, `media/<chapter_id>/<media_hash>.json.gz`, and `assets/<sha256>.<ext>`. PostgreSQL stores the exact active references; edits create new objects and change references. Carrying unchanged content into a generation reuses existing hashes instead of copying a directory tree.
 - **Episode Order & Convergence**: `update_source_state` persists `ordered_episode_ids` matching the complete current index plus per-episode `source_availability` / `first_seen_at` / `last_seen_at` / `missing_since`. Episodes absent from the index become `missing_from_current_index` (raw + translated history retained). A subsequent crawl with the same order produces an empty `reordered_episode_ids` / `removed_episode_ids` delta. `create_crawl_plan` uses the persisted `ordered_episode_ids` as the previous order (never `episode_map` insertion order); `removed_episode_ids` emits only newly missing episodes; episodes already marked `missing_from_current_index` are not re-emitted as new removals; a second identical crawl yields an empty delta.
 - **Cache Acceptance on Attempt Identity**: `CacheEntry` carries `attempt_number`, `translation_run_id`, `output_hash`, and `cache_key`. `CacheFlushStage` drops rejected chunks (`needs_retry` / `needs_review` / `qa_failed`) and writes **only the pending entry matching the exact QA-accepted attempt tuple** (`accepted_attempt_number`, `accepted_provider_key`, `accepted_provider_model`, `accepted_cache_key`, `accepted_output_hash`). Chunk status + cache-key dedup is no longer the acceptance rule; a cross-model retry (model A rejected, model B accepted) can never cache the rejected attempt's output under its own key.
 - **HTTP Origin & Redirect Hardening**: `_origin` is `(scheme, hostname, effective_port)`; same scheme + same hostname but different effective port is cross-origin. The redirect loop strips Authorization / Proxy-Authorization / Cookie / Host / If-None-Match / If-Modified-Since / If-Match / If-Unmodified-Since / If-Range on cross-origin hops, drops `Referer`, and **only genuine domain/path-aware cookie containers (`httpx.Cookies`) survive a cross-origin hop** — plain `dict` cookies (which expose `.get()`) are hostless request cookies and never cross an origin boundary. `throttle.before_request` and `throttle.after_response` run for **every hop** (redirect, 304, 429, 4xx, 5xx, success) **before** `raise_for_status` can raise, so per-host adaptive penalties track the host that actually returned each status code; a redirected error is never charged to the original requested URL, and retried statuses account per attempt.
@@ -46,7 +46,8 @@ historical generated files.
   it claims durable database activities and is not exposed through Caddy.
 - `DEPLOY_MODE=monolith|split` selects topology.
 - Next.js serves admin and public pages on port 3000.
-- PostgreSQL owns relational state; filesystem or S3/R2 owns chapter content.
+- PostgreSQL owns relational state and exact artifact references; R2 owns
+  immutable novel content. Local disk is disposable runtime state only.
 - Redis provides distributed queueing, rate limiting, and coordination.
 - Scheduler loops, long translation jobs, and restore verification need
   always-on compute; provider-backed activities run in the dedicated worker
@@ -62,7 +63,8 @@ The production topology is the target.
 - Backend: split admin and reader containers on ports 8000 and 8001.
 - Frontend: Next.js container on port 3000, proxied through Caddy.
 - Database: external PostgreSQL; Compose does not provision the primary DB.
-- Storage: local filesystem at ``NOVEL_LIBRARY_DIR`` or configured S3/R2.
+- Storage: Cloudflare R2 application bucket ``dokushodo``; only disposable
+  runtime data is mounted locally at ``RUNTIME_DIR``.
 - Redis: Compose service for split-mode rate limiting and coordination.
 - Migrations: one-shot Compose ``migrate`` service must succeed before APIs.
 - Purpose: production-like local acceptance and smoke testing.
@@ -120,11 +122,12 @@ The production topology is the target.
   maintenance work.
 - **Image immutability**: containers built by SHA-pinned Docker images,
   not mutable tags.
-- **Windows file-lock resilience**: `os.replace` (atomic rename) on Windows
+- **Windows runtime-file-lock resilience**: `os.replace` (atomic rename) on Windows
   can transiently fail with `WinError 5` (`Access is denied`) when the
   destination is briefly held open (antivirus scan, reader handle, directory
-  watcher). The shared filesystem primitive `novelai.utils.filesystem.replace_with_retry`
-  wraps the replace in a bounded retry loop (defaults to 8 attempts, requires
+  watcher). The shared runtime-only filesystem primitive
+  `novelai.utils.filesystem.replace_with_retry` wraps the replace in a bounded
+  retry loop (defaults to 8 attempts, requires
   `attempts >= 1`, retries only `PermissionError`, uses bounded increasing backoff
   of 0.02 s × retry number). Persistent `PermissionError` is re-raised after the
   bounded retry budget. Failed atomic replacements do not delete the committed destination,
@@ -180,14 +183,20 @@ chapter storage -> paragraph IDs -> chunks/bundles -> prompt + glossary
 
 ## Storage and Database Ownership
 
-- Storage owns canonical novel metadata, raw chapters, translated versions,
-  edit history, and assets.
-- Storage also owns the immutable raw generation tree
-  (`generations/<gen-id>/`), the per-chapter translation overlay
-  (`translations/<encoded-chapter-stem>.json`), and the novel-root media
-  overlay (`media/<encoded-chapter-stem>.json`, schema `media_overlay_v1`);
-  raw bundles are byte-immutable once a generation is active and
-  translation/media writes never touch them.
+- PostgreSQL owns novel identity, public/source URLs, publication state,
+  chapter identity/order, active generation, exact R2 artifact references,
+  users, sessions, identities, glossary, requests, reviews, credentials,
+  audit, jobs, and usage.
+- R2 bucket `dokushodo` owns only immutable novel artifacts. The exact active
+  layout is documented in [`STORAGE.md`](STORAGE.md); there are no folder
+  metadata files, active-pointer objects, mutable overlays, or runtime data in
+  the bucket.
+- R2 bucket `dokushodo-backup` owns incremental object manifests and encrypted
+  database recovery material. Backup credentials are independent from
+  application credentials.
+- Redis/Valkey owns transient queues, locks, leases, rate limits, and quota
+  reservations. The local runtime directory owns only disposable caches,
+  checkpoints, logs, and worker scratch data.
 - PostgreSQL owns users, sessions, identities, glossary, requests, reviews,
   credentials, audit, jobs, and catalog projections.
 - The `chapters` table carries stable-identity columns
@@ -213,15 +222,18 @@ chapter storage -> paragraph IDs -> chunks/bundles -> prompt + glossary
   `CatalogService` resolves chapter rows by `novel_id + logical_chapter_id`,
   never by title; reorder updates `sequence_number` in place without creating
   new rows; same-title chapters remain distinct rows.
-- SQL chapter counts are projections; canonical counts come from storage.
+- SQL chapter counts are projections of PostgreSQL-owned references; public
+  readers do not enumerate R2 to rebuild a response.
 - `Novel.public_reader_unavailable_policy` is an optional projection of the
   per-novel availability policy from canonical metadata. Migration
   `e5f7a9c1d3b2` persists it so projection-first public chapter reads retain
   policy behavior without a request-time metadata fallback or object-storage
   enumeration.
-- S3/R2 directories are virtual prefixes; no host-filesystem assumptions.
-- Preserve raw scraped chapters and historical generated files.
-- `storage/novel_library` is private and never served directly.
+- R2 directories are virtual prefixes; no host-filesystem assumptions and no
+  local content fallback.
+- Preserve immutable scraped artifacts and historical generated references.
+- The configured runtime directory is private, disposable, and never served
+  directly.
 - APIs never expose raw paths, internal keys, secrets, or full credentials.
 
 See [`STORAGE.md`](STORAGE.md).
@@ -381,15 +393,17 @@ unchanged.
   deployment-wide pooler-budget verification.
 - `/api/admin/health`: owner-only detailed but redacted diagnostics.
 - Probe states: `healthy`, `degraded`, `unhealthy`.
-- Public readiness does not run full storage write/read/delete or S3 usage
+- Public readiness does not run full storage write/read/delete or R2 usage
   scans. Those remain owner-only or scheduled diagnostics so reverse-proxy
   health checks do not amplify object-storage latency.
 - Scheduled backup, maintenance, and database dumps use renewable PostgreSQL
-  leases plus local file locks where needed.
+  leases plus Redis/Valkey coordination where needed.
 - Each registered maintenance task writes start/success/failure transitions to
   `SchedulerRuntimeState`; `GET /api/admin/maintenance/status` projects schedule,
   safe result, and next eligibility for owner UI. Missing state means `never_run`.
-- R2 CRUD, snapshot reads, and backup writes use separate credentials.
+- R2 CRUD, snapshot reads, and backup writes use separate least-privilege
+  credentials. R2 listing is limited to inventory, backup, migration, and GC
+  workflows; normal readers use exact references.
 - Backups are independently restorable copies, not lifecycle rules.
 - HTTP origin is `(scheme, hostname, effective_port)`; default ports are
   80 for http and 443 for https, so different effective ports are
@@ -423,10 +437,9 @@ unchanged.
   limit provider work. Provider runtime metrics and the sanitized usage ledger
   record wait, execution, retry, quota-reservation, and usage-write duration
   without prompts, keys, authorization headers, or response secrets.
-- Translation cache entries remain file-backed but metadata is indexed in a
-  SQLite WAL sidecar. Invalidation, statistics, and LRU eviction use indexed
-  rows; the recursive directory scan is limited to one migration/backfill and
-  never runs on the request path.
+- Translation cache entries are disposable runtime data and are never used as
+  canonical content. Durable translation lineage and active artifact
+  references remain in PostgreSQL and R2.
 
 ## Reader Contracts
 

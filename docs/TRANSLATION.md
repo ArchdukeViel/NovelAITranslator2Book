@@ -38,14 +38,16 @@ Dialogue and narration remain distinct.
 
 ## Glossary Lifecycle
 
-File glossary and PostgreSQL glossary are distinct stores bridged through explicit
-sync. Approved DB entries are translation truth. Suggested/candidate terms never
-become public or prompt-active without approval.
+PostgreSQL is the canonical glossary store. The R2 storage facade exposes a
+small runtime-shaped projection for orchestration, but it never writes a
+glossary object or maintains a second file-backed glossary. Approved DB entries
+are translation truth. Suggested/candidate terms never become public or
+prompt-active without approval.
 
 Required states:
 
-- file entries: source-derived candidate state;
-- DB entries: candidate, approved, rejected, disabled as implemented;
+- DB entries: candidate, recommended, approved, rejected, and deprecated;
+- runtime projection: pending, approved, ignored, or translated;
 - novel glossary: lifecycle status used by onboarding/translation gates.
 
 Rules:
@@ -64,7 +66,7 @@ Rules:
   `TRANSLATION_GLOSSARY_BATCH_SIZE` terms. A malformed batch retries on the
   same model and never falls back to one request per term or another model.
 - Public annotations include only explicitly public-visible approved entries.
-- Diagnostics and sync never expose private notes or credentials.
+- Diagnostics and review workflows never expose private notes or credentials.
 
 ## Gemini Request Budget
 
@@ -111,15 +113,21 @@ immutable per attempt; a model switch produces a new key and a model-A
 attempt never collides with model-B. Rejected attempts persist an evidence
 trail; only accepted outputs land in the cache.
 
-## Translation Overlay and Raw Generation Immutability
+## Content-Addressed Translation Artifacts
 
-Translation writes land in the per-chapter overlay
-(`translations/<encoded-chapter-stem>.json` plus an `active/` pointer), never
-in the raw chapter bundle (`chapters/<encoded-chapter-stem>.json`). Once a
-committed raw generation is activated under `generations/<gen-id>/`, the raw
-bundle and its image assets are byte-immutable; every retranslation,
-manual edit, or QA retry rewrites only the overlay. Readers compose the
-active raw generation with the active translation overlay on read.
+Translation writes create immutable gzip-compressed JSON objects at
+`novels/<novel_id>/translations/<chapter_id>/<translation_hash>.json.gz`.
+The hash is computed from deterministic uncompressed logical bytes and includes
+the source hash, effective provider/model, prompt version, glossary hash, QA
+contract, and output-shaping contract. PostgreSQL stores the active object key,
+version lineage, and edit history. There is no mutable translation overlay or
+active pointer object in R2.
+
+Raw chapters and media use the same immutable-reference rule. A retranslation,
+manual edit, or QA retry writes one new translation object and changes one
+PostgreSQL reference; raw chapter bytes are never rewritten. A source change
+invalidates only translations whose source/structure/image contract changed.
+Readers load the active key from PostgreSQL and perform an exact R2 read.
 
 ## Provider Identity — Single Resolution Point
 
@@ -340,7 +348,7 @@ Sanitized usage records and runtime metrics capture provider wait, execution,
 retry, quota-reservation, and usage-ledger write duration without prompts,
 keys, authorization headers, or response secrets.
 
-Accepted translation cache entries remain file-backed, while a SQLite WAL
-sidecar indexes key, novel, access time, and size metadata. Invalidation,
-statistics, and eviction use that index; only the initialization backfill may
-walk existing cache JSON files.
+Accepted translation cache entries are disposable runtime data. They may be
+evicted or lost without changing canonical translation artifacts; PostgreSQL
+lineage and R2 immutable objects remain the recovery source. Cache maintenance
+must never upload cache entries to R2 or use them as active references.

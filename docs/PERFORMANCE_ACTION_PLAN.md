@@ -5,6 +5,16 @@
 **Phase 6 update:** 2026-08-20
 **Objective:** make the deployed stack measurable, responsive, and resilient under public-read traffic while keeping the existing privacy, credential-isolation, ranking, and artifact-preservation contracts.
 
+## R2-only cutover note — 2026-08-21
+
+Canonical novel, chapter, translation, media, asset, and generation content
+now belongs to Cloudflare R2 with PostgreSQL exact-reference truth. Earlier
+phase entries that mention filesystem volumes, S3-protocol fixtures, or
+request-time object scans describe historical controlled runs before the hard
+cutover; they are not the current production storage architecture. Current
+performance work must measure exact R2 operations, PostgreSQL projections, and
+disposable local-runtime state separately.
+
 ## How to use this plan
 
 The order matters. Runtime/release correctness comes before application benchmarks; serving-path fixes come before frontend polish; and worker/provider tuning comes after queue and origin metrics exist. Each phase has an exit gate. Do not declare a phase complete from a code diff alone.
@@ -288,7 +298,7 @@ Completed in the local checkout and Compose environment:
 - Wired the existing five-second health-cache setting into a single-flight
   readiness cache. Public readiness now performs only database, lightweight
   storage reachability, worker, and disk checks; the full storage
-  write/read/delete probe and S3 usage scan remain owner diagnostics.
+  write/read/delete probe and R2 usage scan remain owner diagnostics.
 - Added bounded process-local public projection caching for safe catalog pages,
   DB-backed summaries, and chapter metadata. The default is a 30-second TTL
   with 256 entries. Database/projection version keys and publish/reconcile/
@@ -357,7 +367,7 @@ Exit gate: provider overload increases queue time predictably rather than consum
 Actions:
 
 - Add indexed metadata or a bounded cache backend for invalidation, statistics, and eviction.
-- Shard file-backed entries if a migration is needed, and avoid scanning the entire cache directory on a request path.
+- Shard disposable local-runtime entries if a migration is needed, and avoid scanning the entire cache directory on a request path.
 - Measure cache hit rate, read/write latency, eviction duration, and disk contention.
 
 Exit gate: cache maintenance has a bounded schedule and does not increase translation or public-read p95 as cache size grows.
@@ -550,7 +560,7 @@ stack was restored afterward. This does not substitute for production R2/S3
 telemetry.
 
 The application-side capacity response was then implemented and rebuilt into
-the admin and reader images. A direct-mode filesystem control repeated the
+the admin and reader images. A direct-mode local-runtime control repeated the
 eight-request authenticated enqueue burst and returned five `202` responses
 and three configured translation-limit `429` responses, with zero capacity
 `500`s. Recognized SQLAlchemy DBAPI pool/server-capacity failures now return a
@@ -605,7 +615,7 @@ evidence, not a substitute for the explicit source guard or pooler verification.
 ### Phase 6 continuation: current-image public rerun
 
 A fresh run used the current application images and an isolated named
-filesystem volume. It seeded 48 published novels, 1,428 projected chapters,
+pre-cutover disposable storage fixture. It seeded 48 published novels, 1,428 projected chapters,
 and 1,200 privacy-safe authenticated/anonymous view events. Five samples per
 route at concurrency 8 returned `200` for every public route with zero
 timeouts or transport errors. The p95 values were `281.925 ms` for liveness,
@@ -706,7 +716,7 @@ hostname before public launch.
 
 The final Compose recheck initially found the `worker` service restarting with
 exit code `1` (`23` restarts observed). It runs as `novelai` UID/GID `100:101`,
-but the mounted `/app/storage/novel_library` root was `root:root` mode `755`, so
+but the mounted legacy content root was `root:root` mode `755`, so
 the worker could not create `activity_log` or temporary provider
 credential-hydration files. After explicit authorization, an ownership-only
 change assigned the mounted directory to `novelai:novelai`; no storage files

@@ -9,6 +9,14 @@
 **Baseline revision before Phase 6:** `0f9c82b` (`docs(perf): record phase five worker evidence`)
 **Scope:** browser-to-Caddy traffic, the public reader API, database access, object storage, Redis/queues, translation workers/providers, and the public Next.js client.
 
+## R2-only cutover note — 2026-08-21
+
+Canonical novel content is now stored in Cloudflare R2 and referenced by
+PostgreSQL. Filesystem and S3-protocol storage observations below are retained
+as historical or controlled pre-cutover evidence; they do not describe the
+current canonical content path. Future scale evidence must use exact R2
+operations and distinguish disposable local-runtime files from content data.
+
 ## Executive conclusion
 
 The initial runtime was behind the checkout and allowed public storage waterfalls. Phase 0 rebuilt and deployed the current checkout locally; Phase 1 made the public catalog/detail metadata path projection-first; Phase 2 now server-hydrates the guest home view and bounds public browser reads. The current local runtime is healthy with the base Compose configuration, but the live serving projection still needs storage-backed chapter reconciliation. The largest remaining risks are:
@@ -19,7 +27,7 @@ The initial runtime was behind the checkout and allowed public storage waterfall
 4. The home SSR boundary now hydrates the catalog and weekly ranking, but its local server response was about 2.6 seconds and production-scale TTFB/LCP/INP remain unmeasured. The browser no longer makes duplicate initial catalog/ranking/genre requests.
 5. Phase 3 now uses one joined ranking/projection query, composite analytics indexes, and a bounded process-local success cache. Focused tests prove distinct-viewer periods, chapter exclusion, bounded SQL work, and cache metrics; production-volume query plans, seeded latency, and cross-replica cache behavior remain unmeasured.
 6. Phase 4 now makes readiness cacheable/single-flight, removes the mutating storage probe from public readiness, adds bounded origin projection caching, and queues analytics writes off the request path. The local one-second probe configuration now passes without an override; populated analytics load and cross-replica cache behavior remain unmeasured.
-7. Translation work can occupy a web request for up to the configured 120-second timeout. Provider calls also use blocking SDK calls in worker threads, bounded concurrency, retries, and quota reservation, so provider latency can create sustained backpressure.
+7. Translation requests now enqueue durable activity records and return before provider work; provider calls still use blocking SDK calls in worker threads, bounded concurrency, retries, and quota reservation, so provider latency can create sustained backpressure in the worker tier.
 8. Phase 6 now has a repeatable local fixture and measured public/browser sample. Catalog, detail, chapter, and search p95 values were still above the proposed warm budgets in this small local run. Direct-mode owner enqueue exposed an aggregate database-session capacity failure; recognized capacity failures are now classified as sanitized retryable responses, transaction mode avoided them in an isolated control, and controlled storage delay produced visible bounded degradation. A bounded read-only probe against the real production object-storage configuration returned ready in `0.302 s`, but representative object-storage and provider-capacity evidence remain unmeasured, so no runtime sign-off is claimed.
 
 The remaining release/operations problems are chapter-projection completeness, production-scale browser/ranking budgets, and multi-instance cache economics. Phase 4 source and Compose defaults now make public readiness cheap and cached, preserve a full owner diagnostic path, cache only safe public projections, and apply explicit bounded analytics loss semantics. The live local stack passed the base Compose readiness check without a temporary override.
@@ -248,7 +256,7 @@ passed. The phase was stopped for review before Phase 5.
 
 **Evidence:** Public readiness now has a short process-local TTL and one in-flight
 refresh, uses a non-mutating storage reachability probe, and excludes the
-expensive S3 usage scan. The live one-second configuration passed without the
+expensive R2 usage scan. The live one-second configuration passed without the
 previous two-second process override. The two measured Caddy samples were
 `0.559 s` cold and `0.046 s` warm.
 
@@ -370,7 +378,7 @@ run; the base Compose topology is restored.
 `phase6-load-` namespace. The run used 48 published novels, 1,428 projected
 chapters (one novel with 300 chapters and 47 novels with 24 chapters each),
 and 1,200 privacy-safe `public_novel.view` events across authenticated and
-anonymous viewer identities. Storage used an isolated filesystem volume for
+anonymous viewer identities. The pre-cutover fixture used an isolated disposable storage volume for
 the run so the existing object-storage data was not touched. Each route had
 20 measured samples at concurrency 8 after a per-route warmup request.
 
@@ -433,7 +441,7 @@ transport errors. A disposable public `role=user` browser session also loaded
   changed.
 - After that run, recognized SQLAlchemy DBAPI pool/server-capacity failures
   were classified as sanitized retryable responses. The rebuilt admin and
-  reader images were exercised in a direct-mode filesystem control: an
+  reader images were exercised in a direct-mode local-runtime control: an
   eight-request authenticated enqueue burst returned five `202` and three
   configured translation-limit `429` responses, with zero capacity `500`s.
   Unrelated database errors remain generic `500` responses. Deployment-wide
@@ -506,7 +514,7 @@ application.
 ### Phase 6 continuation: current-image public rerun
 
 A fresh rerun used the current `novelai-admin:local`, `novelai-reader:local`,
-and `novelai-frontend:local` images with an isolated named filesystem volume.
+and `novelai-frontend:local` images with an isolated named disposable storage volume.
 The namespaced fixture seeded 48 published novels, 1,428 projected chapters,
 and 1,200 privacy-safe authenticated/anonymous view events. Five samples per
 route at concurrency 8 returned `200` for every public route with zero client
@@ -613,7 +621,7 @@ before public launch.
 
 The final Compose recheck initially found the `worker` service restarting with
 exit code `1` (`23` restarts observed). Its container runs as `novelai` UID/GID
-`100:101`, while the mounted `/app/storage/novel_library` root was `root:root`
+`100:101`, while the mounted legacy content root was `root:root`
 mode `755`; the worker could not create `activity_log` or temporary provider
 credential-hydration files. After explicit authorization, an ownership-only
 change assigned the mounted directory to `novelai:novelai`; no storage files
@@ -855,6 +863,10 @@ temporary pre-Phase-4 workaround.
 
 ### F-12 — P1 — Translation is still a synchronous web-request operation
 
+**Current status:** Resolved locally. The owner route now enqueues a durable
+activity and the dedicated worker owns provider execution; production enqueue
+percentiles and provider-volume capacity remain open.
+
 **Evidence:** `services/orchestration/operations.py` wraps `translate_chapters` in `asyncio.wait_for` using the 120-second web request timeout. Translation is also run by the activity worker. The current architecture therefore has both a long-running request path and a background path.
 
 **Impact:** A few large translations can occupy web workers for minutes, compete with public reads, hold locks, and cause client/proxy timeouts. A web timeout does not necessarily stop work already handed to a provider or storage layer.
@@ -875,6 +887,10 @@ temporary pre-Phase-4 workaround.
 
 ### F-14 — P1 — Activity state is a serialized full-file control plane
 
+**Current status:** Resolved locally. PostgreSQL activity records and leases
+own the active queue state; the old JSON queue is retained only for one-time
+import/compatibility handling.
+
 **Evidence:** `ActivityQueueService` stores activity state in one JSON file. Create, claim, heartbeat, update, and list operations acquire locks, load/parse the complete file, and rewrite the complete file. The background runner polls every two seconds by default.
 
 **Impact:** Progress updates and concurrent workers serialize on file I/O. Work grows with activity history, and a slow filesystem operation delays claims and heartbeats. This can make a healthy provider look like a queue stall.
@@ -884,6 +900,10 @@ temporary pre-Phase-4 workaround.
 **Confidence:** Current-source corroborated.
 
 ### F-15 — P1 — The translation cache performs directory-wide scans during maintenance operations
+
+**Current status:** Resolved locally. Indexed local-runtime cache metadata now
+owns invalidation, statistics, and eviction; initialization backfill is the
+only bounded legacy JSON scan.
 
 **Evidence:** `TranslationCacheService` uses file-per-entry JSON. Invalidation, statistics, and eviction scan the cache directory recursively, open entries, stat files, or sort all files by modification time.
 
