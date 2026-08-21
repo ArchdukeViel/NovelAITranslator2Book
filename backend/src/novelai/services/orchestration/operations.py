@@ -242,16 +242,14 @@ class OperationsService:
         self,
         *,
         novel_id: str,
-        adapter_key: str,
-        source: str,
+        source_url: str,
         max_units: int | None,
     ) -> dict[str, Any]:
         try:
             metadata = await asyncio.wait_for(
                 self.orchestrator.import_document(
-                    adapter_key,
                     novel_id,
-                    source,
+                    source_url,
                     max_units=max_units,
                 ),
                 timeout=settings.WEB_REQUEST_TIMEOUT_SECONDS,
@@ -260,7 +258,7 @@ class OperationsService:
             raise OperationError(504, "Operation timed out") from exc
         return {
             "novel_id": novel_id,
-            "adapter_key": adapter_key,
+            "source_url": source_url,
             "chapters": len(metadata.get("chapters", [])),
             "document_type": metadata.get("document_type"),
         }

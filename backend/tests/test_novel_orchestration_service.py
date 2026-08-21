@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 from uuid import uuid4
@@ -88,14 +87,14 @@ class UnusedTranslationService(TranslationService):
 class StubDocumentAdapter(DocumentAdapter):
     @property
     def key(self) -> str:
-        return "text"
+        return "web"
 
-    def probe(self, source: str | Path) -> bool:
+    def probe(self, source: str) -> bool:
         return True
 
     async def import_document(
         self,
-        source: str | Path,
+        source: str,
         *,
         max_units: int | None = None,
     ) -> ImportedDocument:
@@ -121,9 +120,9 @@ class StubDocumentAdapter(DocumentAdapter):
         )
         return ImportedDocument(
             adapter_key=self.key,
-            origin_type="file",
+            origin_type="url",
             origin_uri_or_path=str(source),
-            document_type="text",
+            document_type="web_novel",
             title="Imported Story",
             source_language="Japanese",
             units=units,
@@ -975,7 +974,7 @@ async def test_import_write_paths_refresh_catalog_projection(orchestration_env) 
         usage_service=orchestration_env["usage"],
     )
 
-    await orchestrator.import_document("text", "imported-novel", "C:/story.txt")
+    await orchestrator.import_document("imported-novel", "https://example.com/story")
     with SessionLocal() as session:
         novel = session.query(Novel).filter_by(slug="imported-novel").one()
         assert novel.chapter_count == 2

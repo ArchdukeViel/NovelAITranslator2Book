@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import shutil
 from collections.abc import Generator
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -24,14 +23,14 @@ pytestmark = pytest.mark.slow
 class StubDocumentAdapter(DocumentAdapter):
     @property
     def key(self) -> str:
-        return "text"
+        return "web"
 
-    def probe(self, source: str | Path) -> bool:
+    def probe(self, source: str) -> bool:
         return True
 
     async def import_document(
         self,
-        source: str | Path,
+        source: str,
         *,
         max_units: int | None = None,
     ) -> ImportedDocument:
@@ -48,9 +47,9 @@ class StubDocumentAdapter(DocumentAdapter):
         ]
         return ImportedDocument(
             adapter_key=self.key,
-            origin_type="file",
+            origin_type="url",
             origin_uri_or_path=str(source),
-            document_type="text",
+            document_type="web_novel",
             title="Imported Story",
             source_language="Japanese",
             units=tuple(units),
@@ -99,13 +98,13 @@ async def test_import_document_persists_units_and_metadata(env: dict[str, object
         usage_service=env["usage"],  # type: ignore[arg-type]
     )
 
-    metadata = await orchestrator.import_document("text", "novel-1", "C:/story.txt")
+    metadata = await orchestrator.import_document("novel-1", "https://example.com/story")
     chapter = env["storage"].load_chapter("novel-1", "1")  # type: ignore[attr-defined]
 
-    assert metadata["document_type"] == "text"
-    assert metadata["input_adapter_key"] == "text"
+    assert metadata["document_type"] == "web_novel"
+    assert metadata["input_adapter_key"] == "web"
     assert chapter is not None
-    assert chapter["input_adapter_key"] == "text"
+    assert chapter["input_adapter_key"] == "web"
     assert chapter["text"].startswith("勇者")
 
 
@@ -121,7 +120,7 @@ async def test_translate_chapters_uses_imported_raw_text_without_source_adapter(
         translation_cache=env["cache"],  # type: ignore[arg-type]
         usage_service=env["usage"],  # type: ignore[arg-type]
     )
-    await orchestrator.import_document("text", "novel-1", "C:/story.txt")
+    await orchestrator.import_document("novel-1", "https://example.com/story")
 
     await orchestrator.translate_chapters("imported", "novel-1", "1", skip_glossary_gate=True)
 
@@ -144,7 +143,7 @@ async def test_extract_glossary_terms_builds_pending_candidates(env: dict[str, o
         translation_cache=env["cache"],  # type: ignore[arg-type]
         usage_service=env["usage"],  # type: ignore[arg-type]
     )
-    await orchestrator.import_document("text", "novel-1", "C:/story.txt")
+    await orchestrator.import_document("novel-1", "https://example.com/story")
 
     summary = await orchestrator.extract_glossary_terms("novel-1")
     entries = env["storage"].load_glossary("novel-1")  # type: ignore[attr-defined]

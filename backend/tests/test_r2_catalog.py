@@ -174,7 +174,7 @@ def test_r2_document_import_activates_immutable_generation(r2_catalog) -> None:
     storage, client = r2_catalog
 
     class Adapter:
-        key = "text"
+        key = "web"
 
         def list_units(self, document):
             return document.units
@@ -183,10 +183,10 @@ def test_r2_document_import_activates_immutable_generation(r2_catalog) -> None:
             return unit.images
 
     document = ImportedDocument(
-        adapter_key="text",
-        origin_type="file",
-        origin_uri_or_path="C:/story.txt",
-        document_type="text",
+        adapter_key="web",
+        origin_type="url",
+        origin_uri_or_path="https://example.com/story",
+        document_type="web_novel",
         title="Imported story",
         source_language="English",
         units=(
@@ -195,7 +195,7 @@ def test_r2_document_import_activates_immutable_generation(r2_catalog) -> None:
                 import_order=1,
                 title="Part 1",
                 text="Imported source text",
-                source_ref="C:/story.txt#1",
+                source_ref="https://example.com/story/1",
             ),
         ),
     )

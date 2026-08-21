@@ -219,12 +219,11 @@ async def _import_document_r2(
 
 async def import_document(
     self: Any,
-    adapter_key: str,
     novel_id: str,
-    source: str,
+    source_url: str,
     *,
     max_units: int | None = None,
 ) -> dict[str, Any]:
-    adapter = self._input_adapter_factory(adapter_key)
-    document = await adapter.import_document(source, max_units=max_units)
+    adapter = self._input_adapter_factory("web")
+    document = await adapter.import_document(source_url, max_units=max_units)
     return await _import_document_r2(self, adapter, document, novel_id)

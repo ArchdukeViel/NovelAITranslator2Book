@@ -48,7 +48,6 @@ _NON_NOVEL_ROUTE_PARTS = {
     "",
     "activity",
     "admin",
-    "input-adapters",
     "jobs",
     "requests",
     "sources",

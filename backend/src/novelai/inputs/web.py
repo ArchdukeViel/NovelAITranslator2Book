@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from novelai.inputs.base import DocumentAdapter
 from novelai.inputs.models import ImportedAsset, ImportedDocument, ImportedUnit
 from novelai.sources.registry import get_registry
@@ -12,17 +10,17 @@ class WebDocumentAdapter(DocumentAdapter):
     def key(self) -> str:
         return "web"
 
-    def probe(self, source: str | Path) -> bool:
-        value = str(source).strip().lower()
+    def probe(self, source: str) -> bool:
+        value = source.strip().lower()
         return value.startswith("http://") or value.startswith("https://")
 
     async def import_document(
         self,
-        source: str | Path,
+        source: str,
         *,
         max_units: int | None = None,
     ) -> ImportedDocument:
-        url = str(source).strip()
+        url = source.strip()
         registry = get_registry()
         adapter = registry.get_adapter(url) or registry.get_by_key("generic")
         if adapter is None:
@@ -65,7 +63,7 @@ class WebDocumentAdapter(DocumentAdapter):
                     source_ref=chapter_url,
                     unit_type="chapter",
                     images=tuple(images),
-                    context_group_id=str(metadata.get("title") or Path(url).stem or "web"),
+                    context_group_id=str(metadata.get("title") or source_key or "web"),
                 )
             )
 
@@ -79,7 +77,9 @@ class WebDocumentAdapter(DocumentAdapter):
             document_type="web_novel",
             title=str(metadata.get("title") or url),
             author=metadata.get("author") if isinstance(metadata.get("author"), str) else None,
-            source_language=metadata.get("source_language") if isinstance(metadata.get("source_language"), str) else None,
+            source_language=metadata.get("source_language")
+            if isinstance(metadata.get("source_language"), str)
+            else None,
             metadata={
                 "source_key": metadata.get("source_key") or source_key,
                 "source_url": metadata.get("source_url") or url,
