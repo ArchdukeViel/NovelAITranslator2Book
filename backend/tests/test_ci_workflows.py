@@ -177,6 +177,8 @@ def test_gitguardian_workflow_contract() -> None:
     assert "if:" in source
     assert "github.event.pull_request.head.repo.full_name == github.repository" in source
     assert "github.event_name" in source
+    assert "github.event.pull_request.user.login != 'dependabot[bot]'" in source
+    assert "github.event.pull_request.user.login == 'dependabot[bot]'" in source
 
 
 def test_secret_backed_opencode_workflow_restricts_commenters() -> None:
