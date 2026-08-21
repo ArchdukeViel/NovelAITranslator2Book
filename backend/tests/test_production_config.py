@@ -15,6 +15,7 @@ def _make_prod_settings(**overrides: Any) -> AppSettings:
         ENV="production",
         SESSION_SECRET_KEY="a-strong-secret-that-is-32-chars-long!",
         OWNER_BOOTSTRAP_SECRET="another-strong-secret-32-chars-long!!",
+        PROVIDER_CREDENTIAL_ENCRYPTION_KEY="test-provider-credential-encryption-key",
         PUBLIC_FRONTEND_URL="https://example.com",
         WEB_CORS_ORIGINS=["https://example.com"],
         WEB_RATE_LIMITER_BACKEND="redis",
