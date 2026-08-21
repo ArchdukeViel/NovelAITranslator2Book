@@ -231,3 +231,26 @@ def test_runtime_role_migration_is_least_privilege() -> None:
     assert "CREATE POLICY novelai_app_runtime_all" in source
     assert "GRANT ALL" not in source
     assert "DROP ROLE" not in source
+
+
+def test_post_runtime_tables_have_backend_rls_contract() -> None:
+    source = (MIGRATIONS_DIR / "2026-08-22_b6c8d0e2f4a6_secure_post_runtime_tables.py").read_text(encoding="utf-8")
+
+    assert '"activity_records"' in source
+    assert '"contributor_credentials"' in source
+    assert '"contributor_usage_ledger"' in source
+    assert "ENABLE ROW LEVEL SECURITY" in source
+    assert "CREATE POLICY novelai_app_runtime_all" in source
+    assert "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE" in source
+    assert "REVOKE ALL PRIVILEGES ON TABLE %s FROM %s" in source
+    assert "REVOKE ALL PRIVILEGES ON SEQUENCE %s FROM %s" in source
+    assert "WHERE rolname IN ('anon', 'authenticated')" in source
+    assert "information_schema.columns" in source
+
+
+def test_post_runtime_tables_downgrade_does_not_reopen_data_api_access() -> None:
+    source = (MIGRATIONS_DIR / "2026-08-22_b6c8d0e2f4a6_secure_post_runtime_tables.py").read_text(encoding="utf-8")
+
+    downgrade_source = source.split("def downgrade", maxsplit=1)[1]
+    assert "GRANT " not in downgrade_source
+    assert "_revoke_data_api_roles" in downgrade_source
