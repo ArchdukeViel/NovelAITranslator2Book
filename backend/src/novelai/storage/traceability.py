@@ -7,7 +7,7 @@ from novelai.storage.common import _utc_now_iso
 
 
 def _trace_dir(self: Any):
-    path = self.base_dir / "runtime" / "traceability"
+    path = self.runtime_path("traceability")
     self._mkdirs(path)
     return path
 
@@ -17,7 +17,7 @@ def _read_json_file(self: Any, path, default: Any) -> Any:
         return default
     try:
         data = json.loads(self._read_text(path))
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError, OSError:
         return default
     return data
 

@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
+import json
 import shutil
 import subprocess
 import sys
 import webbrowser
-from datetime import UTC, datetime
+from dataclasses import asdict
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -155,6 +158,109 @@ def _add_frontend_page_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--no-open", action="store_true", help="Print the URL without opening a browser.")
 
 
+def _build_backup_r2_storage():
+    from novelai.storage.backends.r2 import R2Storage
+
+    return R2Storage(
+        bucket=settings.R2_BACKUP_BUCKET,
+        endpoint_url=settings.R2_BACKUP_ENDPOINT or settings.R2_ENDPOINT,
+        region=settings.R2_REGION,
+        access_key_id=(
+            settings.R2_BACKUP_ACCESS_KEY_ID.get_secret_value() if settings.R2_BACKUP_ACCESS_KEY_ID else None
+        ),
+        secret_access_key=(
+            settings.R2_BACKUP_SECRET_ACCESS_KEY.get_secret_value() if settings.R2_BACKUP_SECRET_ACCESS_KEY else None
+        ),
+    )
+
+
+def _print_r2_inventory() -> None:
+    from novelai.runtime.container import container
+    from novelai.storage.r2_cutover import inventory_bucket
+
+    application = inventory_bucket(container.storage.r2_backend)
+    backup = inventory_bucket(_build_backup_r2_storage())
+    print(
+        json.dumps(
+            {
+                "application": {
+                    "bucket": application.bucket,
+                    "object_count": application.object_count,
+                    "bytes_total": application.bytes_total,
+                },
+                "backup": {
+                    "bucket": backup.bucket,
+                    "object_count": backup.object_count,
+                    "bytes_total": backup.bytes_total,
+                },
+            },
+            sort_keys=True,
+        )
+    )
+
+
+def _run_r2_reset(*, execute: bool, writers_frozen: bool, identities_verified: bool, confirmation: str | None) -> None:
+    from novelai.runtime.container import container
+    from novelai.storage.r2_cutover import R2CutoverService
+
+    result = R2CutoverService(
+        application=container.storage.r2_backend,
+        backup=_build_backup_r2_storage(),
+    ).reset(
+        writers_frozen=writers_frozen,
+        identities_verified=identities_verified,
+        confirmation=confirmation,
+        dry_run=not execute,
+    )
+    print(json.dumps(asdict(result), sort_keys=True, default=list))
+
+
+def _run_r2_gc(*, execute: bool, grace_days: int) -> None:
+    from novelai.db.engine import session_scope
+    from novelai.db.models.chapter import Chapter
+    from novelai.db.models.novel import Novel
+    from novelai.runtime.container import container
+    from novelai.storage.r2_cutover import R2GarbageCollector
+
+    referenced: set[str] = set()
+    protected: set[str] = set()
+    exact_artifact_keys: set[str] = set()
+    with session_scope() as session:
+        for novel in session.query(Novel).all():
+            if novel.active_generation_storage_key:
+                protected.add(novel.active_generation_storage_key)
+        for chapter in session.query(Chapter).all():
+            for key in (chapter.raw_storage_key, chapter.translated_storage_key, chapter.media_storage_key):
+                if key:
+                    referenced.add(key)
+                    exact_artifact_keys.add(key)
+
+    # Raw chapter manifests can contain exact content-addressed asset keys.
+    # Mark those nested references too, otherwise an image reused by a live
+    # chapter could be swept merely because its small asset key is not a
+    # dedicated PostgreSQL column.
+    def _mark_nested_keys(value: object) -> None:
+        if isinstance(value, dict):
+            for item in value.values():
+                _mark_nested_keys(item)
+        elif isinstance(value, list):
+            for item in value:
+                _mark_nested_keys(item)
+        elif isinstance(value, str) and value.startswith("novels/"):
+            referenced.add(value)
+
+    for key in exact_artifact_keys:
+        with contextlib.suppress(FileNotFoundError, RuntimeError):
+            _mark_nested_keys(container.storage.load_r2_json_artifact(key))
+    result = R2GarbageCollector(container.storage.r2_backend).collect(
+        referenced_keys=referenced,
+        protected_keys=protected,
+        grace_period=timedelta(days=grace_days),
+        dry_run=not execute,
+    )
+    print(json.dumps(asdict(result), sort_keys=True, default=list))
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="novelaibook")
     subparsers = parser.add_subparsers(dest="command")
@@ -187,6 +293,20 @@ def main(argv: list[str] | None = None) -> None:
 
     subparsers.add_parser("doctor", help="Check launcher wiring and environment health")
 
+    subparsers.add_parser("r2-inventory", help="Inventory both canonical R2 buckets")
+
+    reset_parser = subparsers.add_parser("r2-reset", help="Plan or explicitly execute the two-bucket R2 reset")
+    reset_parser.add_argument("--execute", action="store_true", help="Execute after all safety gates pass")
+    reset_parser.add_argument("--writers-frozen", action="store_true", help="Confirm all writers are frozen")
+    reset_parser.add_argument(
+        "--identities-verified", action="store_true", help="Confirm the identity manifest is verified"
+    )
+    reset_parser.add_argument("--confirm", default=None, help="Exact reset confirmation token")
+
+    gc_parser = subparsers.add_parser("r2-gc", help="Mark and sweep unreferenced R2 objects")
+    gc_parser.add_argument("--execute", action="store_true", help="Delete eligible objects; default is dry-run")
+    gc_parser.add_argument("--grace-days", type=int, default=7, help="Minimum age of an unreferenced object")
+
     args = parser.parse_args(argv)
     command = args.command or "web"
 
@@ -209,6 +329,34 @@ def main(argv: list[str] | None = None) -> None:
             open_browser=not bool(args.no_open),
             label="Public reader",
         )
+        return
+
+    if command == "r2-inventory":
+        from novelai.runtime.bootstrap import bootstrap
+
+        bootstrap()
+        _print_r2_inventory()
+        return
+
+    if command == "r2-reset":
+        from novelai.runtime.bootstrap import bootstrap
+
+        bootstrap()
+        _run_r2_reset(
+            execute=bool(args.execute),
+            writers_frozen=bool(args.writers_frozen),
+            identities_verified=bool(args.identities_verified),
+            confirmation=args.confirm,
+        )
+        return
+
+    if command == "r2-gc":
+        if args.grace_days < 0:
+            raise SystemExit("--grace-days cannot be negative")
+        from novelai.runtime.bootstrap import bootstrap
+
+        bootstrap()
+        _run_r2_gc(execute=bool(args.execute), grace_days=args.grace_days)
         return
 
     from novelai.runtime.bootstrap import bootstrap

@@ -28,8 +28,8 @@ def _etag(value: object) -> str:
     return str(value or "").strip('"')
 
 
-class S3SnapshotTarget:
-    """Copies canonical storage into an independent S3-compatible bucket.
+class R2SnapshotTarget:
+    """Copies canonical R2 storage into the independent backup bucket.
 
     The manifest is written last and is the commit marker. Prefixes without a
     valid manifest are incomplete and are ignored by status checks.
@@ -126,7 +126,7 @@ class S3SnapshotTarget:
         try:
             for source in self._list_source_objects():
                 source_key = str(source["Key"])
-                relative_key = source_key[len(source_prefix):]
+                relative_key = source_key[len(source_prefix) :]
                 if not relative_key:
                     continue
                 destination_key = f"{snapshot_root}/objects/{relative_key}"
@@ -186,9 +186,7 @@ class S3SnapshotTarget:
                 ContentType="application/octet-stream",
             )
             copied_keys.append(self._manifest_key(snapshot_id))
-            verified_manifest = json.loads(
-                self._read_target_object(key=self._manifest_key(snapshot_id))
-            )
+            verified_manifest = json.loads(self._read_target_object(key=self._manifest_key(snapshot_id)))
             if verified_manifest != manifest:
                 raise RuntimeError("Snapshot manifest verification failed")
             return SnapshotResult(

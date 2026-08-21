@@ -9,8 +9,8 @@ from pathlib import Path
 class StorageBackend(ABC):
     """Abstract interface for all storage backends.
 
-    All paths are relative (e.g. ``novels/my-novel/metadata.json``).
-    The backend is responsible for resolving them against its root.
+    All keys are relative to the configured object namespace (for example,
+    ``novels/<novel_id>/chapters/<chapter_id>/<hash>.json.gz``).
     """
 
     @abstractmethod
@@ -89,7 +89,7 @@ class StorageBackend(ABC):
     @abstractmethod
     def mkdirs(self, path: str | Path) -> None:
         """Ensure *path* (a directory) exists, creating parents if needed.
-        No-op for flat backends (S3).
+        No-op for flat object backends such as R2.
         """
 
     def probe_readiness(self) -> bool:

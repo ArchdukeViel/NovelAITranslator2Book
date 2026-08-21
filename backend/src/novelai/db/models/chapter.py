@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from novelai.core.chapter_state import TranslationState
@@ -54,6 +54,13 @@ class Chapter(Base):
     # Storage keys — paths/keys into file or object storage
     raw_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     translated_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    media_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    raw_content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    translated_content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    media_content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    media_state_json: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
+    translation_versions_json: Mapped[list[dict[str, object]] | None] = mapped_column(JSON, nullable=True)
+    translation_edit_history_json: Mapped[list[dict[str, object]] | None] = mapped_column(JSON, nullable=True)
 
     # Status fields
     raw_status: Mapped[str] = mapped_column(String(64), nullable=False, default="pending")

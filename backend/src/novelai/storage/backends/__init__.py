@@ -1,12 +1,11 @@
-"""Storage backend abstraction layer.
+"""Canonical R2 storage factory.
 
-Use `get_storage_backend()` to obtain the configured backend singleton.
-Backend selection is controlled by the `STORAGE_BACKEND` env var.
+There is deliberately no filesystem/S3 backend selection. The S3 protocol is
+only the transport used by the explicit Cloudflare R2 client.
 """
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 from novelai.config.settings import settings
@@ -17,70 +16,36 @@ if TYPE_CHECKING:
 _BACKEND: StorageBackend | None = None
 
 
+def build_r2_backend() -> StorageBackend:
+    """Build a fresh R2 client for an explicitly supplied dependency scope."""
+
+    try:
+        from novelai.storage.backends.r2 import R2Storage
+    except ImportError as exc:
+        raise RuntimeError("R2 storage requires boto3. Install with: pip install novelai[s3]") from exc
+
+    access_key = settings.R2_ACCESS_KEY_ID.get_secret_value() if settings.R2_ACCESS_KEY_ID else None
+    secret_key = settings.R2_SECRET_ACCESS_KEY.get_secret_value() if settings.R2_SECRET_ACCESS_KEY else None
+    return R2Storage(
+        bucket=settings.R2_BUCKET,
+        region=settings.R2_REGION,
+        endpoint_url=settings.R2_ENDPOINT,
+        access_key_id=access_key,
+        secret_access_key=secret_key,
+    )
+
+
 def get_storage_backend() -> StorageBackend:
-    """Return the configured storage backend singleton.
+    """Return the singleton for the canonical application R2 bucket."""
 
-    Selection:
-      - ``STORAGE_BACKEND=filesystem`` or unset → ``FilesystemBackend``
-      - ``STORAGE_BACKEND=s3`` → ``S3Backend`` (raises if boto3 not installed)
-    """
     global _BACKEND
-    if _BACKEND is not None:
-        return _BACKEND
-
-    choice = (os.environ.get("STORAGE_BACKEND") or settings.STORAGE_BACKEND).strip().lower()
-
-    if choice == "filesystem":
-        from novelai.storage.backends.filesystem import FilesystemBackend
-
-        _BACKEND = FilesystemBackend(base_dir=settings.NOVEL_LIBRARY_DIR)
-    elif choice == "s3":
-        _BACKEND = _build_s3_backend()
-    else:
-        raise RuntimeError(
-            f"Unknown STORAGE_BACKEND={choice!r}. Expected 'filesystem' or 's3'."
-        )
-
+    if _BACKEND is None:
+        _BACKEND = build_r2_backend()
     return _BACKEND
 
 
-def _build_s3_backend() -> StorageBackend:
-    """Validate S3 config and build an S3Backend."""
-    try:
-        from novelai.storage.backends.s3 import S3Backend
-    except ImportError as exc:
-        raise RuntimeError(
-            "S3 backend selected but boto3 is not installed. "
-            "Install with: pip install novelai[s3]"
-        ) from exc
-
-    if not settings.S3_BUCKET:
-        raise RuntimeError(
-            "S3_BUCKET is required when STORAGE_BACKEND=s3."
-        )
-
-    access_key = (
-        settings.S3_ACCESS_KEY_ID.get_secret_value()
-        if settings.S3_ACCESS_KEY_ID
-        else None
-    )
-    secret_key = (
-        settings.S3_SECRET_ACCESS_KEY.get_secret_value()
-        if settings.S3_SECRET_ACCESS_KEY
-        else None
-    )
-
-    return S3Backend(
-        bucket=settings.S3_BUCKET,
-        region=settings.S3_REGION,
-        key_prefix=settings.S3_KEY_PREFIX,
-        endpoint_url=settings.S3_ENDPOINT,
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-    )
-
-
 def _reset_backend() -> None:
-    """Reset the cached backend singleton (for testing only)."""
+    """Reset the cached backend singleton for isolated test processes."""
+
     global _BACKEND
     _BACKEND = None

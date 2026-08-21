@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from novelai.infrastructure.http.cache import FetchCacheEntry
@@ -66,7 +67,7 @@ class StorageFetchCache:
 
 
 def _runtime_dir(self: Any):
-    path = self.base_dir / "runtime"
+    path = self.runtime_path()
     self._mkdirs(path)
     return path
 
@@ -75,6 +76,31 @@ def _translation_runtime_dir(self: Any):
     path = self._runtime_dir() / "translation"
     self._mkdirs(path)
     return path
+
+
+def save_translation_run_manifest(self: Any, novel_id: str, manifest: Any) -> Path:
+    """Persist a reconstructable translation-run manifest in disposable runtime."""
+
+    run_dir = self.runtime_path("translation-runs", novel_id)
+    self._mkdirs(run_dir)
+    path = run_dir / f"translation_run_{manifest.translation_run_id}.json"
+    self._write_text_atomic(path, json.dumps(manifest.to_dict(), ensure_ascii=False, indent=2))
+    return path
+
+
+def load_translation_run_manifest(self: Any, novel_id: str, translation_run_id: str) -> Any | None:
+    """Load a translation-run manifest from disposable runtime data."""
+
+    from novelai.translation.run_manifest import TranslationRunManifest
+
+    path = self.runtime_path("translation-runs", novel_id) / f"translation_run_{translation_run_id}.json"
+    if not self._path_exists(path):
+        return None
+    try:
+        return TranslationRunManifest.from_dict(json.loads(self._read_text(path)))
+    except Exception as exc:
+        logger.warning("Failed to load translation run manifest for %s/%s: %s", novel_id, translation_run_id, exc)
+        return None
 
 
 def _fetch_cache_dir(self: Any):
@@ -350,7 +376,7 @@ def save_chunk_attempt_record(self: Any, attempt: dict[str, Any] | Any) -> dict[
     now = _utc_now_iso()
     try:
         attempt_number = int(payload.get("attempt_number") or 0)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         attempt_number = 0
     if attempt_number < 0:
         attempt_number = 0
@@ -696,7 +722,7 @@ def _parse_timestamp(value: Any) -> datetime | None:
             except ValueError:
                 continue
         return None
-    except (ValueError, TypeError, OverflowError):
+    except ValueError, TypeError, OverflowError:
         return None
 
 

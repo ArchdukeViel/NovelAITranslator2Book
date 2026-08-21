@@ -1,7 +1,7 @@
 """Public reader service — serves guest-accessible endpoints only.
 
 Port 8001.  No auth, no session middleware, no CSRF.
-Reads from the same DB and filesystem as the admin service.
+Reads from PostgreSQL and the R2 application bucket; local disk is runtime-only.
 """
 
 from __future__ import annotations

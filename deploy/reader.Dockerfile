@@ -35,7 +35,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONFAULTHANDLER=1 \
     WEB_HOST=0.0.0.0 \
     WEB_PORT=8001 \
-    NOVEL_LIBRARY_DIR=/app/storage/novel_library
+    RUNTIME_DIR=/app/data/runtime
 
 WORKDIR /app
 
@@ -50,8 +50,8 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app/backend ./backend
 COPY pyproject.toml readme.md ./
 
-RUN mkdir -p /app/storage/novel_library \
-    && chown -R novelai:novelai /app/storage
+RUN mkdir -p /app/data/runtime \
+    && chown -R novelai:novelai /app/data
 
 USER novelai
 

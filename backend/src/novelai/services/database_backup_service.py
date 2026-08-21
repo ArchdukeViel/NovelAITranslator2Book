@@ -104,7 +104,7 @@ class DatabaseBackupService:
     def __init__(self, client: Any, bucket: str) -> None:
         self._client = client
         self._bucket = bucket
-        self._prefix = settings.DATABASE_BACKUP_S3_PREFIX.strip("/")
+        self._prefix = settings.DATABASE_BACKUP_PREFIX.strip("/")
 
     def create_backup(self) -> dict[str, Any]:
         if not settings.DATABASE_URL:

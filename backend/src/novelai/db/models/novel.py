@@ -1,16 +1,16 @@
 """Novel ORM model.
 
 Represents a novel (source metadata + catalog entry). Heavy content
-(raw/translated chapter text, covers, exports) lives in file/object storage;
+(raw/translated chapter text, covers, exports) lives in Cloudflare R2;
 this table stores metadata, storage keys, and checksums only.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, Index, Integer, String, Text, func
+from sqlalchemy import JSON, DateTime, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from novelai.db.base import Base
@@ -70,6 +70,17 @@ class Novel(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    # R2-only activation truth. The manifest key is stored exactly so a
+    # reader never reconstructs or lists a generation pointer object.
+    active_generation_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    active_generation_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # PostgreSQL owns the mutable source/catalog metadata.  Object storage
+    # contains immutable chapter, translation, media, asset, and generation
+    # artifacts; this JSON document is only the small operational/catalog
+    # projection needed to reconstruct crawl handoffs without a metadata file.
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    metadata_history_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    source_state_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     synopsis: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     is_published: Mapped[bool] = mapped_column(nullable=False, default=False)
