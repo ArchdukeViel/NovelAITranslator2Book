@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from novelai.config.settings import settings
-from novelai.services.backup_manager import BackupManager
 from novelai.services.backup_service import BackupService
 from novelai.services.database_backup_service import DatabaseBackupService
 from novelai.storage.snapshots import SnapshotResult
@@ -42,11 +41,14 @@ class StubSnapshotTarget:
         assert snapshot_id == self.result.snapshot_id
         return self.result
 
+    def apply_retention(self, **_: object) -> int:
+        return 0
+
 
 @pytest.mark.asyncio
 async def test_r2_backup_uses_committed_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     target = StubSnapshotTarget()
-    service = BackupService(BackupManager(tmp_path), snapshot_target=target)
+    service = BackupService(runtime_dir=tmp_path, snapshot_target=target)
 
     result = await service.run_scheduled_backup()
 
@@ -59,7 +61,7 @@ async def test_r2_backup_uses_committed_snapshot(tmp_path: Path, monkeypatch: py
 @pytest.mark.asyncio
 async def test_r2_backup_fails_when_snapshot_copy_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     service = BackupService(
-        BackupManager(tmp_path),
+        runtime_dir=tmp_path,
         snapshot_target=StubSnapshotTarget(failure=RuntimeError("provider unavailable")),
     )
 
@@ -72,7 +74,7 @@ async def test_r2_backup_fails_when_snapshot_copy_fails(tmp_path: Path, monkeypa
 def test_offsite_backup_health_uses_committed_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "BACKUP_ENABLED", True)
     target = StubSnapshotTarget()
-    service = BackupService(BackupManager(tmp_path), snapshot_target=target)
+    service = BackupService(runtime_dir=tmp_path, snapshot_target=target)
 
     health = service.get_backup_health()
 
@@ -87,7 +89,7 @@ def test_offsite_backup_health_enforces_freshness(
     monkeypatch.setattr(settings, "BACKUP_ENABLED", True)
     target = StubSnapshotTarget(created_at=_recent_iso(hours=hours))
 
-    assert BackupService(BackupManager(tmp_path), snapshot_target=target).get_backup_health()["status"] == status
+    assert BackupService(runtime_dir=tmp_path, snapshot_target=target).get_backup_health()["status"] == status
 
 
 @pytest.mark.parametrize(("hours", "status"), [(-1, "healthy"), (-37, "unhealthy")])

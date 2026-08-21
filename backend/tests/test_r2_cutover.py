@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -130,6 +131,49 @@ def test_incremental_backup_reuses_content_addressed_objects(r2_clients) -> None
     assert manifest["objects"][0]["reused"] is True
     assert target.list_keys("objects", recursive=True) == ["objects/novels/n1/chapters/ch1/hash.json.gz"]
     assert backup.verify_snapshot(second.snapshot_id).verified is True
+
+
+def test_incremental_backup_retention_preserves_references_and_collects_orphans(r2_clients) -> None:
+    source, target = _stores(r2_clients)
+    source.save("novels/n1/chapters/keep.json.gz", b"keep")
+    source.save("novels/n1/chapters/old.json.gz", b"old")
+    backup = R2IncrementalBackupTarget(
+        source_bucket="dokushodo",
+        target_bucket="dokushodo-backup",
+        endpoint_url=None,
+        region="us-east-1",
+        source_access_key_id=None,
+        source_secret_access_key=None,
+        target_access_key_id=None,
+        target_secret_access_key=None,
+        source_client=r2_clients,
+        target_client=r2_clients,
+    )
+
+    first = backup.create_snapshot()
+    r2_clients.delete_object(Bucket="dokushodo", Key="novels/n1/chapters/old.json.gz")
+    second = backup.create_snapshot()
+    first_manifest = backup._load_manifest(first.snapshot_id)
+    first_manifest["created_at"] = "2020-01-01T00:00:00Z"
+    r2_clients.put_object(
+        Bucket="dokushodo-backup",
+        Key=f"snapshots/{first.snapshot_id}/manifest.json",
+        Body=json.dumps(first_manifest).encode("utf-8"),
+    )
+
+    deleted = backup.apply_retention(
+        keep_count=1,
+        min_successful=1,
+        max_age_days=1,
+        safety_grace_days=0,
+    )
+
+    assert deleted >= 2
+    latest = backup.latest_snapshot()
+    assert latest is not None
+    assert latest.snapshot_id == second.snapshot_id
+    assert target.exists("objects/novels/n1/chapters/keep.json.gz")
+    assert not target.exists("objects/novels/n1/chapters/old.json.gz")
 
 
 def test_generation_activation_verifies_objects_and_detects_conflicts(r2_clients) -> None:

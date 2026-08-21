@@ -106,7 +106,7 @@ class FakeSchedulerStateService:
         self.transitions.append((scope_key, "failed"))
 
 
-class FakeBackupManager:
+class FakeBackupService:
     async def apply_retention(self, **kwargs: Any) -> int:
         return 2
 
@@ -164,7 +164,7 @@ def service(storage: FakeStorage) -> MaintenanceService:
     return MaintenanceService(
         storage=storage,
         activity_log=FakeActivityLog(),
-        backup_manager=FakeBackupManager(),
+        backup_service=FakeBackupService(),
         scheduler_runtime_state_service=FakeSchedulerStateService(),
     )
 
@@ -203,7 +203,7 @@ class TestTaskIsolation:
         svc = MaintenanceService(
             storage=storage,
             activity_log=FakeActivityLog(),
-            backup_manager=FakeBackupManager(),
+            backup_service=FakeBackupService(),
             scheduler_runtime_state_service=FakeSchedulerStateService(),
         )
         result = svc.run_maintenance(dry_run=False)

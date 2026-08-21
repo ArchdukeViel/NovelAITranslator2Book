@@ -85,8 +85,14 @@ def _fixture_cleanup() -> dict[str, int]:
 
     slugs = _fixture_slugs()
     storage = StorageService()
+    r2 = storage.r2_backend
     for slug in slugs:
-        storage.delete_novel(slug)
+        # The R2 catalog delete operation intentionally preserves immutable
+        # artifacts for reference-aware garbage collection. This disposable
+        # acceptance fixture owns a dedicated namespace, so remove only that
+        # exact prefix before deleting its projection rows. `delete_prefix`
+        # is paginated and is a no-op when the fixture is not present.
+        r2.delete_prefix(f"novels/{slug}")
 
     with session_scope() as db:
         novel_ids = list(db.scalars(select(Novel.id).where(Novel.slug.in_(slugs))))
@@ -141,6 +147,11 @@ def _fixture_seed() -> dict[str, int | str]:
     now = datetime.now(UTC)
     total_chapters = 0
     with session_scope() as db:
+        # Storage catalog writes must observe the Novel row created in this
+        # transaction. Without the explicit test-session binding, each R2
+        # helper opens a second PostgreSQL session, cannot see the uncommitted
+        # projection, and attempts a duplicate slug insert.
+        storage._test_db_session = db
         for novel_index, slug in enumerate(_fixture_slugs()):
             chapter_count = FIXTURE_LARGE_CHAPTERS if novel_index == 0 else FIXTURE_SMALL_CHAPTERS
             title = (

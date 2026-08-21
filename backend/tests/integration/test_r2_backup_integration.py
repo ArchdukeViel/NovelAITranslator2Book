@@ -1,4 +1,4 @@
-"""Opt-in real-R2 snapshot verification with isolated prefixes and cleanup."""
+"""Opt-in real-R2 incremental backup verification with isolated test objects."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from novelai.storage.backends.r2_snapshot import R2SnapshotTarget
+from novelai.storage.r2_backup import R2IncrementalBackupTarget
 
 pytestmark = pytest.mark.slow
 
@@ -21,15 +21,14 @@ def _required(name: str) -> str:
 
 
 @pytest.mark.integration
-def test_real_r2_snapshot_credential_split() -> None:
+def test_real_r2_backup_credential_split() -> None:
     boto3 = pytest.importorskip("boto3")
     from botocore.exceptions import ClientError
 
     endpoint = _required("TEST_R2_ENDPOINT")
     source_bucket = _required("TEST_R2_SOURCE_BUCKET")
     target_bucket = _required("TEST_R2_TARGET_BUCKET")
-    source_prefix = f"_integration_test_{int(time.time())}_{os.urandom(4).hex()}"
-    target_prefix = f"_integration_test/{source_prefix}"
+    token = f"integration-{int(time.time())}-{os.urandom(4).hex()}"
 
     def client(access_name: str, secret_name: str) -> Any:
         return boto3.client(
@@ -43,35 +42,39 @@ def test_real_r2_snapshot_credential_split() -> None:
     application_client = client("TEST_R2_APP_ACCESS_KEY", "TEST_R2_APP_SECRET_KEY")
     source_client = client("TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY", "TEST_R2_SNAPSHOT_SOURCE_SECRET_KEY")
     target_client = client("TEST_R2_BACKUP_ACCESS_KEY", "TEST_R2_BACKUP_SECRET_KEY")
-    source_key = f"{source_prefix}/novels/integration/metadata.json"
+    source_key = f"novels/{token}/metadata.json"
     application_client.put_object(Bucket=source_bucket, Key=source_key, Body=b'{"integration":true}')
-    snapshot = R2SnapshotTarget(
-        source_bucket=source_bucket,
-        source_prefix=source_prefix,
-        target_bucket=target_bucket,
-        target_prefix=target_prefix,
-        endpoint_url=endpoint,
-        region=os.environ.get("TEST_R2_REGION", "auto"),
-        source_access_key_id=None,
-        source_secret_access_key=None,
-        target_access_key_id=None,
-        target_secret_access_key=None,
-        source_client=source_client,
-        target_client=target_client,
-    )
+    backup: R2IncrementalBackupTarget | None = None
+    snapshot_id: str | None = None
+    backup_key: str | None = None
     try:
-        result = snapshot.create_snapshot()
+        backup = R2IncrementalBackupTarget(
+            source_bucket=source_bucket,
+            target_bucket=target_bucket,
+            target_prefix="snapshots",
+            endpoint_url=endpoint,
+            region=os.environ.get("TEST_R2_REGION", "auto"),
+            source_access_key_id=None,
+            source_secret_access_key=None,
+            target_access_key_id=None,
+            target_secret_access_key=None,
+            source_client=source_client,
+            target_client=target_client,
+        )
+        result = backup.create_snapshot()
+        snapshot_id = result.snapshot_id
+        manifest = backup._load_manifest(snapshot_id)
+        backup_key = str(manifest["objects"][0]["backup_key"])
         assert result.verified is True
         assert result.files_count == 1
-        assert snapshot.verify_snapshot(result.snapshot_id).verified is True
+        assert backup.verify_snapshot(result.snapshot_id).verified is True
         with pytest.raises(ClientError):
-            source_client.put_object(Bucket=source_bucket, Key=f"{source_prefix}/forbidden", Body=b"x")
+            source_client.put_object(Bucket=source_bucket, Key=f"{source_key}.forbidden", Body=b"x")
         with pytest.raises(ClientError):
             target_client.get_object(Bucket=source_bucket, Key=source_key)
     finally:
         application_client.delete_object(Bucket=source_bucket, Key=source_key)
-        paginator = target_client.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=target_bucket, Prefix=f"{target_prefix}/"):
-            objects = [{"Key": item["Key"]} for item in page.get("Contents", [])]
-            if objects:
-                target_client.delete_objects(Bucket=target_bucket, Delete={"Objects": objects})
+        if snapshot_id is not None:
+            target_client.delete_object(Bucket=target_bucket, Key=f"snapshots/{snapshot_id}/manifest.json")
+        if backup_key is not None:
+            target_client.delete_object(Bucket=target_bucket, Key=backup_key)

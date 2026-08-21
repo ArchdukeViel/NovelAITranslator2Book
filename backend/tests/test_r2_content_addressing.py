@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from io import BytesIO
+from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -84,3 +87,56 @@ def test_delete_prefix_removes_all_pages(r2: R2Storage) -> None:
         r2.save(f"novels/n1/assets/{index}.jpg", b"x")
     assert r2.delete_prefix("novels/n1/assets") == 1105
     assert r2.list_keys("novels/n1/assets", recursive=True) == []
+
+
+def test_delete_prefix_snapshots_keys_before_mutating_listing(r2: R2Storage) -> None:
+    for index in range(1105):
+        r2.save(f"novels/n1/assets/{index}.jpg", b"x")
+    all_keys = [f"novels/n1/assets/{index}.jpg" for index in range(1105)]
+    state = {"delete_started": False}
+    original_delete_objects = r2._client.delete_objects
+
+    class MutatingPaginator:
+        def paginate(self, **_: Any) -> Iterator[dict[str, Any]]:
+            yield {"Contents": [{"Key": key} for key in all_keys[:1000]]}
+            remaining = [] if state["delete_started"] else all_keys[1000:]
+            yield {"Contents": [{"Key": key} for key in remaining]}
+
+    def delete_objects(*args: Any, **kwargs: Any) -> Any:
+        state["delete_started"] = True
+        return original_delete_objects(*args, **kwargs)
+
+    with (
+        patch.object(r2._client, "get_paginator", return_value=MutatingPaginator()),
+        patch.object(r2._client, "delete_objects", side_effect=delete_objects),
+    ):
+        assert r2.delete_prefix("novels/n1/assets") == 1105
+    assert r2.list_keys("novels/n1/assets", recursive=True) == []
+
+
+def test_stream_upload_uses_multipart_transfer_and_provider_checksum(r2: R2Storage) -> None:
+    data = b"streamed-artifact" * 600_000
+    with (
+        patch.object(r2._client, "create_multipart_upload", wraps=r2._client.create_multipart_upload) as multipart,
+        patch.object(r2._client, "upload_fileobj", wraps=r2._client.upload_fileobj) as upload,
+    ):
+        written = r2.save_stream(
+            "novels/n1/assets/large.bin",
+            BytesIO(data),
+            content_length=len(data),
+            content_type="application/octet-stream",
+        )
+
+    assert written == len(data)
+    assert multipart.called
+    assert upload.call_args is not None
+    assert upload.call_args.kwargs["ExtraArgs"]["ChecksumAlgorithm"] == "SHA256"
+    assert upload.call_args.kwargs["Config"].multipart_threshold == R2Storage._MULTIPART_THRESHOLD_BYTES
+    assert r2.head("novels/n1/assets/large.bin").size_bytes == len(data)
+
+
+def test_stream_upload_cleans_object_when_declared_length_is_wrong(r2: R2Storage) -> None:
+    with pytest.raises(ValueError, match="stream length mismatch"):
+        r2.save_stream("novels/n1/assets/wrong.bin", BytesIO(b"three"), content_length=2)
+
+    assert not r2.exists("novels/n1/assets/wrong.bin")
