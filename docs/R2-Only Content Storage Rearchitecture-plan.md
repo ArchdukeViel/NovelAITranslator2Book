@@ -8,6 +8,95 @@ This plan intentionally removes the filesystem content backend and does **not** 
 
 The migration is a clean architectural cutover.
 
+### Current execution checkpoint — 2026-08-22
+
+This checkpoint records the live state of the cutover. It is deliberately not a
+completion claim. The earlier environment configuration gate has now been
+resolved by migrating the populated legacy `S3_*` application values to the
+current `R2_*` names in the active backend environment files. The checkpoint
+also audited every discovered `.env`/`.env.*` file and synchronized each active
+application pair by key shape without copying secrets. No backup secret was
+invented; backup remains disabled until its separate credentials exist.
+
+Completed at this checkpoint:
+
+- the three existing PostgreSQL novel identities and source URLs were verified;
+- the R2 artifact-reference migration `f1a7c9e2d4b6` and the follow-up security
+  migration `b6c8d0e2f4a6` were applied to the authorized Supabase project and
+  the local Alembic state was stamped to that head;
+- `activity_records`, `contributor_credentials`, and
+  `contributor_usage_ledger` have RLS enabled, only the `novelai_app` runtime
+  policy, denied `anon`/`authenticated` table access, and clean Supabase
+  security-advisor results;
+- both existing R2 buckets were retained and fully paginated inventories were
+  verified empty after reset;
+- the backup bucket's generic 30-day `snapshots/` retention rule was restored
+  after the authorized reset;
+- Novel18 (`n3266mn`, PostgreSQL ID 17) was repopulated through the repository
+  importer: 31 chapters, 63 R2 objects, 191,998 bytes, and an active immutable
+  generation reference; its unpublished state and existing identity were
+  preserved;
+- Kakuyomu (`16817330655991571532`) and NCode (`n2056dn`) were repopulated
+  through the authenticated application R2 path with 88 and 148 chapters;
+- the application bucket now contains 538 paginated objects / 1,323,685 bytes
+  under the three exact `novels/<slug>/` prefixes, and every object has a
+  verified logical SHA-256 metadata value;
+- the populated application `S3_*` values were migrated to `R2_*` in the root,
+  development-deployment, and production-deployment environment files;
+- all active backend environment assignments are now represented by their
+  matching example templates, while real credentials remain only in ignored
+  files; obsolete `S3_KEY_PREFIX`, `NOVEL_LIBRARY_DIR`, and legacy S3 backup
+  assignments were removed;
+- non-secret defaults were synchronized from the matching environment
+  examples, and the local frontend overlay now documents its backend/reader
+  service URLs;
+- the active/template environment key audit is exact for `.env` (129/129),
+  `deploy/.env` (129/129), and `frontend/.env.local` (4/4); the root and
+  deployment templates share one ordered 129-key contract; no local
+  `deploy/.env.production` or root `.env.local` runtime file was fabricated;
+- the filesystem tar/manifest backup manager and the obsolete full-copy
+  snapshot implementation were removed; R2 retention now protects retained
+  manifest references and applies a configurable object grace period;
+- the explicit R2 client now exposes bounded `save_stream()` transfer with
+  provider SHA-256 checksums, automatic multipart behavior for large assets,
+  committed-length verification, and cleanup on a length mismatch;
+- the final repository-wide Markdown audit covered 83 files and 30 resolved
+  local links with no unresolved targets or duplicate level-2 headings; all 51
+  design briefs (33 public and 18 admin) contain exactly one global visual
+  snapshot, and the current-only route scan is clean;
+- the local `novels/`, `storage/novel_library/`, and temporary repopulation
+  staging paths contain no canonical novel artifacts.
+- the live duplicate audit found two stale unpublished PostgreSQL rows (IDs 18
+  and 19) for the NCode and Kakuyomu source URLs; they had no active
+  generation or content/job/user references and were removed. The canonical
+  active rows remain IDs 11, 16, and 17, and the stale tag associations were
+  removed by cascade.
+
+Paused or not yet complete:
+
+- separate backup credentials remain absent because no equivalent source value
+  exists; `R2_BACKUP_ENABLED` remains false and no recovery operation is being
+  claimed;
+- a representative translation now passes for NCode chapter 1: Gemini reached
+  through the rebuilt worker-capable Compose runtime, deterministic QA passed,
+  the translated artifact was read back from R2, and the public chapter route
+  returned 200; 266 of the 267 imported chapters remain untranslated;
+- the public reader audit passes catalog/detail and unpublished/adult isolation,
+  while only the translated NCode chapter has passed the published chapter-read
+  path and the remaining published chapter reads remain pending;
+- bulk translation, backup/restore, translated public chapter behavior beyond
+  the representative NCode chapter, takedown isolation, and production-scale
+  telemetry remain unverified;
+- the R2 prefix-cleanup path now snapshots all paginated keys before deleting
+  batches, preventing provider continuation cursors from skipping objects;
+  the focused R2 suite passes 8 tests. A live synthetic Phase 6 seed was
+  stopped after 193 temporary objects because the workstation-to-R2 path made
+  the full 1,428-chapter fixture impractical; the exact namespace cleanup was
+  rerun and verified empty, so no production-scale performance claim is made;
+- the Supabase performance advisor still reports one informational unindexed
+  foreign key and unused-index notices; this is a follow-up, not a security
+  blocker for the cutover;
+
 ---
 
 # 1. Locked Decisions

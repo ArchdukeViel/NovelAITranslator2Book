@@ -17,6 +17,37 @@ Configuration contract. Exact fields/defaults live in
 - Settings are read through `novelai.config.settings.settings`; no direct
   `os.environ` outside settings module.
 
+## Environment counterpart policy
+
+Every active `.env` assignment must be represented by the matching example
+template, but the real value must not be copied into that template. Secret,
+external, and operator values intentionally differ from examples; examples use
+safe defaults or clearly marked placeholders. The 2026-08-22 audit found seven
+files and synchronized the active/template key sets exactly for all three active
+application pairs. The root and deployment templates also share one ordered
+129-key contract; the frontend pair has four keys. The current counterparts are:
+
+| Active file | Counterpart | Special handling |
+|---|---|---|
+| `.env` | `.env.example` | Local backend/runtime profile; real credentials stay local and redacted |
+| `deploy/.env` | `deploy/.env.example` | Docker Compose development profile; `RUNTIME_HOST_DIR=../storage/runtime` is local-only |
+| `deploy/.env.production` | `deploy/.env.production.example` | Runtime file is not present locally; the production template remains the source for operator provisioning |
+| `frontend/.env.local` | `frontend/.env.example` | Local Next.js overlay; same-origin/public API defaults plus local backend/reader URLs |
+| root `.env.local` | No application counterpart | Runtime file is not present locally; do not create it for backend configuration |
+
+### Value ownership
+
+| Ownership | Variables | Source and rule |
+|---|---|---|
+| Locally generated or derived | `SESSION_SECRET_KEY`, `OWNER_BOOTSTRAP_SECRET`, `PROVIDER_CREDENTIAL_ENCRYPTION_KEY`, `DATABASE_BACKUP_ENCRYPTION_KEY` | Generate with a cryptographically secure local tool such as `secrets.token_hex`; store and rotate through the operator's secret store, never derive from a URL or password |
+| Build/runtime generated | `VERSION`, local `RUNTIME_HOST_DIR`, local Compose `REDIS_URL`, `GOOGLE_OAUTH_REDIRECT_URI` | Git/CI, Compose defaults, or derivation from the confirmed public URL; the operator still reviews the result before deployment |
+| External service values | `DATABASE_URL`, `MIGRATION_DATABASE_URL`, `DATABASE_RESTORE_TARGET_URL`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BACKUP_*`, `R2_SOURCE_*`, `PROVIDER_GEMINI_API_KEY`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `SMTP_*` | Issued by Supabase/PostgreSQL, Cloudflare R2, Google AI/OAuth, or the selected SMTP provider; never fabricate or reuse across scopes |
+| Operator decisions | `ENV`, `DEPLOY_MODE`, domains/origins/hosts, `R2_BACKUP_ENABLED`, backup/restore/maintenance flags, quotas, schedules, pool sizes, `PROVIDER_DEFAULT`, model, target language, and retention values including `BACKUP_SAFETY_GRACE_DAYS` | Chosen and approved for the target environment; safe defaults may be supplied by the examples, but production activation is an operator decision |
+
+Optional external/operator values may remain absent. In particular, the current
+audit intentionally leaves independent backup credentials, SMTP settings, and
+the production migration URL unset where no approved source value exists.
+
 ## Python Interpreter
 
 The canonical interpreter is the project virtualenv at `.venv\Scripts\python.exe`
@@ -86,12 +117,16 @@ Required R2 settings:
 | `R2_BACKUP_ENDPOINT` / `R2_BACKUP_ACCESS_KEY_ID` / `R2_BACKUP_SECRET_ACCESS_KEY` | Backup-target write credentials. |
 | `R2_SOURCE_ACCESS_KEY_ID` / `R2_SOURCE_SECRET_ACCESS_KEY` | Source-read credentials for backup/inventory jobs only. |
 | `RUNTIME_DIR` | Disposable local cache/checkpoint/log/scratch root. It is not a content library. |
+| `RUNTIME_HOST_DIR` | Compose-only host directory mounted to `RUNTIME_DIR`; use `../storage/runtime` for local Windows Compose and a provisioned writable path such as `/opt/novelai/shared/data/runtime` in production. It must contain only disposable runtime state. |
 
 `R2_*` credentials are never returned by diagnostics. Rotate application,
 source-read, and backup-write tokens independently and verify access scopes
 against an isolated bucket before a production cutover.
 
-`BACKUP_ENABLED` controls object snapshots. `DATABASE_BACKUP_ENABLED` controls
+`BACKUP_ENABLED` controls object snapshots. `BACKUP_RETENTION_COUNT`,
+`BACKUP_MIN_SUCCESSFUL_TO_KEEP`, and `BACKUP_MAX_AGE_DAYS` bound committed
+snapshot retention; `BACKUP_SAFETY_GRACE_DAYS` protects unreferenced shared R2
+objects from premature collection. `DATABASE_BACKUP_ENABLED` controls
 encrypted PostgreSQL dumps and requires backup encryption key, independent DB
 prefix, and PostgreSQL 18 client tools. `DATABASE_RESTORE_VERIFICATION_MAX_AGE_DAYS`
 (default 32) sets max days since last successful restore before probe goes unhealthy.

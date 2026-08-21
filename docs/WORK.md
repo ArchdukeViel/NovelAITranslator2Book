@@ -34,10 +34,22 @@ runtime state. It also includes incremental backup manifests, protected
 garbage collection, and an operator-confirmed reset/repopulation workflow for
 the three existing novel identities.
 
-This implementation item is closed locally, but not by local tests alone.
-Production bucket reset, repopulation,
-public URL verification, production telemetry, and isolated restore evidence
-remain explicit acceptance gates until sanitized live evidence is recorded.
+The implementation item is closed locally, but live acceptance is still
+partial. At the 2026-08-22 checkpoint, the authorized Supabase migration and
+fully paginated reset of both R2 buckets were completed, and all three novels
+were repopulated under their existing identities through the authenticated R2
+path. The populated legacy S3-compatible application settings were migrated to
+the current `R2_*` names and validated for the root and production profiles.
+A representative NCode chapter now passes real Gemini translation,
+deterministic QA, R2 readback, and the public reader route. Bulk translation
+and the remaining published chapter reads, production telemetry, and
+backup/restore remain explicit acceptance gates. A live duplicate audit found
+two older unpublished PostgreSQL rows (IDs 18 and 19) for source URLs already
+represented by canonical active rows (IDs 11, 16, and 17); after reference
+verification those stale rows and their tag associations were removed. The R2
+prefix cleanup now snapshots paginated keys before deletion; its focused suite
+passes 8 tests, and a stopped synthetic Phase 6 seed was fully cleaned without
+leaving R2 objects or database rows. Production-scale telemetry remains open.
 
 ## Novel Detail Stage B Decision (2026-08-19)
 
@@ -62,7 +74,7 @@ exists and is recorded in `HISTORY.md`.
 | 4 | DEBT-079A | Deploy always-on candidate | REL-001 | Migrations one-shot succeeds; immutable images run; production config validated (COMPLETED 2026-08-17) |
 | 5 | DEBT-079B | Hosted auth/security smoke | DEBT-079A | OAuth, cookies, CSRF, CORS, hosts, roles, disabled users, admin/reader boundaries pass (COMPLETED 2026-08-17) |
 | 6 | DEBT-075A | Verify hosted PostgreSQL/R2 workflow | DEBT-079A | Managed-services workflow passes against isolated targets (COMPLETED 2026-08-17) |
-| 7 | DEBT-075B | Current-head recovery drill | DEBT-075A | DB dump and object snapshot restored into isolated targets; schema, checksums, counts, content, catalog rebuild pass (COMPLETED 2026-08-17) |
+| 7 | DEBT-075B | Current-head recovery drill | DEBT-075A | User-deferred for the current R2 cutover; do not claim DB/object restore evidence until separately authorized and recorded |
 | 8 | DEBT-118 | Activate and verify SMTP | DEBT-079A | Domain/SPF/DKIM/DMARC, auth mail, bounce/error handling, redaction, limits, `noop` rollback proven |
 | 9 | DEBT-075C | Real operator alert | DEBT-118 | Stale/failure alert delivered; threshold, cooldown, redaction, escalation proven |
 | 10 | DEBT-079C | External monitoring | DEBT-079A, OWN-001 | Scheduled runs, dashboard, operator delivery, escalation ownership proven |
@@ -168,7 +180,7 @@ evidence; nothing below is completion evidence by itself.
 
 Existing tooling: `.github/workflows/managed-services-verification.yml`,
 `backend/tests/integration/test_managed_postgres.py`,
-`backend/tests/integration/test_r2_snapshot_integration.py`.
+`backend/tests/integration/test_r2_backup_integration.py`.
 
 1. Configure isolated test DB, R2 source bucket/prefix, R2 backup target, and
    separate least-privilege credentials in provider secret storage.

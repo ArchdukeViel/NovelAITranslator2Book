@@ -113,9 +113,16 @@ The production topology is the target.
   ``/api/admin/health``), structured logging, runtime error monitoring.
 - **Email**: SMTP delivery configured through ``AUTH_EMAIL_DELIVERY_MODE``
   and canonical SMTP settings.
-- **Backup and restore**: independently restorable copies with verified
-  restore procedure; encrypted database dumps and R2 snapshots. Retention
-  uses ``BackupManager.apply_retention()`` and ``InterProcessFileLock``.
+  - **Backup and restore**: independently restorable copies with verified
+    restore procedure; encrypted database dumps and incremental R2 snapshots.
+    ``R2IncrementalBackupTarget.apply_retention()`` keeps manifests and shared
+    objects reference-aware, while ``InterProcessFileLock`` protects scheduled
+    backup and retention runs. The local runtime contains only the lock and
+    other disposable state; it is never a backup archive.
+  - **R2 transfer boundary**: ``R2Storage.put_immutable()`` handles
+    content-addressed JSON writes, while ``R2Storage.save_stream()`` uses
+    bounded multipart transfer, provider SHA-256 checksums, and committed
+    length verification for larger binary artifacts.
 - **Scheduled maintenance**: PostgreSQL-side cron for internal cleanup
   (``private.cleanup_expired_scheduler_states()``); application-side
   scheduler loop checks ``scheduled_cron_log`` for pending backup and

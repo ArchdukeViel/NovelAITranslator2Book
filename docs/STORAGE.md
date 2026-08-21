@@ -50,11 +50,15 @@ gzip (`mtime=0`), `Content-Type: application/json`, and
 stored without content encoding.
 
 Immutable writes are idempotent: an existing key is accepted only when its
-logical checksum and bytes agree; a same-key conflict fails. R2 writes use
-streaming/multipart upload where appropriate, provider checksums, bounded
-timeouts/retries, and explicit missing/permission/conflict classification.
-The service records operation count, bytes, latency, checksum, reuse, and
-error metrics without recording credentials or content.
+logical checksum and bytes agree; a same-key conflict fails. Small immutable
+artifacts use `R2Storage.put_immutable()`. Streamed assets use
+`R2Storage.save_stream()`, which delegates to a bounded boto3 transfer
+configuration (8 MiB multipart threshold/chunks and four workers), requests a
+provider SHA-256 checksum, and HEAD-verifies the committed length. A declared
+length mismatch removes the just-written object before failing. All R2 writes
+use bounded timeouts/retries and explicit missing/permission/conflict
+classification. The service records operation count, bytes, latency,
+checksum, reuse, and error metrics without recording credentials or content.
 
 ## PostgreSQL activation
 
@@ -99,8 +103,9 @@ Object backups are incremental: immutable objects are copied once under
 `objects/novels/...`, and later snapshot manifests reference the existing
 backup object. Database dumps are encrypted independently. Application
 source-read and backup-write credentials are separate from each other and
-from application credentials. Initial retention is configurable (7 daily, 4
-weekly, 3 monthly), is reference-aware, and observes a grace period.
+from application credentials. Retention is bounded by configured manifest
+count/age and uses `BACKUP_SAFETY_GRACE_DAYS` before collecting an unreferenced
+shared object.
 
 ## Garbage collection and deletion
 

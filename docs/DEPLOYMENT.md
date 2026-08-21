@@ -22,9 +22,17 @@ migrations inside long-running backend containers.
 Use `MIGRATION_DATABASE_URL` for a dedicated schema-owner/migrator role and
 `DATABASE_URL` for the least-privilege long-running application role.
 Migration `c7d9e1f3a5b2` maintains `novelai_app`, a stable NOLOGIN privilege
-role with explicit application DML and RLS policies. Provision the separate
-`novelai_runtime` LOGIN member with `backend/sql/provision_novelai_runtime.sql`;
-rotate that member password without changing schema ownership or grants.
+role with explicit application DML and RLS policies. Migration
+`b6c8d0e2f4a6` extends that contract to the later `activity_records` and
+contributor tables while revoking Supabase Data API roles. Provision the
+separate `novelai_runtime` LOGIN member with
+`backend/sql/provision_novelai_runtime.sql`; rotate that member password
+without changing schema ownership or grants.
+
+Compose mounts only disposable runtime state at `/app/data/runtime`. For local
+Windows development, set `RUNTIME_HOST_DIR=../storage/runtime` in `deploy/.env`;
+production must use a separately provisioned writable host directory such as
+`/opt/novelai/shared/data/runtime`. The mount is never a novel-content source.
 
 ## Routing
 

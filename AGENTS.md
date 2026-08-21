@@ -198,7 +198,10 @@ Full architecture and operator detail belongs in canonical docs. Preserve these 
 
 - `novelai.storage.file_lock.InterProcessFileLock` is canonical cross-platform process lock. It uses atomic `O_CREAT | O_EXCL`, bounded retries, Windows PID liveness checks, and stale-lock reclamation. Use it for conflicting writes or cleanup.
 - `SchedulerRuntimeState` plus `SchedulerRuntimeStateService` is durable cross-restart scheduler state. `scheduler_states.json` remains an in-process per-job model cache; transitions write both. Never rely on memory alone.
-- `BackupManager.apply_retention()` preserves newest successful backup and `BACKUP_MIN_SUCCESSFUL_TO_KEEP`, under `InterProcessFileLock`.
+- `R2IncrementalBackupTarget.apply_retention()` preserves newest successful
+  manifests and `BACKUP_MIN_SUCCESSFUL_TO_KEEP`, under
+  `InterProcessFileLock`; shared objects also honor
+  `BACKUP_SAFETY_GRACE_DAYS`.
 - `MaintenanceService` runs allowlisted cleanup with dry-run and path-safety checks; reject blank, root, project-root, and symlink-escape paths.
 - `SchedulerService` uses a lightweight asyncio loop and `scheduled_cron_log`; do not reintroduce APScheduler. Migration-defined cleanup is active only after applied migrations and live scheduler state are verified.
 - Preserve raw scraped chapters and historical generated artifacts. Generated reader downloads remain out of scope; novel imports accept source URLs only.

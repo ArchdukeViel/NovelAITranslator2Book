@@ -159,8 +159,11 @@ POST /api/admin/novels/{novel_id}/cache/invalidate
 - Snapshot success requires a manifest-last commit plus byte-length, checksum,
   and referenced-object verification. Incremental manifests copy only new
   content-addressed objects and reference prior verified snapshots.
-- Retention preserves newest successful backup and
-  `BACKUP_MIN_SUCCESSFUL_TO_KEEP`; lifecycle/locks are safeguards, not copies.
+- Retention is implemented by `R2IncrementalBackupTarget` and preserves the
+  configured newest/minimum successful manifests. It deletes a shared object
+  only when no retained manifest references it and its
+  `BACKUP_SAFETY_GRACE_DAYS` period has elapsed. Lifecycle rules/locks are
+  safeguards, not copies.
 
 Manual trigger:
 

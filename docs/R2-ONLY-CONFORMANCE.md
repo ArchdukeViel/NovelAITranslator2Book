@@ -22,6 +22,64 @@ repopulated, or restored.
 - Backup, migration, and garbage-collection workflows are separately
   authorized, fully paginated, checksum-verified, and auditable.
 
+## Live execution checkpoint — 2026-08-22
+
+This is a live, partial acceptance record. The migration must not be described
+as complete until the paused and outstanding items below are closed.
+
+Completed evidence:
+
+- Supabase project `jzacnvsjvfgsmakybjpl` retains the three canonical novel
+  identities and their source URLs; only verified stale duplicate rows were
+  deleted.
+- Migrations `f1a7c9e2d4b6` and `b6c8d0e2f4a6` are applied in the authorized
+  database and `b6c8d0e2f4a6` is the current local Alembic head.
+- `dokushodo` and `dokushodo-backup` were emptied with fully paginated live
+  inventories while retaining both bucket resources. The backup bucket has
+  one restored generic 30-day `snapshots/` retention rule.
+- all three novels are live under their preserved `novels/<slug>/` prefixes:
+  NCode has 148 chapters / 298 objects, Kakuyomu has 88 chapters / 177
+  objects, and Novel18 has 31 chapters / 63 objects. All three retain their
+  PostgreSQL identities and source URLs; Novel18 remains unpublished.
+- The application bucket has 538 objects / 1,323,685 bytes, was fully
+  paginated, and every object reports verified `logical-sha256` metadata.
+- The local canonical content paths and temporary repopulation staging paths
+  are absent. `storage/runtime/` is disposable runtime state, not a canonical
+  content store, and remains an untracked working-tree item.
+- the duplicate audit found stale unpublished rows 18 and 19 for already
+  canonical NCode and Kakuyomu URLs; after reference verification they were
+  removed, their stale tag associations cascaded, and canonical rows 11, 16,
+  and 17 remained intact.
+
+Environment checkpoint resolution:
+
+- the populated application values formerly named `S3_ENDPOINT`,
+  `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`, `S3_REGION`, and
+  `S3_STORAGE_LIMIT_GB` were migrated in memory to their current `R2_*` names
+  in the root, development-deployment, and production-deployment environment
+  files;
+- the obsolete `S3_KEY_PREFIX`, `NOVEL_LIBRARY_DIR`, and legacy S3 backup
+  assignments were removed; every remaining active assignment is represented
+  by its matching example without copying real credentials; external
+  credentials that lack an approved source remain unset;
+- seven `.env`/`.env.*` files were audited. Active/template key sets are exact:
+  root `.env` 129/129, `deploy/.env` 129/129, and `frontend/.env.local` 4/4;
+  the root and deployment templates share one ordered 129-key contract. No
+  root `.env.local` or `deploy/.env.production` runtime file was fabricated;
+- Pydantic validation confirms the root and production profiles resolve the
+  application bucket as `dokushodo` with region `auto` and populated
+  application credentials. Separate backup credentials remain absent by
+  design, with backup disabled;
+- the gate is resolved and all three source imports are complete through the
+  normal application R2 path.
+
+Remaining acceptance work includes bulk translation and the remaining published
+chapter reads, backup/restore, and production telemetry. A representative NCode
+chapter now passes the real Gemini,
+deterministic-QA, R2 readback, and public reader path. The live reader audit
+also confirms two published catalog entries, published detail routes, Novel18
+404 isolation, and an honest empty weekly ranking response.
+
 ## Markdown inventory and impact classification
 
 The final inventory is regenerated from the repository and excludes generated
@@ -46,22 +104,22 @@ redirect is intentionally not represented by a brief.
 
 | Requirement | Implementation evidence | Test/evidence state |
 |---|---|---|
-| Explicit R2 client and exact key namespace | `backend/src/novelai/storage/backends/r2.py`, `backend/src/novelai/storage/content_addressing.py` | PASS: focused R2 backend and addressing tests |
+| Explicit R2 client and exact key namespace | `backend/src/novelai/storage/backends/r2.py`, `backend/src/novelai/storage/content_addressing.py` | PASS: focused R2 backend/addressing tests, including streamed multipart transfer and provider checksum request |
 | Deterministic content addressing and gzip metadata | `backend/src/novelai/storage/content_addressing.py`, `backend/src/novelai/storage/artifacts.py` | PASS: repeated serialization and round-trip tests |
 | PostgreSQL exact artifact references and activation | R2 artifact-reference migration, `r2_catalog.py`, `r2_activation_service.py` | PASS: activation, checksum, and stale-writer tests |
 | No local canonical production content backend | R2 factory, settings, Compose, runtime container | PASS: production and test content paths use the R2 boundary; tests use an in-memory R2 double and no filesystem content fixture remains |
-| Incremental backup manifests | `backend/src/novelai/storage/r2_backup.py`, backup service/container integration | PASS: incremental-copy and checksum tests |
-| Reset, migration, and repopulation workflow | `backend/src/novelai/storage/r2_cutover.py`, `novelai.runtime.cli` | PASS for dry-run and confirmation gates; production execution remains BLOCKED pending operator target approval |
-| Pagination, checksum, and failure handling | R2 client, backup, cutover, and activation services | PASS: focused unit/integration coverage; real permission/scale behavior remains unmeasured locally |
+| Incremental backup manifests and reference-aware retention | `backend/src/novelai/storage/r2_backup.py`, backup service/container integration | PASS: incremental-copy, checksum, retention, shared-object reference, and grace-period tests |
+| Reset, migration, and repopulation workflow | `backend/src/novelai/storage/r2_cutover.py`, `novelai.runtime.cli` | PARTIAL: live reset, migration, and all-three-novel repopulation are complete; translation and recovery acceptance remain open |
+| Pagination, checksum, and failure handling | R2 client, backup, cutover, and activation services | PASS: paginated listings/deletion, streamed multipart upload, checksum, length-mismatch cleanup, and focused failure coverage; real permission/scale behavior remains unmeasured locally |
 | Reference-aware GC protects active/referenced/grace objects | `r2_cutover.py`, runtime GC command | PASS: mark/sweep and nested-asset reference tests |
 | Public reader exact reads | R2 storage dispatch, public catalog/chapter services | PASS: exact-key contract coverage; hosted URL verification remains BLOCKED |
-| Imports write immutable R2 artifacts and activate PostgreSQL references | importer/orchestration R2 path, `test_r2_catalog.py`, and E2E pipeline | PASS: immutable document-import activation and full backend suite |
+| Imports write immutable R2 artifacts and activate PostgreSQL references | importer/orchestration R2 path, `test_r2_catalog.py`, and E2E pipeline | PASS live import evidence: 148/88/31 chapters activated under preserved identities; 538 objects have verified logical metadata |
 | Documentation and route/link audit | repository-wide Markdown inventory, route scan, and link audit | PASS: 83 Markdown files, 30 local links, zero unresolved targets, current-only route scan |
 
 ## Local verification evidence
 
-- `tools\pytest.ps1 backend/tests -q`: `2,895 passed, 16 skipped in 817.00s`
-  (`13:37`); exit code `0`.
+- `tools\pytest.ps1 backend/tests -q`: `2,879 passed, 16 skipped in 878.02s`
+  (14:50 wall-clock); exit code `0`.
 - `tools\ruff.ps1 check .`: passed; exit code `0`.
 - `tools\pyright.ps1`: `0 errors, 0 warnings, 0 informations`; exit code `0`.
 - Frontend lint, typecheck, single-worker full Vitest, and production build:
@@ -73,21 +131,35 @@ redirect is intentionally not represented by a brief.
   `/account/contributions`, `/ranking`, `/novels/[slug]`, and
   `/novels/[slug]/chapter/[chapterId]`.
 - `graphify update . --no-cluster`: exit code `0`, refreshed graph contains
-  `13,794` nodes and `38,338` edges.
+  `13,718` nodes and `38,102` edges.
 - Route-ownership focused tests: `60 passed` (microservice split, production
   configuration, and contributor-router coverage).
-- A database-targeted `alembic upgrade head` was not run in this pass because
-  no safe migration target was explicitly authorized. An offline SQL attempt
-  with a placeholder PostgreSQL URL reached an existing online-only role-query
-  migration and stopped without mutating a database; the full backend suite
-  and migration contract tests still pass.
-- The local audit found an empty disposable root `novels/` directory and an
-  empty `storage/runtime/` directory. The pre-existing ignored
-  `storage/novel_library/` directory contains only local operational state and
-  logs, not canonical novel objects. These local runtime artifacts were not
-  deleted during this audit because they are outside the authorized change
-  scope; the clean-worktree filesystem-leak gate remains operator-cleanup
-  pending.
+- The authorized live database has migration `b6c8d0e2f4a6` applied and the
+  local Alembic state is stamped to that head. RLS is enabled on the three
+  post-runtime tables; `anon`/`authenticated` lack table privileges and
+  `novelai_app` retains runtime access. The Supabase security advisor is clean;
+  performance output remains informational.
+- The live R2 reset and repopulation were verified with full pagination:
+  `dokushodo` contains 538 objects / 1,323,685 bytes under the three exact
+  `novels/<slug>/` prefixes; `dokushodo-backup` contains zero objects. Both
+  bucket resources remain.
+- The R2 prefix-cleanup path now snapshots all paginated keys before deletion;
+  `tools\pytest.ps1 backend/tests/test_r2_content_addressing.py -q` passes
+  8 tests, including mutation-during-pagination coverage. A synthetic Phase 6
+  seed was stopped after 193 temporary objects due workstation-to-R2 latency;
+  the exact namespace cleanup was rerun and verified at zero objects and zero
+  database rows. This is not production-scale telemetry evidence.
+- The local audit confirms no canonical `novels/`, `storage/novel_library/`, or
+  temporary repopulation staging path. The untracked `storage/runtime/`
+  directory is disposable runtime state and is not a content source.
+- The active application environment profiles now resolve the migrated `R2_*`
+  application settings; backup credentials remain intentionally unset while
+  `R2_BACKUP_ENABLED=false`.
+- Reader acceptance against the live database/R2 path returned two published
+  catalog entries, 200 for both published detail aliases, 404 for unpublished
+  Novel18 detail/chapter routes, 200 chapter listings for the published novels,
+  200 for translated NCode chapter 1, and 200 with zero items for the weekly
+  ranking endpoint. Untranslated chapter detail remains unavailable by design.
 
 ## Evidence boundary
 
