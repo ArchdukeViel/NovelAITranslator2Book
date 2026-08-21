@@ -273,7 +273,7 @@ export default function NovelDetailPage() {
       return (
         <PageErrorState
           title="Novel not found"
-          description="The novel you're looking for doesn't exist or has been removed."
+          description="The novel you&apos;re looking for doesn&apos;t exist or has been removed."
         />
       );
     }
