@@ -73,7 +73,7 @@ redirect is intentionally not represented by a brief.
   `/account/contributions`, `/ranking`, `/novels/[slug]`, and
   `/novels/[slug]/chapter/[chapterId]`.
 - `graphify update . --no-cluster`: exit code `0`, refreshed graph contains
-  `13,843` nodes and `38,552` edges.
+  `13,794` nodes and `38,338` edges.
 - Route-ownership focused tests: `60 passed` (microservice split, production
   configuration, and contributor-router coverage).
 - A database-targeted `alembic upgrade head` was not run in this pass because
@@ -81,6 +81,13 @@ redirect is intentionally not represented by a brief.
   with a placeholder PostgreSQL URL reached an existing online-only role-query
   migration and stopped without mutating a database; the full backend suite
   and migration contract tests still pass.
+- The local audit found an empty disposable root `novels/` directory and an
+  empty `storage/runtime/` directory. The pre-existing ignored
+  `storage/novel_library/` directory contains only local operational state and
+  logs, not canonical novel objects. These local runtime artifacts were not
+  deleted during this audit because they are outside the authorized change
+  scope; the clean-worktree filesystem-leak gate remains operator-cleanup
+  pending.
 
 ## Evidence boundary
 
