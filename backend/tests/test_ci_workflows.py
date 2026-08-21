@@ -74,8 +74,8 @@ def test_s3_integration_has_execution_policy() -> None:
     assert "test_s3_integration.py" in source
     assert "schedule" in source
     assert "workflow_dispatch" in source
-    assert "TEST_S3_ENDPOINT" in source
-    assert "TEST_S3_BUCKET" in source
+    assert "TEST_R2_ENDPOINT" in source
+    assert "TEST_R2_BUCKET" in source
     assert "minio" in source
 
 

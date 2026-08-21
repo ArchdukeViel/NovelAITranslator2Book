@@ -44,8 +44,7 @@ class StubSnapshotTarget:
 
 
 @pytest.mark.asyncio
-async def test_s3_backup_uses_committed_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "STORAGE_BACKEND", "s3")
+async def test_r2_backup_uses_committed_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     target = StubSnapshotTarget()
     service = BackupService(BackupManager(tmp_path), snapshot_target=target)
 
@@ -58,8 +57,7 @@ async def test_s3_backup_uses_committed_snapshot(tmp_path: Path, monkeypatch: py
 
 
 @pytest.mark.asyncio
-async def test_s3_backup_fails_when_snapshot_copy_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "STORAGE_BACKEND", "s3")
+async def test_r2_backup_fails_when_snapshot_copy_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     service = BackupService(
         BackupManager(tmp_path),
         snapshot_target=StubSnapshotTarget(failure=RuntimeError("provider unavailable")),
@@ -72,7 +70,6 @@ async def test_s3_backup_fails_when_snapshot_copy_fails(tmp_path: Path, monkeypa
 
 
 def test_offsite_backup_health_uses_committed_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "STORAGE_BACKEND", "s3")
     monkeypatch.setattr(settings, "BACKUP_ENABLED", True)
     target = StubSnapshotTarget()
     service = BackupService(BackupManager(tmp_path), snapshot_target=target)
@@ -87,7 +84,6 @@ def test_offsite_backup_health_uses_committed_manifest(tmp_path: Path, monkeypat
 def test_offsite_backup_health_enforces_freshness(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hours: int, status: str
 ) -> None:
-    monkeypatch.setattr(settings, "STORAGE_BACKEND", "s3")
     monkeypatch.setattr(settings, "BACKUP_ENABLED", True)
     target = StubSnapshotTarget(created_at=_recent_iso(hours=hours))
 

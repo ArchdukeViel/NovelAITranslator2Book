@@ -62,7 +62,7 @@ def test_storage_chapter_round_trip(tmp_path: Path) -> None:
         source_key="kakuyomu",
         source_url="https://kakuyomu.jp/works/w/episodes/e",
     )
-    assert path.name == "kakuyomu%3A16818093075570329555.json"
+    assert path.as_posix() == f"r2:chapter/{novel_id}/{KAKUYOMU_ID}"
     chapter = storage.load_chapter(novel_id, KAKUYOMU_ID)
     assert chapter is not None
     assert chapter["id"] == KAKUYOMU_ID
@@ -73,7 +73,7 @@ def test_storage_chapter_round_trip(tmp_path: Path) -> None:
 def test_storage_numeric_zero_pad_preserved(tmp_path: Path) -> None:
     storage = StorageService(tmp_path)
     path = storage.save_chapter("n", "7", "text")
-    assert path.name == "0007.json"
+    assert path.as_posix() == "r2:chapter/n/7"
     assert storage.list_stored_chapters("n") == ["7"]
     chapter = storage.load_chapter("n", "7")
     assert chapter is not None
@@ -119,12 +119,11 @@ def test_chapter_images_with_kakuyomu_id(tmp_path: Path) -> None:
         content=b"\x89PNG",
         content_type="image/png",
     )
-    assert "kakuyomu%3A16818093075570329555" in asset["local_path"]
-    resolved = storage.resolve_asset_path("n", asset["local_path"])
-    assert resolved is not None
-    assert resolved.exists()
+    assert asset["storage_key"].startswith("novels/n/assets/")
+    assert storage.r2_backend.head(asset["storage_key"]).logical_sha256 == asset["sha256"]
+    assert "local_path" not in asset
 
     storage.save_chapter("n", KAKUYOMU_ID, "text with image", images=[asset])
     chapter = storage.load_chapter("n", KAKUYOMU_ID)
     assert chapter is not None
-    assert chapter["images"][0]["local_path"] == asset["local_path"]
+    assert chapter["images"][0]["storage_key"] == asset["storage_key"]

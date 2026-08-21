@@ -34,7 +34,7 @@ def app(monkeypatch: pytest.MonkeyPatch, tmp_path):
     db_session.commit()
 
     monkeypatch.setattr(settings, "PROVIDER_CREDENTIAL_ENCRYPTION_KEY", SecretStr("router-test-encryption"))
-    monkeypatch.setattr(settings, "NOVEL_LIBRARY_DIR", tmp_path)
+    monkeypatch.setattr(settings, "RUNTIME_DIR", tmp_path)
     monkeypatch.setattr(settings, "CONTRIBUTOR_CREDENTIALS_ENABLED", True)
 
     current = {"user": SessionUser(user_id=None, email=None, role="guest")}

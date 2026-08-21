@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from novelai.storage.backends.s3_snapshot import S3SnapshotTarget
+from novelai.storage.backends.r2_snapshot import R2SnapshotTarget
 
 pytestmark = pytest.mark.slow
 
@@ -45,7 +45,7 @@ def test_real_r2_snapshot_credential_split() -> None:
     target_client = client("TEST_R2_BACKUP_ACCESS_KEY", "TEST_R2_BACKUP_SECRET_KEY")
     source_key = f"{source_prefix}/novels/integration/metadata.json"
     application_client.put_object(Bucket=source_bucket, Key=source_key, Body=b'{"integration":true}')
-    snapshot = S3SnapshotTarget(
+    snapshot = R2SnapshotTarget(
         source_bucket=source_bucket,
         source_prefix=source_prefix,
         target_bucket=target_bucket,

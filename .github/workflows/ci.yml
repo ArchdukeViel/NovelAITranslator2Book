@@ -125,12 +125,9 @@ jobs:
           --ignore=backend/tests/test_checkpoint_resume.py
           --ignore=backend/tests/test_document_import_orchestration.py
           --ignore=backend/tests/test_glossary_prompt_injection.py
-          --ignore=backend/tests/test_glossary_sync_bridge.py
           --ignore=backend/tests/test_integration.py
-          --ignore=backend/tests/test_malformed_artifact_recovery.py
           --ignore=backend/tests/test_maintenance_status_service.py
           --ignore=backend/tests/test_novel_lifecycle_integration.py
-          --ignore=backend/tests/test_novel_orchestration_contracts.py
           --ignore=backend/tests/test_novel_orchestration_service.py
           --ignore=backend/tests/test_notification_event_bus.py
           --ignore=backend/tests/test_notification_persistence_service.py
@@ -228,7 +225,6 @@ jobs:
           - shard: orchestration-and-pipeline
             test_files: >-
               backend/tests/test_novel_orchestration_service.py
-              backend/tests/test_novel_orchestration_contracts.py
               backend/tests/test_pipeline_stages.py
           - shard: web-api-and-auth
             test_files: >-
@@ -240,13 +236,11 @@ jobs:
           - shard: components-and-lifecycle
             test_files: >-
               backend/tests/test_glossary_prompt_injection.py
-              backend/tests/test_glossary_sync_bridge.py
               backend/tests/test_provider_registry.py
               backend/tests/test_translation_qa.py
               backend/tests/test_notification_event_bus.py
               backend/tests/test_notification_persistence_service.py
               backend/tests/test_maintenance_status_service.py
-              backend/tests/test_malformed_artifact_recovery.py
               backend/tests/test_project_layout.py
               backend/tests/test_novel_lifecycle_integration.py
               backend/tests/test_checkpoint_resume.py

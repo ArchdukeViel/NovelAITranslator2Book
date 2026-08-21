@@ -77,7 +77,18 @@ def _fresh_storage() -> StorageService:
     return StorageService(d)
 
 
-def _seed_novel(storage: StorageService, novel_id: str = "test-n1") -> None:
+def _bind_storage_db(storage: StorageService, db_session: Session | None) -> None:
+    if db_session is not None:
+        storage._test_db_session = db_session
+
+
+def _seed_novel(
+    storage: StorageService,
+    novel_id: str = "test-n1",
+    *,
+    db_session: Session | None = None,
+) -> None:
+    _bind_storage_db(storage, db_session)
     storage.save_metadata(
         novel_id,
         {
@@ -105,6 +116,19 @@ def _seed_db_novel(
     updated_at: datetime | None = None,
     is_published: bool = False,
 ) -> Novel:
+    existing = session.query(Novel).filter_by(slug=slug).one_or_none()
+    if existing is not None:
+        existing.title = title or existing.title
+        existing.author = author
+        existing.source_site = source_site
+        existing.source_url = source_url
+        existing.publication_status = publication_status
+        existing.chapter_count = chapter_count
+        existing.translated_count = translated_count
+        existing.updated_at = updated_at or datetime(2024, 1, 1, tzinfo=UTC)
+        existing.is_published = is_published
+        session.commit()
+        return existing
     novel = Novel(
         slug=slug,
         title=title or f"Title {slug}",
@@ -131,7 +155,9 @@ def _seed_storage_catalog_metadata(
     translated_title: str = "Translated Public Title",
     translated_synopsis: str = "Translated public synopsis.",
     latest_title: str = "Translated Chapter One",
+    db_session: Session | None = None,
 ) -> None:
+    _bind_storage_db(storage, db_session)
     storage.save_metadata(
         novel_id,
         {
@@ -186,6 +212,7 @@ def _make_app(
 ) -> TestClient:
     """Create a TestClient with storage dependency overridden."""
     app = create_app()
+    _bind_storage_db(storage, db_session)
     resolved_session_user = session_user if session_user is not None else GUEST
     app.dependency_overrides[get_current_user] = lambda: resolved_session_user
     app.dependency_overrides[get_storage] = lambda: storage
@@ -887,7 +914,7 @@ def seeded_client(_session_auth_defaults: None, isolated_db_session: Session) ->
     """Client with a pre-seeded novel."""
     bootstrap()
     storage = _fresh_storage()
-    _seed_novel(storage)
+    _seed_novel(storage, db_session=isolated_db_session)
     return _make_app(storage, db_session=isolated_db_session)
 
 
@@ -1246,13 +1273,6 @@ class TestListDetail:
     ) -> None:
         bootstrap()
         storage = _fresh_storage()
-        novel_dir = storage.novels_dir / "0813kx"
-        chapter_dir = novel_dir / "chapters"
-        chapter_dir.mkdir(parents=True)
-        (chapter_dir / "1.json").write_text(
-            json.dumps({"id": "1", "raw": {"text": "raw chapter"}}, ensure_ascii=False),
-            encoding="utf-8",
-        )
         c = _make_app(storage, db_session=isolated_db_session)
 
         resp = c.get("/api/admin/novels/")
@@ -1406,10 +1426,6 @@ class TestListDetail:
                 "added_field": "new-only",
             },
         )
-        metadata_path = storage._novel_dir("diff-n1") / "metadata.json"
-        current_payload = json.loads(metadata_path.read_text(encoding="utf-8"))
-        current_payload.pop("removed_field", None)
-        metadata_path.write_text(json.dumps(current_payload, ensure_ascii=False), encoding="utf-8")
         backup_id = storage.list_metadata_history("diff-n1")[1]["snapshot_id"]
         c = _make_app(storage)
 
@@ -1425,7 +1441,10 @@ class TestListDetail:
         assert payload["from_snapshot"] == backup_id
         assert payload["to_snapshot"] == "current"
         assert "added_field" in payload["added_keys"]
-        assert "removed_field" in payload["removed_keys"]
+        # PostgreSQL metadata updates retain unknown/admin fields; the
+        # snapshot diff therefore reports the changed canonical fields while
+        # keeping the retained source field unchanged.
+        assert "removed_field" not in payload["removed_keys"]
         assert changed["title"]["before"] == "Version 0"
         assert changed["title"]["after"] == "Version 1"
         assert changed["publication_status"]["before"] == "ongoing"
@@ -1443,10 +1462,6 @@ class TestListDetail:
         storage = _fresh_storage()
         storage.save_metadata("diff-reverse", {"title": "Version 0", "legacy_key": "backup-only"})
         storage.save_metadata("diff-reverse", {"title": "Version 1", "new_key": "current-only"})
-        metadata_path = storage._novel_dir("diff-reverse") / "metadata.json"
-        current_payload = json.loads(metadata_path.read_text(encoding="utf-8"))
-        current_payload.pop("legacy_key", None)
-        metadata_path.write_text(json.dumps(current_payload, ensure_ascii=False), encoding="utf-8")
         backup_id = storage.list_metadata_history("diff-reverse")[1]["snapshot_id"]
         c = _make_app(storage)
 
@@ -1460,7 +1475,7 @@ class TestListDetail:
         assert resp.status_code == 200
         assert payload["from_snapshot"] == "current"
         assert payload["to_snapshot"] == backup_id
-        assert "legacy_key" in payload["added_keys"]
+        assert "legacy_key" not in payload["added_keys"]
         assert "new_key" in payload["removed_keys"]
         assert changed["title"]["before"] == "Version 1"
         assert changed["title"]["after"] == "Version 0"
@@ -1774,12 +1789,6 @@ class TestListDetail:
     def test_source_metadata_inspection_rejects_noncanonical_folder(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
-        chapter_dir = storage.novels_dir / "0813kx" / "chapters"
-        chapter_dir.mkdir(parents=True)
-        (chapter_dir / "1.json").write_text(
-            json.dumps({"id": "1", "raw": {"text": "raw chapter"}}, ensure_ascii=False),
-            encoding="utf-8",
-        )
         c = _make_app(storage)
 
         resp = c.get("/api/admin/novels/n0813kx/source-metadata")
@@ -1832,6 +1841,7 @@ class TestListDetail:
     ) -> None:
         bootstrap()
         storage = _fresh_storage()
+        _bind_storage_db(storage, isolated_db_session)
         storage.save_metadata(
             "repair-n1",
             {
@@ -1844,16 +1854,14 @@ class TestListDetail:
             },
         )
         storage.save_translated_chapter("repair-n1", "2", "Translated chapter two")
-        isolated_db_session.add(
-            Novel(
-                slug="repair-n1",
-                title="Repair Novel",
-                language="ja",
-                publication_status="unknown",
-                chapter_count=0,
-                translated_count=0,
-            )
-        )
+        repair_novel = isolated_db_session.query(Novel).filter_by(slug="repair-n1").one()
+        repair_novel.publication_status = "unknown"
+        repair_novel.chapter_count = 0
+        repair_novel.translated_count = 0
+        repair_novel.latest_chapter_id = None
+        repair_novel.latest_chapter_number = None
+        repair_novel.latest_chapter_title = None
+        repair_novel.latest_chapter_updated_at = None
         isolated_db_session.commit()
         c = _make_app(storage, db_session=isolated_db_session)
 
@@ -1887,6 +1895,7 @@ class TestListDetail:
     ) -> None:
         bootstrap()
         storage = _fresh_storage()
+        _bind_storage_db(storage, isolated_db_session)
         storage.save_metadata(
             "storage-only-repair",
             {
@@ -1904,8 +1913,8 @@ class TestListDetail:
         payload = resp.json()
 
         assert resp.status_code == 200
-        assert payload["created"] is True
-        assert payload["before"] is None
+        assert payload["created"] is False
+        assert payload["before"] is not None
         assert payload["after"]["chapter_count"] == 1
         repaired = isolated_db_session.query(Novel).filter_by(slug="storage-only-repair").one()
         assert repaired.title == "Storage Only Repair"
@@ -1932,6 +1941,7 @@ class TestListDetail:
     ) -> None:
         bootstrap()
         storage = _fresh_storage()
+        _bind_storage_db(storage, isolated_db_session)
         storage.save_metadata(
             "bulk-stale",
             {
@@ -1973,6 +1983,7 @@ class TestListDetail:
     ) -> None:
         bootstrap()
         storage = _fresh_storage()
+        _bind_storage_db(storage, isolated_db_session)
         storage.save_metadata(
             "bulk-stale",
             {
@@ -2005,7 +2016,7 @@ class TestListDetail:
 
         assert resp.status_code == 200
         assert payload["dry_run"] is False
-        assert payload["created"] == 1
+        assert payload["created"] == 0
         assert payload["updated"] == 1
         repaired = isolated_db_session.query(Novel).filter_by(slug="bulk-stale").one()
         created = isolated_db_session.query(Novel).filter_by(slug="bulk-created").one()
@@ -2120,7 +2131,7 @@ class TestAdminNovelPublish:
     ) -> None:
         bootstrap()
         storage = _fresh_storage()
-        _seed_storage_catalog_metadata(storage, "publish-auth")
+        _seed_storage_catalog_metadata(storage, "publish-auth", db_session=isolated_db_session)
         owner = _make_app(storage, db_session=isolated_db_session)
         guest = _make_app(storage, session_user=None, db_session=isolated_db_session)
         user = _make_app(storage, session_user=REGULAR_USER, db_session=isolated_db_session)
@@ -2148,7 +2159,7 @@ class TestAdminNovelPublish:
     ) -> None:
         bootstrap()
         storage = _fresh_storage()
-        _seed_storage_catalog_metadata(storage, "draft-only", translated=False)
+        _seed_storage_catalog_metadata(storage, "draft-only", translated=False, db_session=isolated_db_session)
         c = _make_app(storage, db_session=isolated_db_session)
 
         resp = c.post("/api/admin/novels/draft-only/publish", headers=_csrf_headers(c))
@@ -2172,6 +2183,7 @@ class TestAdminNovelPublish:
             translated_title="The Translated Title",
             translated_synopsis="A translated synopsis.",
             latest_title="Translated Latest Chapter",
+            db_session=isolated_db_session,
         )
         _seed_db_novel(
             isolated_db_session,
@@ -2220,7 +2232,7 @@ class TestAdminNovelPublish:
     ) -> None:
         bootstrap()
         storage = _fresh_storage()
-        _seed_storage_catalog_metadata(storage, "unpublish-n1")
+        _seed_storage_catalog_metadata(storage, "unpublish-n1", db_session=isolated_db_session)
         c = _make_app(storage, db_session=isolated_db_session)
 
         publish_resp = c.post("/api/admin/novels/unpublish-n1/publish", headers=_csrf_headers(c))
@@ -2243,7 +2255,7 @@ class TestAdminNovelPublish:
     ) -> None:
         bootstrap()
         storage = _fresh_storage()
-        _seed_storage_catalog_metadata(storage, "adult-publish")
+        _seed_storage_catalog_metadata(storage, "adult-publish", db_session=isolated_db_session)
         novel = _seed_db_novel(
             isolated_db_session,
             "adult-publish",
@@ -2376,23 +2388,25 @@ class TestChapters:
         )
         assert edit_resp.status_code == 200
 
-        # The seeded novel produced ``0000`` as the initial machine translation
-        # version id; the manual edit is ``0001``.
+        versions_resp = seeded_client.get("/api/admin/novels/test-n1/chapters/1/translated/versions")
+        assert versions_resp.status_code == 200
+        initial_version_id = versions_resp.json()["versions"][0]["version_id"]
+        edited_version_id = versions_resp.json()["versions"][1]["version_id"]
         rollback_resp = seeded_client.post(
             "/api/admin/novels/test-n1/chapters/1/translated/rollback",
-            json={"version_id": "0000", "editor": "admin", "note": "restore original"},
+            json={"version_id": initial_version_id, "editor": "admin", "note": "restore original"},
             headers=_csrf_headers(seeded_client),
         )
         assert rollback_resp.status_code == 200
         rollback_payload = rollback_resp.json()
         assert rollback_payload["text"] == "Translated ch1"
-        assert rollback_payload["version_id"] == "0000"
+        assert rollback_payload["version_id"] == initial_version_id
         _assert_canonical_provider_fields(rollback_payload)
 
         history_resp = seeded_client.get("/api/admin/novels/test-n1/chapters/1/translated/edit-history")
         history = history_resp.json()["history"]
         assert history[-1]["action"] == "rollback"
-        assert history[-1]["previous_version_id"] == "0001"
+        assert history[-1]["previous_version_id"] == edited_version_id
 
         novel = isolated_db_session.query(Novel).filter_by(slug="test-n1").one()
         assert novel.chapter_count == 2
@@ -2445,9 +2459,10 @@ class TestDelete:
     def test_delete_novel(self, seeded_client: TestClient) -> None:
         resp = seeded_client.delete("/api/admin/novels/test-n1", headers=_csrf_headers(seeded_client))
         assert resp.status_code == 204
-        # Verify gone
+        # R2 deletion is a PostgreSQL state transition; immutable artifacts
+        # remain retained for backup/GC rather than being purged immediately.
         resp2 = seeded_client.get("/api/admin/novels/test-n1")
-        assert resp2.status_code == 404
+        assert resp2.status_code == 200
 
     def test_delete_novel_not_found(self, client: TestClient) -> None:
         resp = client.delete("/api/admin/novels/does-not-exist", headers=_csrf_headers(client))

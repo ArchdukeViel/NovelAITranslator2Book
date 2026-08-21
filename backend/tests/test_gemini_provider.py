@@ -37,7 +37,7 @@ class _FakeClient:
 @pytest.fixture(autouse=True)
 def isolate_gemini_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
     """Keep provider accounting and quota state out of the project runtime tree."""
-    monkeypatch.setattr(settings, "NOVEL_LIBRARY_DIR", tmp_path)
+    monkeypatch.setattr(settings, "RUNTIME_DIR", tmp_path)
 
 
 def test_gemini_provider_uses_request_prompt(monkeypatch: pytest.MonkeyPatch) -> None:

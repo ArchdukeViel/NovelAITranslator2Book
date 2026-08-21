@@ -34,27 +34,29 @@ def test_default_settings() -> None:
     assert s.COST_PER_TOKEN_USD > 0
     assert s.SCRAPE_DELAY_SECONDS == 1.0
     assert s.TRANSLATION_TARGET_LANGUAGE == "English"
-    assert s.NOVEL_LIBRARY_DIR.is_absolute() or bool(s.NOVEL_LIBRARY_DIR.anchor)
-    assert s.S3_KEY_PREFIX == "storage/novel_library"
+    assert s.RUNTIME_DIR.is_absolute() or bool(s.RUNTIME_DIR.anchor)
+    assert s.R2_BUCKET == "dokushodo"
+    assert s.R2_REGION == "auto"
+    assert s.R2_BACKUP_BUCKET == "dokushodo-backup"
     assert s.MIGRATION_DATABASE_URL is None
 
 
-def test_novel_library_dir_uses_canonical_setting() -> None:
+def test_runtime_dir_uses_canonical_setting() -> None:
     s = AppSettings(
         _env_file=None,  # type: ignore[call-arg]
-        NOVEL_LIBRARY_DIR=Path("/tmp/test_lib"),
+        RUNTIME_DIR=Path("/tmp/test_runtime"),
     )
-    assert Path("/tmp/test_lib") == s.NOVEL_LIBRARY_DIR
+    assert Path("/tmp/test_runtime") == s.RUNTIME_DIR
     assert not hasattr(s, "DATA_DIR")
 
 
-def test_relative_novel_library_dir_resolves_from_project_root() -> None:
+def test_relative_runtime_dir_resolves_from_project_root() -> None:
     s = AppSettings(
         _env_file=None,  # type: ignore[call-arg]
-        NOVEL_LIBRARY_DIR=Path("storage/novel_library"),
+        RUNTIME_DIR=Path("storage/runtime"),
     )
-    assert s.NOVEL_LIBRARY_DIR.is_absolute()
-    assert s.NOVEL_LIBRARY_DIR.parts[-2:] == ("storage", "novel_library")
+    assert s.RUNTIME_DIR.is_absolute()
+    assert s.RUNTIME_DIR.parts[-2:] == ("storage", "runtime")
 
 
 def test_web_defaults() -> None:

@@ -161,10 +161,9 @@ def test_full_pipeline_create_to_public_read(
     assert resp.status_code == 200
     catalog = resp.json()
     slugs = [n.get("slug") for n in catalog.get("novels", [])]
-    # The public slug follows the projected public title, falling back to the
-    # canonical source novel ID when the title has no ASCII slug. The physical
-    # storage folder remains an internal alias and is not the public identity.
-    expected_slug = "test-happy-e2e"
+    # The public slug follows the projected public title. The physical storage
+    # identity remains an internal alias and is not the public identity.
+    expected_slug = "e2e-test-novel-test-happy-e2e"
     assert expected_slug in slugs, f"Novel {expected_slug} not found in catalog: {slugs}"
 
     # Step 7: Public chapter read — translated text present

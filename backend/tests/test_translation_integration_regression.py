@@ -953,7 +953,7 @@ class TestIsolationDeterminism:
 class TestBackwardCompatibility:
     def test_storage_save_load_works(self, tmp_storage: StorageService) -> None:
         path = tmp_storage.save_translated_chapter("n22", "1", "BC text", provider_key="g", provider_model="m")
-        assert path.exists()
+        assert path.as_posix() == "r2:translation/n22/1"
         loaded = tmp_storage.load_translated_chapter("n22", "1")
         assert loaded is not None
         assert loaded["text"] == "BC text"

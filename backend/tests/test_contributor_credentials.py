@@ -32,7 +32,7 @@ def test_contributor_credential_lifecycle_is_encrypted_masked_and_owner_scoped(
     db_session, monkeypatch, tmp_path
 ) -> None:
     monkeypatch.setattr(settings, "PROVIDER_CREDENTIAL_ENCRYPTION_KEY", SecretStr("test-contributor-encryption"))
-    monkeypatch.setattr(settings, "NOVEL_LIBRARY_DIR", tmp_path)
+    monkeypatch.setattr(settings, "RUNTIME_DIR", tmp_path)
 
     owner = User(email="contributor@example.test", role="user")
     other_user = User(email="other@example.test", role="user")
@@ -116,7 +116,7 @@ def test_contributor_credential_lifecycle_is_encrypted_masked_and_owner_scoped(
 
 def test_contributor_consent_and_provider_key_contracts_are_enforced(db_session, monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(settings, "PROVIDER_CREDENTIAL_ENCRYPTION_KEY", SecretStr("test-contributor-encryption"))
-    monkeypatch.setattr(settings, "NOVEL_LIBRARY_DIR", tmp_path)
+    monkeypatch.setattr(settings, "RUNTIME_DIR", tmp_path)
     user = User(email="contract@example.test", role="user")
     db_session.add(user)
     db_session.commit()

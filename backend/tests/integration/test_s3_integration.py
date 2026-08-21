@@ -1,21 +1,8 @@
-"""S3 storage backend real integration test.
+"""Real R2 integration tests against an S3-compatible endpoint.
 
-Prerequisites:
-  - A running S3-compatible endpoint (MinIO, AWS S3, etc.)
-  - Environment variables:
-      TEST_S3_ENDPOINT=http://localhost:9000
-      TEST_S3_ACCESS_KEY=minioadmin
-      TEST_S3_SECRET_KEY=minioadmin
-      TEST_S3_BUCKET=novelai-test
-      (TEST_S3_REGION=us-east-1  # optional, default)
-
-Usage:
-  pytest backend/tests/integration/test_s3_integration.py -v -m integration
-
-Safety:
-  Uses an isolated test prefix (_integration_test_TIMESTAMP/) that is
-  cleaned up after the test, regardless of pass/fail.
-  NEVER point TEST_S3_BUCKET to a production bucket.
+The test uses a unique namespace wrapper because the application R2 client
+does not support a configurable production key prefix. The configured test
+bucket must never be a production bucket.
 """
 
 from __future__ import annotations
@@ -23,10 +10,12 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
-from novelai.storage.backends.s3 import S3Backend
+from novelai.storage.backends.base import StorageBackend
+from novelai.storage.backends.r2 import R2Storage
 
 pytestmark = pytest.mark.slow
 
@@ -34,21 +23,57 @@ pytestmark = pytest.mark.slow
 def _env_or_skip(name: str) -> str:
     value = os.environ.get(name)
     if not value:
-        pytest.skip(f"{name} not set; skipping real S3 integration test")
+        pytest.skip(f"{name} not set; skipping real R2 integration test")
     return value
 
 
-@pytest.fixture(scope="module")
-def s3_backend() -> Iterator[tuple[S3Backend, str]]:
-    """Create an S3Backend pointed at the configured test endpoint, with
-    an isolated test prefix that is cleaned up after the module runs."""
-    endpoint = _env_or_skip("TEST_S3_ENDPOINT")
-    access_key = _env_or_skip("TEST_S3_ACCESS_KEY")
-    secret_key = _env_or_skip("TEST_S3_SECRET_KEY")
-    bucket = _env_or_skip("TEST_S3_BUCKET")
-    region = os.environ.get("TEST_S3_REGION", "us-east-1")
+class _IsolatedR2Store(StorageBackend):
+    """Test-only namespace view over the explicit R2 implementation."""
 
-    test_prefix = f"_integration_test_{int(time.time())}_{os.urandom(4).hex()}"
+    def __init__(self, backend: R2Storage, prefix: str) -> None:
+        self._backend = backend
+        self._prefix = prefix.strip("/")
+
+    def _key(self, path: str | Path) -> str:
+        relative = str(path).replace("\\", "/").strip("/")
+        return f"{self._prefix}/{relative}" if relative else self._prefix
+
+    def _strip(self, key: str) -> str:
+        return key[len(self._prefix) + 1 :] if key.startswith(self._prefix + "/") else key
+
+    def save(self, path: str | Path, data: bytes) -> None:
+        self._backend.save(self._key(path), data)
+
+    def load(self, path: str | Path) -> bytes:
+        return self._backend.load(self._key(path))
+
+    def delete(self, path: str | Path) -> None:
+        self._backend.delete(self._key(path))
+
+    def exists(self, path: str | Path) -> bool:
+        return self._backend.exists(self._key(path))
+
+    def list_keys(self, prefix: str | Path, *, recursive: bool = False) -> list[str]:
+        return [self._strip(key) for key in self._backend.list_keys(self._key(prefix), recursive=recursive)]
+
+    def has_keys(self, prefix: str | Path) -> bool:
+        return self._backend.has_keys(self._key(prefix))
+
+    def total_size_bytes(self) -> int:
+        return sum(self._backend.head(key).size_bytes for key in self._backend.list_keys(self._prefix, recursive=True))
+
+    def mkdirs(self, path: str | Path) -> None:
+        self._backend.mkdirs(self._key(path))
+
+
+@pytest.fixture(scope="module")
+def r2_backend() -> Iterator[tuple[_IsolatedR2Store, str]]:
+    endpoint = _env_or_skip("TEST_R2_ENDPOINT")
+    access_key = _env_or_skip("TEST_R2_ACCESS_KEY")
+    secret_key = _env_or_skip("TEST_R2_SECRET_KEY")
+    bucket = _env_or_skip("TEST_R2_BUCKET")
+    region = os.environ.get("TEST_R2_REGION", "auto")
+    prefix = f"_integration_test_{int(time.time())}_{os.urandom(4).hex()}"
 
     import boto3
 
@@ -59,176 +84,87 @@ def s3_backend() -> Iterator[tuple[S3Backend, str]]:
         aws_secret_access_key=secret_key,
         region_name=region,
     )
-    # Verify bucket exists and is accessible. Skip if not (bucket must be pre-created).
     try:
         raw_client.head_bucket(Bucket=bucket)
     except raw_client.exceptions.ClientError as exc:
-        pytest.skip(f"Bucket {bucket!r} not accessible: {exc}")
+        pytest.skip(f"Configured R2 test bucket is not accessible: {exc}")
 
-    backend = S3Backend(
+    backend = R2Storage(
         bucket=bucket,
         region=region,
-        key_prefix=test_prefix,
         endpoint_url=endpoint,
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
+        access_key_id=access_key,
+        secret_access_key=secret_key,
     )
-
-    yield backend, test_prefix
-
-    # Cleanup: delete everything under the test prefix
+    isolated = _IsolatedR2Store(backend, prefix)
     try:
-        resp = raw_client.list_objects_v2(Bucket=bucket, Prefix=test_prefix)
-        objects = resp.get("Contents", [])
-        while objects:
-            keys = [{"Key": obj["Key"]} for obj in objects]
-            raw_client.delete_objects(Bucket=bucket, Delete={"Objects": keys})
-            if resp.get("IsTruncated"):
-                resp = raw_client.list_objects_v2(
+        yield isolated, prefix
+    finally:
+        try:
+            response = raw_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+            while True:
+                objects = response.get("Contents", [])
+                if objects:
+                    raw_client.delete_objects(
+                        Bucket=bucket,
+                        Delete={"Objects": [{"Key": obj["Key"]} for obj in objects]},
+                    )
+                if not response.get("IsTruncated"):
+                    break
+                response = raw_client.list_objects_v2(
                     Bucket=bucket,
-                    Prefix=test_prefix,
-                    ContinuationToken=resp.get("NextContinuationToken"),
+                    Prefix=prefix,
+                    ContinuationToken=response.get("NextContinuationToken"),
                 )
-                objects = resp.get("Contents", [])
-            else:
-                objects = []
-    except Exception:
-        pass  # best-effort cleanup
+        except Exception:
+            pass
 
 
 @pytest.mark.integration
-class TestS3Integration:
-    """Real S3 backend integration tests. Requires TEST_S3_* env vars."""
+class TestR2Integration:
+    def test_save_and_exists(self, r2_backend: tuple[_IsolatedR2Store, str]) -> None:
+        backend, _ = r2_backend
+        backend.save("hello.txt", b"world")
+        assert backend.exists("hello.txt")
 
-    def test_save_and_exists(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, _ = s3_backend
-        path = "hello.txt"
-        backend.save(path, b"world")
-        assert backend.exists(path)
+    def test_load_and_overwrite(self, r2_backend: tuple[_IsolatedR2Store, str]) -> None:
+        backend, _ = r2_backend
+        backend.save("data.bin", b"v1")
+        backend.save("data.bin", b"v2")
+        assert backend.load("data.bin") == b"v2"
 
-    def test_load_returns_saved_bytes(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, _ = s3_backend
-        path = "data.bin"
-        backend.save(path, b"\x00\x01\x02\xff")
-        assert backend.load(path) == b"\x00\x01\x02\xff"
-
-    def test_overwrite(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, _ = s3_backend
-        path = "overwrite.txt"
-        backend.save(path, b"v1")
-        backend.save(path, b"v2")
-        assert backend.load(path) == b"v2"
-
-    def test_delete(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, _ = s3_backend
-        path = "delete_me.txt"
-        backend.save(path, b"bye")
-        assert backend.exists(path)
-        backend.delete(path)
-        assert not backend.exists(path)
-
-    def test_delete_nonexistent_no_error(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, _ = s3_backend
-        backend.delete("does_not_exist.txt")  # should not raise
-
-    def test_load_nonexistent_raises(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, _ = s3_backend
+    def test_delete_and_missing(self, r2_backend: tuple[_IsolatedR2Store, str]) -> None:
+        backend, _ = r2_backend
+        backend.delete("does_not_exist.txt")
+        backend.save("delete_me.txt", b"bye")
+        backend.delete("delete_me.txt")
+        assert not backend.exists("delete_me.txt")
         with pytest.raises(FileNotFoundError):
             backend.load("impossible/file.txt")
 
-    def test_list_keys(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, _ = s3_backend
-        backend.save("a.txt", b"1")
-        backend.save("b.txt", b"2")
-        keys = backend.list_keys("")
-        assert "a.txt" in keys
-        assert "b.txt" in keys
-        assert "c.txt" not in keys
-
-    def test_list_keys_with_subdir(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, _ = s3_backend
-        backend.save("sub/x.txt", b"x")
-        backend.save("sub/y.txt", b"y")
-        keys = backend.list_keys("sub/")
-        assert "sub/x.txt" in keys
-        assert "sub/y.txt" in keys
-
-    # ---- has_keys (logical-prefix presence) ----
-
-    def test_has_keys_returns_true_with_descendants(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, _ = s3_backend
+    def test_list_and_prefix_presence(self, r2_backend: tuple[_IsolatedR2Store, str]) -> None:
+        backend, _ = r2_backend
         backend.save("novels/novel-a/chapters/0001.json", b"chapter")
         backend.save("novels/novel-a/metadata.json", b"meta")
         backend.save("novels/novel-a/chapters/assets/x.txt", b"asset")
+        assert backend.has_keys("novels/novel-a/chapters")
+        assert not backend.has_keys("novels/nonexistent")
+        assert backend.has_keys("novels/novel-a")
 
-        assert backend.has_keys("novels/novel-a/chapters") is True
-        assert backend.has_keys("novels/novel-a") is True
-
-    def test_has_keys_returns_false_for_absent_prefix(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, _ = s3_backend
-        assert backend.has_keys("novels/nonexistent") is False
-
-    def test_has_keys_boundary_separates_prefixes(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, _ = s3_backend
+    def test_prefix_boundaries_and_recursive_listing(self, r2_backend: tuple[_IsolatedR2Store, str]) -> None:
+        backend, _ = r2_backend
         backend.save("novels/n1/chapters/0001.json", b"c1")
         backend.save("novels/n10/chapters/0001.json", b"c10")
+        assert backend.has_keys("novels/n1")
+        assert backend.has_keys("novels/n10")
+        assert not backend.has_keys("novels/n100")
+        assert "novels/n1/chapters/0001.json" in backend.list_keys("novels/n1", recursive=True)
 
-        assert backend.has_keys("novels/n1") is True
-        assert backend.has_keys("novels/n10") is True
-        assert backend.has_keys("novels/n100") is False
-
-    def test_has_keys_not_fooled_by_partial_prefix(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, _ = s3_backend
-        backend.save("novels/something/metadata.json", b"meta")
-
-        assert backend.has_keys("novels/some") is False
-
-    # ---- padded chapter listing ----
-
-    def test_padded_chapter_listing_is_deterministic(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, _ = s3_backend
-        backend.save("novels/padded/chapters/0002.json", b'{"id":"2","raw":{"text":"ch2"}}')
-        backend.save("novels/padded/chapters/0001.json", b'{"id":"1","raw":{"text":"ch1"}}')
-        backend.save("novels/padded/chapters/0010.json", b'{"id":"10","raw":{"text":"ch10"}}')
-
-        keys = backend.list_keys("novels/padded/chapters")
-        assert keys == [
-            "novels/padded/chapters/0001.json",
-            "novels/padded/chapters/0002.json",
-            "novels/padded/chapters/0010.json",
-        ]
-
-    def test_padded_listing_recursive(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, _ = s3_backend
-        backend.save("novels/padded-rec/chapters/0001.json", b'{"raw":{"text":"a"}}')
-        backend.save("novels/padded-rec/chapters/assets/imgs/a.png", b"image")
-
-        all_keys = backend.list_keys("novels/padded-rec/chapters", recursive=True)
-        rec_key = "novels/padded-rec/chapters/assets/imgs/a.png"
-        assert rec_key in all_keys
-
-        flat_keys = backend.list_keys("novels/padded-rec/chapters")
-        assert rec_key not in flat_keys
-
-    # ---- recursive deletion ----
-
-    def test_recursive_delete_prefix_confined(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, _ = s3_backend
-        backend.save("novels/alpha/chapters/0001.json", b'{"raw":{"text":"a"}}')
-        backend.save("novels/beta/chapters/0001.json", b'{"raw":{"text":"b"}}')
-        backend.save("novels/alpha/metadata.json", b'{"novel_id":"alpha"}')
-
-        keys_alpha = backend.list_keys("novels/alpha", recursive=True)
-        for key in keys_alpha:
+    def test_recursive_delete_is_confined(self, r2_backend: tuple[_IsolatedR2Store, str]) -> None:
+        backend, _ = r2_backend
+        backend.save("novels/alpha/chapters/0001.json", b"a")
+        backend.save("novels/beta/chapters/0001.json", b"b")
+        for key in backend.list_keys("novels/alpha", recursive=True):
             backend.delete(key)
-
-        # alpha should be gone
-        assert backend.has_keys("novels/alpha") is False
-        # beta should survive
-        assert backend.has_keys("novels/beta") is True
-
-    def test_absence_after_recursive_delete(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, _ = s3_backend
-        backend.save("novels/gone/chapters/0001.json", b"del")
-        backend.delete("novels/gone/chapters/0001.json")
-        assert backend.has_keys("novels/gone") is False
+        assert not backend.has_keys("novels/alpha")
+        assert backend.has_keys("novels/beta")

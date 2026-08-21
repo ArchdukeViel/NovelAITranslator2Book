@@ -1,4 +1,4 @@
-name: S3 Integration
+name: R2 Integration
 
 on:
   schedule:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: s3-integration
+  group: r2-integration
   cancel-in-progress: false
 
 jobs:
@@ -45,14 +45,14 @@ jobs:
 
       - name: Wait for MinIO readiness
         env:
-          TEST_S3_ENDPOINT: http://localhost:9000
+          TEST_R2_ENDPOINT: http://localhost:9000
         run: |
           uv run --locked python - <<'PY'
           import os
           import time
           import urllib.request
 
-          endpoint = os.environ["TEST_S3_ENDPOINT"]
+          endpoint = os.environ["TEST_R2_ENDPOINT"]
           deadline = time.monotonic() + 120
           while time.monotonic() < deadline:
               try:
@@ -67,10 +67,10 @@ jobs:
 
       - name: Create test bucket
         env:
-          TEST_S3_ENDPOINT: http://localhost:9000
-          TEST_S3_ACCESS_KEY: minioadmin
-          TEST_S3_SECRET_KEY: minioadmin
-          TEST_S3_BUCKET: novelai-test
+          TEST_R2_ENDPOINT: http://localhost:9000
+          TEST_R2_ACCESS_KEY: minioadmin
+          TEST_R2_SECRET_KEY: minioadmin
+          TEST_R2_BUCKET: novelai-test
         run: |
           uv run --locked python - <<'PY'
           import os
@@ -79,22 +79,22 @@ jobs:
 
           s3 = boto3.client(
               "s3",
-              endpoint_url=os.environ["TEST_S3_ENDPOINT"],
-              aws_access_key_id=os.environ["TEST_S3_ACCESS_KEY"],
-              aws_secret_access_key=os.environ["TEST_S3_SECRET_KEY"],
+              endpoint_url=os.environ["TEST_R2_ENDPOINT"],
+              aws_access_key_id=os.environ["TEST_R2_ACCESS_KEY"],
+              aws_secret_access_key=os.environ["TEST_R2_SECRET_KEY"],
               region_name="us-east-1",
           )
-          s3.create_bucket(Bucket=os.environ["TEST_S3_BUCKET"])
-          print(f"Bucket {os.environ['TEST_S3_BUCKET']!r} created.")
+          s3.create_bucket(Bucket=os.environ["TEST_R2_BUCKET"])
+          print(f"Bucket {os.environ['TEST_R2_BUCKET']!r} created.")
           PY
 
-      - name: Run real S3 integration tests
+      - name: Run real R2 integration tests
         env:
-          TEST_S3_ENDPOINT: http://localhost:9000
-          TEST_S3_ACCESS_KEY: minioadmin
-          TEST_S3_SECRET_KEY: minioadmin
-          TEST_S3_BUCKET: novelai-test
-          TEST_S3_REGION: us-east-1
+          TEST_R2_ENDPOINT: http://localhost:9000
+          TEST_R2_ACCESS_KEY: minioadmin
+          TEST_R2_SECRET_KEY: minioadmin
+          TEST_R2_BUCKET: novelai-test
+          TEST_R2_REGION: us-east-1
         run: >-
           uv run --locked pytest backend/tests/integration/test_s3_integration.py
           -m integration --tb=short -q

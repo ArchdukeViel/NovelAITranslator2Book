@@ -211,7 +211,7 @@ def test_create_to_public_read_lifecycle(owner_client, app, session_factory):
     assert resp.status_code == 200, resp.text
     catalog = resp.json()
     slugs = [item.get("slug") for item in catalog.get("novels", [])]
-    assert SLUG in slugs, f"Expected {SLUG} in public catalog, got {slugs}"
+    assert "test-lifecycle" in slugs, f"Expected title-derived public slug in catalog, got {slugs}"
 
 
 # ---------------------------------------------------------------------------
