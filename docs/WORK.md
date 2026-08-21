@@ -54,7 +54,9 @@ The conformance ledger now records the measured per-novel R2 shape; logical
 uncompressed bytes, repeated-crawl counters, deduplicated asset savings, and
 backup reuse remain unmeasured rather than inferred from object counts. Focused
 takedown and public-isolation coverage passes 150 tests; hosted CDN/public
-origin propagation remains an operator acceptance gate.
+origin propagation remains an operator acceptance gate. The focused R2
+catalog/cutover suite also passes 10 tests, including unchanged-recrawl no-op
+and incremental-backup reuse behavior.
 
 ## Novel Detail Stage B Decision (2026-08-19)
 

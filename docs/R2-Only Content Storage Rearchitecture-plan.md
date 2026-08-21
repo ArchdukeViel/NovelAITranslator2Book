@@ -94,10 +94,12 @@ Paused or not yet complete:
   the representative NCode chapter, and production-scale telemetry;
 - the R2 prefix-cleanup path now snapshots all paginated keys before deleting
   batches, preventing provider continuation cursors from skipping objects;
-  the focused R2 suite passes 8 tests. A live synthetic Phase 6 seed was
-  stopped after 193 temporary objects because the workstation-to-R2 path made
-  the full 1,428-chapter fixture impractical; the exact namespace cleanup was
-  rerun and verified empty, so no production-scale performance claim is made;
+  the focused R2 cleanup suite passes 8 tests and the catalog/cutover suite
+  passes 10 tests, including unchanged-recrawl no-op and incremental-backup
+  reuse coverage. A live synthetic Phase 6 seed was stopped after 193
+  temporary objects because the workstation-to-R2 path made the full
+  1,428-chapter fixture impractical; the exact namespace cleanup was rerun and
+  verified empty, so no production-scale performance claim is made;
 - the Supabase performance advisor still reports one informational unindexed
   foreign key and unused-index notices; this is a follow-up, not a security
   blocker for the cutover;

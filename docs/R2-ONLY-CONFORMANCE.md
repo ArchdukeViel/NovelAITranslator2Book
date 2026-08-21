@@ -178,9 +178,10 @@ is configured in the local environment.
 Logical uncompressed byte totals, compression savings, live GET/PUT/LIST
 counters, unchanged-recrawl upload counts, deduplicated asset counts, reused
 translation counts, and backup-object reuse counts were not captured by this
-reset/repopulation run. Unit and focused tests prove the reuse and incremental
-backup contracts, but they are not a substitute for a measured repeated live
-crawl. The backup bucket is empty because recovery remains user-deferred.
+reset/repopulation run. The focused R2 catalog/cutover suite passes 10 tests,
+including an unchanged-recrawl no-op and incremental backup object reuse, but
+those tests are not a substitute for a measured repeated live crawl. The
+backup bucket is empty because recovery remains user-deferred.
 
 ## Evidence boundary
 
