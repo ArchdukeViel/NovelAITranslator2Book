@@ -88,9 +88,10 @@ Paused or not yet complete:
 - the public reader audit passes catalog/detail and unpublished/adult isolation,
   while only the translated NCode chapter has passed the published chapter-read
   path and the remaining published chapter reads remain pending;
-- bulk translation, backup/restore, translated public chapter behavior beyond
-  the representative NCode chapter, takedown isolation, and production-scale
-  telemetry remain unverified;
+- focused takedown enforcement and public isolation now pass the repository
+  suite; hosted CDN/public-origin propagation remains unverified alongside
+  bulk translation, backup/restore, translated public chapter behavior beyond
+  the representative NCode chapter, and production-scale telemetry;
 - the R2 prefix-cleanup path now snapshots all paginated keys before deleting
   batches, preventing provider continuation cursors from skipping objects;
   the focused R2 suite passes 8 tests. A live synthetic Phase 6 seed was

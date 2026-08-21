@@ -160,6 +160,8 @@ redirect is intentionally not represented by a brief.
   Novel18 detail/chapter routes, 200 chapter listings for the published novels,
   200 for translated NCode chapter 1, and 200 with zero items for the weekly
   ranking endpoint. Untranslated chapter detail remains unavailable by design.
+  Focused takedown/public-isolation coverage passes 150 tests; hosted CDN or
+  public-origin propagation is not claimed.
 
 ## Live R2 shape and efficiency boundary
 
