@@ -34,8 +34,8 @@ public-reading system.
 
 Generated translated-novel downloads are outside scope. Do not add PDF, EPUB,
 HTML, Markdown, manifests, freshness, or downloads without an approved spec.
-EPUB/PDF source-document input and recovery backups remain supported. Preserve
-historical generated files.
+Novel ingestion accepts source URLs only; local EPUB, PDF, text, image-folder,
+and archive imports are not supported. Preserve historical generated files.
 
 ## Runtime Topology
 

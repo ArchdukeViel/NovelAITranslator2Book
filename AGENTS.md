@@ -201,7 +201,7 @@ Full architecture and operator detail belongs in canonical docs. Preserve these 
 - `BackupManager.apply_retention()` preserves newest successful backup and `BACKUP_MIN_SUCCESSFUL_TO_KEEP`, under `InterProcessFileLock`.
 - `MaintenanceService` runs allowlisted cleanup with dry-run and path-safety checks; reject blank, root, project-root, and symlink-escape paths.
 - `SchedulerService` uses a lightweight asyncio loop and `scheduled_cron_log`; do not reintroduce APScheduler. Migration-defined cleanup is active only after applied migrations and live scheduler state are verified.
-- Preserve raw scraped chapters and historical generated artifacts. Generated reader downloads remain out of scope; EPUB/PDF source imports remain supported.
+- Preserve raw scraped chapters and historical generated artifacts. Generated reader downloads remain out of scope; novel imports accept source URLs only.
 
 ### Deployment and object storage
 

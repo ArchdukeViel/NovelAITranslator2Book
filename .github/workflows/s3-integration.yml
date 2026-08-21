@@ -33,7 +33,7 @@ jobs:
           enable-cache: true
 
       - run: >-
-          uv sync --locked --extra documents --extra gemini --extra dev
+          uv sync --locked --extra gemini --extra dev
           --extra test --extra s3 --extra auth
 
       - name: Start MinIO container
