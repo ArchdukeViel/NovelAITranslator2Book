@@ -131,7 +131,7 @@ redirect is intentionally not represented by a brief.
   `/account/contributions`, `/ranking`, `/novels/[slug]`, and
   `/novels/[slug]/chapter/[chapterId]`.
 - `graphify update . --no-cluster`: exit code `0`, refreshed graph contains
-  `13,718` nodes and `38,102` edges.
+  `13,719` nodes and `38,103` edges.
 - Route-ownership focused tests: `60 passed` (microservice split, production
   configuration, and contributor-router coverage).
 - The authorized live database has migration `b6c8d0e2f4a6` applied and the
@@ -160,6 +160,25 @@ redirect is intentionally not represented by a brief.
   Novel18 detail/chapter routes, 200 chapter listings for the published novels,
   200 for translated NCode chapter 1, and 200 with zero items for the weekly
   ranking endpoint. Untranslated chapter detail remains unavailable by design.
+
+## Live R2 shape and efficiency boundary
+
+The live inventory and PostgreSQL projection currently provide this measured
+shape. The `public_url` column is a route path because no hosted public origin
+is configured in the local environment.
+
+| PostgreSQL ID | Source URL | Publication | Public URL | Chapters | Active generations | R2 objects | Stored bytes | Object groups | Translation status |
+|---:|---|---|---|---:|---:|---:|---:|---|---|
+| 11 | `https://ncode.syosetu.com/n2056dn/` | published | `/novels/my-father-is-a-hero-my-mother-is-a-spirit-and-i-their-daughter-am-a-reincarnator` | 148 | 1 | 298 | 801,608 | 148 chapters, 148 media, 1 generation, 1 translation | 1/148 translated |
+| 16 | `https://kakuyomu.jp/works/16817330655991571532` | published | `/novels/that-time-i-got-reincarnated-as-a-world-tree` | 88 | 1 | 177 | 330,079 | 88 chapters, 88 media, 1 generation | 0/88 translated |
+| 17 | `https://novel18.syosetu.com/n3266mn/` | unpublished | `/novels/holy-water-dungeon-until-i-who-used-and-discarded-women-as-keys-fell-to-a-top-tier-holy-water-operative` | 31 | 1 | 63 | 191,998 | 31 chapters, 31 media, 1 generation | 0/31 translated |
+
+Logical uncompressed byte totals, compression savings, live GET/PUT/LIST
+counters, unchanged-recrawl upload counts, deduplicated asset counts, reused
+translation counts, and backup-object reuse counts were not captured by this
+reset/repopulation run. Unit and focused tests prove the reuse and incremental
+backup contracts, but they are not a substitute for a measured repeated live
+crawl. The backup bucket is empty because recovery remains user-deferred.
 
 ## Evidence boundary
 

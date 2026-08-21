@@ -50,6 +50,9 @@ verification those stale rows and their tag associations were removed. The R2
 prefix cleanup now snapshots paginated keys before deletion; its focused suite
 passes 8 tests, and a stopped synthetic Phase 6 seed was fully cleaned without
 leaving R2 objects or database rows. Production-scale telemetry remains open.
+The conformance ledger now records the measured per-novel R2 shape; logical
+uncompressed bytes, repeated-crawl counters, deduplicated asset savings, and
+backup reuse remain unmeasured rather than inferred from object counts.
 
 ## Novel Detail Stage B Decision (2026-08-19)
 

@@ -71,6 +71,10 @@ Completed at this checkpoint:
   generation or content/job/user references and were removed. The canonical
   active rows remain IDs 11, 16, and 17, and the stale tag associations were
   removed by cascade.
+- the final live shape report records per-novel chapter/object/byte counts,
+  active-generation counts, public route paths, and translation counts in
+  `docs/R2-ONLY-CONFORMANCE.md`; logical-byte, repeated-crawl, and operation
+  counter measurements remain explicitly unavailable.
 
 Paused or not yet complete:
 
