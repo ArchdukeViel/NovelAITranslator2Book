@@ -26,8 +26,9 @@ repopulated, or restored.
 
 The final inventory is regenerated from the repository and excludes generated
 `graphify-out`, dependency, and scratch trees. The final inventory contains
-70 Markdown files. The link audit checked 30 inline local links and found zero
-unresolved targets. The current public brief set contains 33 visual briefs;
+83 Markdown files, including the repository-wide R2 rearchitecture plan. The
+link audit checked 30 inline local links and found zero unresolved targets.
+The current public brief set contains 33 visual briefs;
 all 33 include the exact `Global Visual Snapshot` heading. The non-visual root
 redirect is intentionally not represented by a brief.
 
@@ -38,6 +39,7 @@ redirect is intentionally not represented by a brief.
 | Translation and work register | `docs/TRANSLATION.md`, `docs/WORK.md` | Document immutable references, selective invalidation, and evidence state |
 | Historical evidence | `docs/HISTORY.md`, `docs/PERFORMANCE_AUDIT.md`, `docs/PERFORMANCE_ACTION_PLAN.md` | Preserve past facts and label pre-cutover layouts |
 | Public/admin design briefs | `docs/DESIGN.md`, `docs/design/**/*.md` | Revalidate links, routes, and storage-dependent behavior |
+| R2 migration plan | `docs/R2-Only Content Storage Rearchitecture-plan.md` | Keep the locked decisions, phased acceptance gates, and final completion criteria authoritative |
 | Security/tooling/other project docs | remaining Markdown | Run the terminology, link, and route audit without unrelated rewrites |
 
 ## Implementation conformance matrix
@@ -54,7 +56,7 @@ redirect is intentionally not represented by a brief.
 | Reference-aware GC protects active/referenced/grace objects | `r2_cutover.py`, runtime GC command | PASS: mark/sweep and nested-asset reference tests |
 | Public reader exact reads | R2 storage dispatch, public catalog/chapter services | PASS: exact-key contract coverage; hosted URL verification remains BLOCKED |
 | Imports write immutable R2 artifacts and activate PostgreSQL references | importer/orchestration R2 path, `test_r2_catalog.py`, and E2E pipeline | PASS: immutable document-import activation and full backend suite |
-| Documentation and route/link audit | repository-wide Markdown inventory, route scan, and link audit | PASS: 70 Markdown files, 30 local links, zero unresolved targets, current-only route scan |
+| Documentation and route/link audit | repository-wide Markdown inventory, route scan, and link audit | PASS: 83 Markdown files, 30 local links, zero unresolved targets, current-only route scan |
 
 ## Local verification evidence
 
