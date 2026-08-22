@@ -2921,7 +2921,7 @@ async def test_scrape_chapters_downloads_and_stores_image_assets(orchestration_e
     assert chapter is not None
     assert chapter["text"] == "Before\n\n[Image: Scene illustration]\n\nAfter"
     image = chapter["images"][0]
-    assert image["storage_key"].startswith("novels/novel-1/assets/")
+    assert image["storage_key"].startswith("novels/1/assets/")
     assert storage.r2_backend.head(image["storage_key"]).logical_sha256 == image["sha256"]
     assert "local_path" not in image
     assert "download_error" not in chapter["images"][0]
