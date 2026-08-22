@@ -40,6 +40,10 @@ fully paginated reset of both R2 buckets were completed, and all three novels
 were repopulated under their existing identities through the authenticated R2
 path. The populated legacy S3-compatible application settings were migrated to
 the current `R2_*` names and validated for the root and production profiles.
+A follow-up writer-frozen namespace migration then moved the 538 live
+application objects to numeric `novels/<novel_id>/` prefixes, rewrote database
+and nested manifest references, verified logical hashes, and removed the old
+slug-prefixed source namespaces. Public slugs and URLs remain unchanged.
 A representative NCode chapter now passes real Gemini translation,
 deterministic QA, R2 readback, and the public reader route. Bulk translation
 and the remaining published chapter reads, production telemetry, and

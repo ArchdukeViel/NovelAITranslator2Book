@@ -38,9 +38,18 @@ Completed at this checkpoint:
   preserved;
 - Kakuyomu (`16817330655991571532`) and NCode (`n2056dn`) were repopulated
   through the authenticated application R2 path with 88 and 148 chapters;
+- the canonical namespace rekey was executed with writers frozen through
+  `novelai.runtime.cli r2-migrate-novel-ids --execute --writers-frozen`:
+  538 immutable objects moved from the historical slug namespaces to
+  `novels/11/`, `novels/16/`, and `novels/17/`, all source namespaces were
+  deleted after the database transaction committed, and database pointers,
+  nested object references, and generation manifests were rewritten;
 - the application bucket now contains 538 paginated objects / 1,323,685 bytes
-  under the three exact `novels/<slug>/` prefixes, and every object has a
-  verified logical SHA-256 metadata value;
+  under the three exact numeric `novels/<novel_id>/` prefixes, and every
+  object has a matching logical SHA-256 metadata value;
+- the post-rekey verifier found zero non-numeric namespace keys, zero embedded
+  legacy-prefix references, zero JSON decode errors, zero missing database
+  pointers, and zero logical-hash mismatches;
 - the populated application `S3_*` values were migrated to `R2_*` in the root,
   development-deployment, and production-deployment environment files;
 - all active backend environment assignments are now represented by their

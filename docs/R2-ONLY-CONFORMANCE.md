@@ -37,12 +37,17 @@ Completed evidence:
 - `dokushodo` and `dokushodo-backup` were emptied with fully paginated live
   inventories while retaining both bucket resources. The backup bucket has
   one restored generic 30-day `snapshots/` retention rule.
-- all three novels are live under their preserved `novels/<slug>/` prefixes:
-  NCode has 148 chapters / 298 objects, Kakuyomu has 88 chapters / 177
-  objects, and Novel18 has 31 chapters / 63 objects. All three retain their
-  PostgreSQL identities and source URLs; Novel18 remains unpublished.
+- all three novels are live under numeric immutable namespaces derived from
+  their preserved PostgreSQL identities: NCode (ID 11) has 148 chapters / 298
+  objects under `novels/11/`, Kakuyomu (ID 16) has 88 chapters / 177 objects
+  under `novels/16/`, and Novel18 (ID 17) has 31 chapters / 63 objects under
+  `novels/17/`. All three retain their PostgreSQL identities and source URLs;
+  Novel18 remains unpublished.
 - The application bucket has 538 objects / 1,323,685 bytes, was fully
-  paginated, and every object reports verified `logical-sha256` metadata.
+  paginated, and every object reports matching verified `logical-sha256`
+  metadata. The post-rekey audit found zero non-numeric namespace keys, zero
+  embedded legacy-prefix references, zero JSON decode errors, and zero missing
+  database pointers.
 - The local canonical content paths and temporary repopulation staging paths
   are absent. `storage/runtime/` is disposable runtime state, not a canonical
   content store, and remains an untracked working-tree item.
@@ -109,7 +114,7 @@ redirect is intentionally not represented by a brief.
 | PostgreSQL exact artifact references and activation | R2 artifact-reference migration, `r2_catalog.py`, `r2_activation_service.py` | PASS: activation, checksum, and stale-writer tests |
 | No local canonical production content backend | R2 factory, settings, Compose, runtime container | PASS: production and test content paths use the R2 boundary; tests use an in-memory R2 double and no filesystem content fixture remains |
 | Incremental backup manifests and reference-aware retention | `backend/src/novelai/storage/r2_backup.py`, backup service/container integration | PASS: incremental-copy, checksum, retention, shared-object reference, and grace-period tests |
-| Reset, migration, and repopulation workflow | `backend/src/novelai/storage/r2_cutover.py`, `novelai.runtime.cli` | PARTIAL: live reset, migration, and all-three-novel repopulation are complete; translation and recovery acceptance remain open |
+| Reset, migration, and repopulation workflow | `backend/src/novelai/storage/r2_cutover.py`, `novelai.runtime.cli`, `backend/src/novelai/storage/r2_namespace_migration.py` | PASS for the live reset, numeric namespace migration, and all-three-novel repopulation; translation and recovery acceptance remain deferred |
 | Pagination, checksum, and failure handling | R2 client, backup, cutover, and activation services | PASS: paginated listings/deletion, streamed multipart upload, checksum, length-mismatch cleanup, and focused failure coverage; real permission/scale behavior remains unmeasured locally |
 | Reference-aware GC protects active/referenced/grace objects | `r2_cutover.py`, runtime GC command | PASS: mark/sweep and nested-asset reference tests |
 | Public reader exact reads | R2 storage dispatch, public catalog/chapter services | PASS: exact-key contract coverage; hosted URL verification remains BLOCKED |
@@ -141,8 +146,13 @@ redirect is intentionally not represented by a brief.
   performance output remains informational.
 - The live R2 reset and repopulation were verified with full pagination:
   `dokushodo` contains 538 objects / 1,323,685 bytes under the three exact
-  `novels/<slug>/` prefixes; `dokushodo-backup` contains zero objects. Both
-  bucket resources remain.
+  numeric `novels/<novel_id>/` prefixes; `dokushodo-backup` contains zero
+  objects because recovery is user-deferred. Both bucket resources remain.
+- The post-rekey live verifier read all 538 application objects and confirmed
+  zero namespace violations, zero embedded legacy-prefix references, zero
+  JSON decode errors, zero missing database pointers, and zero logical-SHA-256
+  mismatches. The source slug namespaces were deleted only after the database
+  reference rewrite committed.
 - The R2 prefix-cleanup path now snapshots all paginated keys before deletion;
   `tools\pytest.ps1 backend/tests/test_r2_content_addressing.py -q` passes
   8 tests, including mutation-during-pagination coverage. A synthetic Phase 6
