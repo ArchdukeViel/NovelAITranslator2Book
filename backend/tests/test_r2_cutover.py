@@ -181,13 +181,13 @@ def test_generation_activation_verifies_objects_and_detects_conflicts(r2_clients
     storage = StorageService(backend=application)
     repository = R2ArtifactRepository(application)
     raw = repository.put_json(
-        novel_id="n1",
+        storage_novel_id="1",
         kind="chapters",
         identity="ch1",
         payload={"raw": {"text": "source"}},
     )
     translated = repository.put_json(
-        novel_id="n1",
+        storage_novel_id="1",
         kind="translations",
         identity="ch1",
         payload={"text": "translation", "version_id": "v1"},
@@ -204,7 +204,8 @@ def test_generation_activation_verifies_objects_and_detects_conflicts(r2_clients
         session.commit()
         manifest = {
             "schema_version": 1,
-            "novel_id": "n1",
+            "novel_id": "1",
+            "public_slug": "n1",
             "generation_id": "g1",
             "chapters": [
                 {
@@ -223,7 +224,7 @@ def test_generation_activation_verifies_objects_and_detects_conflicts(r2_clients
             expected_generation_id=None,
         )
         session.commit()
-        assert result.manifest_key == "novels/n1/generations/g1.json.gz"
+        assert result.manifest_key == "novels/1/generations/g1.json.gz"
         assert session.query(Novel).one().active_generation_id == "g1"
 
         with pytest.raises(GenerationConflictError):

@@ -60,6 +60,18 @@ def _storage_session(storage: Any) -> Iterator[Any]:
                 delattr(storage, "_test_db_session")
 
 
+def resolve_storage_novel_id(storage: Any, novel_id: str) -> str:
+    """Resolve a public/source slug to the immutable PostgreSQL ID for R2 keys."""
+
+    from novelai.db.models.novel import Novel
+
+    with _storage_session(storage) as session:
+        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        if novel is None or novel.id is None:
+            raise ValueError(f"No metadata found for novel {novel_id!r}")
+        return str(novel.id)
+
+
 def _marker(kind: str, novel_id: str, chapter_id: str | None = None) -> Path:
     suffix = f"/{chapter_id}" if chapter_id is not None else ""
     return Path(f"r2:{kind}/{novel_id}{suffix}")
@@ -657,12 +669,6 @@ def save_translated_chapter(storage: Any, novel_id: str, chapter_id: str, text: 
     from novelai.db.models.novel import Novel
 
     payload = _translation_payload(str(chapter_id), text, kwargs)
-    stored = storage._r2_artifacts().put_json(
-        novel_id=novel_id,
-        kind="translations",
-        identity=str(chapter_id),
-        payload=payload,
-    )
     with _storage_session(storage) as session:
         novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
         if novel is None:
@@ -672,6 +678,12 @@ def save_translated_chapter(storage: Any, novel_id: str, chapter_id: str, text: 
                 novel_id,
                 {"title": novel_id},
             )
+        stored = storage._r2_artifacts().put_json(
+            storage_novel_id=str(novel.id),
+            kind="translations",
+            identity=str(chapter_id),
+            payload=payload,
+        )
         row = session.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id)).one_or_none()
         if row is None:
             row = Chapter(
@@ -817,6 +829,7 @@ def save_edited_translation(
         novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             raise ValueError(f"No metadata found for novel {novel_id!r}")
+        storage_novel_id = str(novel.id)
         row = session.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id)).one_or_none()
         if row is None:
             raise ValueError(f"No chapter found for {novel_id!r}/{chapter_id!r}")
@@ -854,7 +867,7 @@ def save_edited_translation(
     if isinstance(glossary_qa, dict) and glossary_qa:
         payload["glossary_qa"] = dict(glossary_qa)
     stored = storage._r2_artifacts().put_json(
-        novel_id=novel_id,
+        storage_novel_id=storage_novel_id,
         kind="translations",
         identity=str(chapter_id),
         payload=payload,
@@ -981,7 +994,7 @@ def save_chapter_media_state(storage: Any, novel_id: str, chapter_id: str, **kwa
         current = dict(row.media_state_json) if isinstance(row.media_state_json, dict) else {}
         current.update(fields)
         media_artifact = storage._r2_artifacts().put_json(
-            novel_id=novel_id,
+            storage_novel_id=str(novel.id),
             kind="media",
             identity=str(chapter_id),
             payload={"chapter_id": str(chapter_id), "state": current},
@@ -1002,11 +1015,17 @@ def save_chapter_image_asset(
     content: bytes,
     source_url: str | None = None,
     content_type: str | None = None,
+    storage_novel_id: str | None = None,
 ) -> dict[str, Any]:
     extension = "bin"
     if isinstance(content_type, str) and "/" in content_type:
         extension = content_type.rsplit("/", 1)[-1].split("+", 1)[0].lower() or extension
-    stored = storage._r2_artifacts().put_asset(novel_id=novel_id, content=content, extension=extension)
+    storage_novel_id = storage_novel_id or resolve_storage_novel_id(storage, novel_id)
+    stored = storage._r2_artifacts().put_asset(
+        storage_novel_id=storage_novel_id,
+        content=content,
+        extension=extension,
+    )
     return {
         "index": image_index,
         "storage_key": stored.key,

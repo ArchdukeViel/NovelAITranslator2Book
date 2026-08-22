@@ -54,13 +54,13 @@ def test_immutable_artifacts_are_idempotent_and_conflict_on_same_key_changes() -
     backend = InMemoryR2Storage()
     repository = R2ArtifactRepository(backend)
     first = repository.put_json(
-        novel_id="novel",
+        storage_novel_id="1",
         kind="chapters",
         identity="c1",
         payload={"raw": {"text": "same"}},
     )
     second = repository.put_json(
-        novel_id="novel",
+        storage_novel_id="1",
         kind="chapters",
         identity="c1",
         payload={"raw": {"text": "same"}},

@@ -94,7 +94,8 @@ def test_r2_dispatch_stores_catalog_and_exact_artifacts(r2_catalog) -> None:
     keys = client.list_objects_v2(Bucket="dokushodo").get("Contents", [])
     object_keys = [item["Key"] for item in keys]
     assert object_keys
-    assert all(key.startswith("novels/novel-r2/") for key in object_keys)
+    storage_novel_id = storage.resolve_storage_novel_id("novel-r2")
+    assert all(key.startswith(f"novels/{storage_novel_id}/") for key in object_keys)
     assert not any(key.endswith("metadata.json") or key.endswith("active_generation.json") for key in object_keys)
 
 
@@ -142,8 +143,8 @@ def test_r2_crawler_activates_db_generation_without_pointer_object(r2_catalog) -
         novel = session.query(Novel).filter_by(slug="novel-r2").one()
         chapter = session.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id="c1").one()
         assert novel.active_generation_id == result["generation_id"]
-        assert novel.active_generation_storage_key == f"novels/novel-r2/generations/{result['generation_id']}.json.gz"
-        assert chapter.raw_storage_key and chapter.raw_storage_key.startswith("novels/novel-r2/chapters/c1/")
+        assert novel.active_generation_storage_key == f"novels/{novel.id}/generations/{result['generation_id']}.json.gz"
+        assert chapter.raw_storage_key and chapter.raw_storage_key.startswith(f"novels/{novel.id}/chapters/c1/")
 
     second_result = asyncio.run(
         _scrape_chapters_r2_impl(
@@ -207,8 +208,8 @@ def test_r2_document_import_activates_immutable_generation(r2_catalog) -> None:
         novel = session.query(Novel).filter_by(slug="novel-import").one()
         chapter = session.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id="part-1").one()
         assert novel.active_generation_id
-        assert chapter.raw_storage_key and chapter.raw_storage_key.startswith("novels/novel-import/chapters/part-1/")
-        assert chapter.media_storage_key and chapter.media_storage_key.startswith("novels/novel-import/media/part-1/")
+        assert chapter.raw_storage_key and chapter.raw_storage_key.startswith(f"novels/{novel.id}/chapters/part-1/")
+        assert chapter.media_storage_key and chapter.media_storage_key.startswith(f"novels/{novel.id}/media/part-1/")
 
     object_keys = [item["Key"] for item in client.list_objects_v2(Bucket="dokushodo").get("Contents", [])]
     assert any("/generations/" in key for key in object_keys)

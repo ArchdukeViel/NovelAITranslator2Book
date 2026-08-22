@@ -385,6 +385,10 @@ class CatalogService:
         Returns:
             The Chapter ORM instance (added to session, not yet committed).
         """
+        novel = self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        if novel is None or novel.id is None:
+            raise ValueError(f"No metadata found for novel {novel_id!r}")
+        novel_db_id = novel.id
         stored_artifact = self._storage.save_raw_chapter_artifact(
             novel_id,
             chapter_id,
@@ -393,10 +397,8 @@ class CatalogService:
             source_key=source_key,
             source_url=source_url,
             artifact_payload=artifact_payload,
+            storage_novel_id=str(novel.id),
         )
-
-        novel = self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
-        novel_db_id = novel.id if novel else None
 
         chapter = self._get_or_create_chapter(
             novel_db_id=novel_db_id,
@@ -453,6 +455,10 @@ class CatalogService:
         Returns:
             The Chapter ORM instance (updated in session, not yet committed).
         """
+        novel = self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        if novel is None or novel.id is None:
+            raise ValueError(f"No metadata found for novel {novel_id!r}")
+        novel_db_id = novel.id
         stored_artifact = self._storage.save_translation_artifact(
             novel_id,
             chapter_id,
@@ -465,10 +471,8 @@ class CatalogService:
             glossary_hash=glossary_hash,
             prompt_template_version=prompt_template_version,
             artifact_payload=artifact_payload,
+            storage_novel_id=str(novel.id),
         )
-
-        novel = self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
-        novel_db_id = novel.id if novel else None
 
         chapter = self._get_or_create_chapter(
             novel_db_id=novel_db_id,

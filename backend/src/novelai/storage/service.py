@@ -97,6 +97,9 @@ from novelai.storage.r2_catalog import (
     resolve_onboarding_status as _r2_resolve_onboarding_status,
 )
 from novelai.storage.r2_catalog import (
+    resolve_storage_novel_id as _r2_resolve_storage_novel_id,
+)
+from novelai.storage.r2_catalog import (
     save_chapter as _r2_save_chapter,
 )
 from novelai.storage.r2_catalog import (
@@ -497,6 +500,11 @@ class StorageService:
             raise RuntimeError("Immutable artifact methods require the R2 backend")
         return R2ArtifactRepository(self._backend)
 
+    def resolve_storage_novel_id(self, novel_id: str) -> str:
+        """Resolve a public/source slug to the immutable PostgreSQL ID for R2 keys."""
+
+        return _r2_resolve_storage_novel_id(self, novel_id)
+
     @property
     def r2_backend(self) -> Any:
         """Return the canonical R2 backend for storage-domain services."""
@@ -517,6 +525,7 @@ class StorageService:
         source_key: str | None = None,
         source_url: str | None = None,
         artifact_payload: dict[str, Any] | None = None,
+        storage_novel_id: str | None = None,
     ) -> Any:
         """Write one immutable R2 raw chapter artifact and return its reference."""
 
@@ -542,7 +551,7 @@ class StorageService:
         raw_payload.setdefault("text", text)
         raw_payload.setdefault("paragraphs", self._text_paragraphs(text))
         stored = self._r2_artifacts().put_json(
-            novel_id=novel_id,
+            storage_novel_id=storage_novel_id or self.resolve_storage_novel_id(novel_id),
             kind="chapters",
             identity=str(chapter_id),
             payload=payload,
@@ -596,6 +605,7 @@ class StorageService:
         glossary_hash: str | None = None,
         prompt_template_version: str | None = None,
         artifact_payload: dict[str, Any] | None = None,
+        storage_novel_id: str | None = None,
     ) -> Any:
         """Write one immutable R2 translation artifact and return its reference."""
 
@@ -618,7 +628,7 @@ class StorageService:
             }
         )
         stored = self._r2_artifacts().put_json(
-            novel_id=novel_id,
+            storage_novel_id=storage_novel_id or self.resolve_storage_novel_id(novel_id),
             kind="translations",
             identity=str(chapter_id),
             payload=payload,

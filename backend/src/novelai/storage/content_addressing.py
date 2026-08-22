@@ -92,6 +92,15 @@ def _safe_component(value: str, field: str) -> str:
     return safe
 
 
+def validate_internal_novel_id(value: str | int) -> str:
+    """Return the immutable PostgreSQL novel ID used in R2 object keys."""
+
+    safe = _safe_component(str(value), "storage_novel_id")
+    if not safe.isdecimal() or int(safe) <= 0 or str(int(safe)) != safe:
+        raise ValueError("storage_novel_id must be a positive canonical PostgreSQL integer ID")
+    return safe
+
+
 def artifact_key(
     novel_id: str,
     kind: ArtifactKind,
@@ -102,7 +111,7 @@ def artifact_key(
 ) -> str:
     """Build the exact application key for a content-addressed artifact."""
 
-    safe_novel = _safe_component(novel_id, "novel_id")
+    safe_novel = validate_internal_novel_id(novel_id)
     safe_identity = _safe_component(identity, "chapter_id")
     if len(logical_hash) != 64 or any(char not in "0123456789abcdef" for char in logical_hash):
         raise ValueError("logical_hash must be a lowercase SHA-256 hex digest")
@@ -112,7 +121,7 @@ def artifact_key(
 
 
 def generation_key(novel_id: str, generation_id: str, logical_hash: str) -> str:
-    safe_novel = _safe_component(novel_id, "novel_id")
+    safe_novel = validate_internal_novel_id(novel_id)
     safe_generation = _safe_component(generation_id, "generation_id")
     if len(logical_hash) != 64 or any(char not in "0123456789abcdef" for char in logical_hash):
         raise ValueError("logical_hash must be a lowercase SHA-256 hex digest")
@@ -120,7 +129,7 @@ def generation_key(novel_id: str, generation_id: str, logical_hash: str) -> str:
 
 
 def asset_key(novel_id: str, logical_hash: str, extension: str) -> str:
-    safe_novel = _safe_component(novel_id, "novel_id")
+    safe_novel = validate_internal_novel_id(novel_id)
     if len(logical_hash) != 64 or any(char not in "0123456789abcdef" for char in logical_hash):
         raise ValueError("logical_hash must be a lowercase SHA-256 hex digest")
     safe_extension = extension.removeprefix(".").lower()

@@ -56,8 +56,14 @@ class R2GenerationActivationService:
         manifest: dict[str, Any],
         expected_generation_id: str | None,
     ) -> GenerationActivationResult:
-        if _required_string(manifest.get("novel_id"), "novel_id") != novel_id:
-            raise InvalidGenerationManifestError("Manifest novel_id does not match the activation request")
+        novel = self.db_session.query(Novel).filter(Novel.slug == novel_id).with_for_update().one_or_none()
+        if novel is None or novel.id is None:
+            raise InvalidGenerationManifestError(f"Novel does not exist: {novel_id}")
+        storage_novel_id = str(novel.id)
+        if _required_string(manifest.get("novel_id"), "novel_id") != storage_novel_id:
+            raise InvalidGenerationManifestError("Manifest novel_id must be the immutable PostgreSQL novel ID")
+        if _required_string(manifest.get("public_slug"), "public_slug") != novel_id:
+            raise InvalidGenerationManifestError("Manifest public_slug does not match the activation request")
         if _required_string(manifest.get("generation_id"), "generation_id") != generation_id:
             raise InvalidGenerationManifestError("Manifest generation_id does not match the activation request")
         chapters = manifest.get("chapters")
@@ -65,7 +71,7 @@ class R2GenerationActivationService:
             raise InvalidGenerationManifestError("Manifest chapters must be a list")
 
         references: list[tuple[str, str, dict[str, Any]]] = []
-        required_prefix = f"novels/{novel_id}/"
+        required_prefix = f"novels/{storage_novel_id}/"
         for item in chapters:
             if not isinstance(item, dict):
                 raise InvalidGenerationManifestError("Manifest chapter entries must be objects")
@@ -122,17 +128,14 @@ class R2GenerationActivationService:
                         raise InvalidGenerationManifestError(
                             f"Manifest asset checksum does not match R2 metadata: {asset_key}"
                         )
-            references.append((chapter_id, novel_id, item))
+            references.append((chapter_id, storage_novel_id, item))
 
         stored = self.repository.put_generation_manifest(
-            novel_id=novel_id,
+            storage_novel_id=storage_novel_id,
             generation_id=generation_id,
             payload=manifest,
         )
 
-        novel = self.db_session.query(Novel).filter(Novel.slug == novel_id).with_for_update().one_or_none()
-        if novel is None:
-            raise InvalidGenerationManifestError(f"Novel does not exist: {novel_id}")
         if novel.active_generation_id != expected_generation_id:
             raise GenerationConflictError(
                 f"Active generation changed for {novel_id}: expected {expected_generation_id!r}, "

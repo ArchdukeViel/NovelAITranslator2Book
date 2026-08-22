@@ -34,7 +34,8 @@ def test_metadata_and_raw_chapter_use_postgres_and_exact_r2_artifact(storage: St
     assert marker.as_posix() == f"r2:chapter/{novel_id}/c1"
     loaded = storage.load_chapter(novel_id, "c1")
     assert loaded is not None and loaded["text"] == "source text"
-    keys = storage.list_keys_under(f"novels/{novel_id}")
+    storage_novel_id = storage.resolve_storage_novel_id(novel_id)
+    keys = storage.list_keys_under(f"novels/{storage_novel_id}")
     assert any("/chapters/c1/" in key and key.endswith(".json.gz") for key in keys)
     assert not any(key.endswith("metadata.json") for key in keys)
     assert storage.list_novels() == [novel_id]
@@ -73,7 +74,8 @@ def test_assets_are_content_addressed_and_do_not_expose_local_paths(storage: Sto
         content_type="image/png",
     )
 
-    assert manifest["storage_key"].startswith(f"novels/{novel_id}/assets/")
+    storage_novel_id = storage.resolve_storage_novel_id(novel_id)
+    assert manifest["storage_key"].startswith(f"novels/{storage_novel_id}/assets/")
     assert manifest["sha256"]
     assert "local_path" not in manifest
     assert not any(key.startswith("runtime/") for key in storage.list_keys_under(f"novels/{novel_id}"))

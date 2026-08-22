@@ -582,6 +582,13 @@ async def _scrape_chapters_r2_impl(
     if not isinstance(raw_index_entries, list) or not raw_index_entries:
         raise RuntimeError(f"Chapter index is empty for {source_key}/{novel_id}; cannot crawl chapters.")
     complete_index_entries: list[dict[str, Any]] = [entry for entry in raw_index_entries if isinstance(entry, dict)]
+    try:
+        storage_novel_id = self.storage.resolve_storage_novel_id(novel_id)
+    except ValueError:
+        # Full crawls may begin from a source URL without a prior metadata
+        # request. Establish the PostgreSQL identity before writing R2 keys.
+        self.storage.save_metadata(novel_id, meta)
+        storage_novel_id = self.storage.resolve_storage_novel_id(novel_id)
     resolved = resolve_chapter_selection(meta, chapters)
     if not resolved:
         raise ValueError(
@@ -719,6 +726,7 @@ async def _scrape_chapters_r2_impl(
                             self.storage.save_chapter_image_asset(
                                 novel_id,
                                 chapter_id,
+                                storage_novel_id=storage_novel_id,
                                 image_index=image_index,
                                 content=bytes(content),
                                 source_url=str(asset.get("url") or original_url),
@@ -757,11 +765,12 @@ async def _scrape_chapters_r2_impl(
                 source_key=source_key,
                 source_url=chapter.get("url"),
                 artifact_payload=chapter_payload,
+                storage_novel_id=storage_novel_id,
             )
             media_artifact = None
             if stored_images:
                 media_artifact = self.storage._r2_artifacts().put_json(
-                    novel_id=novel_id,
+                    storage_novel_id=storage_novel_id,
                     kind="media",
                     identity=chapter_id,
                     payload={"chapter_id": chapter_id, "images": stored_images},
@@ -915,7 +924,8 @@ async def _scrape_chapters_r2_impl(
             manifest_chapters.append(manifest_entry)
         manifest = {
             "schema_version": 1,
-            "novel_id": novel_id,
+            "novel_id": str(novel.id),
+            "public_slug": novel_id,
             "generation_id": generation_id,
             "mode": mode,
             "source": {"source_key": source_key},

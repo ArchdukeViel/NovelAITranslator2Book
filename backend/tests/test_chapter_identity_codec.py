@@ -112,6 +112,7 @@ def test_checkpoint_with_kakuyomu_id(tmp_path: Path) -> None:
 
 def test_chapter_images_with_kakuyomu_id(tmp_path: Path) -> None:
     storage = StorageService(tmp_path)
+    storage.save_metadata("n", {"title": "Kakuyomu novel", "chapters": []})
     asset = storage.save_chapter_image_asset(
         "n",
         KAKUYOMU_ID,
@@ -119,7 +120,7 @@ def test_chapter_images_with_kakuyomu_id(tmp_path: Path) -> None:
         content=b"\x89PNG",
         content_type="image/png",
     )
-    assert asset["storage_key"].startswith("novels/n/assets/")
+    assert asset["storage_key"].startswith("novels/1/assets/")
     assert storage.r2_backend.head(asset["storage_key"]).logical_sha256 == asset["sha256"]
     assert "local_path" not in asset
 

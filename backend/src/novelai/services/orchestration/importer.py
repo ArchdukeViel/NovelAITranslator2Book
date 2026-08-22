@@ -52,6 +52,11 @@ async def _import_document_r2(
         **document.metadata,
     }
 
+    # Resolve the immutable PostgreSQL identity before any R2 artifact is
+    # written. Import preparation can run before the activation transaction.
+    self.storage.save_metadata(novel_id, metadata)
+    storage_novel_id = self.storage.resolve_storage_novel_id(novel_id)
+
     prepared: list[dict[str, Any]] = []
     for unit in units:
         existing = self.storage.load_chapter(novel_id, unit.unit_id)
@@ -73,6 +78,7 @@ async def _import_document_r2(
                     self.storage.save_chapter_image_asset(
                         novel_id,
                         unit.unit_id,
+                        storage_novel_id=storage_novel_id,
                         image_index=index,
                         content=asset.content,
                         source_url=asset.source_ref,
@@ -120,6 +126,7 @@ async def _import_document_r2(
             source_key=document.adapter_key,
             source_url=unit.source_ref,
             artifact_payload=chapter_payload,
+            storage_novel_id=storage_novel_id,
         )
         media_state = {
             "ocr_required": unit.ocr_required,
@@ -128,7 +135,7 @@ async def _import_document_r2(
             "reembed_status": "pending" if unit.ocr_required else "skipped",
         }
         media_artifact = self.storage._r2_artifacts().put_json(
-            novel_id=novel_id,
+            storage_novel_id=storage_novel_id,
             kind="media",
             identity=unit.unit_id,
             payload={"chapter_id": unit.unit_id, "state": media_state, "images": image_entries},
@@ -163,7 +170,8 @@ async def _import_document_r2(
     ]
     manifest = {
         "schema_version": 1,
-        "novel_id": novel_id,
+        "novel_id": storage_novel_id,
+        "public_slug": novel_id,
         "generation_id": generation_id,
         "mode": "document_import",
         "source": {

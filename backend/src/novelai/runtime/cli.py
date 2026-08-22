@@ -261,6 +261,69 @@ def _run_r2_gc(*, execute: bool, grace_days: int) -> None:
     print(json.dumps(asdict(result), sort_keys=True, default=list))
 
 
+def _run_r2_namespace_migration(*, novel_id: str | None, execute: bool, writers_frozen: bool) -> None:
+    if execute and not writers_frozen:
+        raise PermissionError("Writers must be frozen before an R2 namespace migration")
+
+    from novelai.db.engine import session_scope
+    from novelai.db.models.novel import Novel
+    from novelai.runtime.container import container
+    from novelai.storage.r2_namespace_migration import (
+        R2NovelNamespaceMigrator,
+        delete_migrated_source_namespace,
+    )
+
+    results = []
+    with session_scope() as session:
+        slugs = (
+            [novel_id]
+            if novel_id
+            else [str(slug) for (slug,) in session.query(Novel.slug).order_by(Novel.id.asc()).all()]
+        )
+        migrator = R2NovelNamespaceMigrator(storage=container.storage.r2_backend, db_session=session)
+        for slug in slugs:
+            results.append(migrator.migrate_novel(slug, dry_run=not execute))
+
+    if execute:
+        finalized = []
+        for result in results:
+            deleted = delete_migrated_source_namespace(container.storage.r2_backend, result)
+            finalized.append(
+                {
+                    "novel_slug": result.novel_slug,
+                    "storage_novel_id": result.storage_novel_id,
+                    "source_prefix": result.source_prefix,
+                    "target_prefix": result.target_prefix,
+                    "dry_run": result.dry_run,
+                    "source_objects": len(result.source_keys),
+                    "destination_objects": len(result.destination_keys),
+                    "json_objects": result.json_objects,
+                    "asset_objects": result.asset_objects,
+                    "changed_database_references": result.changed_database_references,
+                    "deleted_source_objects": deleted,
+                }
+            )
+        results_payload = finalized
+    else:
+        results_payload = [
+            {
+                "novel_slug": result.novel_slug,
+                "storage_novel_id": result.storage_novel_id,
+                "source_prefix": result.source_prefix,
+                "target_prefix": result.target_prefix,
+                "dry_run": result.dry_run,
+                "source_objects": len(result.source_keys),
+                "destination_objects": len(result.destination_keys),
+                "json_objects": result.json_objects,
+                "asset_objects": result.asset_objects,
+                "changed_database_references": result.changed_database_references,
+                "deleted_source_objects": 0,
+            }
+            for result in results
+        ]
+    print(json.dumps(results_payload, sort_keys=True, default=list))
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="novelaibook")
     subparsers = parser.add_subparsers(dest="command")
@@ -306,6 +369,14 @@ def main(argv: list[str] | None = None) -> None:
     gc_parser = subparsers.add_parser("r2-gc", help="Mark and sweep unreferenced R2 objects")
     gc_parser.add_argument("--execute", action="store_true", help="Delete eligible objects; default is dry-run")
     gc_parser.add_argument("--grace-days", type=int, default=7, help="Minimum age of an unreferenced object")
+
+    namespace_parser = subparsers.add_parser(
+        "r2-migrate-novel-ids",
+        help="Rekey slug-prefixed R2 artifacts under immutable PostgreSQL novel IDs",
+    )
+    namespace_parser.add_argument("--novel-id", default=None, help="Migrate one public/source novel slug")
+    namespace_parser.add_argument("--execute", action="store_true", help="Write and finalize the migration")
+    namespace_parser.add_argument("--writers-frozen", action="store_true", help="Confirm all writers are frozen")
 
     args = parser.parse_args(argv)
     command = args.command or "web"
@@ -357,6 +428,17 @@ def main(argv: list[str] | None = None) -> None:
 
         bootstrap()
         _run_r2_gc(execute=bool(args.execute), grace_days=args.grace_days)
+        return
+
+    if command == "r2-migrate-novel-ids":
+        from novelai.runtime.bootstrap import bootstrap
+
+        bootstrap()
+        _run_r2_namespace_migration(
+            novel_id=args.novel_id,
+            execute=bool(args.execute),
+            writers_frozen=bool(args.writers_frozen),
+        )
         return
 
     from novelai.runtime.bootstrap import bootstrap

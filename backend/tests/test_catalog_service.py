@@ -318,7 +318,7 @@ class TestSaveRawChapter:
         db_session.commit()
         chapter = db_session.query(Chapter).filter_by(novel_id=seeded_novel.id).one()
         assert chapter.raw_storage_key is not None
-        assert "novel-001" in chapter.raw_storage_key
+        assert f"novels/{seeded_novel.id}/" in chapter.raw_storage_key
 
     def test_sets_raw_status_fetched(self, catalog, db_session, seeded_novel) -> None:
         catalog.save_raw_chapter("novel-001", "ch001", "Content", chapter_number=1)
@@ -332,7 +332,7 @@ class TestSaveRawChapter:
         catalog.save_raw_chapter("novel-001", "ch001", "Deterministic content", chapter_number=1)
         db_session.commit()
         chapter = db_session.query(Chapter).filter_by(novel_id=seeded_novel.id).one()
-        assert chapter.raw_storage_key.startswith("novels/novel-001/chapters/ch001/")
+        assert chapter.raw_storage_key.startswith(f"novels/{seeded_novel.id}/chapters/ch001/")
         assert chapter.raw_storage_key.endswith(".json.gz")
 
 
@@ -353,7 +353,7 @@ class TestSaveTranslatedChapter:
         db_session.commit()
         chapter = db_session.query(Chapter).filter_by(novel_id=seeded_novel.id).one()
         assert chapter.translated_storage_key is not None
-        assert chapter.translated_storage_key.startswith("novels/novel-001/translations/ch001/")
+        assert chapter.translated_storage_key.startswith(f"novels/{seeded_novel.id}/translations/ch001/")
         assert chapter.translated_storage_key.endswith(".json.gz")
 
     def test_sets_translation_status(self, catalog, db_session, seeded_novel) -> None:

@@ -21,25 +21,25 @@ from novelai.storage.content_addressing import (
 def test_logical_hash_excludes_volatile_timestamps_and_normalizes_text() -> None:
     first = prepare_json_artifact(
         {"text": "line\r\nnext", "updated_at": "2026-01-01T00:00:00Z"},
-        novel_id="n1",
+        novel_id="1",
         kind="chapters",
         identity="1",
     )
     second = prepare_json_artifact(
         {"updated_at": "2027-01-01T00:00:00Z", "text": "line\nnext"},
-        novel_id="n1",
+        novel_id="1",
         kind="chapters",
         identity="1",
     )
     assert first.logical_hash == second.logical_hash
     assert first.compressed_bytes == second.compressed_bytes
-    assert first.key == "novels/n1/chapters/1/" + first.logical_hash + ".json.gz"
+    assert first.key == "novels/1/chapters/1/" + first.logical_hash + ".json.gz"
     assert deterministic_gzip(first.logical_bytes) == first.compressed_bytes
 
 
 def test_application_keys_have_no_legacy_prefix() -> None:
-    key = artifact_key("n1", "translations", "chapter:1", "a" * 64)
-    assert key == "novels/n1/translations/chapter:1/" + "a" * 64 + ".json.gz"
+    key = artifact_key("1", "translations", "chapter:1", "a" * 64)
+    assert key == "novels/1/translations/chapter:1/" + "a" * 64 + ".json.gz"
     assert not key.startswith("storage/")
     assert "v1/" not in key
 
@@ -60,7 +60,7 @@ def r2() -> Iterator[R2Storage]:
 def test_immutable_write_is_idempotent_and_rejects_changed_bytes(r2: R2Storage) -> None:
     artifact = prepare_json_artifact(
         {"chapter_id": "1", "text": "hello"},
-        novel_id="n1",
+        novel_id="1",
         kind="chapters",
         identity="1",
     )

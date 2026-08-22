@@ -34,14 +34,14 @@ class R2ArtifactRepository:
     def put_json(
         self,
         *,
-        novel_id: str,
+        storage_novel_id: str,
         kind: ArtifactKind,
         identity: str,
         payload: Any,
     ) -> StoredArtifact:
         artifact = prepare_json_artifact(
             payload,
-            novel_id=novel_id,
+            novel_id=storage_novel_id,
             kind=kind,
             identity=identity,
         )
@@ -57,19 +57,19 @@ class R2ArtifactRepository:
     def put_generation_manifest(
         self,
         *,
-        novel_id: str,
+        storage_novel_id: str,
         generation_id: str,
         payload: Any,
     ) -> StoredArtifact:
         artifact = prepare_json_artifact(
             payload,
-            novel_id=novel_id,
+            novel_id=storage_novel_id,
             kind="generations",
             identity=generation_id,
         )
         # Generation keys intentionally omit the manifest hash so a generation
         # ID is addressable exactly once; the manifest contains its own hash.
-        key = generation_key(novel_id, generation_id, artifact.logical_hash)
+        key = generation_key(storage_novel_id, generation_id, artifact.logical_hash)
         result = self.storage.put_immutable(
             key,
             artifact.compressed_bytes,
@@ -79,9 +79,9 @@ class R2ArtifactRepository:
         )
         return self._stored(result)
 
-    def put_asset(self, *, novel_id: str, content: bytes, extension: str) -> StoredArtifact:
+    def put_asset(self, *, storage_novel_id: str, content: bytes, extension: str) -> StoredArtifact:
         digest = sha256_hex(content)
-        key = asset_key(novel_id, digest, extension)
+        key = asset_key(storage_novel_id, digest, extension)
         result = self.storage.put_immutable(
             key,
             content,
