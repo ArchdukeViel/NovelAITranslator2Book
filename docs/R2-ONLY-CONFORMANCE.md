@@ -32,8 +32,9 @@ Completed evidence:
 - Supabase project `jzacnvsjvfgsmakybjpl` retains the three canonical novel
   identities and their source URLs; only verified stale duplicate rows were
   deleted.
-- Migrations `f1a7c9e2d4b6` and `b6c8d0e2f4a6` are applied in the authorized
-  database and `b6c8d0e2f4a6` is the current local Alembic head.
+- Migrations `f1a7c9e2d4b6`, `b6c8d0e2f4a6`, and `c9d1e3f5a7b9` are applied in
+  the authorized database and `c9d1e3f5a7b9` is the current Alembic head;
+  `c9d1e3f5a7b9` adds the `novel_requests.chapter_id` foreign-key index.
 - `dokushodo` and `dokushodo-backup` were emptied with fully paginated live
   inventories while retaining both bucket resources. The backup bucket has
   one restored generic 30-day `snapshots/` retention rule.
@@ -43,11 +44,15 @@ Completed evidence:
   under `novels/16/`, and Novel18 (ID 17) has 31 chapters / 63 objects under
   `novels/17/`. All three retain their PostgreSQL identities and source URLs;
   Novel18 remains unpublished.
-- The application bucket has 538 objects / 1,323,685 bytes, was fully
+- The application bucket has 538 objects / 1,323,657 stored bytes, was fully
   paginated, and every object reports matching verified `logical-sha256`
   metadata. The post-rekey audit found zero non-numeric namespace keys, zero
   embedded legacy-prefix references, zero JSON decode errors, and zero missing
   database pointers.
+- Cloudflare's control-plane API confirms exactly the two required buckets,
+  `dokushodo` and `dokushodo-backup`; both are APAC/Standard/default-
+  jurisdiction. Application and backup lifecycle rules are enabled, while
+  both private buckets have no custom domain and no CORS policy.
 - The local canonical content paths and temporary repopulation staging paths
   are absent. `storage/runtime/` is disposable runtime state, not a canonical
   content store, and remains an untracked working-tree item.
@@ -139,15 +144,19 @@ redirect is intentionally not represented by a brief.
   `13,719` nodes and `38,103` edges.
 - Route-ownership focused tests: `60 passed` (microservice split, production
   configuration, and contributor-router coverage).
-- The authorized live database has migration `b6c8d0e2f4a6` applied and the
-  local Alembic state is stamped to that head. RLS is enabled on the three
-  post-runtime tables; `anon`/`authenticated` lack table privileges and
-  `novelai_app` retains runtime access. The Supabase security advisor is clean;
-  performance output remains informational.
+- The authorized live database has migration `c9d1e3f5a7b9` applied and the
+  Alembic state is at that head. RLS is enabled on the three post-runtime
+  tables; `anon`/`authenticated` lack table privileges and `novelai_app`
+  retains runtime access. The Supabase security advisor is clean; the
+  `novel_requests.chapter_id` foreign-key advisor finding is resolved, and 58
+  unused-index observations remain informational.
 - The live R2 reset and repopulation were verified with full pagination:
-  `dokushodo` contains 538 objects / 1,323,685 bytes under the three exact
+  `dokushodo` contains 538 objects / 1,323,657 stored bytes under the three exact
   numeric `novels/<novel_id>/` prefixes; `dokushodo-backup` contains zero
   objects because recovery is user-deferred. Both bucket resources remain.
+- The Cloudflare control-plane audit independently verified the exact bucket
+  names, Standard storage class, default jurisdiction, lifecycle policies, and
+  absence of public custom domains/CORS configuration.
 - The post-rekey live verifier read all 538 application objects and confirmed
   zero namespace violations, zero embedded legacy-prefix references, zero
   JSON decode errors, zero missing database pointers, and zero logical-SHA-256
@@ -165,6 +174,15 @@ redirect is intentionally not represented by a brief.
 - The active application environment profiles now resolve the migrated `R2_*`
   application settings; backup credentials remain intentionally unset while
   `R2_BACKUP_ENABLED=false`.
+- The earlier successful local core-suite record remains historical evidence;
+  a later workstation rerun was disk-constrained and is not treated as a code
+  result. Current-head CI run `32542780031` passed the core backend shard,
+  three extended backend shards, migration smoke, E2E, frontend, and Docker
+  build checks.
+- A read-only full-object efficiency verifier measured 5,586,652 logical
+  uncompressed bytes, 4,262,995 compression-saved bytes (76.31%), one
+  paginated LIST, 538 HEAD requests, and 538 GET requests. All 538 objects had
+  logical SHA-256 metadata and zero mismatches.
 - Reader acceptance against the live database/R2 path returned two published
   catalog entries, 200 for both published detail aliases, 404 for unpublished
   Novel18 detail/chapter routes, 200 chapter listings for the published novels,
@@ -179,19 +197,19 @@ The live inventory and PostgreSQL projection currently provide this measured
 shape. The `public_url` column is a route path because no hosted public origin
 is configured in the local environment.
 
-| PostgreSQL ID | Source URL | Publication | Public URL | Chapters | Active generations | R2 objects | Stored bytes | Object groups | Translation status |
-|---:|---|---|---|---:|---:|---:|---:|---|---|
-| 11 | `https://ncode.syosetu.com/n2056dn/` | published | `/novels/my-father-is-a-hero-my-mother-is-a-spirit-and-i-their-daughter-am-a-reincarnator` | 148 | 1 | 298 | 801,608 | 148 chapters, 148 media, 1 generation, 1 translation | 1/148 translated |
-| 16 | `https://kakuyomu.jp/works/16817330655991571532` | published | `/novels/that-time-i-got-reincarnated-as-a-world-tree` | 88 | 1 | 177 | 330,079 | 88 chapters, 88 media, 1 generation | 0/88 translated |
-| 17 | `https://novel18.syosetu.com/n3266mn/` | unpublished | `/novels/holy-water-dungeon-until-i-who-used-and-discarded-women-as-keys-fell-to-a-top-tier-holy-water-operative` | 31 | 1 | 63 | 191,998 | 31 chapters, 31 media, 1 generation | 0/31 translated |
+| PostgreSQL ID | Source URL | Publication | Public URL | Chapters | Active generations | R2 objects | Stored bytes | Logical bytes | Object groups | Translation status |
+|---:|---|---|---|---:|---:|---:|---:|---:|---|---|
+| 11 | `https://ncode.syosetu.com/n2056dn/` | published | `/novels/my-father-is-a-hero-my-mother-is-a-spirit-and-i-their-daughter-am-a-reincarnator` | 148 | 1 | 298 | 801,625 | 3,461,208 | 148 chapters, 148 media, 1 generation, 1 translation | 1/148 translated |
+| 16 | `https://kakuyomu.jp/works/16817330655991571532` | published | `/novels/that-time-i-got-reincarnated-as-a-world-tree` | 88 | 1 | 177 | 330,025 | 1,369,061 | 88 chapters, 88 media, 1 generation | 0/88 translated |
+| 17 | `https://novel18.syosetu.com/n3266mn/` | unpublished | `/novels/holy-water-dungeon-until-i-who-used-and-discarded-women-as-keys-fell-to-a-top-tier-holy-water-operative` | 31 | 1 | 63 | 192,007 | 756,383 | 31 chapters, 31 media, 1 generation | 0/31 translated |
 
-Logical uncompressed byte totals, compression savings, live GET/PUT/LIST
-counters, unchanged-recrawl upload counts, deduplicated asset counts, reused
-translation counts, and backup-object reuse counts were not captured by this
-reset/repopulation run. The focused R2 catalog/cutover suite passes 10 tests,
-including an unchanged-recrawl no-op and incremental backup object reuse, but
-those tests are not a substitute for a measured repeated live crawl. The
-backup bucket is empty because recovery remains user-deferred.
+The read-only verifier measured the logical-byte and compression totals above,
+but it did not perform a live recrawl. Unchanged-recrawl upload counts,
+deduplicated asset counts, reused translation counts, and backup-object reuse
+counts therefore remain unmeasured. The focused R2 catalog/cutover suite passes
+10 tests, including an unchanged-recrawl no-op and incremental backup object
+reuse, but those tests are not a substitute for a measured repeated live crawl.
+The backup bucket is empty because recovery remains user-deferred.
 
 ## Evidence boundary
 

@@ -1,3 +1,23 @@
+## 2026-08-22 PR113 R2 CONTROL-PLANE AND DATABASE PERFORMANCE CHECKPOINT
+
+Applied and verified Alembic migration `c9d1e3f5a7b9` on the authorized
+Supabase PostgreSQL project. It adds the missing `novel_requests.chapter_id`
+foreign-key index identified by the live performance advisor. A follow-up
+advisor run reported no unindexed foreign-key finding; remaining unused-index
+observations are retained for workload review rather than removed speculatively.
+
+The Cloudflare control-plane audit independently confirmed exactly two R2
+buckets: `dokushodo` and `dokushodo-backup`. Both are APAC/Standard/default-
+jurisdiction. Application and backup lifecycle rules are enabled, and neither
+private bucket has a custom domain or CORS policy. No object or backup data was
+modified during this audit; backup/recovery remains operator-deferred.
+
+The read-only application-bucket verifier measured 538 objects, 1,323,657
+stored bytes, 5,586,652 logical uncompressed bytes, and 4,262,995 compression-
+saved bytes (76.31%). It performed one paginated LIST, 538 HEAD requests, and
+538 GET requests; all logical SHA-256 metadata checks passed. Repeated live
+recrawl and backup-reuse counters remain unmeasured.
+
 ## 2026-08-17 DEBT-079D MINIMAL STAGING FIXTURES, ADAPTER HEALTH & PERFORMANCE ACCEPTANCE EVIDENCE
 
 The evidence in this section predates the R2-only content rearchitecture. Its

@@ -192,7 +192,11 @@ class NovelRequest(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     request_type: Mapped[str] = mapped_column(String(64), nullable=False)
     novel_id: Mapped[int | None] = mapped_column(ForeignKey("novels.id", ondelete="SET NULL"), nullable=True)
-    chapter_id: Mapped[int | None] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
+    chapter_id: Mapped[int | None] = mapped_column(
+        ForeignKey("chapters.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(64), nullable=False, default="pending", index=True)
     created_at: Mapped[datetime] = mapped_column(

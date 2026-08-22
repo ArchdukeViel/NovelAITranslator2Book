@@ -55,12 +55,18 @@ prefix cleanup now snapshots paginated keys before deletion; its focused suite
 passes 8 tests, and a stopped synthetic Phase 6 seed was fully cleaned without
 leaving R2 objects or database rows. Production-scale telemetry remains open.
 The conformance ledger now records the measured per-novel R2 shape; logical
-uncompressed bytes, repeated-crawl counters, deduplicated asset savings, and
+uncompressed bytes and compression savings are measured by a read-only
+full-object verifier. Repeated-crawl counters, deduplicated asset savings, and
 backup reuse remain unmeasured rather than inferred from object counts. Focused
 takedown and public-isolation coverage passes 150 tests; hosted CDN/public
 origin propagation remains an operator acceptance gate. The focused R2
 catalog/cutover suite also passes 10 tests, including unchanged-recrawl no-op
 and incremental-backup reuse behavior.
+The live Supabase performance advisor's missing `novel_requests.chapter_id`
+foreign-key index was resolved by migration `c9d1e3f5a7b9`; remaining unused-
+index notices are informational. A Cloudflare control-plane audit independently
+confirmed that exactly `dokushodo` and `dokushodo-backup` exist with the
+intended lifecycle policies; recovery remains disabled by operator decision.
 
 ## Novel Detail Stage B Decision (2026-08-19)
 

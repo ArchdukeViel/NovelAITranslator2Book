@@ -44,12 +44,23 @@ Completed at this checkpoint:
   `novels/11/`, `novels/16/`, and `novels/17/`, all source namespaces were
   deleted after the database transaction committed, and database pointers,
   nested object references, and generation manifests were rewritten;
-- the application bucket now contains 538 paginated objects / 1,323,685 bytes
-  under the three exact numeric `novels/<novel_id>/` prefixes, and every
-  object has a matching logical SHA-256 metadata value;
+- the application bucket now contains 538 paginated objects / 1,323,657 stored
+  bytes under the three exact numeric `novels/<novel_id>/` prefixes, and every
+  object has a matching logical SHA-256 metadata value; a read-only full-object
+  verifier measured 5,586,652 logical uncompressed bytes and 4,262,995 bytes
+  of compression savings (76.31%), with one LIST, 538 HEAD, and 538 GET
+  operations and zero logical-hash mismatches;
 - the post-rekey verifier found zero non-numeric namespace keys, zero embedded
   legacy-prefix references, zero JSON decode errors, zero missing database
   pointers, and zero logical-hash mismatches;
+- the Cloudflare R2 control-plane audit confirmed exactly two buckets,
+  `dokushodo` and `dokushodo-backup`, both in the APAC location with Standard
+  storage and default jurisdiction; application and backup lifecycle rules are
+  present, and neither private bucket has a custom domain or CORS policy;
+- the live Supabase performance advisor's actionable missing index was fixed by
+  migration `c9d1e3f5a7b9`, adding the `novel_requests.chapter_id` foreign-key
+  index; the remaining unused-index notices are informational workload
+  observations and were not removed speculatively;
 - the populated application `S3_*` values were migrated to `R2_*` in the root,
   development-deployment, and production-deployment environment files;
 - all active backend environment assignments are now represented by their
@@ -80,6 +91,9 @@ Completed at this checkpoint:
   generation or content/job/user references and were removed. The canonical
   active rows remain IDs 11, 16, and 17, and the stale tag associations were
   removed by cascade.
+- per-novel efficiency evidence is now recorded in the conformance ledger;
+  repeated live recrawl counters, asset deduplication savings, and backup
+  object reuse remain unmeasured because recovery is still operator-deferred;
 - the final live shape report records per-novel chapter/object/byte counts,
   active-generation counts, public route paths, and translation counts in
   `docs/R2-ONLY-CONFORMANCE.md`; logical-byte, repeated-crawl, and operation
@@ -109,9 +123,9 @@ Paused or not yet complete:
   temporary objects because the workstation-to-R2 path made the full
   1,428-chapter fixture impractical; the exact namespace cleanup was rerun and
   verified empty, so no production-scale performance claim is made;
-- the Supabase performance advisor still reports one informational unindexed
-  foreign key and unused-index notices; this is a follow-up, not a security
-  blocker for the cutover;
+- the Supabase performance advisor still reports informational unused-index
+  observations (58 after the new foreign-key index was added); these are a
+  workload follow-up, not a security blocker for the cutover;
 
 ---
 
