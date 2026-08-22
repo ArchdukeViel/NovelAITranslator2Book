@@ -78,8 +78,10 @@ Environment checkpoint resolution:
   root `.env.local` or `deploy/.env.production` runtime file was fabricated;
 - Pydantic validation confirms the root and production profiles resolve the
   application bucket as `dokushodo` with region `auto` and populated
-  application credentials. Separate backup credentials remain absent by
-  design, with backup disabled;
+  application credentials. Separate backup credentials remain absent because
+  the connected Cloudflare API rejected account/user token creation with
+  `9109 Unauthorized`; no credential value was returned or written, and
+  backup remains disabled;
 - the gate is resolved and all three source imports are complete through the
   normal application R2 path.
 
@@ -172,8 +174,9 @@ redirect is intentionally not represented by a brief.
   temporary repopulation staging path. The untracked `storage/runtime/`
   directory is disposable runtime state and is not a content source.
 - The active application environment profiles now resolve the migrated `R2_*`
-  application settings; backup credentials remain intentionally unset while
-  `R2_BACKUP_ENABLED=false`.
+  application settings; backup credentials remain unset after the connected
+  Cloudflare API rejected account/user token creation with `9109 Unauthorized`,
+  while `R2_BACKUP_ENABLED=false`.
 - The earlier successful local core-suite record remains historical evidence;
   a later workstation rerun was disk-constrained and is not treated as a code
   result. Current-head CI run `32542780031` passed the core backend shard,

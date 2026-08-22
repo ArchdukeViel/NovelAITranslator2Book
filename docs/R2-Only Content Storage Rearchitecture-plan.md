@@ -16,7 +16,9 @@ resolved by migrating the populated legacy `S3_*` application values to the
 current `R2_*` names in the active backend environment files. The checkpoint
 also audited every discovered `.env`/`.env.*` file and synchronized each active
 application pair by key shape without copying secrets. No backup secret was
-invented; backup remains disabled until its separate credentials exist.
+invented; the connected Cloudflare API rejected both account- and user-token
+creation with `9109 Unauthorized`, so backup remains disabled until separate
+credentials can be issued.
 
 Completed at this checkpoint:
 
@@ -101,9 +103,10 @@ Completed at this checkpoint:
 
 Paused or not yet complete:
 
-- separate backup credentials remain absent because no equivalent source value
-  exists; `R2_BACKUP_ENABLED` remains false and no recovery operation is being
-  claimed;
+- separate backup credentials remain absent because the connected Cloudflare
+  API lacks permission to issue account or user API tokens (`9109 Unauthorized`);
+  no credential value was returned or written, `R2_BACKUP_ENABLED` remains false,
+  and no recovery operation is being claimed;
 - a representative translation now passes for NCode chapter 1: Gemini reached
   through the rebuilt worker-capable Compose runtime, deterministic QA passed,
   the translated artifact was read back from R2, and the public chapter route

@@ -46,7 +46,9 @@ application pairs. The root and deployment templates also share one ordered
 
 Optional external/operator values may remain absent. In particular, the current
 audit intentionally leaves independent backup credentials, SMTP settings, and
-the production migration URL unset where no approved source value exists.
+the production migration URL unset where no approved source value exists. A
+Cloudflare account/user R2-token creation attempt returned `9109 Unauthorized`,
+so no backup credential was generated or written.
 
 ## Python Interpreter
 

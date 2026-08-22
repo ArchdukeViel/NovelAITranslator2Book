@@ -67,6 +67,9 @@ foreign-key index was resolved by migration `c9d1e3f5a7b9`; remaining unused-
 index notices are informational. A Cloudflare control-plane audit independently
 confirmed that exactly `dokushodo` and `dokushodo-backup` exist with the
 intended lifecycle policies; recovery remains disabled by operator decision.
+An authorized attempt to create separate R2 snapshot credentials through the
+connected Cloudflare API returned `9109 Unauthorized`; no secret was returned
+or written, so issuance remains an operator-permission follow-up.
 
 ## Novel Detail Stage B Decision (2026-08-19)
 
