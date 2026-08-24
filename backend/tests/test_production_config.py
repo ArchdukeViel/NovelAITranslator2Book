@@ -42,7 +42,7 @@ def _make_prod_settings(**overrides: Any) -> AppSettings:
         DATABASE_RESTORE_VERIFICATION_ENABLED=False,
     )
     defaults.update(overrides)
-    return AppSettings(**defaults)
+    return AppSettings(_env_file=None, **defaults)  # type: ignore[call-arg]
 
 
 class TestProductionConfigValidator:
@@ -176,6 +176,17 @@ class TestProductionConfigValidator:
             )
         )
         assert not result.has_fatal
+
+    def test_database_backup_rejects_runtime_target_with_driver_alias(self):
+        result = validate_production_config(
+            _make_prod_settings(
+                DATABASE_BACKUP_ENABLED=True,
+                DATABASE_BACKUP_URL="postgresql://example.invalid/postgres",
+                DATABASE_URL="postgresql+psycopg://example.invalid/postgres",
+                DATABASE_BACKUP_ENCRYPTION_KEY="x" * 64,
+            )
+        )
+        assert any("dedicated backup-capable" in issue.message for issue in result.fatals)
 
     def test_restore_verification_rejects_production_target(self):
         result = validate_production_config(

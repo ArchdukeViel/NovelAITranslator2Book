@@ -314,6 +314,7 @@ class AppSettings(BaseSettings):
     # --- Database
     DATABASE_URL: str | None = None
     MIGRATION_DATABASE_URL: str | None = None
+    DATABASE_BACKUP_URL: SecretStr | None = None
     DB_CONNECTION_MODE: Literal["direct", "session", "transaction"] = "direct"
     DB_POOL_SIZE: int = Field(default=5, ge=1)
     DB_MAX_OVERFLOW: int = Field(default=5, ge=0)

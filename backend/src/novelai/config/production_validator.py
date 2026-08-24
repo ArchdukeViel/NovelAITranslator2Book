@@ -16,6 +16,8 @@ from enum import StrEnum
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from sqlalchemy.engine import make_url
+
 from novelai.config.settings import AppSettings
 
 DEFAULT_SECRET_VALUES: frozenset[str] = frozenset(
@@ -129,6 +131,18 @@ def _secret_value(value: object | None) -> str | None:
         return None
     getter = getattr(value, "get_secret_value", None)
     return str(getter() if getter else value)
+
+
+def _same_database_target(first: str, second: str) -> bool:
+    """Compare database targets without treating the SQLAlchemy driver as identity."""
+    first_normalized = first.replace("postgresql+psycopg://", "postgresql://", 1)
+    second_normalized = second.replace("postgresql+psycopg://", "postgresql://", 1)
+    try:
+        return make_url(first_normalized).render_as_string(hide_password=False) == make_url(
+            second_normalized
+        ).render_as_string(hide_password=False)
+    except TypeError, ValueError:
+        return first_normalized == second_normalized
 
 
 def validate_production_config(settings: AppSettings) -> ValidationResult:
@@ -357,6 +371,15 @@ def validate_production_config(settings: AppSettings) -> ValidationResult:
     if settings.DATABASE_BACKUP_ENABLED:
         if not settings.R2_BACKUP_ENABLED:
             result.add(Severity.FATAL, "database_backup", "Database backups require the independent R2 target.")
+        backup_url = _secret_value(settings.DATABASE_BACKUP_URL)
+        if not backup_url:
+            result.add(Severity.FATAL, "database_backup", "DATABASE_BACKUP_URL is required for RLS-safe dumps.")
+        elif settings.DATABASE_URL and _same_database_target(backup_url, settings.DATABASE_URL):
+            result.add(
+                Severity.FATAL,
+                "database_backup",
+                "DATABASE_BACKUP_URL must use a dedicated backup-capable database role.",
+            )
         if not settings.DATABASE_BACKUP_PREFIX.strip().strip("/"):
             result.add(Severity.FATAL, "database_backup", "DATABASE_BACKUP_PREFIX must not be root.")
         if settings.DATABASE_BACKUP_PREFIX.strip("/") == settings.R2_BACKUP_PREFIX.strip("/"):
