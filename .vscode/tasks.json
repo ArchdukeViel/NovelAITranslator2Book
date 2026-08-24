@@ -124,6 +124,21 @@
       }
     },
     {
+      "label": "Frontend: Build",
+      "type": "shell",
+      "command": "npm",
+      "args": ["--prefix", "frontend", "run", "build"],
+      "group": "build",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
       "label": "Graphify: Update Index",
       "type": "shell",
       "command": "graphify",
