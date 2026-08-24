@@ -217,18 +217,18 @@ Updated: 2026-08-24
   - Last result: The original broad `tools\ruff.ps1 format --check backend` exited 1 because 80 pre-existing backend files would be reformatted; the scoped affected-file check exited 0 with `4 files already formatted`, and `git diff --check` exited 0.
   - Evidence: The four migration files covered by this spec are formatter-clean. No formatter rewrite was performed, so unrelated committed baseline files and the user-owned dirty backend file remain untouched. The broad baseline finding is reproducible and recorded rather than hidden.
 
-- [ ] **T-017 Verify Frontend production build (R17)**
+- [x] **T-017 Verify Frontend production build (R17)**
   - Run Next.js build.
   - Verification: `npm --prefix frontend run build`
   - Maps to: REQ-004, AC-004
   - Depends on: T-016
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for local production-build validation
   - Scope: The frontend production build and generated-output safety boundary
   - Expected: Next.js builds successfully without modifying tracked source or exposing environment values
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record build output and tracked-file review
+  - Attempts: 1
+  - Last result: `npm --prefix frontend run build` exited 0; Next.js 16.3.1 compiled, finished TypeScript, generated 48 static pages, and finalized route optimization.
+  - Evidence: The production build completed without tracked frontend changes. Generated build output remained outside the tracked source boundary, and no environment values were exposed in the command output.
 
 - [ ] **T-018 Verify Frontend typecheck and linting (R18)**
   - Run TypeScript typecheck and ESLint.
