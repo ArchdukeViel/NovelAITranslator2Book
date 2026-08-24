@@ -790,3 +790,40 @@ restored the encrypted backup without a process override.
 The hosted reader stages, provider canary, full queue, checkpoint-compaction
 decision, and production-readiness gates remain open and are not represented
 as completed by this recovery evidence.
+
+## 2026-08-24 WORKSPACE AND QUALITY HARDENING COMPLETION
+
+The approved `workspace-and-quality-hardening` specification is complete:
+all 20 tasks have passing verification evidence and the task ledger is
+validated. Root hygiene, `.gitignore`/VS Code tracking, searchable
+specifications, and the local `.opencode/` boundary were reconciled without
+removing canonical configuration.
+
+The three canonical PowerShell wrappers now normalize Windows path arguments
+and fail closed with exit code 2 when `.venv\Scripts\python.exe` is absent;
+the capacity load harness uses the same missing-interpreter contract. VS Code
+now has backend watch and focused-test tasks, a frontend build task, and
+explicit Ruff/Prettier bindings for Python, TypeScript, JSON, and JSONC.
+
+Validation evidence:
+
+- `npm --prefix frontend run test`: 78 test files and 857 tests passed.
+- `npm --prefix frontend run build`: Next.js 16.3.1 completed and generated
+  48 static pages.
+- `npm --prefix frontend run typecheck` and `npm --prefix frontend run lint`:
+  both exited 0.
+- Pyright on the four `2026-08-22_*.py` migrations and global Pyright:
+  0 errors, 0 warnings, 0 informations.
+- Ruff migration check: all checks passed; affected formatter check:
+  4 files already formatted.
+- `graphify update . --no-cluster`: exited 0 with 14,326 nodes and 39,305
+  edges. The known nonfatal zero-node warning for JSON/configuration and
+  generated evidence files remains unchanged.
+- The spec validator, `git diff --check`, JSON/parser checks, and enabled
+  pre-commit hooks passed. No database migration, provider/R2 mutation,
+  secret-file change, push, or remote repository action was performed.
+
+The broad `tools\ruff.ps1 format --check backend` audit still reports 80
+pre-existing backend files that would be reformatted. They were intentionally
+not rewritten; the affected files for this spec were checked separately and
+the condition remains outside this workspace-hardening change.
