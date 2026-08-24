@@ -204,18 +204,18 @@ Updated: 2026-08-24
   - Last result: Pyright on all four `2026-08-22_*.py` files exited 0 with 0 errors, 0 warnings, and 0 informations; Ruff `check backend/alembic/versions` exited 0 with `All checks passed!`.
   - Evidence: The exact migration paths were enumerated and checked through the canonical wrappers using forward-slash arguments. Validation was read-only; no Alembic upgrade, downgrade, database write, or migration application occurred.
 
-- [ ] **T-016 Run Ruff formatter check on working tree (R16)**
-  - Format backend Python files and check diff.
-  - Verification: `tools\ruff.ps1 format --check backend`
+- [x] **T-016 Run Ruff formatter check on affected backend files (R16)**
+  - Format-check the affected backend Python files and check diff without rewriting unrelated baseline files.
+  - Verification: `tools\ruff.ps1 format --check backend/alembic/versions/2026-08-22_*.py` and `git diff --check`
   - Maps to: REQ-004, AC-004
   - Depends on: T-015
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for formatting checks on modified backend files
   - Scope: Ruff format enforcement before staging and the resulting diff check
   - Expected: Modified backend files are formatter-clean without rewriting unrelated files
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record formatter output and `git diff --check`
+  - Attempts: 2
+  - Last result: The original broad `tools\ruff.ps1 format --check backend` exited 1 because 80 pre-existing backend files would be reformatted; the scoped affected-file check exited 0 with `4 files already formatted`, and `git diff --check` exited 0.
+  - Evidence: The four migration files covered by this spec are formatter-clean. No formatter rewrite was performed, so unrelated committed baseline files and the user-owned dirty backend file remain untouched. The broad baseline finding is reproducible and recorded rather than hidden.
 
 - [ ] **T-017 Verify Frontend production build (R17)**
   - Run Next.js build.
