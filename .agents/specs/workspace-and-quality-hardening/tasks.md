@@ -6,18 +6,18 @@ Status: Approved
 Updated: 2026-08-24
 
 ## Phase 1: Workspace & Root Hygiene (R1–R5)
-- [ ] **T-001 Clean root stray file (R1)**
+- [x] **T-001 Clean root stray file (R1)**
   - Delete empty `file` from repo root.
   - Verification: `powershell -NoProfile -Command "if (Test-Path 'file') { exit 1 } else { exit 0 }"`
   - Maps to: REQ-001, AC-001
   - Depends on: none
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for repository-root cleanup
   - Scope: The empty `file` entry at the repository root
   - Expected: The named stray file is absent and no canonical file is removed
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record the path-safe check and review result
+  - Attempts: 1
+  - Last result: `powershell -NoProfile -Command "if (Test-Path 'file') { exit 1 } else { exit 0 }"` exited 0; the target was already absent, so no deletion was performed.
+  - Evidence: Read-only root-target review and `git ls-files -- file` confirmed the named path is absent and untracked. No canonical file was changed.
 
 - [ ] **T-002 Clean root stray directory (R2)**
   - Delete empty `Caddyfile/` folder from repo root.
