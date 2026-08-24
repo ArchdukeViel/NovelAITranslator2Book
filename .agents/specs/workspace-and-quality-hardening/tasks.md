@@ -178,18 +178,18 @@ Updated: 2026-08-24
   - Evidence: `.vscode/extensions.json` retains 10 unique active recommendations. `.vscode/settings.json` binds Python to Ruff and TypeScript, JSON, and JSONC to Prettier with format-on-save; no credential or machine-specific configuration was introduced.
 
 ## Phase 4: Testing, Database & CI Hardening (R14–R20)
-- [ ] **T-014 Validate Frontend Vitest CLI test suite execution (R14)**
+- [x] **T-014 Validate Frontend Vitest CLI test suite execution (R14)**
   - Run frontend test suite via `npm --prefix frontend run test`.
   - Verification: `npm --prefix frontend run test`
   - Maps to: REQ-004, AC-004
   - Depends on: T-013
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for local frontend test execution
   - Scope: The Windows-compatible Vitest invocation and complete frontend test suite
   - Expected: Vitest starts through the documented npm prefix form and exits 0 with the declared test count
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record the frontend test output and exit code
+  - Attempts: 1
+  - Last result: `npm --prefix frontend run test` exited 0 with 78 test files and 857 tests passed in 252.85s.
+  - Evidence: The documented Windows-compatible npm prefix invocation started Vitest 4.1.10 successfully and completed the full single-fork suite. No source or configuration change was required.
 
 - [ ] **T-015 Validate Alembic migration heads and syntax (R15)**
   - Run Pyright and Ruff on `backend/alembic/versions/2026-08-22_*.py`.
