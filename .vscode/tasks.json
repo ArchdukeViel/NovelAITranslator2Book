@@ -32,6 +32,42 @@
       }
     },
     {
+      "label": "Backend: Test Watch",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/Scripts/watchfiles.exe",
+      "args": [
+        "--filter",
+        "python",
+        "--target-type",
+        "command",
+        "powershell -NoProfile -ExecutionPolicy Bypass -File tools/pytest.ps1",
+        "backend/src",
+        "backend/tests"
+      ],
+      "isBackground": true,
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": {
+        "owner": "backend-tests",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "^(.+):(\\d+):\\s*(.*)$",
+          "file": 1,
+          "line": 2,
+          "message": 3
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
       "label": "Backend: Ruff Lint & Format",
       "type": "shell",
       "command": "powershell",

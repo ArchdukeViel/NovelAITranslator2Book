@@ -125,18 +125,18 @@ Updated: 2026-08-24
   - Evidence: The three canonical wrappers now emit their diagnostic without terminating before the explicit exit, so missing-interpreter behavior is consistently exit code 2. The capacity load harness uses the same fail-closed exit contract. All 4 PowerShell scripts parsed with 0 errors, and the real project virtualenv was never renamed, removed, or modified.
 
 ## Phase 3: VS Code & Developer Experience (R10–R13)
-- [ ] **T-010 Add Backend Test Watch task to .vscode/tasks.json (R10)**
+- [x] **T-010 Add Backend Test Watch task to .vscode/tasks.json (R10)**
   - Add `"Backend: Test Watch"` background task.
   - Verification: `powershell -NoProfile -Command "Get-Content .vscode/tasks.json | Select-String 'Backend: Test Watch'"`
   - Maps to: REQ-003, AC-003
   - Depends on: T-009
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for VS Code task configuration
   - Scope: The background backend test-watch task and its problem matcher
   - Expected: The task starts a useful backend watch workflow without blocking the VS Code task runner
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record parsed task configuration and a watch-start check
+  - Attempts: 2
+  - Last result: `powershell -NoProfile -Command "Get-Content .vscode/tasks.json | Select-String 'Backend: Test Watch'"` exited 0; JSON parsing and the venv watcher `--version` check passed. The first absolute-path startup exposed a workspace-space quoting failure; the corrected relative-path task started `watchfiles v1.2.0` successfully and was intentionally interrupted after startup.
+  - Evidence: `.vscode/tasks.json` contains one background `Backend: Test Watch` task with `activeOnStart`, a backend-test problem matcher, workspace-root cwd, Python-filtered source/test paths, and the canonical `tools/pytest.ps1` target. No credentials or machine-specific paths were added.
 
 - [ ] **T-011 Add Backend Pytest Focused task to .vscode/tasks.json (R11)**
   - Add `"Backend: Pytest Focused"` with an input prompt for a focused path.
