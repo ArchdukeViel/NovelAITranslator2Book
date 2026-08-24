@@ -1,12 +1,14 @@
 {
   "recommendations": [
-    "charliermarsh.ruff",
-    "esbenp.prettier-vscode",
-    "bradlc.vscode-tailwindcss",
     "ms-python.python",
     "ms-python.vscode-pylance",
-    "usernamehw.errorlens",
-    "eamodio.gitlens",
-    "gruntfuggly.todo-tree"
+    "charliermarsh.ruff",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss",
+    "vitest.explorer",
+    "ms-azuretools.vscode-docker",
+    "tamasfe.even-better-toml",
+    "usernamehw.errorlens"
   ]
 }

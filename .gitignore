@@ -32,6 +32,8 @@ ENV/
 .ruff_cache/
 .pyright/
 .playwright-cli/
+.vercel/
+.local/
 
 # Graphify generated knowledge graph
 graphify-out/
@@ -71,8 +73,11 @@ backend/tests/.pytest_cache/
 
 # IDE / editor
 .vscode/*
+# Repository-approved shareable VS Code configuration; review before commit.
 !.vscode/settings.json
 !.vscode/extensions.json
+!.vscode/tasks.json
+!.vscode/mcp.json
 .idea/
 *.swp
 *.swo
@@ -94,6 +99,7 @@ __MACOSX/
 !.env.*.example
 
 # Runtime data
+data/runtime/
 novel_library/
 storage/novel_library/
 storage/output/
@@ -115,9 +121,6 @@ storage/backups/
 *.tgz
 *.7z
 *.rar
-
-# Legacy path (pre-consolidation)
-data/
 
 # Session exports
 SESSION_EXPORT_*.json

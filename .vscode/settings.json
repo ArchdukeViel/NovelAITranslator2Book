@@ -20,7 +20,6 @@
     ".venv/**",
     "**/node_modules/**",
     "**/__pycache__/**",
-    "docs/archive/specs/**",
     "backend/tests/.tmp/**",
     ".agents/**",
     ".opencode/**",
@@ -52,8 +51,6 @@
     "**/.pytest_cache/**": true,
     "node_modules/**": true,
     ".venv/**": true,
-    "docs/archive/specs/**": true,
-    ".agents/**": true,
     ".opencode/**": true,
     "storage/novel_library/**": true
   },

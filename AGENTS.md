@@ -7,7 +7,7 @@ Project-specific instructions for coding assistants. Primaries follow configured
 Use sources in this order:
 
 1. `docs/ARCHITECTURE.md` — architecture, contracts, security boundaries, dependency direction.
-2. Active specification under `.agents/kiro/specs/<spec-name>/`.
+2. Active specification under `.agents/specs/<spec-name>/`.
 3. Existing production code and tests.
 4. `docs/WORK.md` — active, blocked, deferred, and operator-acceptance work.
 
@@ -248,7 +248,8 @@ Full architecture and operator detail belongs in canonical docs. Preserve these 
 
 ## Security and Secrets
 
-- Never read, print, log, paste, commit, or return secrets, connection strings, credential fragments, `.env`, `deploy/.env`, or `deploy/.env.production` contents.
+- By default, never read, print, log, paste, commit, or return secrets, connection strings, credential fragments, `.env`, `deploy/.env`, or `deploy/.env.production` contents.
+- Explicit local-operation exception: when the user directly authorizes a narrowly scoped operation on specifically named ignored `.env` files, the agent may process existing secret values only as needed for that operation. The values must never be printed, logged, pasted into chat, returned, committed, or included in patches or reports; they must not be copied to tracked files, example files, production env files, or external services. Authorization applies only to the named files and stated operation.
 - Never expose raw paths, internal DB keys, storage keys, complete credential values, hostnames, or stack traces in public API responses.
 - Mask backend credentials with existing masking code and frontend values through `frontend/lib/mask-token.ts`.
 - `SESSION_SECRET_KEY` fails closed at its default. `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` is required before storing provider API keys. `OWNER_BOOTSTRAP_SECRET` is sole owner-seeding mechanism and must never be exposed.
@@ -309,7 +310,7 @@ Use `graphify-out/wiki/index.md` for broad navigation when present. Read `graphi
 - `docs/WORK.md` is single unfinished-work register. Move completed work to `docs/HISTORY.md` in same change.
 - Update canonical docs when behavior, configuration, contracts, deployment, security, or operator procedure changes; do not create duplicates.
 - Do not edit anything under `.agents/` without owner approval. Never treat archived specifications as active requirements.
-- `.opencode/` is local and gitignored; never commit it. Do not commit `.codegraph/`, `.vscode/`, secrets, session exports, test scratch data, or unrelated working-tree changes.
+- `.opencode/` is local and gitignored; never commit it. Do not commit local-only `.vscode/` state, `.codegraph/`, secrets, session exports, test scratch data, or unrelated working-tree changes. The repository-approved shareable VS Code files are `.vscode/extensions.json`, `.vscode/settings.json`, `.vscode/tasks.json`, and `.vscode/mcp.json`; they may be committed only after confirming that they contain no credentials or machine-specific paths.
 
 ## Final Evidence
 
