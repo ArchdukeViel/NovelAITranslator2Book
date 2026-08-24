@@ -45,18 +45,18 @@ Updated: 2026-08-24
   - Last result: `git ls-files --error-unmatch -- .vscode/tasks.json .vscode/mcp.json` exited 0; both required files are tracked and `git check-ignore` returned no matches.
   - Evidence: All four repository-approved `.vscode` files parse as JSON. A credential and machine-path scan found no matches, and `.gitignore` explicitly permits the approved files. No `.vscode` content was changed.
 
-- [ ] **T-004 Verify .vscode search exclusion rules (R4)**
+- [x] **T-004 Verify .vscode search exclusion rules (R4)**
   - Confirm `.agents/**` is un-excluded in `.vscode/settings.json`.
-  - Verification: `powershell -NoProfile -Command "if ((Get-Content .vscode/settings.json -Raw) -match '\"\.agents/\*\*\"') { exit 1 } else { exit 0 }"`
+  - Verification: `powershell -NoProfile -Command "if ((Get-Content .vscode/settings.json -Raw) -match '\.agents/\*\*\s*:\s*true') { exit 1 } else { exit 0 }"`
   - Maps to: REQ-001, AC-001
   - Depends on: T-003
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for VS Code search configuration
   - Scope: `.vscode/settings.json` search exclusions for `.agents/**`
   - Expected: The active specification and guidance files remain discoverable through workspace search
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record the sanitized settings check
+  - Attempts: 2
+  - Last result: The original broad check returned 1 because `.agents/**` is present in `python.analysis.exclude`; the corrected search-specific check exited 0 because `.agents/**` is absent from `search.exclude` and `files.exclude`.
+  - Evidence: `.vscode/settings.json` parsed successfully. The `.agents/**` Python-analysis exclusion remains unchanged, while global search exclusions contain no `.agents/**` entry. No VS Code configuration file was changed.
 
 - [ ] **T-005 Validate .opencode gitignore boundary (R5)**
   - Confirm `.opencode/` remains untracked while scripts stay in `.opencode/scripts/`.
