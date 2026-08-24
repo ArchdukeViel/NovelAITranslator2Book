@@ -804,6 +804,9 @@ and fail closed with exit code 2 when `.venv\Scripts\python.exe` is absent;
 the capacity load harness uses the same missing-interpreter contract. VS Code
 now has backend watch and focused-test tasks, a frontend build task, and
 explicit Ruff/Prettier bindings for Python, TypeScript, JSON, and JSONC.
+Graphify now narrowly excludes editor/tool configuration and generated
+capacity JSON that cannot produce source-symbol nodes; source JSON remains
+eligible for indexing.
 
 Validation evidence:
 
@@ -814,17 +817,16 @@ Validation evidence:
   both exited 0.
 - Pyright on the four `2026-08-22_*.py` migrations and global Pyright:
   0 errors, 0 warnings, 0 informations.
-- Ruff migration check: all checks passed; affected formatter check:
-  4 files already formatted.
-- `graphify update . --no-cluster`: the task-ledger refresh exited 0 with
-  14,326 nodes and 39,305 edges; the final documentation refresh exited 0
-  with 14,327 nodes and 39,306 edges. The known nonfatal zero-node warning
-  for JSON/configuration and generated evidence files remains unchanged.
+- Ruff migration check: all checks passed; the broad backend formatter check
+  exited 0 with 524 files already formatted after the 80-file baseline drift
+  was normalized.
+- `graphify update . --no-cluster`: the final refresh exited 0 with the
+  current graph at 14,327 nodes and 39,306 edges, with no zero-node warning
+  after the scoped `.graphifyignore` update.
 - The spec validator, `git diff --check`, JSON/parser checks, and enabled
   pre-commit hooks passed. No database migration, provider/R2 mutation,
   secret-file change, push, or remote repository action was performed.
 
-The broad `tools\ruff.ps1 format --check backend` audit still reports 80
-pre-existing backend files that would be reformatted. They were intentionally
-not rewritten; the affected files for this spec were checked separately and
-the condition remains outside this workspace-hardening change.
+The follow-up risk audit normalized the 80 pre-existing backend formatter-drift
+files as an exact path set. The broad Ruff check is clean, and the existing
+dirty worktree—including the user-owned backend edit—was preserved.

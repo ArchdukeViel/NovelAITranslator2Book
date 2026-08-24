@@ -42,3 +42,11 @@ backend/tests/fixtures/storage_contract/legacy_edit_history.json
 # Example source payloads, when they are only static fixtures
 **/kakuyomu_example.json
 **/syosetu_example.json
+
+# Editor/tool configuration and generated capacity evidence do not contain
+# source symbols for the architecture graph.
+.codex/*.json
+.vscode/*.json
+pyrightconfig.json
+artifacts/capacity/*.json
+artifacts/capacity/**/*.json

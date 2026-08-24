@@ -213,9 +213,9 @@ Updated: 2026-08-24
   - Authorization: Project-owner approval for formatting checks on modified backend files
   - Scope: Ruff format enforcement before staging and the resulting diff check
   - Expected: Modified backend files are formatter-clean without rewriting unrelated files
-  - Attempts: 2
-  - Last result: The original broad `tools\ruff.ps1 format --check backend` exited 1 because 80 pre-existing backend files would be reformatted; the scoped affected-file check exited 0 with `4 files already formatted`, and `git diff --check` exited 0.
-  - Evidence: The four migration files covered by this spec are formatter-clean. No formatter rewrite was performed, so unrelated committed baseline files and the user-owned dirty backend file remain untouched. The broad baseline finding is reproducible and recorded rather than hidden.
+  - Attempts: 3
+  - Last result: The broad `tools\ruff.ps1 format --check backend` exited 0 with `524 files already formatted`; `git diff --check` also exited 0.
+  - Evidence: The 80 pre-existing formatter-drift files identified by the original audit were formatted as an exact path set. The user-owned dirty backend file and all unrelated dirty paths were preserved; the broad backend formatter check is now clean.
 
 - [x] **T-017 Verify Frontend production build (R17)**
   - Run Next.js build.
@@ -253,8 +253,8 @@ Updated: 2026-08-24
   - Scope: Active and completed specification references in `docs/WORK.md` and `docs/HISTORY.md`
   - Expected: Each active spec has a truthful pending or completed status and completed evidence is not left in the active register
   - Attempts: 1
-  - Last result: The required `docs/WORK.md` and `docs/HISTORY.md` existence check exited 0; the cross-document audit confirmed both pipeline specifications have completion entries in `HISTORY.md`, launch readiness remains pending, and workspace hardening is accurately recorded as T-001 through T-018 complete with T-019/T-020 in progress.
-  - Evidence: `docs/WORK.md` now lists only the genuinely unfinished active specifications with truthful task status. Completed pipeline work is not left in the active register and remains preserved in `docs/HISTORY.md`; workspace hardening stays active until the final Graphify task and history handoff.
+  - Last result: The required `docs/WORK.md` and `docs/HISTORY.md` existence check exited 0; the cross-document audit confirmed both pipeline specifications have completion entries in `HISTORY.md`, launch readiness remains pending, and workspace hardening is accurately recorded as T-001 through T-020 complete.
+  - Evidence: `docs/WORK.md` now lists only the genuinely unfinished active specifications with truthful task status. Completed pipeline work is not left in the active register and remains preserved in `docs/HISTORY.md`; workspace hardening is reconciled through the final Graphify refresh.
 
 - [x] **T-020 Synchronize knowledge graph index (R20)**
   - Run Graphify update to index all changes.
@@ -265,6 +265,6 @@ Updated: 2026-08-24
   - Authorization: Project-owner approval for local Graphify refresh
   - Scope: The repository graph index after the documentation and configuration changes
   - Expected: Graphify completes successfully and the refreshed index includes the active specification lifecycle
-  - Attempts: 1
-  - Last result: `graphify update . --no-cluster` exited 0 and rebuilt the index with 14,326 nodes and 39,305 edges.
-  - Evidence: The graph index was refreshed after the final task-state and documentation reconciliation. Graphify reported the known nonfatal zero-node warning for JSON/configuration and generated evidence files; no unhandled update failure occurred.
+  - Attempts: 2
+  - Last result: `graphify update . --no-cluster` exited 0 after the scoped `.graphifyignore` update; the current graph remains at 14,327 nodes and 39,306 edges with no zero-node warning.
+  - Evidence: Editor/tool configuration, `pyrightconfig.json`, and generated capacity JSON are excluded from the source-symbol graph through narrow patterns; source JSON is not globally ignored. The refresh completed without an unhandled warning or graph shrink.
