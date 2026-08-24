@@ -73,7 +73,6 @@ backend/tests/.pytest_cache/
 
 # IDE / editor
 .vscode/*
-# Repository-approved shareable VS Code configuration; review before commit.
 !.vscode/settings.json
 !.vscode/extensions.json
 !.vscode/tasks.json

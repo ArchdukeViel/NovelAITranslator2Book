@@ -5,7 +5,13 @@
       "label": "Backend: Pyright Typecheck",
       "type": "shell",
       "command": "powershell",
-      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/tools/pyright.ps1"],
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/tools/pyright.ps1"
+      ],
       "group": {
         "kind": "build",
         "isDefault": true
@@ -20,7 +26,13 @@
       "label": "Backend: Run Tests",
       "type": "shell",
       "command": "powershell",
-      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/tools/pytest.ps1"],
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/tools/pytest.ps1"
+      ],
       "group": {
         "kind": "test",
         "isDefault": true
@@ -32,54 +44,7 @@
       }
     },
     {
-      "label": "Backend: Test Watch",
-      "type": "shell",
-      "command": "${workspaceFolder}/.venv/Scripts/watchfiles.exe",
-      "args": [
-        "--filter",
-        "python",
-        "--target-type",
-        "command",
-        "powershell -NoProfile -ExecutionPolicy Bypass -File tools/pytest.ps1",
-        "backend/src",
-        "backend/tests"
-      ],
-      "isBackground": true,
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": {
-        "owner": "backend-tests",
-        "fileLocation": "absolute",
-        "pattern": {
-          "regexp": "^(.+):(\\d+):\\s*(.*)$",
-          "file": 1,
-          "line": 2,
-          "message": 3
-        },
-        "background": {
-          "activeOnStart": true,
-          "beginsPattern": ".*"
-        }
-      },
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared"
-      }
-    },
-    {
       "label": "Backend: Ruff Lint & Format",
-      "type": "shell",
-      "command": "powershell",
-      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/tools/ruff.ps1", "check", "."],
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared"
-      }
-    },
-    {
-      "label": "Backend: Pytest Focused",
       "type": "shell",
       "command": "powershell",
       "args": [
@@ -87,12 +52,10 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "tools/pytest.ps1",
-        "${input:backendTestPath}"
+        "${workspaceFolder}/tools/ruff.ps1",
+        "check",
+        "."
       ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
       "problemMatcher": [],
       "presentation": {
         "reveal": "always",
@@ -124,21 +87,6 @@
       }
     },
     {
-      "label": "Frontend: Build",
-      "type": "shell",
-      "command": "npm",
-      "args": ["--prefix", "frontend", "run", "build"],
-      "group": "build",
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared"
-      }
-    },
-    {
       "label": "Graphify: Update Index",
       "type": "shell",
       "command": "graphify",
@@ -148,14 +96,6 @@
         "reveal": "silent",
         "panel": "shared"
       }
-    }
-  ],
-  "inputs": [
-    {
-      "id": "backendTestPath",
-      "type": "promptString",
-      "description": "Backend test path (relative to the workspace)",
-      "default": "backend/tests/test_health_api.py"
     }
   ]
 }

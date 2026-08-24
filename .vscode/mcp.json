@@ -2,12 +2,7 @@
   "servers": {
     "codegraph": {
       "command": "codegraph.cmd",
-      "args": [
-        "serve",
-        "--mcp",
-        "--path",
-        "${workspaceFolder}"
-      ],
+      "args": ["serve", "--mcp", "--path", "${workspaceFolder}"],
       "type": "stdio"
     },
     "graphify": {

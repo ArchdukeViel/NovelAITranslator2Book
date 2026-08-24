@@ -1,10 +1,5 @@
 # Design: Workspace and Quality Hardening
 
-Spec ID: workspace-and-quality-hardening
-Version: 1.0.0
-Status: Approved
-Updated: 2026-08-24
-
 ## Architecture & System Invariants
 
 ### 1. Root & Workspace Hygiene (R1–R5)
@@ -36,13 +31,3 @@ Updated: 2026-08-24
 - Formatter: `tools/ruff.ps1 format` runs cleanly on modified files prior to commit staging.
 - Documentation & Work Tracking: `docs/WORK.md` and `docs/HISTORY.md` maintain single-source-of-truth status.
 - Graphify: AST graph index updated with 0 missing required symbols.
-
-## Traceability
-
-| Requirement | Acceptance criterion | Planned task IDs |
-| --- | --- | --- |
-| REQ-001 | AC-001 | T-001, T-002, T-003, T-004, T-005 |
-| REQ-002 | AC-002 | T-006, T-007, T-008, T-009 |
-| REQ-003 | AC-003 | T-010, T-011, T-012, T-013 |
-| REQ-004 | AC-004 | T-014, T-015, T-016, T-017, T-018 |
-| REQ-005 | AC-005 | T-019, T-020 |

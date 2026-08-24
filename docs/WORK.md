@@ -10,29 +10,6 @@ implementation and its backend/static verification are in place, but hosted
 security, monitoring, alerting, browser/network acceptance, destructive
 cutover evidence, and rollback/restore evidence remain incomplete.
 
-### Recovery continuation — 2026-08-24 (historical recovery record; superseded by the completion slice below)
-
-The synchronized root and deployment environments each passed 7 isolated R2
-integration tests. An encrypted PostgreSQL backup was created in the
-independent R2 target and restored into the isolated `restore-db` database;
-verification reported 37 public tables, 0 invalid constraints, and matching
-Alembic metadata. The latest independent R2 object snapshot was read back and
-checksum-verified for 980 objects totaling 4,022,175 bytes. The real env files
-now contain exactly one synchronized `DATABASE_BACKUP_URL`; the persisted
-configuration created and restored the encrypted backup without a process
-override. Hosted reader-scale,
-provider-canary, full-queue, and production-readiness acceptance remain open.
-
-### Async capacity and resource-efficiency completion slice — 2026-08-24
-
-The authorized execution slice for the two active pipeline specifications is
-complete. The bounded provider/R2 canary, independent snapshot and encrypted
-restore, private 1k reader-stage execution with its quantified stop, and the
-10k/100k dependency-safety decision are recorded in the current evidence
-artifacts. The worker remains stopped and the original full queue remains
-paused. This closes the specified local and operator-gated evidence work while
-preserving the separate production-readiness boundary in the work register.
-
 ## Execution Policy
 
 - Launch blockers: `DEBT-075`, `DEBT-079`, ownership, recovery, alerts,
@@ -136,17 +113,15 @@ through the connected Cloudflare API returned `9109 Unauthorized`. The
 operator subsequently supplied separate source-read and backup-write
 credentials, rotated the application credentials, and the ignored root `.env`
 was synchronized with `deploy/.env`; the six active R2 credential assignments
-now match. The 2026-08-24 recovery continuation verified the independent
-backup target and an isolated encrypted database restore. The repository
-inventory path and an isolated
+now match. No backup or restore operation is claimed while
+`R2_BACKUP_ENABLED=false`. The repository inventory path and an isolated
 source-read client then successfully listed the application bucket, while the
 backup-target credential listed the empty backup bucket; no object was written
 or deleted. After service recreation with the rotated application credentials,
 the public catalog, rankings, published details, translated chapter 1, Novel18
 isolation, and singular legacy-route rejection passed. Target write permission,
-target write permission and restore evidence now pass in the bounded local
-drill; production readiness remains open. The local readiness probe is still
-503 because disk is unhealthy and the worker probe is degraded.
+restore evidence, and production readiness remain open; the local readiness
+probe is still 503 because disk is unhealthy and the worker probe is degraded.
 A translation workload audit estimated 267 provider chunks across the 267
 imported chapters. The replacement environment key is now imported into the
 unified `provider_credentials` registry as one encrypted, active, valid,
@@ -501,7 +476,7 @@ graphify update . --no-cluster
 | Hosted smoke and auth/security boundaries | Blocked | Candidate commit, domains, UTC time, commands/URLs, sanitized results. |
 | Secret scanning | Partial (hosted scans passed) | PR #12 proved successful GitGuardian push and same-repo PR checks. Still require protected required-check configuration and sanitized incident/false-positive triage evidence. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
 | Alerts and monitoring | Blocked (tooling complete) | Configure `PRODUCTION_BASE_URL`, prove scheduled external runs and real operator delivery, cooldown/redaction, dashboards, escalation, and ownership. |
-| Recovery | Bounded local drill passed; persisted env verified | Current-head encrypted database restore and independent R2 snapshot readback passed in isolated targets. Backup-stale alert threshold, restore-freshness max age, runtime-role verifier, and exactly-once `DATABASE_BACKUP_URL` synchronization are verified. |
+| Recovery | Needs current run (tooling complete) | Current-head database restore and object snapshot restore into isolated targets. Backup-stale alert threshold, restore-freshness max age, and runtime-role verifier implemented locally. |
 | Accessibility | Pass (COMPLETED 2026-08-17) | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast verified via automated test suite and operator physical device attestation. |
 | Performance | Partial / Fail (AUDITED 2026-08-17) | Catalog API p95 on hosted staging exceeds hard budget (reader direct p95=1001.60ms, Tailscale HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + object-store metadata-list latency in the pre-cutover measurement). Novel detail and Chapter APIs NOT RUN on hosted staging (no published novel/chapter fixture in DB). First-load JS passes (169.8 KiB <= 250 KiB). |
 | SEO | Staging Pass / Production Deferred (AUDITED 2026-08-17) | Staging robots.txt, sitemap.xml, Open Graph / Twitter metadata, canonical URLs verified on staging hostname; production domain SEO validation deferred until public domain cutover. |
@@ -517,16 +492,7 @@ takedown enforcement, unrecoverable loss, or missing rollback cannot be informal
 
 Only genuinely unfinished specs remain under `.agents/specs/`:
 
-- `launch-readiness-checklist`: operator acceptance above; all five
-  implementation tasks remain pending and were not executed by this slice.
-
-The completed `workspace-and-quality-hardening` specification is resolved and
-recorded in `HISTORY.md`, alongside the pipeline async and resource-efficiency
-specifications; none are listed here as active work.
-
-The remaining active specification is an approved planning record. Its task
-checkboxes remain pending until implementation and verification evidence is
-recorded.
+- `launch-readiness-checklist`: operator acceptance above.
 
 Task boxes are planning aids, not completion evidence. Architecture, current
 code/tests, this file, and operator evidence determine status.
