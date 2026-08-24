@@ -230,18 +230,18 @@ Updated: 2026-08-24
   - Last result: `npm --prefix frontend run build` exited 0; Next.js 16.3.1 compiled, finished TypeScript, generated 48 static pages, and finalized route optimization.
   - Evidence: The production build completed without tracked frontend changes. Generated build output remained outside the tracked source boundary, and no environment values were exposed in the command output.
 
-- [ ] **T-018 Verify Frontend typecheck and linting (R18)**
+- [x] **T-018 Verify Frontend typecheck and linting (R18)**
   - Run TypeScript typecheck and ESLint.
   - Verification: Run `npm --prefix frontend run typecheck` and then `npm --prefix frontend run lint`
   - Maps to: REQ-004, AC-004
   - Depends on: T-017
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for local frontend quality checks
   - Scope: Frontend TypeScript and ESLint checks over the active application
   - Expected: Both checks exit 0 and report no new errors attributable to the active worktree
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record both command results and exact exit codes
+  - Attempts: 1
+  - Last result: `npm --prefix frontend run typecheck` exited 0 and `npm --prefix frontend run lint` exited 0; both completed without diagnostics.
+  - Evidence: The active frontend TypeScript and ESLint checks passed through the documented npm prefix form. No source or generated tracked files changed during validation.
 
 - [ ] **T-019 Reconcile documentation and work registers (R19)**
   - Verify `docs/WORK.md` and `docs/HISTORY.md` state.
