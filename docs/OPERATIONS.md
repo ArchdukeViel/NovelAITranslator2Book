@@ -99,12 +99,47 @@ the non-secret operation parameters. Poll
 cancel, retry, and lease status controls.
 
 The Compose `worker` service is the normal execution owner. Keep
-`JOB_WORKER_ENABLED=false` on web services so the admin/reader processes do
-not duplicate provider work. The activity queue is backed by the
-`activity_records` table; claims are row-locked, expired leases are recovered,
-and bounded history/metadata limits prevent queue state from growing without
-control. Monitor `novelai_activity_queue_age_seconds`,
+`JOB_WORKER_ENABLED=false` explicitly on both web services so the admin/reader
+processes do not duplicate provider work; do not rely on a shared environment
+file to provide that override. Before a repair or image recreation, verify the
+effective flag in `backend`, `reader`, and `worker`, and verify that only the
+dedicated worker owns the `novelaibook worker` process. The activity queue is
+backed by the `activity_records` table; claims are row-locked, expired leases
+are recovered, and bounded history/metadata limits prevent queue state from
+growing without control. Monitor `novelai_activity_queue_age_seconds`,
 `novelai_activity_queue_operation_total_ms`, and the activity status gauges.
+The worker heartbeat renews from an independent daemon thread, so synchronous
+provider or orchestration work cannot starve lease renewal; the focused worker
+test covers this failure mode. After a code rebuild, verify the running worker
+image before relying on the correction for multi-worker recovery.
+
+The worker protects managed-database egress on the translation hot path. Claims
+use one atomic returning update, the `run-next` path reuses that returned row,
+heartbeats write only lease timestamps, and empty-queue polling backs off from
+5 to 30 seconds. Routine catalog reconciliation defers the large novel
+metadata-history JSON. A broader per-job metadata/glossary/raw-bundle cache was
+not selected because the live audit did not establish a safe repetition or
+invalidation baseline. If Supabase egress rises unexpectedly, stop the worker
+before investigating:
+
+```powershell
+docker compose -f deploy/compose.yml stop --timeout 5 worker
+docker compose -f deploy/compose.yml ps worker
+```
+
+Then inspect Supabase **Reports → Database / Pooler Egress** and compare the
+time window with sanitized application query/operation metrics. `pg_stat_*`
+views can identify query volume and rows but do not provide an exact billing
+byte attribution; do not claim a precise worker share without provider-side
+egress evidence. Do not restart the worker until the query-shape fix is built,
+validated, and the operator has reviewed the remaining queue state.
+
+When a worker is interrupted, repair chapter state through the activity and
+storage services or the documented activity retry controls. Do not hand-edit or
+delete `data/runtime/chapter-state` or checkpoint JSON files. A stale lease
+should be allowed to expire and be recovered by the queue; a terminal QA or
+provider failure should remain visible for review rather than being relabeled
+as translated.
 
 Provider overload should surface as queue age, bounded retry delay, or a
 truthful paused/failed activity—not as an unbounded web request. Owner Gemini
@@ -321,9 +356,10 @@ is missing. The readme at `tools/README.md` lists the canonical extras.
 
 Current unresolved operator gates live in [`WORK.md`](WORK.md).
 
-## Contributor Credential Operations
+## Unified Provider Credential Operations
 
-For an enabled contributor deployment, verify:
+For an enabled credential deployment, the owner and user paths operate on the
+same `provider_credentials` table. Verify:
 
 1. Confirm `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` is present and not the owner
    bootstrap or session secret.
@@ -331,11 +367,27 @@ For an enabled contributor deployment, verify:
    the frontend and record any consent copy change.
 3. Confirm per-credential RPM/TPM/RPD limits and the quota-state directory are
    writable only by the backend runtime.
-4. Apply Alembic migrations with the elevated migration role before starting
+4. Import the configured owner key only through the owner-only
+   `POST /api/admin/providers/credentials/import-environment` operation. It
+   explicitly validates `PROVIDER_GEMINI_API_KEY`, stores it encrypted, marks
+   it owner-job eligible, and never makes it contributor-pool eligible. A
+   failed validation is persisted as `invalid`; do not queue owner bulk work
+   until the key validates. At the current 2026-08-22 checkpoint the imported
+   owner row is `active`/`valid` and owner-job eligible; this does not make it
+   contributor-pool eligible.
+5. Confirm at least one user contribution is `active` with
+   `validation_status=valid` and `contributor_pool_eligible=true` before
+   queueing contributor-backed translation. A zero-key pool is an intentional
+   preflight stop; never substitute an owner row or environment key.
+6. Verify the active Gemini project limits in Google AI Studio. The local
+   RPM/TPM/RPD values are defensive ceilings, not proof of independent quota
+   per API key; TPD is model-dependent and is not configured separately here.
+7. Apply Alembic migrations with the elevated migration role before starting
    the long-running services; the runtime role must have the required DML but
    should not be granted broad schema-DDL privileges.
-5. Verify the user route returns masked metadata only, unsafe methods reject
-   missing CSRF, and a user cannot read or mutate another user's credential.
+8. Verify the user route returns masked metadata only, unsafe methods reject
+   missing CSRF, validation attempts are rate-limited per user, and a user
+   cannot read or mutate another user's credential.
 
 Owners may pause or revoke a credential for emergency abuse remediation. A
 revoked credential cannot be resumed by a user. Permanent user deletion removes
@@ -409,3 +461,29 @@ The contributor usage ledger is pruned by the `contributor_usage_cleanup`
 maintenance task according to `CONTRIBUTOR_USAGE_RETENTION_DAYS`. Permanent
 credential deletion preserves rows until that retention task removes them;
 dry-run the task before changing the policy.
+
+## Pipeline async execution and capacity runbook checkpoint - 2026-08-24
+
+The local audit completed the bounded persistence boundary, fixed-label runtime
+telemetry, contributor-pool admission/accounting, fixture-only reader harness,
+checkpoint footprint measurement, and modeled cost-envelope work. Evidence is
+under `artifacts/capacity/`. Local tests do not authorize a live workload.
+
+Before any live action, confirm the worker is intentionally running, the
+original queues are not being used as a benchmark, the migration head and
+readiness state are healthy, and an operator has recorded the traffic model,
+SLO/error budget, provider/R2/egress ceilings, stop thresholds, telemetry
+window, and rollback owner. Do not activate a contributor key or substitute an
+owner key for the contributor pool. Keep `translation_provider_rps` and
+`reader_http_rps` in separate reports.
+
+Rollback order is: stop new load; stop worker admission; allow critical
+terminal writes to settle within the bounded shutdown deadline; disable the
+expansion gate; verify queue/lease state through application APIs; and record
+the result. Do not edit queue rows, runtime JSON, checkpoint files, R2 objects,
+or canonical content by hand. The current audit did not resume the worker or
+the original queues.
+
+The isolated R2 benchmark is unavailable when `TEST_R2_ENDPOINT` is absent.
+The source canary and reader stages are operator/hosted gates; missing hosted
+telemetry is an unavailable result, never a pass.

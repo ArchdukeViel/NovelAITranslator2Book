@@ -1,3 +1,138 @@
+## 2026-08-24 PIPELINE ASYNC EXECUTION AND CAPACITY COMPLETION CONTINUATION
+
+The authorized completion slice for `pipeline-async-execution-and-capacity`
+and `pipeline-resource-efficiency-audit` is complete. Both task ledgers and
+acceptance matrices record complete task and gate decisions, with historical
+measurements preserved under their original checkpoints.
+
+The continuation completed the bounded provider/R2 canary, exact raw and
+translated artifact readback, the encrypted database backup and isolated
+restore, the independent R2 snapshot readback, and the private 1k reader stage
+with a quantified SLO and telemetry stop. The 10k/100k stages have a complete
+dependency-safety decision and were not admitted after the 1k stop. The worker
+remains stopped and the original full queue remains paused; no unsupported
+production billing, quota, or capacity claim was added.
+
+The current plan handoffs are recorded in `docs/PERFORMANCE_ACTION_PLAN.md`
+and `docs/R2-Only Content Storage Rearchitecture-plan.md`, with supporting
+evidence under `artifacts/capacity/`. The earlier checkpoint below remains a
+historical record of the state before this continuation.
+
+## 2026-08-24 PIPELINE ASYNC EXECUTION AND CAPACITY AUDIT CHECKPOINT
+
+The approved `pipeline-async-execution-and-capacity` work completed its local
+implementation and evidence slices for the bounded persistence boundary,
+ownership/replay/cancellation controls, fixed-label runtime telemetry,
+conservative configuration rollback, contributor-pool quota accounting,
+fixture-only reader capacity, public correctness, checkpoint footprint, and
+hosted-versus-modeled cost reporting. Focused tests, Ruff, Pyright, Compose
+validation where applicable, and Graphify refreshes passed; exact commands and
+sanitized results are recorded under `artifacts/capacity/`.
+
+The isolated R2 benchmark was unavailable because `TEST_R2_ENDPOINT` was not
+configured, so no R2 operation or cleanup was attempted. The source canary and
+1k/10k/100k reader stages were deferred because their separate operator
+approval, traffic/SLO inputs, stop thresholds, rollback owner, hosted target,
+and trustworthy telemetry are absent. Local fixtures and modeled projections
+are not production capacity, billing, egress, provider-quota, or SLO claims.
+
+The audit did not resume the original queues or worker, activate a contributor
+credential, call a provider, mutate canonical PostgreSQL/R2 content, or perform
+remote Git/deployment actions. Local independent review, task-state
+normalization, and handoff are recorded in
+`artifacts/capacity/pac-8a109a5ad1cd-task-state-audit.md`. External/live gates
+remain open; future live work must preserve the documented rollback and
+reader/provider rate-domain boundaries.
+
+## 2026-08-22 PR113 TRANSLATION DEPENDENCY CHECKPOINT
+
+The repeated live preflight still reports zero contributor credentials and zero
+active validated credentials. Bulk translation cannot safely start until an
+authenticated user submits and validates a Gemini key through the contribution
+flow. No owner key or environment value was repurposed to invent contributor
+ownership, and no provider request was made.
+
+## 2026-08-22 PR113 CONTROL-PLANE RECHECK
+
+The live Cloudflare control plane reports exactly `dokushodo` and
+`dokushodo-backup`. The authorized Supabase project reports zero contributor
+credential rows, no security-advisor findings, and only informational
+unused-index performance observations. Contributor-backed bulk translation
+remains pending activation of a user-contributed, validated Gemini credential;
+no owner key was substituted and no provider request was made.
+
+## 2026-08-22 PR113 CONTRIBUTOR TRANSLATION AUTHORIZATION CHECKPOINT
+
+The operator authorized the contributor-backed bulk translation run. A live
+database audit found zero active, validated contributor Gemini credentials, so
+no provider request or translation activity was started and the owner-global
+Gemini key was not substituted. The worker remains configured to select only
+active validated contributor credentials. Repository RPM/TPM/RPD values are
+local safety ceilings; upstream Gemini limits remain account/project-specific
+and must be verified before production-volume execution.
+
+## 2026-08-22 PR113 COMPOSE LIST-DEFAULT CHECKPOINT
+
+The canonical Compose file now uses a blank default for optional
+`WEB_CORS_ORIGINS` instead of JSON-array syntax. This matches the Pydantic
+`NoDecode` comma-separated list contract used by the environment templates and
+prevents an absent production value from becoming the literal origin `[]`.
+
+## 2026-08-22 PR113 TRANSLATION WORKLOAD CHECKPOINT
+
+A read-only workload audit found no active translation activities. Of the 267
+imported chapters, 266 remain pending: NCode has 147, Kakuyomu has 88, and
+Novel18 has 31. The current segmentation settings estimate 267 provider
+chunks across 901,921 pending raw-text characters. A rough planning estimate
+of 498,889 total tokens (character-count approximation plus the configured
+1,024 output tokens per chunk) is approximately `$0.9978` at the repository's
+configured accounting rate; actual provider billing, retries, and tokenization
+may differ. The Gemini key is configured, but no provider request or activity
+was started pending explicit operator approval for the external translation
+run and its budget.
+
+## 2026-08-22 PR113 EXPLICIT R2 STORAGE BOUNDARY CHECKPOINT
+
+The runtime storage boundary was tightened to match the locked R2-only
+architecture: `R2StorageBackend`, `R2Storage`, and `get_r2_storage` are now the
+only storage client vocabulary, and the generic backend factory/reset names
+were removed without compatibility aliases. Direct storage and health callers,
+tests, and the isolated R2 integration double were updated. Ruff, Pyright, and
+the focused R2/health/integration shard passed; the full backend suite passed
+2,880 tests with 16 skips after the rename.
+
+## 2026-08-22 PR113 R2 CREDENTIAL ENVIRONMENT CHECKPOINT
+
+The operator supplied separate R2 source-read and backup-write credentials and
+rotated the application R2 credentials in `deploy/.env`. The ignored root
+`.env` was synchronized with the deployment environment for all six active
+application/source/backup credential assignments; an in-process comparison
+verified equality and no duplicate R2 keys without exposing secret values.
+Example templates and frontend environment files remain secret-free. Backup
+and recovery remain disabled by operator decision, so no snapshot or restore
+evidence is claimed by this synchronization.
+
+## 2026-08-22 PR113 R2 CREDENTIAL READ-SCOPE CHECKPOINT
+
+The repository's read-only R2 inventory path successfully listed 538 objects in
+`dokushodo` with the application credential and zero objects in
+`dokushodo-backup` with the independent backup-target credential. An isolated
+source-read client independently listed all 538 application objects. No object
+was written or deleted; backup-target write permission, snapshot creation, and
+restore remain unverified while recovery is disabled.
+
+## 2026-08-22 PR113 POST-ROTATION READER ACCEPTANCE CHECKPOINT
+
+After application credentials were rotated, the backend, reader, and worker
+were recreated. The refreshed reader returned 200 for the published translated
+NCode chapter and 404 for an untranslated chapter, unpublished Novel18, and
+the singular legacy route; catalog, rankings, and published detail routes also
+passed. The deployment list settings were normalized to the repository's
+comma-separated `NoDecode` format, and the development overlay now avoids the
+unstable Python 3.14 Docker reload subprocess. Backend, reader, and worker are
+running; local readiness remains 503 because disk is unhealthy and the worker
+probe is degraded. No production readiness or recovery evidence is claimed.
+
 ## 2026-08-22 PR113 R2 CONTROL-PLANE AND DATABASE PERFORMANCE CHECKPOINT
 
 Applied and verified Alembic migration `c9d1e3f5a7b9` on the authorized
@@ -608,3 +743,50 @@ Projection-first reads preserve the existing per-novel unavailable policy via
 `Novel.public_reader_unavailable_policy` and migration `e5f7a9c1d3b2`, without
 restoring request-time object-storage fallback. Catalog, public-router, Ruff,
 Pyright, Graphify, migration smoke, and local Caddy route checks passed.
+
+## 2026-08-22 UNIFIED PROVIDER CREDENTIAL REGISTRY CHECKPOINT
+
+Owner-managed Gemini credentials and user contributions now share the encrypted
+`provider_credentials` registry in Supabase/PostgreSQL. Each row is tied to its
+authenticated owner when applicable and carries explicit source,
+`owner_job_eligible`, and `contributor_pool_eligible` flags. The legacy
+`contributor_credentials` table and internal compatibility shims were removed;
+the sanitized `contributor_usage_ledger` remains the accounting table for both
+owner and contributor modes.
+
+Local Alembic revisions `d4e6f8a2b1c3` and `e7f1a9c3b5d2`, plus remote
+Supabase migrations `unify_provider_credential_registry` and
+`secure_unified_credentials`, were applied and verified with RLS/security
+checks. The explicit owner environment import stored the configured key
+encrypted, but provider validation returned a truthful invalid state. No raw
+key was returned or logged, and owner bulk translation was not started.
+## 2026-08-22 PR113 OWNER TRANSLATION EXECUTION CHECKPOINT
+
+The replacement backend Gemini key was synchronized between the root and
+deployment runtime files without copying it into examples or frontend env
+files. Live provider validation now reports one encrypted owner row as
+`active`/`valid` and owner-job eligible. A durable worker probe translated
+NCode chapter 2, passed deterministic QA, and persisted the artifact to R2.
+
+The authorized three-novel bulk queue was then created with owner contribution
+mode, explicit glossary-gate bypass, and cross-provider fallback disabled. The
+stale Kakuyomu activity was cancelled after its heartbeat stopped; Novel18 is
+running and NCode is queued. The current persisted artifact counts are
+Kakuyomu 17/88, Novel18 6/31, and NCode 2/148. Bulk translation therefore
+remains partial; no completion claim is made. Backup creation and recovery
+remain disabled and unverified by operator decision.
+## 2026-08-24 RECOVERY AND R2 REVALIDATION CONTINUATION
+
+The synchronized root and deployment environments each passed 7 isolated R2
+integration tests. The rebuilt backend created an encrypted PostgreSQL backup
+in the independent R2 target and restored it into the isolated `restore-db`
+database; verification reported 37 public tables, 0 invalid constraints, and
+matching Alembic metadata. The latest independent R2 object snapshot was read
+back and checksum-verified for 980 objects totaling 4,022,175 bytes.
+
+The real environment files now contain exactly one synchronized
+`DATABASE_BACKUP_URL` entry each. The persisted configuration created and
+restored the encrypted backup without a process override.
+The hosted reader stages, provider canary, full queue, checkpoint-compaction
+decision, and production-readiness gates remain open and are not represented
+as completed by this recovery evidence.

@@ -1,0 +1,76 @@
+{
+  "schema_version": "pipeline-async-execution-capacity-baseline.v1",
+  "run_id": "pac-8a109a5ad1cd",
+  "captured_at_utc": "2026-08-23T18:56:01.456Z",
+  "evidence_provenance": "local read-only preflight; hosted billing, provider dashboard, and query-level billed bytes were not queried",
+  "revision": {
+    "branch": "feat/r2-only-content-storage",
+    "head": "5513ede76c0594ad958180734e695d71b6d25f53",
+    "worktree": "dirty; pre-existing changes preserved and not attributed to this baseline"
+  },
+  "topology": {
+    "compose_file": "deploy/compose.yml",
+    "services": [
+      "redis",
+      "reader",
+      "worker",
+      "backend",
+      "frontend",
+      "caddy"
+    ],
+    "deployment_shape": "separate backend, reader, worker, frontend, and reverse-proxy services",
+    "worker_state": "stopped; container status Exited (137), observed 14 hours before capture"
+  },
+  "queue_snapshot": {
+    "backend": "database",
+    "counts_by_status_type": [
+      {"status": "cancelled", "type": "translation", "count": 1},
+      {"status": "completed", "type": "translation", "count": 4},
+      {"status": "failed", "type": "translation", "count": 11},
+      {"status": "paused", "type": "translation", "count": 3}
+    ],
+    "pending_count": 0,
+    "oldest_pending_age_seconds": null,
+    "original_full_queues_resumed": false
+  },
+  "cache_state": {
+    "translation_cache_enabled": true,
+    "public_ranking_cache_enabled": true,
+    "public_projection_cache_enabled": true,
+    "source": "allowlisted non-secret settings read from the backend container"
+  },
+  "budgets": {
+    "job_worker_enabled": false,
+    "job_worker_poll_seconds": 3.0,
+    "translation_concurrency": 4,
+    "translation_chapter_concurrency": 1,
+    "gemini_concurrency_limit": 4,
+    "contributor_concurrency_limit": 2,
+    "db_connection_mode": "direct",
+    "db_pool_size": 5,
+    "db_pool_process_count": 3,
+    "db_connection_budget": 32,
+    "db_pool_timeout_seconds": 30
+  },
+  "workload": {
+    "profile": "preflight-only",
+    "synthetic_reader_load": false,
+    "translation_canary": false,
+    "canonical_content_access": false
+  },
+  "protected_boundaries": {
+    "canonical_postgresql_rows": "read-only status/count query only",
+    "canonical_r2_buckets": "not enumerated or mutated",
+    "provider_calls": "not made",
+    "secrets_and_connection_strings": "not captured",
+    "reader_and_worker_claim": "no capacity claim"
+  },
+  "verification": {
+    "git_status": {"exit_code": 0},
+    "worker_compose_status": {"exit_code": 0},
+    "compose_config": {"exit_code": 0},
+    "graphify_query": {"exit_code": 0, "nodes_found": 392, "display_budget": 1200, "display_truncated": true},
+    "queue_snapshot": {"exit_code": 0},
+    "settings_snapshot": {"exit_code": 0}
+  }
+}

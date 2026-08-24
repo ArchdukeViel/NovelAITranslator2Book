@@ -9,6 +9,12 @@ assembly injects approved glossary terms and bounded context. Provider output is
 parsed, checked by deterministic QA, post-processed, and saved as a versioned
 translated chapter. Failed chapters do not erase successful siblings.
 
+Resume reconciliation is artifact-first: when an immutable translated artifact
+passes the current lineage contract, a retry repairs the PostgreSQL chapter
+state to `complete` and clears any stale `translation_error` before reporting a
+skip. A `complete` database state alone is never treated as proof of a valid
+artifact.
+
 ## JP-EN Quality Rules
 
 JP-EN policy applies when source is `ja|japanese` and target is `en|english`.
@@ -65,6 +71,12 @@ Rules:
 - Pending glossary translations use structured ID-based batches of
   `TRANSLATION_GLOSSARY_BATCH_SIZE` terms. A malformed batch retries on the
   same model and never falls back to one request per term or another model.
+- Provider-level invalid-JSON responses follow the same bounded retry path as
+  malformed response text. If discovery still cannot produce valid JSON, the
+  discovery result is deferred: no unvalidated term is activated, and body
+  translation may continue only when the caller's glossary-gate policy allows
+  it. Provider rate/quota signals are classified before generic token or
+  maximum markers so rate-limit failures are not mislabeled as context errors.
 - Public annotations include only explicitly public-visible approved entries.
 - Diagnostics and review workflows never expose private notes or credentials.
 
@@ -84,6 +96,28 @@ batches, an upper estimate for undiscovered glossary output, minimum provider
 requests, configured retry reserve, selective QA requests, token estimates,
 RPD feasibility, and the RPM-only wall-clock lower bound. Unknown glossary
 terms and actual provider usage remain explicitly marked as estimates.
+
+### Unified credential registry and contributor pooling
+
+Owner-scoped translation resolves the explicitly imported and validated owner
+row for `PROVIDER_GEMINI_API_KEY`; the environment key is never imported at
+startup. Contributor-scoped translation is opt-in metadata on a durable
+activity and selects only active, successfully validated Gemini rows from the
+unified `provider_credentials` registry where
+`contributor_pool_eligible=true`; an empty pool fails closed and never falls
+back to an owner row. Each selected credential has its own Redis-backed
+RPM/TPM/RPD and in-flight reservation state. Selection updates `last_used_at`
+under a short row lock, and the per-request audit identity is passed locally
+so parallel chunks cannot associate a request with another credential owner.
+
+Credential replacement is race-safe: a validation result cannot activate a
+different key that was submitted while the provider call was running. Provider
+validation is rate-limited per authenticated user, and validation messages are
+bounded with the submitted key redacted. The unified provider usage ledger
+contains accounting and routing metadata for owner and contributor modes only;
+it never stores prompts, raw keys, authorization headers, or provider
+responses. Owner rows remain owner-job-only unless an owner explicitly shares
+pool eligibility; user rows remain ineligible for owner-only work.
 
 ### Gemini response-schema compatibility
 
@@ -139,6 +173,22 @@ manual edit, or QA retry writes one new translation object and changes one
 PostgreSQL reference; raw chapter bytes are never rewritten. A source change
 invalidates only translations whose source/structure/image contract changed.
 Readers load the active key from PostgreSQL and perform an exact R2 read.
+
+## Runtime Resource Boundary
+
+PostgreSQL is the source of truth for compact catalog fields, scalar chapter
+state, hashes, active artifact references, queue leases, and bounded progress
+projections. R2 is the source of truth for immutable raw, translated, and media
+artifacts. Routine ORM reads must defer history/version/media JSON unless the
+caller explicitly needs it, and a translation invocation may reuse metadata,
+approved glossary data, and raw bundles only for that invocation.
+
+The worker audit found that synchronous database/storage calls still occur
+inside concurrent async chapter tasks. Increasing concurrency is therefore not
+a reliable throughput fix: measure provider wait, database work, R2 operations,
+and event-loop blocking separately before raising limits. Full-queue runs are
+not reader-capacity tests; use a bounded per-source sample first, then staged
+reader load with CDN/cache and Supabase egress evidence.
 
 ## Provider Identity — Single Resolution Point
 
@@ -345,10 +395,25 @@ as both `job_id` and `activity_id`, and progress/status is polled from the
 activity API.
 
 The production queue is the `activity_records` database table, not a full-file
-JSON rewrite. Claims use row locks, expired leases are recovered, retries and
-metadata are bounded, and queue age/claim/heartbeat/update timings are
-observable. The legacy queue file may be imported during migration but is not
-the normal control plane.
+JSON rewrite. Claims use an index-backed atomic `UPDATE ... RETURNING` with the
+oldest pending row, expired leases are recovered, retries and metadata are
+bounded, and queue age/claim/heartbeat/update timings are observable. Lease
+heartbeats update only the lease timestamps and normally run every 15-30
+seconds; an explicitly shortened test/local lease uses one-third of its lease
+duration so it cannot expire before renewal. Empty-queue polling backs off from
+5 to 30 seconds. The legacy queue file may be imported during migration but is
+not the normal control plane.
+
+The resource-efficiency audit now uses a bounded per-job cache: the selected
+run loads novel metadata and the approved glossary once, and selected raw
+chapter bundles are reused across glossary discovery, preflight, and the
+chapter pipeline. The cache is scoped to one translation invocation and is
+discarded at the end; there is no cross-job cache or stale-data risk. The
+worker also reuses the row returned by the atomic activity claim, routine
+catalog reconciliation defers the large novel metadata-history JSON, and
+translation/catalog state reads defer chapter media, translation-version, and
+edit-history JSON. Write paths still load a deferred value only when they must
+append immutable history records.
 
 Gemini admission reserves RPM, TPM, RPD, and in-flight capacity globally for
 the owner key or per contributor credential. Each chunk has a configured
@@ -359,7 +424,38 @@ Sanitized usage records and runtime metrics capture provider wait, execution,
 retry, quota-reservation, and usage-ledger write duration without prompts,
 keys, authorization headers, or response secrets.
 
+The `GEMINI_*` and `CONTRIBUTOR_*` limits are local admission ceilings and do
+not prove that every API key has an independent upstream quota. Google documents
+Gemini limits as varying by model and usage tier and generally applying at the
+project level; operators must verify the active account/project limits in
+[Google AI Studio](https://ai.google.dev/gemini-api/docs/rate-limits) before
+production-volume work. TPD is model-dependent and is not a separate setting
+in this repository; do not infer a token-per-day allowance from RPD or TPM.
+
 Accepted translation cache entries are disposable runtime data. They may be
 evicted or lost without changing canonical translation artifacts; PostgreSQL
 lineage and R2 immutable objects remain the recovery source. Cache maintenance
 must never upload cache entries to R2 or use them as active references.
+
+## Async persistence and contributor capacity checkpoint - 2026-08-24
+
+The translation coordinator now uses a bounded `TranslationPersistencePort`
+for blocking persistence/checkpoint/R2 operations. Only immutable scalar/DTO
+values cross the boundary; sessions, ORM instances, transactions, provider
+responses, prompts, and secrets do not. Progress events and chunk states may
+be coalesced through one bounded batch; terminal lineage and active-reference
+work remains critical. Shutdown drains within the configured deadline and
+releases executor capacity.
+
+Contributor leases reserve both a conservative shared Gemini project budget and
+the selected credential budget. Same-project keys therefore do not multiply
+RPM/TPM/RPD/in-flight capacity. Selection is limited to active, valid,
+consented, contributor-pool-eligible rows, while owner-job rows remain isolated.
+Reservation rejection, provider outcome, cancellation, timeout, and expiry
+reconcile both controllers; the usage ledger stores bounded attribution only.
+
+The local checkpoint measurement found a copy-shaped disposable envelope and a
+smaller reference-only candidate, but no compaction threshold or migration
+approval exists. The evidence-backed decision is to retain the current
+envelope and restore contract. Live provider/R2 canary evidence remains
+operator-deferred; no contributor credential was activated in this audit.

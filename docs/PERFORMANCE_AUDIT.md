@@ -891,11 +891,18 @@ percentiles and provider-volume capacity remain open.
 own the active queue state; the old JSON queue is retained only for one-time
 import/compatibility handling.
 
-**Evidence:** `ActivityQueueService` stores activity state in one JSON file. Create, claim, heartbeat, update, and list operations acquire locks, load/parse the complete file, and rewrite the complete file. The background runner polls every two seconds by default.
+**Evidence:** The historical implementation stored activity state in one JSON
+file and polled every two seconds. The current production database backend uses
+row-locked recovery, an index-backed atomic claim update with `RETURNING`, a
+timestamp-only heartbeat update, and a 5-to-30-second empty-queue backoff. The
+legacy file remains only for explicit migration/test paths.
 
 **Impact:** Progress updates and concurrent workers serialize on file I/O. Work grows with activity history, and a slow filesystem operation delays claims and heartbeats. This can make a healthy provider look like a queue stall.
 
-**Recommendation:** Move durable activity state to the application database or a properly bounded Redis/job store, retaining a migration/audit path. Until then, cap history reads, reduce heartbeat write frequency, instrument lock wait and rewrite duration, and ensure only one execution model owns a given queue.
+**Recommendation:** Retain the database activity boundary and measure claim
+wait, heartbeat/update duration, queue age, and managed-pooler egress under a
+representative worker load. Do not use cumulative `pg_stat_*` counters as a
+substitute for Supabase billing-cycle egress attribution.
 
 **Confidence:** Current-source corroborated.
 
@@ -979,6 +986,151 @@ explicit invalidation; do not cache disabled/no-data responses.
 
 **Confidence:** Measured.
 
+## Pipeline resource-efficiency audit — 2026-08-23
+
+The approved pipeline audit completed its local implementation gate. Read-only
+PostgreSQL evidence identified repeated activity reads and large novel-history
+hydration as the highest-confidence query candidates; the application uses a
+Session Pooler endpoint on port `5432` with a five-connection application pool,
+and no fresh provider-side byte attribution. The selected corrections are
+bounded: defer routine `metadata_history_json`, defer chapter media/version
+JSON in translation/catalog state reads, project worker/glossary-revision
+lookups with `load_only()`, reuse the row returned by an atomic activity claim,
+reuse selected metadata/glossary/raw bundles within one job, and use bucket-
+level R2 `HEAD` for readiness. Atomic claims, timestamp-only heartbeats, and
+5-to-30-second empty polling were already correct and were retained. A
+cross-job cache remains deferred because it would require a different lifetime
+and invalidation contract.
+
+The rebuilt worker canary claimed only the existing NCode activity. It remained
+leased with a fresh heartbeat and two chapters translating, but did not reach a
+terminal state or advance to Kakuyomu during the bounded observation. The
+worker was stopped after cumulative `pg_stat_statements` calls rose from
+`1,308,671` to `1,322,596`; container traffic rose from `21.6 MB` to `59.1 MB`
+received and from `251 kB` to `7.61 MB` sent. The pre-canary interval was idle
+and is not a valid workload-rate baseline, so these figures do not establish a
+two-times threshold or billed Supabase egress. Docker reported exit `137`
+after the stop timeout. The activity remains subject to normal lease expiry
+and application-service recovery; no manual row or runtime JSON edit was made.
+
+This canary is evidence of live lease/resource behavior and the need for a
+bounded stop gate, not evidence of terminal translation, final artifact/read
+acceptance, production provider capacity, or exact R2 byte attribution.
+
+### Risk-resolution follow-up - 2026-08-23 07:33 UTC
+
+The first recovery attempt exposed a targeted-claim defect: the database
+backend recovered an expired lease to `pending` but did not flush that mutation
+before the targeted `UPDATE ... RETURNING` claim. The recovery transaction was
+committed safely, but the claim returned no row. The fix adds the missing flush
+and a regression test; `backend/tests/test_activity_database.py` now passes all
+five focused tests.
+
+After rebuilding the local worker image, the application-service canary claimed
+only NCode at retry count 4. It renewed the lease, remained below 135 MiB in
+the observed container sample, and advanced one chapter from failed translation
+state into fetching/translation. Aggregate `pg_stat_statements` counters rose
+from 1,325,333 to 1,330,939 calls and from 16,570,202 to 16,575,001 rows during
+the combined recovery/canary observation; these are cumulative indicators and
+include verification traffic. The canary container was stopped at the bounded
+checkpoint and exited 137 after the stop timeout with `OOMKilled=false`.
+
+The activity row remains leased until normal expiry because no manual row or
+runtime edit was used. Kakuyomu remains pending and Novel18 remains a truthful
+terminal failure at its highest retry record. This follow-up proves targeted
+application-service recovery and one live chapter transition, but terminal bulk
+completion, provider quota verification, Supabase billing attribution, final
+artifact/read acceptance, backup/restore, and production-scale telemetry remain
+open.
+
+### Operator egress and route follow-up - 2026-08-23
+
+The operator's Supabase custom report resolves the previously unavailable
+billing attribution: `API Egress` is zero in the shown window, while
+`Shared Pooler Egress` reaches `66,683,432,737` bytes, approximately 66.68 GB
+decimal (62.1 GiB). This closely matches the organization Usage page's
+67.20 GB billing-period total. The report axis labels differ from the Usage
+chart by roughly one day, so the next capture must record the exact hovered
+timestamp and service breakdown.
+
+Sanitized runtime probes show that both the backend and the stopped worker
+resolve a pooler host on port `5432`, confirming Session Pooler traffic. The
+repository's `DB_CONNECTION_MODE=direct` value controls the SQLAlchemy
+application pool behavior; it does not override the endpoint in
+`DATABASE_URL`. No environment, endpoint, schema, or pool setting was changed.
+The egress reduction target therefore remains query count and returned-payload
+size, not a route change made only to move the dashboard category.
+
+### Session Pooler canary follow-up - 2026-08-23
+
+The rebuilt `novelai-admin:local` image was used for one NCode-only
+application-service canary with temporary process overrides of 12 RPM,
+provider concurrency 1, and chapter concurrency 1. The NCode activity was
+selected at retry count 4 and retained a running lease, but no visible chapter
+progress transition occurred during the bounded observation.
+
+The sanitized `pg_stat_statements` aggregate moved from 1,333,488 calls and
+16,580,767 rows to 1,339,354 calls and 16,585,220 rows. Verification traffic
+is included, so this is query-volume evidence rather than billed egress. The
+container rose from approximately 117 MiB to 174 MiB and reached about
+13.2 MB received / 1.63 MB sent; it was not OOM-killed. The temporary canary
+was stopped and removed, the dedicated worker remained stopped, and no
+database row or runtime JSON was manually edited.
+
+This canary confirms bounded Session Pooler observation with the lower provider
+cap, but remains nonterminal. It does not establish full-queue safety,
+terminal translation, final artifact/read acceptance, or a new billed-egress
+delta.
+
+### Post-canary query-payload projection hardening - 2026-08-23
+
+The translation path now projects only the fields needed for platform-novel
+and glossary-revision lookups. Routine catalog saves/reconciliation defer
+`Novel.metadata_history_json`; existing chapter lookups defer
+`media_state_json`, `translation_versions_json`, and
+`translation_edit_history_json`. The bounded per-job cache reuses selected
+metadata, approved glossary entries, and raw chapter bundles across discovery,
+preflight, and translation, then is discarded with the job.
+
+Focused projection/translation/worker/glossary coverage passed `145` tests,
+Ruff and Pyright passed, and the full backend suite passed `2,904` tests with
+`16` skips. No environment value changed and the dedicated worker remains
+stopped. The latest canary remains nonterminal, so the byte-level egress effect
+of these projections still requires a later terminal workload comparison.
+
+### Full-queue resource interpretation - 2026-08-23 15:34 UTC
+
+The next temporary-concurrency observation was stopped at a safe checkpoint
+instead of being allowed to drain the full queue. The final sanitized chapter
+states were NCode `75 complete / 19 failed / 49 pending / 1 fetching / 4
+translating`, Kakuyomu `9 complete / 78 failed / 1 translating`, and Novel18
+`29 complete / 2 failed`. The dedicated worker sample reached approximately
+`224 MiB` resident memory, `256 MB` received, `27.4 MB` sent, and a short peak
+near `57%` CPU. No billed-byte attribution can be derived from these local
+container counters.
+
+This confirms that the current full-queue run is not an appropriate 100k-user
+capacity test: one source monopolized the queue, retry/failure work dominated
+progress, and synchronous database/storage operations remain inside concurrent
+async chapter tasks. PostgreSQL should continue to own compact state and exact
+artifact references; R2 should own immutable raw/translated/media content. The
+remaining large JSON columns and event-loop blocking path require a separate
+measured optimization pass before scale claims.
+
+The next test must be a bounded one-to-three-chapter sample per source with
+stage timings, query-call/row indicators, R2 operation counters, provider token
+and retry data, and lease transitions. Reader load should then be tested in
+1k/10k/100k DAU-equivalent stages with CDN/cache hit ratios and Supabase
+Usage/Observability reports captured separately from cumulative database
+statistics.
+
+The bounded follow-up paused the three original full-queue activities and ran
+one application-service sample activity per source. All three completed
+sequentially at provider/chapter concurrency `1`, and application-service
+readback found raw and translated artifacts for each selected chapter. The
+sample containers exited cleanly. This closes the bounded validation evidence,
+while the original full queues remain paused for the separate scale redesign.
+
 ## Positive observations to preserve
 
 - The public ranking contract correctly returns unavailable when analytics is disabled rather than fabricating popularity.
@@ -1026,3 +1178,26 @@ The budgets should be validated with at least 50 warm and 50 cold requests per r
 - The current local Caddy smoke uses the documented `localhost` fallback because
   `SITE_DOMAIN` is absent from the local env files; no production hostname was
   exposed or asserted in this environment.
+
+## Pipeline async execution and capacity audit continuation - 2026-08-24
+
+The approved staged audit added a bounded persistence boundary, runtime
+telemetry with fixed labels and named unavailable reasons, conservative
+project-plus-credential contributor admission, a deterministic fixture-only
+reader harness, checkpoint footprint measurement, and a hosted-versus-modeled
+cost envelope. Progress writes are batched; terminal writes remain critical.
+
+The local evidence passed the focused async/telemetry/configuration slices,
+60 contributor/provider/scheduler tests, 10 harness tests, 158 public
+reader/router/harness tests, 12 checkpoint/resume tests, and the isolated
+checkpoint-footprint and cost-model tests. Ruff, Pyright, Compose validation,
+and Graphify also passed for the relevant slices. Exact artifacts and command
+durations are recorded in `artifacts/capacity/` and the active specification.
+
+The R2 operation benchmark ran only as a safe skip check: all six tests were
+skipped because `TEST_R2_ENDPOINT` is absent. No R2 operation was attempted.
+The one-to-three-chapter source canary and 1k/10k/100k reader stages remain
+operator-deferred or unavailable because live approval, approved traffic/SLO
+inputs, hosted telemetry, and the prescribed load runner are absent. No local
+fixture or modeled projection is a production capacity, billing, egress, or
+provider-quota claim.

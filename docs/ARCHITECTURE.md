@@ -29,7 +29,7 @@ public-reading system.
 | Owner | Crawling, imports, translation, editing, providers, users, requests, takedowns, and operations. |
 | Guest | Public catalog, novel detail, chapter list, and reader. |
 | User | Google OAuth or email/password session; private library, progress, history, reviews, and requests. |
-| Enabled | User-owned contributor credentials and public rankings. |
+| Enabled | Unified provider credentials with user contribution pooling, and public rankings. |
 | Deferred | Community features, billing, organizations, and multiple admins. |
 
 Generated translated-novel downloads are outside scope. Do not add PDF, EPUB,
@@ -52,6 +52,16 @@ and archive imports are not supported. Preserve historical generated files.
 - Scheduler loops, long translation jobs, and restore verification need
   always-on compute; provider-backed activities run in the dedicated worker
   service so web processes do not consume their event loops for translation.
+- Worker database hot paths use narrow projections: activity claims are atomic
+  `UPDATE ... RETURNING` operations, heartbeats update only lease timestamps,
+  and expired-lease recovery loads only the fields it needs. The background
+  runner backs off from 5 to 30 seconds while the queue is empty. Routine
+  catalog reconciliation defers the large novel metadata-history JSON and
+  loads it only when an actual metadata change needs an audit append. The
+  worker reuses the row returned by the atomic claim rather than immediately
+  reloading it. A broader per-job metadata/glossary/raw-bundle cache remains a
+  measured follow-up, not a current contract; no stale-cache behavior may be
+  inferred from this boundary.
 
 ## Deployment Topologies
 
@@ -203,7 +213,17 @@ chapter storage -> paragraph IDs -> chunks/bundles -> prompt + glossary
   application credentials.
 - Redis/Valkey owns transient queues, locks, leases, rate limits, and quota
   reservations. The local runtime directory owns only disposable caches,
-  checkpoints, logs, and worker scratch data.
+  checkpoints, logs, and worker scratch data. On the host this boundary is
+  `data/runtime/`; Compose maps it to the container's `/app/data/runtime`.
+- Chapter state is stored as one service-managed JSON record per stable chapter
+  identity under `chapter-state/<novel-id>/`; checkpoint filenames use the same
+  encoded physical chapter stem. Current checkpoints include temporary raw,
+  translated, and state copies to support application-level recovery. They are
+  private disposable recovery material, not a canonical content source; exact
+  PostgreSQL references and immutable R2 objects remain authoritative. Larger
+  catalogs will need checkpoint retention/compaction and a reference-based or
+  R2-backed payload strategy to avoid unnecessary duplicate content and local
+  filesystem metadata pressure.
 - PostgreSQL owns users, sessions, identities, glossary, requests, reviews,
   credentials, audit, jobs, and catalog projections.
 - The `chapters` table carries stable-identity columns
@@ -267,9 +287,9 @@ fields, fallback readers, compatibility routes, or import shims.
 - `/api/auth/*`: owner and public authentication.
 - `/api/user/*`: session-authenticated user data through admin process.
 - `/api/public/*`: guest-safe reader and rankings through reader process.
-- `/api/user/contributions`: authenticated user-owned contributor credentials
-  through the admin process; identity is session-derived and unsafe methods are
-  CSRF-protected.
+- `/api/user/contributions`: authenticated user contribution views over the
+  unified provider credential registry through the admin process; identity is
+  session-derived and unsafe methods are CSRF-protected.
 - `/health/*`: liveness/readiness through admin process.
 - `/novels/*`: frontend pages, not backend aliases.
 
@@ -308,29 +328,61 @@ Roles are `guest`, `user`, and exactly one `owner`.
 - Takedowns use exact decoded paths, safe HTTP 451, `no-store`, sitemap
   exclusion, and no complainant/private details.
 
-### Contributor credential contract
+### Unified provider credential contract
 
-Contributor credentials are enabled behind `CONTRIBUTOR_CREDENTIALS_ENABLED`.
-V1 permits one Gemini credential per authenticated user. The submitted key is
-encrypted at rest with `PROVIDER_CREDENTIAL_ENCRYPTION_KEY`; responses expose
-only the credential id, provider/model, last four characters, fingerprint,
-status, consent version, validation state, timestamps, and failure count.
-Raw keys, prompts, authorization headers, and provider responses are never
-stored in the usage ledger, logs, or API responses.
+Provider credentials are enabled behind `CONTRIBUTOR_CREDENTIALS_ENABLED` and
+stored once in `provider_credentials`. The same table holds owner-managed
+credentials and user contributions; there is no separate contributor
+credential table. V1 permits one Gemini contribution per authenticated user.
+Each row carries its authenticated owner, source, `owner_job_eligible`, and
+`contributor_pool_eligible` flags so privilege and pool participation are
+independent decisions.
 
-Registration requires the current `CONTRIBUTOR_CONSENT_VERSION`. Validation uses
-the explicit submitted key without hydrating owner preferences. A successful
-validation activates the credential immediately; a failed validation persists
-an invalid state and the key cannot enter the contributor pool. Users may
-replace, pause, resume, and permanently delete their own credential. Owners
-have separate pause, resume, and revoke emergency controls.
+Every submitted key is encrypted at rest with
+`PROVIDER_CREDENTIAL_ENCRYPTION_KEY`; responses expose only the credential id,
+provider/model, last four characters, fingerprint, source, eligibility,
+status, consent version, validation state, timestamps, and failure count. Raw
+keys, prompts, authorization headers, and provider responses are never stored
+in the usage ledger, logs, or API responses. The configured
+`PROVIDER_GEMINI_API_KEY` is not imported at startup; an owner must explicitly
+invoke the owner-only import/validation operation, which creates an owner-job
+credential and never makes it contributor-pool eligible.
 
-Contributor translation selects only active, valid Gemini credentials and uses
-per-credential RPM, TPM, RPD, and in-flight concurrency reservations. The usage ledger records only
-credential/owner/requesting-user identity, provider/model, request/job/activity
-ids, contribution mode, sanitized status, token accounting, estimated cost,
-timing fields, and timestamps. `credential_owner_user_id` and `requesting_user_id` remain
-distinct. Owner-only jobs never consume contributor credentials.
+User registration requires the current `CONTRIBUTOR_CONSENT_VERSION`.
+Validation uses the explicit submitted key without hydrating owner preferences.
+A successful validation activates a user contribution immediately; a failed
+validation persists an invalid state and the key cannot enter the contributor
+pool. Users may replace, pause, resume, and permanently delete their own
+contribution. Owners may pause, resume, revoke, or share/unshare pool
+eligibility for emergency and abuse-remediation control. Revoked credentials
+cannot be resumed by users.
+
+Contributor translation selects only active, valid Gemini rows with
+`contributor_pool_eligible=true` and uses per-credential RPM, TPM, RPD, and
+in-flight concurrency reservations. Pool selection is deterministic and
+row-locked for the short lease transaction so concurrent workers do not
+repeatedly select the same credential. Owner-only jobs select only
+`owner_job_eligible` rows and never consume contributor-pool credentials. The
+single `contributor_usage_ledger` records both modes using credential owner,
+requesting-user, provider/model, request/job/activity ids, contribution mode,
+sanitized status, token accounting, estimated cost, timing fields, and
+timestamps. `credential_owner_user_id` and `requesting_user_id` remain
+distinct.
+
+Credential validation is rate-limited per authenticated user, provider feedback
+is bounded and redacted against the submitted key, and a validation result is
+discarded if the credential was replaced while the provider request was in
+flight. Production quota controllers enforce configured per-credential
+concurrency through shared Redis state. Provider-request audit identity is
+passed per call rather than stored in shared pipeline metadata, so parallel
+chunks cannot cross-associate credential ownership or ids.
+
+The configured RPM/TPM/RPD and in-flight values are local admission guards.
+They do not establish independent upstream capacity per API key: Gemini limits
+vary by model and usage tier and are generally applied at the provider project
+level. Production-volume work requires an operator check of the active project
+limits in Google AI Studio; the worker fails closed when no active validated
+contributor credential is available.
 
 ### Durable translation activity contract
 
@@ -431,19 +483,21 @@ unchanged.
   finalized counts (`expected_count`, `completed_count`, `skipped_count`,
   `review_count`, `failed_count`) and the in-source-order `chapter_ids`.
 - Long-running scrape and resume operations are activity records, not request
-  lifetimes. The activity lease is renewed by the worker heartbeat and the
-  durable status is polled through the activity API. A failed activity must
+  lifetimes. The activity lease is renewed by an independent worker heartbeat
+  thread so synchronous orchestration cannot starve lease renewal, and durable
+  status is polled through the activity API. A failed activity must
   leave the previous active generation visible; a staged generation is only
   reader-visible after complete-snapshot validation and pointer activation.
 - Translation activities use the database queue rather than full-file JSON
   rewrites. `ACTIVITY_HISTORY_MAX_ENTRIES`, metadata-size, and retry-history
   limits bound durable state; queue metrics expose pending age and claim,
   heartbeat, list, and update timings.
-- Gemini admission reserves request/token/day quota plus a global in-flight
-  limit. `TRANSLATION_PROVIDER_DEADLINE_SECONDS` and bounded retry backoff
-  limit provider work. Provider runtime metrics and the sanitized usage ledger
-  record wait, execution, retry, quota-reservation, and usage-write duration
-  without prompts, keys, authorization headers, or response secrets.
+- Gemini admission reserves requests-per-minute, tokens-per-minute,
+  requests-per-day, and global in-flight capacity. `TRANSLATION_PROVIDER_DEADLINE_SECONDS`
+  and bounded retry backoff limit provider work. Provider runtime metrics and
+  the sanitized usage ledger record wait, execution, retry, quota-reservation,
+  and usage-write duration without prompts, keys, authorization headers, or
+  response secrets.
 - Translation cache entries are disposable runtime data and are never used as
   canonical content. Durable translation lineage and active artifact
   references remain in PostgreSQL and R2.
@@ -472,3 +526,32 @@ unchanged.
   without architecture change.
 
 Current unfinished work lives only in [`WORK.md`](WORK.md).
+
+## Pipeline async execution and capacity checkpoint - 2026-08-24
+
+Translation persistence now crosses an explicit bounded
+`TranslationPersistencePort`. The port owns per-operation storage/session
+work, rejects live ORM/session values at the boundary, returns detached plain
+data, records bounded queue-wait/duration observations, and batches coalescible
+progress writes. Terminal lineage and active-reference writes remain critical
+and ordered. The persistence expansion profile is disabled by default and is
+reversible through `TRANSLATION_PERSISTENCE_EXPANSION_ENABLED=false`.
+
+Runtime telemetry is a bounded fixed-label observation buffer with explicit
+event-loop/process-resource availability states. It must never contain prompt,
+response, source-text, credential, authorization-header, or arbitrary
+exception data. Process CPU/memory and event-loop gauges are supporting
+application evidence, not hosted billing or egress attribution.
+
+Contributor admission applies one conservative shared project quota controller
+and one per-credential controller. Distinct keys do not multiply project quota
+without verified independent domains. Contributor selection remains separate
+from owner-job selection, and translation-provider RPS remains separate from
+public reader HTTP RPS. A credential reservation has a bounded reconciliation
+or expiry outcome and sanitized ledger attribution.
+
+The fixture-only capacity harness and checkpoint footprint measurement are
+local evidence. The isolated R2 operation benchmark, source canary, and 1k,
+10k, and 100k reader stages remain unavailable or operator-deferred until
+their endpoint, traffic model, stop thresholds, rollback owner, and hosted
+telemetry gates are supplied.

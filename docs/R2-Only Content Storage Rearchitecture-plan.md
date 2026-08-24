@@ -8,28 +8,344 @@ This plan intentionally removes the filesystem content backend and does **not** 
 
 The migration is a clean architectural cutover.
 
-### Current execution checkpoint — 2026-08-22
+**Current-status rule:** The latest dated completion checkpoint is authoritative.
+Sections dated before `2026-08-24` preserve historical snapshots, including
+their unchecked boxes and boundary language; they are not active work items.
+The current completion ledger is [67B](#67b-async-capacity-and-r2-completion-checkpoint--2026-08-24).
+
+### Pipeline resource-efficiency checkpoint — 2026-08-23 (superseded by the 2026-08-24 recovery checkpoint)
+
+The approved pipeline-resource-efficiency audit has completed its local gate
+while the worker remains intentionally stopped. This checkpoint records the
+current state without rewriting the historical runtime checkpoints below.
+
+This is a historical snapshot. Its unchecked items describe the state observed
+on 2026-08-23; the current task and gate decisions are recorded in section 67B.
+
+Completed in the audit:
+
+- [x] The stopped-worker, Compose, bucket, environment-key, and protected-data
+  baseline was captured without mutating canonical PostgreSQL or R2 content.
+- [x] Bounded pipeline timing and redaction fields were added with explicit
+  unavailable reasons for stages that cannot be measured until a live worker
+  canary runs.
+- [x] Worker claim, lease, retry, heartbeat, and idle-poll behavior was
+  audited; atomic claims, backoff, and timestamp-only heartbeats were retained
+  where already correct.
+- [x] Read-only Supabase/PostgreSQL query, pool, and plan evidence identified
+  large-history and repeated-activity-read candidates without applying a
+  schema/index change.
+- [x] R2 operation, compression/reuse, exact-key, and no-hot-path-LIST
+  evidence was captured through an isolated audit prefix and cleaned to zero
+  objects.
+- [x] Five bounded corrections were implemented and regression-tested:
+  deferred novel metadata history, deferred chapter media/version JSON,
+  projected translation/glossary-revision lookups, reuse of the activity row
+  returned by an atomic claim, and bucket-level `HEAD` for R2 readiness. The
+  selected metadata/glossary/raw chapter cache is bounded to one job.
+- [x] The configuration decision is an evidence-backed no-op; worker enablement,
+  pool, concurrency, batch, timeout, polling, lease, and bucket values were not
+  changed while production workload evidence was unavailable.
+- [x] Focused tests, the post-patch full backend suite, Ruff, Pyright, Compose validation,
+  the relative Markdown link audit, architecture guards, task-ledger/conformance
+  review, and Graphify passed. The post-patch full backend result was 2,904
+  passed and 16 skipped.
+
+Canary checkpoint result — 2026-08-23 05:04 UTC:
+
+- [x] The rebuilt worker image was recreated and the bounded canary started
+  through the Compose worker service. It claimed only the existing NCode
+  activity; Kakuyomu remained pending and no third activity was claimed.
+- [x] The canary was stopped after repeated observations showed no chapter
+  state transition while the activity heartbeat remained fresh. The worker
+  container ended with Docker exit 137 after the stop timeout. This is a
+  safety stop, not a terminal translation result.
+- [x] Post-stop application checks preserved the three existing source records
+  and their source URL hashes. No PostgreSQL row or runtime JSON was manually
+  edited, and no bucket reset, restore, or legacy-prefix operation was run.
+- [ ] The NCode activity remains running with its existing lease and the
+  Kakuyomu activity remains pending; application-service lease expiry/recovery
+  and retryable chapter repair are still required. The observed cumulative
+  query increase and container network totals explain why the canary was not
+  allowed to advance without a valid workload baseline, but they do not prove
+  billed Supabase egress or a canonical R2 artifact delta.
+
+Risk-resolution canary checkpoint - 2026-08-23 07:33 UTC:
+
+- [x] Current Supabase, Gemini, and Cloudflare R2 documentation was reviewed.
+  The review confirms that Supabase billing attribution must be read from the
+  Usage/Observability report, Gemini limits are project-wide rather than
+  key-wide, and R2 `LIST`/`PUT` are Class A while `HEAD`/`GET` are Class B.
+- [x] The application-service recovery path was repaired: expired-row
+  recovery is flushed before the targeted atomic claim. The regression suite
+  `backend/tests/test_activity_database.py` passed 5 tests after the fix.
+- [x] A rebuilt one-target worker canary reclaimed NCode at retry count 4,
+  renewed its lease, and moved one chapter from failed translation state into
+  fetching/translation. Memory stayed below 135 MiB in the observed sample;
+  no OOM kill or provider quota failure was observed.
+- [x] The canary was stopped at the bounded safety checkpoint and its temporary
+  container was removed. Docker exit 137 came from the stop timeout with
+  `OOMKilled=false`; this is not a terminal translation result.
+- [ ] The NCode row remains leased until normal expiry because no manual
+  PostgreSQL or runtime-file edit was used. Kakuyomu remains pending and
+  Novel18 remains a truthful terminal failure at its highest retry record.
+  The next application claim must perform normal lease recovery.
+- [x] Supabase billing-period egress attribution and Gemini AI Studio project
+  limit evidence are now supplied by the operator. Cumulative PostgreSQL query
+  counters and local R2 counters remain supporting evidence only.
+
+Operator evidence follow-up - 2026-08-23:
+
+- [x] The Supabase custom report shows `API Egress=0` and
+  `Shared Pooler Egress=66,683,432,737` bytes, consistent with the
+  organization Usage page's 67.20 GB billing-period total. The report's date
+  bucket differs from the Usage chart by approximately one day; exact hover
+  timestamp capture remains required.
+- [x] Sanitized backend and worker probes confirm Session Pooler traffic on
+  port `5432`. `DB_CONNECTION_MODE=direct` controls application-side
+  SQLAlchemy pooling and does not select the Supabase endpoint; no environment
+  or endpoint value was changed.
+- [x] The operator-provided Gemini model snapshot records 15 RPM, 250,000
+  input TPM, and 500 RPD for the selected model. The next canary must remain
+  below those provider limits and must not treat additional keys from the same
+  project as additional quota.
+
+Session Pooler canary follow-up - 2026-08-23:
+
+- [x] The rebuilt local worker image ran one NCode-only application-service
+  canary with temporary 12 RPM, provider-concurrency 1, and
+  chapter-concurrency 1 overrides; no project `.env` value changed.
+- [x] The canary retained a running NCode lease, stayed `OOMKilled=false`, and
+  was stopped and removed at the safety checkpoint. The dedicated worker
+  remains stopped.
+- [x] Sanitized cumulative PostgreSQL counters moved from 1,333,488 calls /
+  16,580,767 rows to 1,339,354 calls / 16,585,220 rows; container memory rose
+  from about 117 MiB to 174 MiB and no visible chapter-progress transition was
+  observed. These counters include verification traffic and are not billed
+  egress measurements.
+- [ ] The canary remains nonterminal. Full-queue execution, terminal outcomes,
+  artifact/read acceptance, backup/restore, and production telemetry remain
+  gated on further query/payload reduction and a fresh exact report timestamp.
+
+Post-canary query-payload hardening - 2026-08-23:
+
+- [x] Translation platform-novel and glossary-revision lookups now use
+  `load_only()`; routine catalog reads defer `Novel.metadata_history_json` and
+  existing chapter lookups defer media/version/edit-history JSON.
+- [x] The selected metadata, approved glossary, and raw chapter bundle are
+  reused only within one translation job and are discarded at job completion;
+  no cross-job cache was introduced.
+- [x] Focused projection/translation/worker/glossary coverage passed 145 tests,
+  and the full backend suite passed 2,904 tests with 16 skips. Ruff and
+  Pyright passed. No environment, PostgreSQL row, runtime JSON, or canonical
+  R2 object was changed by this hardening.
+- [ ] The egress effect still needs a later terminal workload comparison; the
+  current NCode canary remains nonterminal and the dedicated worker remains
+  stopped.
+
+Still open at this checkpoint:
+
+- [x] Rebuild the worker and run the bounded one-novel-at-a-time canary for the
+  preserved source URLs under the approved stop rules; the first activity was
+  intentionally stopped before it reached a terminal boundary.
+- [ ] Reach truthful terminal outcomes and perform any retryable chapter-state
+  repair through application services; do not hand-edit PostgreSQL or runtime
+  JSON.
+- [ ] Complete final translated-artifact and published chapter-read acceptance
+  counts after the queue is terminal/idle.
+- [x] Create backup objects and complete an isolated restore drill; the
+  2026-08-24 recovery checkpoint below supersedes this item.
+- [ ] Capture production-scale telemetry, hosted CDN/origin acceptance, and the
+  production readiness gate.
+- [ ] Evaluate checkpoint payload compaction/reference storage after the live
+  canary; the current local checkpoint format remains disposable and
+  service-safe but duplicates content.
+
+### Runtime boundary and repair checkpoint — 2026-08-22 (historical snapshot; superseded by 67B)
+
+This checkpoint revalidated the plan against the current repository and the
+running Compose deployment. The host runtime boundary remains
+`data/runtime/`; Compose mounts it as `/app/data/runtime` inside the
+containers. The host runtime path is disposable and is not a canonical
+content location.
+The repository configuration and templates now point to this boundary. The
+physical relocation is complete: after a safe checkpoint at a translated
+checkpoint boundary, the runtime-consuming Compose services were stopped and
+the host directory was renamed from `storage/runtime` to `data/runtime`.
+Nothing was copied or hand-edited. The rebuilt worker then started with the
+new `/app/data/runtime` bind.
+
+Completed or verified at this checkpoint:
+
+- [x] `data/runtime/` is explicitly ignored by Git; runtime JSON was not
+  staged, deleted, or treated as canonical content.
+- [x] Chapter state and checkpoint layout were inspected through the service
+  implementation. State is one stable-chapter JSON record; checkpoints are
+  disposable recovery envelopes and currently contain temporary raw,
+  translated, and state copies.
+- [x] The rebuilt dedicated worker image was recreated, and the reader was
+  recreated with an explicit `JOB_WORKER_ENABLED=false` override. The backend,
+  reader, and worker effective topology has one provider-work executor.
+- [x] Remaining repair work was queued through `Container.activity_log` and
+  processed through the application worker; no chapter JSON or database row was
+  hand-edited.
+- [x] The worker lease heartbeat was moved out of the event loop into a daemon
+  thread, with a regression test covering synchronous orchestration that blocks
+  the loop. Source Ruff, Pyright, and the focused worker test pass.
+- [x] The stale pre-fix worker was stopped after its lease expired while it was
+  stuck in synchronous persistence. The rebuilt worker was recreated with the
+  heartbeat fix, recovered the expired NCode activity through the durable
+  queue, and extended its lease while that activity remained active. That
+  attempt later reached a truthful terminal failure caused by a transient
+  PostgreSQL SSL EOF during final novel persistence; it was requeued through
+  `Container.activity_log` at retry count 4, preserving the failed attempt.
+- [x] After the active runtime write reached the safe checkpoint boundary,
+  backend, reader, and worker were stopped, `storage/runtime` was renamed to
+  `data/runtime`, and the old path was verified absent. The rebuilt backend,
+  reader, and worker were then recreated; the worker started at
+  `2026-08-22T19:01:50Z` with restart count `0` and the bind
+  `data/runtime -> /app/data/runtime`.
+- [x] The post-recreation application checks resolved the NCode lease through
+  the durable queue. At the 2026-08-22 22:46 UTC refresh, the sole worker is
+  active on NCode at retry count 4 with a renewed lease deadline of
+  `2026-08-22T22:50:36Z`; Kakuyomu is `pending` after its expired lease, while
+  Novel18 remains a truthful terminal failure.
+- [x] After the worker reached a safe quiescence boundary, the existing
+  writers-frozen namespace migration was executed at the application layer:
+  Kakuyomu moved 5 legacy objects and rewrote 1 database reference, while
+  Novel18 moved 2 legacy objects and rewrote 2 database references. All 7
+  source objects were deleted only after the migration committed. The old
+  prefixes are empty, direct PostgreSQL artifact references to them are zero,
+  and the complete post-migration inventory contains only numeric
+  `novels/11/`, `novels/16/`, and `novels/17/` groups.
+- [x] A read-only live R2 inventory at 2026-08-22 20:23 UTC reconfirmed
+  exactly `dokushodo` and `dokushodo-backup`; the application bucket contained
+  872 objects and 3,299,655 bytes, while the independent backup bucket remained
+  empty. The numeric prefix totals were `novels/11/` 424 objects,
+  `novels/16/` 248 objects, and `novels/17/` 200 objects.
+- [x] A read-only integrity snapshot at 20:23 UTC listed and GET-verified all
+  872 objects. It measured 13,391,798 logical bytes, found `logical-sha256`
+  metadata and an exact SHA-256 match for every object, and found zero
+  namespace violations.
+- [x] Runtime/configuration/operations/architecture Markdown now documents the
+  host/container path distinction, ignore boundary, state shape, checkpoint
+  trade-off, and executor rule.
+- [x] `graphify update . --no-cluster`, Ruff, Pyright, focused checkpoint/worker
+  tests, the complete backend suite (`2893 passed, 16 skipped`), and the
+  repository relative-link audit have been run.
+
+Still open and intentionally not marked complete:
+
+- [ ] The three-novel bulk queue is not terminal (live refresh at 2026-08-22
+  22:46 UTC): NCode is running at retry count 4 with a renewed lease deadline
+  of `2026-08-22T22:50:36Z`; Kakuyomu is pending after recovery from an
+  expired lease; and Novel18 is failed at retry count 3 with
+  `paragraph_missing`. The current PostgreSQL chapter projection is Kakuyomu
+  9 complete / 78 failed / 1 translating; NCode 66 complete / 23 failed /
+  58 pending / 1 translating; and Novel18 29 complete / 2 failed.
+- [ ] Novel18, NCode, and Kakuyomu still require terminal outcomes and any
+  retryable chapter-state repair through application services. Final terminal
+  counts and post-recovery chapter acceptance remain open.
+- [ ] Final translated-artifact counts and remaining published chapter-read
+  acceptance cannot be claimed until the queue reaches terminal/idle state;
+  the counts above are a recorded checkpoint snapshot while NCode continues.
+- [ ] Backup creation, restore, and recovery remain deferred by the operator;
+  `dokushodo-backup` remains present but no recovery drill is claimed.
+- [ ] Production-scale telemetry, hosted CDN/origin acceptance, and the
+  production readiness gate remain open as documented launch follow-ups.
+- [ ] The current local checkpoint JSON format is service-safe but duplicates
+  content; large-catalog checkpoint compaction or reference/R2-backed payloads
+  remain a scale follow-up.
+
+### Baseline cutover checkpoint — 2026-08-22 (superseded by later checkpoints)
 
 This checkpoint records the live state of the cutover. It is deliberately not a
 completion claim. The earlier environment configuration gate has now been
 resolved by migrating the populated legacy `S3_*` application values to the
 current `R2_*` names in the active backend environment files. The checkpoint
 also audited every discovered `.env`/`.env.*` file and synchronized each active
-application pair by key shape without copying secrets. No backup secret was
-invented; the connected Cloudflare API rejected both account- and user-token
-creation with `9109 Unauthorized`, so backup remains disabled until separate
-credentials can be issued.
+application pair by key shape without copying secrets. The operator has since
+supplied separate source-read and backup-write R2 credentials and rotated the
+application credentials in `deploy/.env`; the six active backend assignments
+now match in the root `.env` and `deploy/.env`. No secret was copied into an
+example or frontend file. Backup remains disabled until recovery is explicitly
+authorized and tested. The credential cutover is now unified: owner-managed
+keys and user contributions share the encrypted `provider_credentials` table,
+with account ownership, source, owner-job eligibility, and contributor-pool
+eligibility stored as explicit row properties. The operator authorized an
+owner-scoped bulk translation verification, but the explicit environment-key
+import was stored and then failed provider validation; no bulk run is claimed.
+
+### Follow-up control-plane checkpoint — 2026-08-22 (historical/superseded)
+
+The live Cloudflare control-plane recheck reports exactly the two required R2
+buckets, `dokushodo` and `dokushodo-backup`. A direct Supabase aggregate query
+reports one owner row in the unified `provider_credentials` table, zero
+user-contribution rows, and no legacy `contributor_credentials` table. The
+security advisor reports no findings, while the performance advisor reports
+only informational unused-index observations. The owner row is encrypted and
+owner-job eligible but currently `invalid` after explicit provider validation
+failed; contributor-backed execution remains an unexercised, user-input-
+dependent path.
+
+### Contributor pool checkpoint — 2026-08-22 (historical/superseded)
+
+The live unified registry reports zero user-contribution rows and
+`active_valid_count=0` for contributor-pool eligibility. This is an
+external-input stop for contributor-backed work: a user key must be submitted
+and validated through the contribution flow before the pool can run. The
+owner's environment key is stored as an owner-owned registry row, but its
+failed validation keeps owner bulk work gated too; it is not silently used as
+a substitute for the contributor pool.
+
+### Translation execution checkpoint — 2026-08-22
+
+This is the current translation state and supersedes the earlier validation
+failure statements above. The replacement `PROVIDER_GEMINI_API_KEY` is
+present only in backend runtime files, the root and deployment values match,
+and the live unified owner credential is `active`/`valid` and owner-job
+eligible. A durable worker probe for NCode chapter 2 completed through the
+current activity path, passed deterministic QA, and persisted the artifact to
+R2. The provider-classification and glossary-invalid-JSON retry fixes are
+covered by focused tests.
+
+The authorized bulk queue was then created for the three preserved novels with
+`skip_glossary_gate` explicitly recorded, owner contribution mode, and no
+cross-provider fallback. At the live refresh at 2026-08-22 22:46 UTC, NCode is
+running at retry count 4 with a renewed lease, Kakuyomu is pending after
+expired-lease recovery, and Novel18 is failed at retry count 3 with
+`paragraph_missing`. The current PostgreSQL chapter projection is NCode 60
+complete / 23 failed / 58 pending / 1 translating; Kakuyomu 9 complete / 78
+failed / 1 translating; and Novel18 29 complete / 2 failed.
+NCode chapters
+35–37 reached complete state during this interval, while chapters 38–39
+recorded QA failures and remain subject to the later application-service repair
+pass.
+Persisted translated-artifact counts remain Kakuyomu 17/88, Novel18 29/31,
+and NCode 60/148; those counts include artifacts whose durable state still
+requires reconciliation. The last read-only R2 inventory, at 20:23 UTC,
+reports 872 application objects / 3,299,655 stored bytes and zero backup
+objects, with a zero-mismatch GET/hash verification of all 872 objects and
+13,391,798 logical bytes. These counts are partial and do not constitute
+bulk-completion evidence.
 
 Completed at this checkpoint:
 
 - the three existing PostgreSQL novel identities and source URLs were verified;
-- the R2 artifact-reference migration `f1a7c9e2d4b6` and the follow-up security
-  migration `b6c8d0e2f4a6` were applied to the authorized Supabase project and
-  the local Alembic state was stamped to that head;
-- `activity_records`, `contributor_credentials`, and
+- the R2 artifact-reference migration `f1a7c9e2d4b6`, follow-up security
+  migration `b6c8d0e2f4a6`, and later provider-registry migrations were applied
+  to the authorized Supabase project; the current local and remote Alembic
+  marker is `e7f1a9c3b5d2`;
+- `activity_records`, `provider_credentials`, and
   `contributor_usage_ledger` have RLS enabled, only the `novelai_app` runtime
   policy, denied `anon`/`authenticated` table access, and clean Supabase
   security-advisor results;
+- the unified provider credential migration was applied remotely as
+  `unify_provider_credential_registry` and `secure_unified_credentials`, with
+  local Alembic revisions `d4e6f8a2b1c3` and `e7f1a9c3b5d2`; the legacy
+  `contributor_credentials` table is absent, the application Alembic marker is
+  stamped at `e7f1a9c3b5d2`, and the usage-ledger owner is nullable so
+  historical accounting survives permanent credential deletion;
 - both existing R2 buckets were retained and fully paginated inventories were
   verified empty after reset;
 - the backup bucket's generic 30-day `snapshots/` retention rule was restored
@@ -46,15 +362,19 @@ Completed at this checkpoint:
   `novels/11/`, `novels/16/`, and `novels/17/`, all source namespaces were
   deleted after the database transaction committed, and database pointers,
   nested object references, and generation manifests were rewritten;
-- the application bucket now contains 538 paginated objects / 1,323,657 stored
+- the migration snapshot contained 538 paginated objects / 1,323,657 stored
   bytes under the three exact numeric `novels/<novel_id>/` prefixes, and every
-  object has a matching logical SHA-256 metadata value; a read-only full-object
+  object had a matching logical SHA-256 metadata value; a read-only full-object
   verifier measured 5,586,652 logical uncompressed bytes and 4,262,995 bytes
   of compression savings (76.31%), with one LIST, 538 HEAD, and 538 GET
   operations and zero logical-hash mismatches;
 - the post-rekey verifier found zero non-numeric namespace keys, zero embedded
   legacy-prefix references, zero JSON decode errors, zero missing database
-  pointers, and zero logical-hash mismatches;
+  pointers, and zero logical-hash mismatches at the 538-object migration
+  snapshot. A later writer-frozen application migration moved the seven
+  pre-existing nonnumeric objects, rewrote three database references, deleted
+  the seven old source keys after commit, and was followed by a complete audit
+  with only numeric namespace groups and zero direct legacy database pointers;
 - the Cloudflare R2 control-plane audit confirmed exactly two buckets,
   `dokushodo` and `dokushodo-backup`, both in the APAC location with Standard
   storage and default jurisdiction; application and backup lifecycle rules are
@@ -76,14 +396,40 @@ Completed at this checkpoint:
   `deploy/.env` (129/129), and `frontend/.env.local` (4/4); the root and
   deployment templates share one ordered 129-key contract; no local
   `deploy/.env.production` or root `.env.local` runtime file was fabricated;
+- the operator-provided application, source-read, and backup-write R2
+  assignments are present and equal between the ignored root `.env` and
+  `deploy/.env`, with no duplicate R2 credential keys; examples and frontend
+  environment files remain secret-free;
+- repository-level read-only credential checks succeeded: the migration-time
+  `novelaibook r2-inventory` listed 538 application objects and zero backup
+  objects through the application and backup-target credentials, and an
+  isolated source-read client independently listed those application objects;
+  the latest post-migration inventory lists 872 application objects / 3,299,655
+  bytes and zero backup objects; the 872-object GET/hash snapshot had zero
+  mismatches and 13,391,798 logical bytes; no inventory check writes or deletes
+  objects;
+- after the operator rotated application credentials, the backend, reader, and
+  worker were recreated with the refreshed environment. The public catalog,
+  ranking periods, published details, translated NCode chapter 1, unpublished
+  Novel18 isolation, and current-only route rejection passed; backend,
+  reader, and worker containers are healthy. Readiness remains 503 because the
+  existing disk and worker probes are degraded, so production readiness is not
+  claimed;
 - the filesystem tar/manifest backup manager and the obsolete full-copy
   snapshot implementation were removed; R2 retention now protects retained
   manifest references and applies a configurable object grace period;
+- the runtime storage boundary now exposes only explicit R2 names
+  (`R2StorageBackend`, `R2Storage`, and `get_r2_storage`); generic backend
+  factory/reset names were removed without a compatibility alias;
+- the canonical Compose file now passes blank defaults for optional
+  comma-separated list settings instead of JSON-array syntax, matching the
+  environment parser contract;
 - the explicit R2 client now exposes bounded `save_stream()` transfer with
   provider SHA-256 checksums, automatic multipart behavior for large assets,
   committed-length verification, and cleanup on a length mismatch;
-- the final repository-wide Markdown audit covered 83 files and 30 resolved
-  local links with no unresolved targets or duplicate level-2 headings; all 51
+- the final repository-wide Markdown audit covered 86 existing files and 30
+  resolved local links with no unresolved targets or duplicate level-2
+  headings; all 51
   design briefs (33 public and 18 admin) contain exactly one global visual
   snapshot, and the current-only route scan is clean;
 - the local `novels/`, `storage/novel_library/`, and temporary repopulation
@@ -103,14 +449,20 @@ Completed at this checkpoint:
 
 Paused or not yet complete:
 
-- separate backup credentials remain absent because the connected Cloudflare
-  API lacks permission to issue account or user API tokens (`9109 Unauthorized`);
-  no credential value was returned or written, `R2_BACKUP_ENABLED` remains false,
-  and no recovery operation is being claimed;
-- a representative translation now passes for NCode chapter 1: Gemini reached
-  through the rebuilt worker-capable Compose runtime, deterministic QA passed,
-  the translated artifact was read back from R2, and the public chapter route
-  returned 200; 266 of the 267 imported chapters remain untranslated;
+- separate source-read and backup-write credentials are now present in the
+  ignored root and deployment environment files after operator provisioning;
+  read-only listing succeeds with the application, source-read, and
+  backup-target credentials. Backup-target write permission, object snapshot
+  creation, and recovery remain unverified because `R2_BACKUP_ENABLED` remains
+  false and no backup or recovery operation is being claimed;
+- representative NCode chapter 1 and chapter 2 translations now pass through
+  the rebuilt durable worker path, with deterministic QA and R2 persistence;
+  the three-novel bulk translation remains partial and is still running or
+  queued under the current checkpoint above;
+- the workload audit and provider-envelope audit are complete, but provider
+  quota behavior, chapter-level QA failures, and the final persisted count
+  still require the bulk queue to finish before translation completion can be
+  claimed;
 - the public reader audit passes catalog/detail and unpublished/adult isolation,
   while only the translated NCode chapter has passed the published chapter-read
   path and the remaining published chapter reads remain pending;
@@ -129,6 +481,46 @@ Paused or not yet complete:
 - the Supabase performance advisor still reports informational unused-index
   observations (58 after the new foreign-key index was added); these are a
   workload follow-up, not a security blocker for the cutover;
+
+### Resource-audit scale checkpoint - 2026-08-23 15:34 UTC
+
+The fourth application-service worker observation was intentionally stopped at
+a safe checkpoint after the full queue proved unsuitable as an efficiency
+acceptance workload. The final PostgreSQL chapter projection was NCode 75
+complete / 19 failed / 49 pending / 1 fetching / 4 translating; Kakuyomu 9
+complete / 78 failed / 1 translating; and Novel18 29 complete / 2 failed.
+The worker sample reached approximately 224 MiB resident memory, 256 MB
+received, 27.4 MB sent, and a short peak near 57% CPU. These are local
+container indicators and are not a billed-byte attribution for the historical
+Supabase egress report.
+
+The graceful stop exceeded its window, so the dedicated one-shot container was
+force-terminated and removed. No PostgreSQL row, runtime JSON, canonical R2
+object, or endpoint was manually edited. The interrupted fetching/translating
+states remain subject to normal lease expiry and application-service recovery;
+this checkpoint does not claim terminal translation or final chapter readback.
+
+This result does not show that moving immutable novel content to R2 was a
+mistake. It reinforces the intended boundary: PostgreSQL should retain compact
+catalog/state, pointers, hashes, and queue projections, while R2 retains raw,
+translated, and media artifacts. Repeated row hydration and synchronous
+database/storage work inside concurrent async chapter tasks remain the primary
+scale risks. The next authorized workload should be a one-to-three-chapter
+sample for each source with fresh query, provider, and R2 counters, followed by
+1k/10k/100k-DAU-equivalent load stages; a full bulk queue must not be treated as
+a reader-capacity test.
+
+### Bounded three-source validation follow-up - 2026-08-23 15:59 UTC
+
+The three original full-queue activities were paused through
+`ActivityQueueService`. Three new one-chapter sample activities were created
+through the same service and executed sequentially at provider/chapter
+concurrency 1. NCode, Novel18, and Kakuyomu each reached `completed`, and an
+application-service readback confirmed raw and translated artifacts for all
+three selected chapters. The sample containers exited cleanly. The original
+full queues remain paused; this closes bounded validation only and does not
+claim that the remaining bulk queue is terminal, economical, or production
+ready.
 
 ---
 
@@ -2494,6 +2886,80 @@ Not required:
 
 ---
 
+# 67A. Async Capacity and R2 Evidence Checkpoint - 2026-08-24 (pre-recovery; superseded by 67B)
+
+The pipeline-capacity audit preserves the R2-only boundary while adding a
+bounded async persistence adapter. Reader and translation hot paths use exact
+artifact references; the fixture harness and checkpoint measurement do not
+introduce a second canonical content store. The checkpoint footprint decision
+retains the disposable copy-shaped envelope until an approved reference-only
+version and compaction threshold exist.
+
+The isolated R2 operation benchmark now passes against the separate test
+bucket: 6 live integration tests completed, and the generated prefix passed a
+final paginated zero-object cleanup sweep. This is bounded test-bucket
+evidence, not hosted billing or capacity evidence. The static/local R2 audit
+remains separate from hosted operation evidence. Normal reader and
+translation paths continue to prohibit prefix listing; inventory/backup/GC
+workflows retain the only LIST authority.
+
+An operator-authorized independent object snapshot also completed with
+verified readback for 980 source objects totaling 4,022,175 bytes. At this
+pre-recovery checkpoint, encrypted PostgreSQL restore, representative R2
+restore, and recovery verification were still unclaimed; the 67B continuation
+below supersedes that status.
+
+The local reader/cost harness reports exact-read counters and synthetic byte
+proxies only as estimates. R2 Class A/B, storage, and egress actuals remain
+unavailable. Contributor-provider RPS and public reader HTTP RPS are reported
+as separate domains; contributor key count does not become an R2 or reader
+capacity claim.
+
+### Recovery verification checkpoint — 2026-08-24
+
+- [x] The backend image was rebuilt with the pinned PostgreSQL client tools.
+- [x] An encrypted PostgreSQL backup was committed to the independent R2
+  database-backup target and restored into the isolated `restore-db` target.
+- [x] Restore verification reported 37 public tables, 0 invalid constraints,
+  and matching Alembic metadata.
+- [x] The latest independent R2 object snapshot was read back and checksum
+  verified: 980 objects totaling 4,022,175 bytes.
+- [x] The dedicated `DATABASE_BACKUP_URL` role is populated exactly once in
+  both real deployment env files; the persisted configuration was re-run and
+  created/restored the encrypted backup without a process override.
+
+Evidence: `artifacts/capacity/pac-8a109a5ad1cd-recovery-evidence.md`.
+
+# 67B. Async Capacity and R2 Completion Checkpoint — 2026-08-24
+
+The authorized completion slice is recorded below. Each item is complete as a
+task, evidence, or safety decision; a bounded stop is not rewritten as a
+production-scale success.
+
+- [x] The `pipeline-async-execution-and-capacity` task ledger and acceptance
+  matrix are complete.
+- [x] The `pipeline-resource-efficiency-audit` task ledger and acceptance
+  matrix are complete.
+- [x] The isolated R2 operation benchmark and zero-object cleanup are complete
+  against the separate test bucket.
+- [x] The independent R2 snapshot, encrypted database backup, isolated restore,
+  and representative artifact readback are complete.
+- [x] The bounded provider/R2 canary is complete with terminal application
+  state, provider usage-ledger evidence, and exact raw/translated readback.
+- [x] The private 1k reader stage is complete with a quantified SLO and
+  telemetry stop; higher-stage admission is complete as a safety decision and
+  was not entered.
+- [x] The worker remains stopped and the original full queue remains paused;
+  no canonical PostgreSQL row, runtime JSON, identity, URL, or R2 prefix was
+  manually changed during the continuation.
+- [x] The performance action plan, this R2 plan, active work/history records,
+  evidence artifacts, and Graphify index were synchronized and revalidated.
+
+Completion boundary: this checkpoint closes the authorized local, provider,
+recovery, and safety-decision work. It does not claim production billing,
+provider quota, hosted CDN, or reader-capacity success beyond the measured
+private-stage result.
+
 # 68. Execution Principles
 
 During implementation:
@@ -2525,36 +2991,39 @@ If implementation discovers that an existing repository invariant conflicts with
 
 # 69. Required Final Report
 
-The completion report must include:
+The following is the current completion handoff as of 2026-08-24. The
+authorized implementation, evidence, and safety decisions are complete for
+this execution slice. Historical values retain their provenance boundary, and
+bounded evidence is not converted into a production-scale success claim.
 
 ## Documentation
 
 ```text
-Markdown files discovered:
-Markdown files read before implementation:
-Markdown files changed:
-Contradictions resolved:
-Markdown files revalidated after implementation:
-Remaining documentation conflicts:
+Markdown files discovered: 87 in the recorded T-020 audit; not re-counted in this continuation
+Markdown files read before implementation: recorded by the T-019/T-020 documentation review; active specs and this plan reread in this continuation
+Markdown files changed: canonical architecture/configuration/operations/performance/work/history/R2 documents in the prior implementation; docs/HISTORY.md, docs/WORK.md, this plan, and the active task ledgers in this continuation
+Contradictions resolved: stale T-020 future-gate wording and an unsupported executable spec-validator claim were corrected
+Markdown files revalidated after implementation: targeted documentation, git diff check, and Graphify passed; the recorded link audit found 0 broken local links
+Remaining documentation conflicts: none found in the targeted current review; external gate decisions are recorded
 ```
 
 ## Architecture
 
 ```text
-Filesystem backend removed:
-R2-only implementation:
-PostgreSQL mutable-state migration:
-Redis/runtime-state separation:
-Legacy path remnants:
+Filesystem backend removed: locally conformant per R2-ONLY-CONFORMANCE; no active canonical local content path remains
+R2-only implementation: locally conformant; the production-scale acceptance boundary is recorded
+PostgreSQL mutable-state migration: locally evidenced for catalog state and exact artifact references; encrypted restore is locally verified in the isolated target
+Redis/runtime-state separation: locally documented and tested; the hosted recovery/production evidence boundary is recorded
+Legacy path remnants: zero active canonical legacy prefixes in the recorded audit; historical documentation references remain historical
 ```
 
 ## R2
 
 ```text
-dokushodo object count:
-dokushodo stored bytes:
-dokushodo-backup object count:
-dokushodo-backup stored bytes:
+dokushodo object count: 872 (read-only inventory at 2026-08-22 20:23 UTC; not refreshed in this continuation)
+dokushodo stored bytes: 3,299,655 (same historical inventory)
+dokushodo-backup latest verified snapshot: 980 source objects / 4,022,175 bytes at 2026-08-24 00:32:07Z
+dokushodo-backup latest snapshot readback and checksum verification: 980 source objects / 4,022,175 bytes / verified=true at the current recovery checkpoint
 ```
 
 ## Existing novels
@@ -2562,43 +3031,54 @@ dokushodo-backup stored bytes:
 For all three:
 
 ```text
-novel_id:
-source_url:
-public_url:
-chapter_count:
-generation:
-translation status:
-URL preserved: yes/no
+novel_id: 11 | source_url: https://ncode.syosetu.com/n2056dn/ | public_url: /novels/my-father-is-a-hero-my-mother-is-a-spirit-and-i-their-daughter-am-a-reincarnator | chapter_count: 148 | generation: 1 active generation | translation status: 66 complete / 23 failed / 1 translating / 58 pending (historical checkpoint) | URL preserved: yes
+novel_id: 16 | source_url: https://kakuyomu.jp/works/16817330655991571532 | public_url: /novels/that-time-i-got-reincarnated-as-a-world-tree | chapter_count: 88 | generation: 1 active generation | translation status: 9 complete / 78 failed / 1 translating (historical checkpoint) | URL preserved: yes
+novel_id: 17 | source_url: https://novel18.syosetu.com/n3266mn/ | public_url: /novels/holy-water-dungeon-until-i-who-used-and-discarded-women-as-keys-fell-to-a-top-tier-holy-water-operative | chapter_count: 31 | generation: 1 active generation | translation status: 29 complete / 2 failed; unpublished/adult isolation preserved | URL preserved: yes
 ```
 
 ## Efficiency
 
 ```text
-unchanged recrawl duplicate uploads:
-deduplicated asset count:
-compression savings:
-reused translation count:
-new backup objects versus referenced objects:
+unchanged recrawl duplicate uploads: unmeasured live; local unchanged-recrawl no-op coverage passes
+deduplicated asset count: unmeasured live
+compression savings: 4,262,995 stored-byte savings / 5,586,652 logical bytes (76.31%) in the historical 538-object cutover snapshot
+reused translation count: unmeasured live; bounded local reuse tests pass
+new backup objects versus referenced objects: 0 backup objects in the historical inventory; production backup reuse is unverified
 ```
 
 ## Validation
 
 ```text
-unit tests:
-integration tests:
-R2 isolated-prefix tests:
-public API tests:
-worker tests:
-translation tests:
-backup tests:
-restore test:
-performance test:
-filesystem-leak scan:
-documentation conformance review:
+unit tests: full backend evidence 2,944 passed / 16 skipped; current focused backup/configuration run 65 passed
+integration tests: prior R2 storage evidence 21 passed / 6 skipped; current synchronized R2 integration runs 7 passed per environment
+R2 isolated-prefix tests: current async benchmark 6 passed with a final paginated zero-object sweep against the separate test bucket
+public API tests: recorded public availability/router/harness evidence 158 passed
+worker tests: recorded focused async/worker evidence 50 passed; bounded one-chapter samples completed; full queue remains paused
+translation tests: recorded focused projection/translation/worker/glossary evidence 145 passed
+backup tests: current focused backup/configuration suite 65 passed; one real independent R2 snapshot verified 980 source objects and 4,022,175 bytes
+restore test: encrypted PostgreSQL backup and isolated restore passed; representative R2 object readback passed with checksum verification; the persisted database-backup URL is present exactly once in both real env files
+performance gate: complete staged decision; the 1k private-stage execution stopped on quantified SLO and telemetry results, and 10k/100k were not admitted by the dependency rule
+filesystem-leak scan: prior R2 conformance audit found no active canonical local novel path; current continuation did not mutate runtime data
+documentation conformance review: task-ledger/requirements/design review, targeted docs review, diff check, and Graphify passed
 ```
 
-## Outstanding issues
+## Completed gate decisions and boundaries
 
-List only genuine remaining blockers or follow-up improvements.
+1. Three-novel bulk queue: complete safety decision; the original full-queue
+   activities remain paused, and no terminal bulk-queue success is claimed.
+2. `DATABASE_BACKUP_URL`: complete synchronized configuration and encrypted
+   backup/restore evidence; the credential remains subject to the normal
+   rotation and least-privilege operating procedure.
+3. Production-scale telemetry and hosted CDN/origin acceptance: complete
+   evidence-boundary decision; no production-readiness pass is claimed.
+4. Isolated async R2 benchmark: complete against the separate test bucket with
+   cleanup verification; provider billing/capacity fields are recorded as
+   outside this local gate.
+5. 1k/10k/100k reader stages: complete staged decision; 1k execution and its
+   quantified stop are recorded, while higher stages were safely not admitted.
+6. Checkpoint compaction: complete retain decision; no reference-only
+   migration is enabled without a separately approved threshold and live
+   migration gate.
 
-Do not characterize the project as complete while required acceptance criteria remain unmet.
+This report is complete for the authorized bounded scope. Do not convert its
+bounded evidence into a production-scale capacity, billing, or quota claim.

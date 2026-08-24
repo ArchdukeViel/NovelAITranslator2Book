@@ -30,7 +30,7 @@ application pairs. The root and deployment templates also share one ordered
 | Active file | Counterpart | Special handling |
 |---|---|---|
 | `.env` | `.env.example` | Local backend/runtime profile; real credentials stay local and redacted |
-| `deploy/.env` | `deploy/.env.example` | Docker Compose development profile; `RUNTIME_HOST_DIR=../storage/runtime` is local-only |
+| `deploy/.env` | `deploy/.env.example` | Docker Compose development profile; `RUNTIME_HOST_DIR=../data/runtime` is local-only |
 | `deploy/.env.production` | `deploy/.env.production.example` | Runtime file is not present locally; the production template remains the source for operator provisioning |
 | `frontend/.env.local` | `frontend/.env.example` | Local Next.js overlay; same-origin/public API defaults plus local backend/reader URLs |
 | root `.env.local` | No application counterpart | Runtime file is not present locally; do not create it for backend configuration |
@@ -41,14 +41,23 @@ application pairs. The root and deployment templates also share one ordered
 |---|---|---|
 | Locally generated or derived | `SESSION_SECRET_KEY`, `OWNER_BOOTSTRAP_SECRET`, `PROVIDER_CREDENTIAL_ENCRYPTION_KEY`, `DATABASE_BACKUP_ENCRYPTION_KEY` | Generate with a cryptographically secure local tool such as `secrets.token_hex`; store and rotate through the operator's secret store, never derive from a URL or password |
 | Build/runtime generated | `VERSION`, local `RUNTIME_HOST_DIR`, local Compose `REDIS_URL`, `GOOGLE_OAUTH_REDIRECT_URI` | Git/CI, Compose defaults, or derivation from the confirmed public URL; the operator still reviews the result before deployment |
-| External service values | `DATABASE_URL`, `MIGRATION_DATABASE_URL`, `DATABASE_RESTORE_TARGET_URL`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BACKUP_*`, `R2_SOURCE_*`, `PROVIDER_GEMINI_API_KEY`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `SMTP_*` | Issued by Supabase/PostgreSQL, Cloudflare R2, Google AI/OAuth, or the selected SMTP provider; never fabricate or reuse across scopes |
+| External service values | `DATABASE_URL`, `MIGRATION_DATABASE_URL`, `DATABASE_BACKUP_URL`, `DATABASE_RESTORE_TARGET_URL`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BACKUP_*`, `R2_SOURCE_*`, `PROVIDER_GEMINI_API_KEY`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `SMTP_*` | Issued by Supabase/PostgreSQL, Cloudflare R2, Google AI/OAuth, or the selected SMTP provider; never fabricate or reuse across scopes |
 | Operator decisions | `ENV`, `DEPLOY_MODE`, domains/origins/hosts, `R2_BACKUP_ENABLED`, backup/restore/maintenance flags, quotas, schedules, pool sizes, `PROVIDER_DEFAULT`, model, target language, and retention values including `BACKUP_SAFETY_GRACE_DAYS` | Chosen and approved for the target environment; safe defaults may be supplied by the examples, but production activation is an operator decision |
 
-Optional external/operator values may remain absent. In particular, the current
-audit intentionally leaves independent backup credentials, SMTP settings, and
-the production migration URL unset where no approved source value exists. A
-Cloudflare account/user R2-token creation attempt returned `9109 Unauthorized`,
-so no backup credential was generated or written.
+Optional external/operator values may remain absent. SMTP settings and the
+production migration URL remain unset where no approved source value exists.
+The earlier Cloudflare account/user R2-token creation attempt returned `9109
+Unauthorized`; the operator has since supplied separate source-read and
+backup-write credentials in the ignored active backend environment files. The
+root `.env` now matches `deploy/.env` for the six application/source/backup R2
+credential assignments. Example templates and frontend environment files were
+left secret-free, and `R2_BACKUP_ENABLED` remains false until recovery is
+explicitly authorized and tested.
+
+List-valued `NoDecode` settings use comma-separated values, not JSON-array
+syntax. For example, use `ALLOWED_HOSTS=localhost,127.0.0.1` and leave an
+empty list as a blank assignment; the same rule applies to
+`WEB_CORS_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, and `TRUSTED_PROXY_CIDRS`.
 
 ## Python Interpreter
 
@@ -119,18 +128,37 @@ Required R2 settings:
 | `R2_BACKUP_ENDPOINT` / `R2_BACKUP_ACCESS_KEY_ID` / `R2_BACKUP_SECRET_ACCESS_KEY` | Backup-target write credentials. |
 | `R2_SOURCE_ACCESS_KEY_ID` / `R2_SOURCE_SECRET_ACCESS_KEY` | Source-read credentials for backup/inventory jobs only. |
 | `RUNTIME_DIR` | Disposable local cache/checkpoint/log/scratch root. It is not a content library. |
-| `RUNTIME_HOST_DIR` | Compose-only host directory mounted to `RUNTIME_DIR`; use `../storage/runtime` for local Windows Compose and a provisioned writable path such as `/opt/novelai/shared/data/runtime` in production. It must contain only disposable runtime state. |
+| `RUNTIME_HOST_DIR` | Compose-only host directory mounted to `RUNTIME_DIR`; use `../data/runtime` for local Windows Compose and a provisioned writable path such as `/opt/novelai/shared/data/runtime` in production. It must contain only disposable runtime state. |
 
 `R2_*` credentials are never returned by diagnostics. Rotate application,
 source-read, and backup-write tokens independently and verify access scopes
 against an isolated bucket before a production cutover.
 
+### Isolated R2 integration tests
+
+The opt-in real-R2 integration suite uses `TEST_R2_ENDPOINT` and
+`TEST_R2_BUCKET` with dedicated test credentials. Its canonical local credential
+names are `TEST_R2_ACCESS_KEY_ID` and `TEST_R2_SECRET_ACCESS_KEY`.
+Generated objects use a unique prefix and must be removed and confirmed absent
+by a final paginated sweep.
+
+The real backup integration is a separate gate. It requires dedicated
+`TEST_R2_SOURCE_BUCKET` and `TEST_R2_TARGET_BUCKET` values plus separate
+`*_ACCESS_KEY_ID` / `*_SECRET_ACCESS_KEY` application, snapshot-source, and
+backup credential groups. Do not reuse the application or production backup
+bucket credentials for that test. Keep all test values in ignored local
+environment files or an approved secret store; the committed examples contain
+placeholders only.
+
 `BACKUP_ENABLED` controls object snapshots. `BACKUP_RETENTION_COUNT`,
 `BACKUP_MIN_SUCCESSFUL_TO_KEEP`, and `BACKUP_MAX_AGE_DAYS` bound committed
 snapshot retention; `BACKUP_SAFETY_GRACE_DAYS` protects unreferenced shared R2
-objects from premature collection. `DATABASE_BACKUP_ENABLED` controls
-encrypted PostgreSQL dumps and requires backup encryption key, independent DB
-prefix, and PostgreSQL 18 client tools. `DATABASE_RESTORE_VERIFICATION_MAX_AGE_DAYS`
+objects from premature collection. `DATABASE_BACKUP_ENABLED` controls encrypted
+PostgreSQL dumps and requires a dedicated `DATABASE_BACKUP_URL` role that can
+dump RLS-protected application tables, a backup encryption key, an independent
+DB prefix, and PostgreSQL 18 client tools. Do not reuse the runtime
+`DATABASE_URL`; it is intentionally not allowed to bypass RLS.
+`DATABASE_RESTORE_VERIFICATION_MAX_AGE_DAYS`
 (default 32) sets max days since last successful restore before probe goes unhealthy.
 Restore verification requires an explicit disposable target whose database name
 contains `restore`.
@@ -141,11 +169,18 @@ duration and renewal; do not tune lease below realistic job duration without tes
 ## Runtime Groups
 
 - `JOB_WORKER_ENABLED`: legacy/in-process activity runner switch. Production
-  Compose keeps this `false` for web services; the dedicated `worker` service
-  runs `novelaibook worker` against the database queue.
-- `DB_CONNECTION_MODE=direct|session|transaction`: selects the PostgreSQL
-  connection topology. `transaction` uses transaction-pooler-safe
-  `NullPool`; `direct` and `session` use the configured SQLAlchemy pool.
+  Compose keeps this `false` for both web services; the dedicated `worker`
+  service runs `novelaibook worker` against the database queue. The canonical
+  Compose file explicitly overrides this value on `backend` and `reader`, even
+  if a shared `deploy/.env` contains a monolith-era value. Do not rely on
+  environment inheritance when auditing the executor topology.
+- `DB_CONNECTION_MODE=direct|session|transaction`: selects the application-side
+  SQLAlchemy pool behavior. `transaction` uses transaction-pooler-safe
+  `NullPool`; `direct` and `session` use the configured SQLAlchemy pool. The
+  actual Supabase endpoint is selected by `DATABASE_URL`, not this setting.
+  The current runtime uses a Supabase Session Pooler endpoint on port `5432`
+  while retaining `DB_CONNECTION_MODE=direct` for its application pool
+  behavior; keep those two concepts distinct during egress investigations.
 - `DB_POOL_SIZE` and `DB_MAX_OVERFLOW`: bound each direct/session process pool.
 - `DB_POOL_PROCESS_COUNT`: count every long-lived process or replica that can
   own one of those pools. The current split Compose topology defaults to three
@@ -174,9 +209,11 @@ duration and renewal; do not tune lease below realistic job duration without tes
   imported only as a compatibility path.
 - `PROVIDER_GEMINI_*`: key, default model, fallback models.
 - `GEMINI_RPM_LIMIT`, `GEMINI_TPM_LIMIT`, `GEMINI_RPD_LIMIT`, and
-  `GEMINI_CONCURRENCY_LIMIT`: owner-key request/token/day and in-flight bounds.
+  `GEMINI_CONCURRENCY_LIMIT`: owner-key request/minute, token/minute,
+  request/day, and in-flight bounds.
 - `CONTRIBUTOR_RPM_LIMIT`, `CONTRIBUTOR_TPM_LIMIT`, `CONTRIBUTOR_RPD_LIMIT`,
-  and `CONTRIBUTOR_CONCURRENCY_LIMIT`: per-contributor credential bounds.
+  and `CONTRIBUTOR_CONCURRENCY_LIMIT`: local per-contributor credential
+  admission bounds.
 - `PROVIDER_RESERVATION_TTL_SECONDS`: expiry for abandoned provider admission
   reservations so crashed workers do not hold concurrency forever.
 - `TRANSLATION_CACHE_*`: exact cache enablement, TTL, size.
@@ -322,14 +359,17 @@ rotation logs out users; credential-encryption rotation requires re-encryption.
 - When adding a setting, update `settings.py`, example env files, deployment
   wiring, focused tests, and this file only when operator understanding changes.
 
-## Contributor Credentials and Public Rankings
+## Unified Provider Credentials and Public Rankings
 
-Contributor credentials are enabled. Startup and storage fail closed when the
-encryption key or required deployment controls are missing:
+Owner-managed credentials and user contributions share the encrypted
+`provider_credentials` registry. The old contributor-only table is not part of
+the current schema. Startup never imports `PROVIDER_GEMINI_API_KEY`; an owner
+must explicitly invoke the protected environment-import operation, which
+validates the key before owner-scoped translation may use it:
 
 | Setting | Purpose | Default |
 |---|---|---:|
-| `CONTRIBUTOR_CREDENTIALS_ENABLED` | Enable user-owned Gemini credential intake and contributor jobs | `true` |
+| `CONTRIBUTOR_CREDENTIALS_ENABLED` | Enable user contribution intake and contributor-pool jobs | `true` |
 | `CONTRIBUTOR_CONSENT_VERSION` | Consent text/version required on every replacement | `2026-08-19` |
 | `CONTRIBUTOR_MAX_ACTIVE_PER_USER` | Maximum credentials per user in v1 | `1` |
 | `CONTRIBUTOR_RPM_LIMIT` | Per-credential requests per minute | `15` |
@@ -338,14 +378,26 @@ encryption key or required deployment controls are missing:
 | `CONTRIBUTOR_CONCURRENCY_LIMIT` | Per-credential in-flight provider calls | `2` |
 | `CONTRIBUTOR_USAGE_RETENTION_DAYS` | Contributor ledger retention window | `365` |
 
-`PROVIDER_CREDENTIAL_ENCRYPTION_KEY` is required before a credential can be
-stored. It is also the encryption boundary for owner-managed provider keys,
-but contributor rows remain isolated by domain, owner, provider, and explicit
-contribution mode. Rotate the key by decrypting and re-encrypting all stored
-credentials in a controlled maintenance window, verify fingerprints before
-removing the old key, and treat an unavailable old key as a fail-closed
+These values are local safety ceilings, not a claim that each key
+has an independent Gemini quota. Google limits vary by model and usage tier,
+are generally applied per project, and must be checked in [Google AI
+Studio](https://ai.google.dev/gemini-api/docs/rate-limits). The repository has
+no separate TPD setting because TPD is model-dependent; an operator must not
+derive one from `CONTRIBUTOR_RPD_LIMIT` or `CONTRIBUTOR_TPM_LIMIT`.
+
+Credential replacement/validation is additionally limited to three attempts
+per authenticated user per minute by the browser/API security limiter. This
+protects the provider validation endpoint from repeated paid or quota-consuming
+checks; it is separate from the per-credential Gemini request budgets.
+
+`PROVIDER_CREDENTIAL_ENCRYPTION_KEY` is required before any credential can be
+stored. It encrypts both owner and user rows; source, authenticated owner,
+owner-job eligibility, contributor-pool eligibility, consent, and validation
+state provide the isolation boundary. Rotate the key by decrypting and
+re-encrypting all rows in a controlled maintenance window, verify fingerprints
+before removing the old key, and treat an unavailable old key as a fail-closed
 incident. Never put a raw key in `.env` examples, logs, diagnostics, or API
-responses.
+responses. Apply the unified-registry migration before enabling the routes.
 
 Public rankings use `GET /api/public/rankings` with `period=daily|weekly|monthly`
 and a bounded `limit`. Analytics retention is the truth boundary; there is no
@@ -354,9 +406,12 @@ cookie and stores only its digest, never an IP address.
 
 ### Translation worker and cache bounds
 
-Long translation requests return an activity id immediately. In Compose, web
-services keep `JOB_WORKER_ENABLED=false`; the `worker` service runs
-`novelaibook worker` and claims the database-backed `activity_records` queue.
+Long translation requests return an activity id immediately. In Compose, both
+web services explicitly set `JOB_WORKER_ENABLED=false`; the `worker` service
+runs `novelaibook worker` and claims the database-backed `activity_records`
+queue. Verify the effective container environment after changing Compose or
+runtime environment files; a second web-process runner can create duplicate
+provider work and competing leases.
 `ACTIVITY_HISTORY_MAX_ENTRIES` bounds list/history reads,
 `ACTIVITY_METADATA_MAX_BYTES` bounds one progress envelope, and
 `ACTIVITY_RETRY_HISTORY_MAX_ENTRIES` bounds retained retry snapshots.
@@ -367,3 +422,25 @@ entries; subsequent get, invalidate, statistics, and eviction operations use
 indexed rows. This cache is disposable and is never a canonical content
 source or an R2 artifact. Do not delete the sidecar while the cache is live;
 rebuild it only through a controlled cache maintenance window.
+
+## Pipeline capacity settings checkpoint - 2026-08-24
+
+The async persistence and runtime-telemetry controls are configured in
+`settings.py`, all environment examples, and Compose wiring:
+
+| Setting | Default | Bound or rollback |
+|---|---:|---|
+| `TRANSLATION_PERSISTENCE_EXPANSION_ENABLED` | `false` | `false` is the rollback profile: one persistence worker and no queue |
+| `TRANSLATION_PERSISTENCE_WORKERS` | `2` | `1..8`, used only when expansion is enabled |
+| `TRANSLATION_PERSISTENCE_QUEUE_SIZE` | `8` | `0..64`; `0` is the rollback value |
+| `TRANSLATION_PERSISTENCE_OBSERVATION_LIMIT` | `256` | `32..4096` bounded observations |
+| `TRANSLATION_PERSISTENCE_SHUTDOWN_TIMEOUT_SECONDS` | `30` | `1..300` seconds |
+| `RUNTIME_TELEMETRY_SAMPLE_INTERVAL_SECONDS` | `0.25` | `0.05..60` seconds |
+| `RUNTIME_TELEMETRY_MAX_OBSERVATIONS` | `256` | `32..4096` bounded observations |
+| `RUNTIME_EVENT_LOOP_LAG_THRESHOLD_MS` | `1000` | `1..60000` ms; stop threshold, not an auto-restart |
+
+`TRANSLATION_CONCURRENCY` is validated to `1..256`; chapter concurrency and
+provider/DB budgets remain separate. Production startup rejects an aggregate
+DB pool arithmetic violation. A sanitized local read used
+`3 * (5 + 5) + 2 = 32`; this is a configuration arithmetic check, not hosted
+capacity evidence. No secret-bearing `.env` value was changed by this audit.

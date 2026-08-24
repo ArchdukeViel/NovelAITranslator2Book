@@ -163,9 +163,9 @@ known unrelated cost; do not substitute broad checks for focused evidence.
 backend/       FastAPI package, migrations, and tests
 frontend/      Next.js public/admin package
 deploy/        Compose, Caddy, Dockerfiles, scripts, env examples
-storage/       Disposable local runtime data; ignored by Git
+data/          Disposable local runtime data; `data/runtime/` is ignored by Git
 docs/          Nine canonical project documents
-.agents/kiro/  Active approved specifications only
+.agents/specs/ Active approved specifications only
 ```
 
 ## Documentation

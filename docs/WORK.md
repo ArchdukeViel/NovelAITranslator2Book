@@ -10,6 +10,29 @@ implementation and its backend/static verification are in place, but hosted
 security, monitoring, alerting, browser/network acceptance, destructive
 cutover evidence, and rollback/restore evidence remain incomplete.
 
+### Recovery continuation — 2026-08-24 (historical recovery record; superseded by the completion slice below)
+
+The synchronized root and deployment environments each passed 7 isolated R2
+integration tests. An encrypted PostgreSQL backup was created in the
+independent R2 target and restored into the isolated `restore-db` database;
+verification reported 37 public tables, 0 invalid constraints, and matching
+Alembic metadata. The latest independent R2 object snapshot was read back and
+checksum-verified for 980 objects totaling 4,022,175 bytes. The real env files
+now contain exactly one synchronized `DATABASE_BACKUP_URL`; the persisted
+configuration created and restored the encrypted backup without a process
+override. Hosted reader-scale,
+provider-canary, full-queue, and production-readiness acceptance remain open.
+
+### Async capacity and resource-efficiency completion slice — 2026-08-24
+
+The authorized execution slice for the two active pipeline specifications is
+complete. The bounded provider/R2 canary, independent snapshot and encrypted
+restore, private 1k reader-stage execution with its quantified stop, and the
+10k/100k dependency-safety decision are recorded in the current evidence
+artifacts. The worker remains stopped and the original full queue remains
+paused. This closes the specified local and operator-gated evidence work while
+preserving the separate production-readiness boundary in the work register.
+
 ## Execution Policy
 
 - Launch blockers: `DEBT-075`, `DEBT-079`, ownership, recovery, alerts,
@@ -43,11 +66,50 @@ the current `R2_*` names and validated for the root and production profiles.
 A follow-up writer-frozen namespace migration then moved the 538 live
 application objects to numeric `novels/<novel_id>/` prefixes, rewrote database
 and nested manifest references, verified logical hashes, and removed the old
-slug-prefixed source namespaces. Public slugs and URLs remain unchanged.
-A representative NCode chapter now passes real Gemini translation,
-deterministic QA, R2 readback, and the public reader route. Bulk translation
-and the remaining published chapter reads, production telemetry, and
-backup/restore remain explicit acceptance gates. A live duplicate audit found
+slug-prefixed source namespaces. After the bulk worker created seven
+pre-existing slug-prefixed objects, the same application migration was rerun
+after safe worker quiescence: 5 Kakuyomu objects and 2 Novel18 objects moved,
+1 and 2 database references were rewritten, and all 7 old source objects were
+deleted only after commit. The old prefixes are now empty and the full
+post-migration audit contains only numeric namespaces. Public slugs and URLs
+remain unchanged.
+NCode chapters 1 and 2 now pass real Gemini translation through the durable
+worker path, deterministic QA, R2 readback, and the public reader route. The
+authorized three-novel bulk queue is now running or queued, with glossary-gate
+bypass explicitly recorded and no cross-provider fallback. At the live
+2026-08-22 22:46 UTC refresh, the PostgreSQL chapter projection was
+`n2056dn`: 66 complete, 23 failed, 58 pending, and 1 translating;
+`n3266mn`: 29 complete and 2 failed; and Kakuyomu: 9 complete, 78 failed, and
+1 translating.
+The Novel18 activity reached terminal failure on `paragraph_missing` and was
+then requeued through `Container.activity_log` at retry count 2. The Kakuyomu
+activity was recovered to pending after its expired lease. NCode later reached
+a terminal PostgreSQL SSL EOF during final novel persistence and was requeued
+through `Container.activity_log` at retry count 4, preserving the failed
+attempt in retry history. The source-level lease-heartbeat correction and
+blocking-event-loop regression test now pass. The stale worker was stopped
+after its lease expired, the rebuilt worker was recreated with restart count
+`0`, and the durable queue reclaimed NCode; live lease renewal was observed
+after recreation. The runtime directory was renamed from `storage/runtime` to
+`data/runtime` only after the active runtime write reached a safe checkpoint
+boundary, and the recreated worker was verified with the
+`data/runtime -> /app/data/runtime` bind. The old host path is absent, and no
+runtime JSON or database row was manually edited.
+At the current refresh NCode is running at retry count 4 with a renewed lease
+deadline of `2026-08-22T22:50:36Z`, Kakuyomu is pending after recovery from an
+expired lease, and Novel18 is failed at retry count 3 with
+`paragraph_missing`. The last read-only R2 inventory at 20:23 UTC reports 872
+application objects / 3,299,655 bytes and zero backup objects. The rebuilt worker has one
+live container/process and restart count `0`; five restarts caused by
+transient Supabase DNS failures belong to the superseded worker instance.
+The post-migration per-prefix audit reports `novels/11/` 424 objects,
+`novels/16/` 248 objects, and `novels/17/` 200 objects, with no nonnumeric or
+other prefix; direct database references to the two old source namespaces are
+zero.
+Bulk translation and the
+remaining published chapter reads,
+production telemetry, and backup/restore remain explicit acceptance gates. A
+live duplicate audit found
 two older unpublished PostgreSQL rows (IDs 18 and 19) for source URLs already
 represented by canonical active rows (IDs 11, 16, and 17); after reference
 verification those stale rows and their tag associations were removed. The R2
@@ -67,9 +129,37 @@ foreign-key index was resolved by migration `c9d1e3f5a7b9`; remaining unused-
 index notices are informational. A Cloudflare control-plane audit independently
 confirmed that exactly `dokushodo` and `dokushodo-backup` exist with the
 intended lifecycle policies; recovery remains disabled by operator decision.
-An authorized attempt to create separate R2 snapshot credentials through the
-connected Cloudflare API returned `9109 Unauthorized`; no secret was returned
-or written, so issuance remains an operator-permission follow-up.
+The runtime storage factory now exposes only explicit R2 client names and no
+generic filesystem/S3 selection or compatibility alias remains.
+The earlier authorized attempt to create separate R2 snapshot credentials
+through the connected Cloudflare API returned `9109 Unauthorized`. The
+operator subsequently supplied separate source-read and backup-write
+credentials, rotated the application credentials, and the ignored root `.env`
+was synchronized with `deploy/.env`; the six active R2 credential assignments
+now match. The 2026-08-24 recovery continuation verified the independent
+backup target and an isolated encrypted database restore. The repository
+inventory path and an isolated
+source-read client then successfully listed the application bucket, while the
+backup-target credential listed the empty backup bucket; no object was written
+or deleted. After service recreation with the rotated application credentials,
+the public catalog, rankings, published details, translated chapter 1, Novel18
+isolation, and singular legacy-route rejection passed. Target write permission,
+target write permission and restore evidence now pass in the bounded local
+drill; production readiness remains open. The local readiness probe is still
+503 because disk is unhealthy and the worker probe is degraded.
+A translation workload audit estimated 267 provider chunks across the 267
+imported chapters. The replacement environment key is now imported into the
+unified `provider_credentials` registry as one encrypted, active, valid,
+owner-job-eligible row; no user-contribution rows exist. The current persisted
+translated-artifact counts are Kakuyomu 17/88, Novel18 29/31, and NCode 60/148
+while the bulk queue continues. The configured RPM/TPM/RPD values are local
+admission guards; upstream account/project limits must still be verified in
+Google AI Studio before production-volume work.
+
+The legacy `contributor_credentials` table is absent. The unified registry
+preserves owner and user identity on each row while independent eligibility
+flags prevent a user key from entering owner-only work and prevent an owner
+key from entering the contributor pool unless an owner explicitly shares it.
 
 ## Novel Detail Stage B Decision (2026-08-19)
 
@@ -411,7 +501,7 @@ graphify update . --no-cluster
 | Hosted smoke and auth/security boundaries | Blocked | Candidate commit, domains, UTC time, commands/URLs, sanitized results. |
 | Secret scanning | Partial (hosted scans passed) | PR #12 proved successful GitGuardian push and same-repo PR checks. Still require protected required-check configuration and sanitized incident/false-positive triage evidence. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
 | Alerts and monitoring | Blocked (tooling complete) | Configure `PRODUCTION_BASE_URL`, prove scheduled external runs and real operator delivery, cooldown/redaction, dashboards, escalation, and ownership. |
-| Recovery | Needs current run (tooling complete) | Current-head database restore and object snapshot restore into isolated targets. Backup-stale alert threshold, restore-freshness max age, and runtime-role verifier implemented locally. |
+| Recovery | Bounded local drill passed; persisted env verified | Current-head encrypted database restore and independent R2 snapshot readback passed in isolated targets. Backup-stale alert threshold, restore-freshness max age, runtime-role verifier, and exactly-once `DATABASE_BACKUP_URL` synchronization are verified. |
 | Accessibility | Pass (COMPLETED 2026-08-17) | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast verified via automated test suite and operator physical device attestation. |
 | Performance | Partial / Fail (AUDITED 2026-08-17) | Catalog API p95 on hosted staging exceeds hard budget (reader direct p95=1001.60ms, Tailscale HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + object-store metadata-list latency in the pre-cutover measurement). Novel detail and Chapter APIs NOT RUN on hosted staging (no published novel/chapter fixture in DB). First-load JS passes (169.8 KiB <= 250 KiB). |
 | SEO | Staging Pass / Production Deferred (AUDITED 2026-08-17) | Staging robots.txt, sitemap.xml, Open Graph / Twitter metadata, canonical URLs verified on staging hostname; production domain SEO validation deferred until public domain cutover. |
@@ -425,7 +515,7 @@ takedown enforcement, unrecoverable loss, or missing rollback cannot be informal
 
 ## Active Specifications
 
-Only genuinely unfinished specs remain under `.agents/kiro/specs/`:
+Only genuinely unfinished specs remain under `.agents/specs/`:
 
 - `launch-readiness-checklist`: operator acceptance above.
 
@@ -551,22 +641,36 @@ Completion criteria:
 - ~~Remove or connect orphaned API wrappers and hooks~~ — verified-orphan wrappers removed; claimed orphans re-verified as consumed.
 - Remaining (not UI debt): 57 admin orchestration backend-only endpoints, 3 admin takedown moderation endpoints, 3 operator/monitoring endpoints, and 58 other backend/CLI/test endpoints have no frontend caller by design — they are invoked by workers, CLI, tests, or operator tooling.
 
-### Completed: contributor credentials (formerly DEBT-CONTRIB-01)
+### Completed: unified provider credentials (formerly DEBT-CONTRIB-01)
 
-The approved readiness gate is complete for v1. Contributor credentials use a
-separate encrypted domain and one Gemini credential per authenticated user.
-Consent/version checks, explicit-key validation, immediate activation on
-success, invalid-on-failure, ownership isolation, replacement, pause/resume,
-permanent deletion, owner emergency revoke, no-readback masking, provider
-isolation, per-credential RPM/TPM/RPD reservation, and sanitized usage ledger
-accounting are implemented. `credential_owner_user_id` and
-`requesting_user_id` remain separate throughout the translation pipeline.
+The approved readiness gate is complete for the credential lifecycle. Owner
+managed keys and user contributions use one encrypted `provider_credentials`
+registry, with one Gemini contribution per authenticated user in v1. Consent,
+explicit-key validation, immediate activation on success, invalid-on-failure,
+ownership isolation, replacement, pause/resume, permanent deletion, owner
+emergency revoke, no-readback masking, provider isolation, per-credential
+RPM/TPM/RPD reservation, and sanitized usage-ledger accounting are
+implemented. `credential_owner_user_id` and `requesting_user_id` remain
+separate throughout the translation pipeline.
 
-Evidence: migration `a8c4e2f7b901`, `ContributorCredentialService`, user and
-owner routers, translation-stage selection/ledger integration,
+The hardening follow-up adds row-locked deterministic pool selection,
+per-credential Redis concurrency enforcement, per-user validation rate limits,
+redacted validation feedback, replacement-race protection, explicit owner
+environment import, independent owner/pool eligibility, and per-call audit
+identity so concurrent chunks cannot cross-associate credential ownership or
+ids. The legacy contributor credential table and service/model shims were
+removed.
+
+Evidence: local Alembic revisions `d4e6f8a2b1c3` and `e7f1a9c3b5d2`, remote
+Supabase migrations `unify_provider_credential_registry` and
+`secure_unified_credentials`, canonical provider service/model, user and owner
+routers, translation-stage selection/ledger integration,
 `backend/tests/test_contributor_credentials.py`, focused backend suite, and
-live contribution hook/page tests. Production still requires the configured
-encryption key and the migration role to have schema DDL privileges.
+live contribution hook/page tests. The one-time owner environment import is
+stored encrypted and the live row is active/valid and owner-job eligible. No
+user-contribution rows exist; the owner-scoped bulk verification is executing
+through the same provider/ledger path and remains an evidence item until its
+terminal chapter counts are recorded.
 
 ### Completed: public performance Phase 4
 
