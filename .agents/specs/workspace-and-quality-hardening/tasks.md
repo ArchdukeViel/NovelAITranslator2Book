@@ -19,18 +19,18 @@ Updated: 2026-08-24
   - Last result: `powershell -NoProfile -Command "if (Test-Path 'file') { exit 1 } else { exit 0 }"` exited 0; the target was already absent, so no deletion was performed.
   - Evidence: Read-only root-target review and `git ls-files -- file` confirmed the named path is absent and untracked. No canonical file was changed.
 
-- [ ] **T-002 Clean root stray directory (R2)**
+- [x] **T-002 Clean root stray directory (R2)**
   - Delete empty `Caddyfile/` folder from repo root.
   - Verification: `powershell -NoProfile -Command "if (Test-Path 'Caddyfile') { exit 1 } else { exit 0 }"`
   - Maps to: REQ-001, AC-001
   - Depends on: T-001
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for repository-root cleanup
   - Scope: The empty `Caddyfile/` entry at the repository root
   - Expected: The named stray directory is absent and no canonical deployment file is removed
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record the path-safe check and review result
+  - Attempts: 1
+  - Last result: The exact empty `C:\Akmal\Novel AI\Caddyfile` directory was removed after path, workspace-boundary, non-reparse, and emptiness checks; the post-deletion existence check passed.
+  - Evidence: Project-owner authorization was received. A non-recursive bounded deletion removed only the explicit directory target, and the target was verified absent afterward. No canonical deployment file or workspace-root content was changed.
 
 - [ ] **T-003 Verify .gitignore tracking for .vscode configs (R3)**
   - Ensure `.vscode/tasks.json` and `.vscode/mcp.json` are not ignored.
