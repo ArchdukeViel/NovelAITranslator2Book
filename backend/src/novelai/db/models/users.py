@@ -43,7 +43,7 @@ class User(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Admin user-management fields (see .agents/kiro/specs/admin-user-management/requirements.md)
+    # Admin user-management fields
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     disabled_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     disabled_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
