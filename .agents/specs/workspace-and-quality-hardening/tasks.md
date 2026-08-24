@@ -256,15 +256,15 @@ Updated: 2026-08-24
   - Last result: The required `docs/WORK.md` and `docs/HISTORY.md` existence check exited 0; the cross-document audit confirmed both pipeline specifications have completion entries in `HISTORY.md`, launch readiness remains pending, and workspace hardening is accurately recorded as T-001 through T-018 complete with T-019/T-020 in progress.
   - Evidence: `docs/WORK.md` now lists only the genuinely unfinished active specifications with truthful task status. Completed pipeline work is not left in the active register and remains preserved in `docs/HISTORY.md`; workspace hardening stays active until the final Graphify task and history handoff.
 
-- [ ] **T-020 Synchronize knowledge graph index (R20)**
+- [x] **T-020 Synchronize knowledge graph index (R20)**
   - Run Graphify update to index all changes.
   - Verification: `graphify update . --no-cluster`
   - Maps to: REQ-005, AC-005
   - Depends on: T-019
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for local Graphify refresh
   - Scope: The repository graph index after the documentation and configuration changes
   - Expected: Graphify completes successfully and the refreshed index includes the active specification lifecycle
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record Graphify exit code and refresh summary
+  - Attempts: 1
+  - Last result: `graphify update . --no-cluster` exited 0 and rebuilt the index with 14,326 nodes and 39,305 edges.
+  - Evidence: The graph index was refreshed after the final task-state and documentation reconciliation. Graphify reported the known nonfatal zero-node warning for JSON/configuration and generated evidence files; no unhandled update failure occurred.
