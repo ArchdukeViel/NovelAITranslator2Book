@@ -58,18 +58,18 @@ Updated: 2026-08-24
   - Last result: The original broad check returned 1 because `.agents/**` is present in `python.analysis.exclude`; the corrected search-specific check exited 0 because `.agents/**` is absent from `search.exclude` and `files.exclude`.
   - Evidence: `.vscode/settings.json` parsed successfully. The `.agents/**` Python-analysis exclusion remains unchanged, while global search exclusions contain no `.agents/**` entry. No VS Code configuration file was changed.
 
-- [ ] **T-005 Validate .opencode gitignore boundary (R5)**
+- [x] **T-005 Validate .opencode gitignore boundary (R5)**
   - Confirm `.opencode/` remains untracked while scripts stay in `.opencode/scripts/`.
   - Verification: `git check-ignore -v .opencode/package.json`
   - Maps to: REQ-001, AC-001
   - Depends on: T-004
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for local scratch-boundary verification
   - Scope: The `.opencode/` ignore boundary and canonical `.opencode/scripts/` location
   - Expected: Local scratch files remain ignored while canonical scripts are reviewed separately
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record the ignore rule and tracked-script review
+  - Attempts: 1
+  - Last result: `git check-ignore -v .opencode/package.json` exited 0 and identified the `.opencode/` ignore rule; no `.opencode` entries are tracked and four files are present under `.opencode/scripts/`.
+  - Evidence: The local `.opencode/` boundary is intact. `package.json` is ignored, the scripts directory is non-empty, and `git ls-files -- .opencode` returned no entries. No local scratch content was changed.
 
 ## Phase 2: Tooling & CLI Wrappers (R6–R9)
 - [ ] **T-006 Normalize path arguments in tools/pytest.ps1 (R6)**
