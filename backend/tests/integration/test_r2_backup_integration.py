@@ -39,9 +39,12 @@ def test_real_r2_backup_credential_split() -> None:
             aws_secret_access_key=_required(secret_name),
         )
 
-    application_client = client("TEST_R2_APP_ACCESS_KEY", "TEST_R2_APP_SECRET_KEY")
-    source_client = client("TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY", "TEST_R2_SNAPSHOT_SOURCE_SECRET_KEY")
-    target_client = client("TEST_R2_BACKUP_ACCESS_KEY", "TEST_R2_BACKUP_SECRET_KEY")
+    application_client = client("TEST_R2_APP_ACCESS_KEY_ID", "TEST_R2_APP_SECRET_ACCESS_KEY")
+    source_client = client(
+        "TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY_ID",
+        "TEST_R2_SNAPSHOT_SOURCE_SECRET_ACCESS_KEY",
+    )
+    target_client = client("TEST_R2_BACKUP_ACCESS_KEY_ID", "TEST_R2_BACKUP_SECRET_ACCESS_KEY")
     source_key = f"novels/{token}/metadata.json"
     application_client.put_object(Bucket=source_bucket, Key=source_key, Body=b'{"integration":true}')
     backup: R2IncrementalBackupTarget | None = None

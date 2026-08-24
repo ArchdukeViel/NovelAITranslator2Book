@@ -11,12 +11,12 @@ from typing import TYPE_CHECKING
 from novelai.config.settings import settings
 
 if TYPE_CHECKING:
-    from novelai.storage.backends.base import StorageBackend
+    from novelai.storage.backends.base import R2StorageBackend
 
-_BACKEND: StorageBackend | None = None
+_R2_STORAGE: R2StorageBackend | None = None
 
 
-def build_r2_backend() -> StorageBackend:
+def build_r2_storage() -> R2StorageBackend:
     """Build a fresh R2 client for an explicitly supplied dependency scope."""
 
     try:
@@ -35,17 +35,17 @@ def build_r2_backend() -> StorageBackend:
     )
 
 
-def get_storage_backend() -> StorageBackend:
+def get_r2_storage() -> R2StorageBackend:
     """Return the singleton for the canonical application R2 bucket."""
 
-    global _BACKEND
-    if _BACKEND is None:
-        _BACKEND = build_r2_backend()
-    return _BACKEND
+    global _R2_STORAGE
+    if _R2_STORAGE is None:
+        _R2_STORAGE = build_r2_storage()
+    return _R2_STORAGE
 
 
-def _reset_backend() -> None:
-    """Reset the cached backend singleton for isolated test processes."""
+def _reset_r2_storage() -> None:
+    """Reset the cached R2 client for isolated test processes."""
 
-    global _BACKEND
-    _BACKEND = None
+    global _R2_STORAGE
+    _R2_STORAGE = None

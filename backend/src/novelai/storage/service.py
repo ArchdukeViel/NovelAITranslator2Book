@@ -162,6 +162,7 @@ from novelai.storage.traceability import (
     load_scheduler_state,
     save_scheduler_state,
     upsert_chunk_state,
+    upsert_chunk_states,
 )
 
 logger = logging.getLogger(__name__)
@@ -327,9 +328,9 @@ class StorageService:
 
             self._backend = InMemoryR2Storage()
         else:
-            from novelai.storage.backends import get_storage_backend
+            from novelai.storage.backends import get_r2_storage
 
-            self._backend = get_storage_backend()
+            self._backend = get_r2_storage()
 
         if getattr(self._backend, "_BACKING", None) != "r2":
             raise TypeError("StorageService requires the Cloudflare R2 backend")
@@ -793,6 +794,7 @@ class StorageService:
     append_pipeline_events = append_pipeline_events
     list_pipeline_events = list_pipeline_events
     upsert_chunk_state = upsert_chunk_state
+    upsert_chunk_states = upsert_chunk_states
     load_chunk_states = load_chunk_states
     save_scheduler_state = save_scheduler_state
     load_scheduler_state = load_scheduler_state

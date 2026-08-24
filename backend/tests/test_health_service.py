@@ -169,7 +169,7 @@ class TestStorageUsage:
         backend.total_size_bytes.return_value = 512
         with (
             patch("novelai.config.settings.settings.R2_STORAGE_LIMIT_GB", 1),
-            patch("novelai.storage.backends.get_storage_backend", return_value=backend),
+            patch("novelai.storage.backends.get_r2_storage", return_value=backend),
         ):
             result = await HealthService(storage=storage)._probe_storage_usage()
 

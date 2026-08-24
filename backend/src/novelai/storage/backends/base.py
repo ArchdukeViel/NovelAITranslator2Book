@@ -1,4 +1,4 @@
-"""Abstract storage backend interface."""
+"""R2 object-storage contract."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 
-class StorageBackend(ABC):
-    """Abstract interface for all storage backends.
+class R2StorageBackend(ABC):
+    """Abstract contract for the canonical Cloudflare R2 object store.
 
     All keys are relative to the configured object namespace (for example,
     ``novels/<novel_id>/chapters/<chapter_id>/<hash>.json.gz``).
@@ -17,7 +17,7 @@ class StorageBackend(ABC):
     def save(self, path: str | Path, data: bytes) -> None:
         """Write *data* to *path*, overwriting if it exists.
 
-        Readers must not observe partial bytes. Backends may provide atomic
+        Readers must not observe partial bytes. R2 implementations may provide atomic
         replacement or last-write-wins object semantics; multi-object
         transactions are outside this contract.
         """
@@ -46,7 +46,7 @@ class StorageBackend(ABC):
     def copy_object(self, source: str | Path, destination: str | Path) -> None:
         """Copy one immutable object without changing its bytes.
 
-        Backends with a native object-copy primitive should override this
+        R2 implementations with a native object-copy primitive should override this
         method.  The load/save fallback keeps custom and test backends
         compatible while preserving the same staging semantics.
         """
@@ -89,7 +89,7 @@ class StorageBackend(ABC):
     @abstractmethod
     def mkdirs(self, path: str | Path) -> None:
         """Ensure *path* (a directory) exists, creating parents if needed.
-        No-op for flat object backends such as R2.
+        No-op for the flat R2 object store.
         """
 
     def probe_readiness(self) -> bool:

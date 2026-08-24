@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from novelai.storage.backends.base import StorageBackend
+from novelai.storage.backends.base import R2StorageBackend
 from novelai.storage.backends.r2 import R2Storage
 
 pytestmark = pytest.mark.slow
@@ -27,7 +27,7 @@ def _env_or_skip(name: str) -> str:
     return value
 
 
-class _IsolatedR2Store(StorageBackend):
+class _IsolatedR2Store(R2StorageBackend):
     """Test-only namespace view over the explicit R2 implementation."""
 
     def __init__(self, backend: R2Storage, prefix: str) -> None:
@@ -69,8 +69,8 @@ class _IsolatedR2Store(StorageBackend):
 @pytest.fixture(scope="module")
 def r2_backend() -> Iterator[tuple[_IsolatedR2Store, str]]:
     endpoint = _env_or_skip("TEST_R2_ENDPOINT")
-    access_key = _env_or_skip("TEST_R2_ACCESS_KEY")
-    secret_key = _env_or_skip("TEST_R2_SECRET_KEY")
+    access_key = _env_or_skip("TEST_R2_ACCESS_KEY_ID")
+    secret_key = _env_or_skip("TEST_R2_SECRET_ACCESS_KEY")
     bucket = _env_or_skip("TEST_R2_BUCKET")
     region = os.environ.get("TEST_R2_REGION", "auto")
     prefix = f"_integration_test_{int(time.time())}_{os.urandom(4).hex()}"
@@ -101,23 +101,28 @@ def r2_backend() -> Iterator[tuple[_IsolatedR2Store, str]]:
         yield isolated, prefix
     finally:
         try:
-            response = raw_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
-            while True:
-                objects = response.get("Contents", [])
-                if objects:
-                    raw_client.delete_objects(
-                        Bucket=bucket,
-                        Delete={"Objects": [{"Key": obj["Key"]} for obj in objects]},
-                    )
-                if not response.get("IsTruncated"):
-                    break
-                response = raw_client.list_objects_v2(
+
+            def list_prefix_keys() -> list[str]:
+                keys: list[str] = []
+                request: dict[str, str] = {"Bucket": bucket, "Prefix": prefix}
+                while True:
+                    response = raw_client.list_objects_v2(**request)
+                    keys.extend(str(item["Key"]) for item in response.get("Contents", []))
+                    if not response.get("IsTruncated"):
+                        return keys
+                    request["ContinuationToken"] = str(response["NextContinuationToken"])
+
+            while keys := list_prefix_keys():
+                result = raw_client.delete_objects(
                     Bucket=bucket,
-                    Prefix=prefix,
-                    ContinuationToken=response.get("NextContinuationToken"),
+                    Delete={"Objects": [{"Key": key} for key in keys]},
                 )
+                if result.get("Errors"):
+                    raise RuntimeError("isolated R2 cleanup returned delete errors")
+            if list_prefix_keys():
+                raise RuntimeError("isolated R2 cleanup left objects")
         except Exception:
-            pass
+            pytest.fail("isolated R2 cleanup failed")
 
 
 @pytest.mark.integration

@@ -9,8 +9,8 @@ import pytest
 from pydantic import SecretStr
 
 from novelai.config.settings import settings
-from novelai.storage.backends import _reset_backend, get_storage_backend
-from novelai.storage.backends.base import StorageBackend
+from novelai.storage.backends import _reset_r2_storage, get_r2_storage
+from novelai.storage.backends.base import R2StorageBackend
 from novelai.storage.backends.r2 import InMemoryR2Storage, R2Storage
 
 
@@ -58,6 +58,10 @@ class TestInMemoryR2Storage:
         store.mkdirs("some/path")
         assert not store.has_keys("some/path")
 
+    def test_probe_readiness_uses_bucket_head(self, store: InMemoryR2Storage) -> None:
+        assert store.probe_readiness() is True
+        assert store.stats.operations == {"probe": 1}
+
 
 pytest.importorskip("moto", reason="moto not installed")
 
@@ -66,8 +70,8 @@ class TestR2Storage:
     """Exercise the real S3-compatible client boundary against moto."""
 
     @pytest.fixture
-    def s3(self) -> Generator[StorageBackend]:
-        _reset_backend()
+    def s3(self) -> Generator[R2StorageBackend]:
+        _reset_r2_storage()
         from moto import mock_aws
 
         with mock_aws():
@@ -77,11 +81,11 @@ class TestR2Storage:
             client.create_bucket(Bucket="test-bucket")
             yield R2Storage(bucket="test-bucket", region="us-east-1", endpoint_url=None, client=client)
 
-    def test_save_and_load(self, s3: StorageBackend) -> None:
+    def test_save_and_load(self, s3: R2StorageBackend) -> None:
         s3.save("hello.txt", b"world")
         assert s3.load("hello.txt") == b"world"
 
-    def test_provider_failures_propagate(self, s3: StorageBackend, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_provider_failures_propagate(self, s3: R2StorageBackend, monkeypatch: pytest.MonkeyPatch) -> None:
         from botocore.exceptions import ClientError
 
         def denied(**_kwargs: object) -> None:
@@ -91,7 +95,7 @@ class TestR2Storage:
         with pytest.raises(ClientError):
             s3.exists("x.txt")
 
-    def test_paginated_contract(self, s3: StorageBackend) -> None:
+    def test_paginated_contract(self, s3: R2StorageBackend) -> None:
         s3.save("a.txt", b"1")
         s3.save("nested/b.txt", b"12345")
         assert "a.txt" in s3.list_keys("")
@@ -99,16 +103,16 @@ class TestR2Storage:
         assert s3.total_size_bytes() == 6
 
 
-class TestGetStorageBackend:
+class TestGetR2Storage:
     def test_factory_is_always_r2(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        _reset_backend()
+        _reset_r2_storage()
         monkeypatch.setattr(settings, "R2_ACCESS_KEY_ID", SecretStr("test-access"))
         monkeypatch.setattr(settings, "R2_SECRET_ACCESS_KEY", SecretStr("test-secret"))
-        assert isinstance(get_storage_backend(), R2Storage)
+        assert isinstance(get_r2_storage(), R2Storage)
 
     def test_singleton_and_reset(self) -> None:
-        _reset_backend()
-        first = get_storage_backend()
-        assert first is get_storage_backend()
-        _reset_backend()
-        assert first is not get_storage_backend()
+        _reset_r2_storage()
+        first = get_r2_storage()
+        assert first is get_r2_storage()
+        _reset_r2_storage()
+        assert first is not get_r2_storage()

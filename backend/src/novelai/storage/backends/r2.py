@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, BinaryIO
 
-from novelai.storage.backends.base import StorageBackend
+from novelai.storage.backends.base import R2StorageBackend
 from novelai.storage.content_addressing import ArtifactConflictError, sha256_base64
 
 logger = logging.getLogger(__name__)
@@ -90,7 +90,7 @@ class R2OperationStats:
             self.errors += 1
 
 
-class R2Storage(StorageBackend):
+class R2Storage(R2StorageBackend):
     """Object store for the canonical `dokushodo` application bucket."""
 
     _BACKING = "r2"
@@ -470,7 +470,10 @@ class R2Storage(StorageBackend):
     def probe_readiness(self) -> bool:
         started = time.perf_counter()
         try:
-            self._client.list_objects_v2(Bucket=self._bucket, Prefix="novels/", MaxKeys=1)
+            # Readiness is a bucket reachability check, not an inventory
+            # operation. HEAD avoids enumerating the canonical content prefix
+            # on every health probe.
+            self._client.head_bucket(Bucket=self._bucket)
         except Exception:
             self._observe("probe", started, error=True)
             raise
@@ -556,6 +559,10 @@ class _MemoryR2Client:
             if record is None:
                 raise _MemoryR2Error("404")
             return dict(record["metadata"])
+
+    def head_bucket(self, *, Bucket: str, **_: Any) -> dict[str, Any]:
+        del Bucket
+        return {}
 
     def get_object(self, *, Bucket: str, Key: str, **_: Any) -> dict[str, Any]:
         del Bucket

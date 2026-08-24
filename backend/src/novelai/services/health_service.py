@@ -435,9 +435,9 @@ class HealthService:
         """
         start = time.monotonic()
         try:
-            from novelai.storage.backends import get_storage_backend as _gsb
+            from novelai.storage.backends import get_r2_storage
 
-            backend = _gsb()
+            backend = get_r2_storage()
             used_bytes = backend.total_size_bytes()
 
             limit_bytes = int(settings.R2_STORAGE_LIMIT_GB * 1024**3)

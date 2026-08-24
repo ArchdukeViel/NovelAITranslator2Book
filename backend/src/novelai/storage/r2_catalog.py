@@ -15,6 +15,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy.orm import load_only
+
 from novelai.config.workflow_profiles import normalize_workflow_defaults, normalize_workflow_profiles
 from novelai.core.security import safe_child_path, validate_storage_identifier
 from novelai.db.engine import session_scope
@@ -66,7 +68,7 @@ def resolve_storage_novel_id(storage: Any, novel_id: str) -> str:
     from novelai.db.models.novel import Novel
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
         if novel is None or novel.id is None:
             raise ValueError(f"No metadata found for novel {novel_id!r}")
         return str(novel.id)
@@ -147,11 +149,41 @@ def load_metadata(storage: Any, novel_id: str) -> dict[str, Any] | None:
     from novelai.db.models.novel import Novel
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = (
+            session.query(Novel)
+            .options(
+                load_only(
+                    Novel.id,
+                    Novel.slug,
+                    Novel.metadata_json,
+                    Novel.original_title,
+                    Novel.title,
+                    Novel.author,
+                    Novel.language,
+                    Novel.publication_status,
+                    Novel.public_reader_unavailable_policy,
+                )
+            )
+            .filter_by(slug=novel_id)
+            .one_or_none()
+        )
         if novel is None:
             return None
         chapters = (
             session.query(Chapter)
+            .options(
+                load_only(
+                    Chapter.id,
+                    Chapter.logical_chapter_id,
+                    Chapter.title,
+                    Chapter.chapter_number,
+                    Chapter.sequence_number,
+                    Chapter.source_episode_id,
+                    Chapter.source_url,
+                    Chapter.raw_storage_key,
+                    Chapter.translated_storage_key,
+                )
+            )
             .filter_by(novel_id=novel.id)
             .order_by(Chapter.sequence_number.asc().nulls_last(), Chapter.chapter_number.asc(), Chapter.id.asc())
             .all()
@@ -260,7 +292,7 @@ def load_source_state(storage: Any, novel_id: str) -> dict[str, Any] | None:
     from novelai.db.models.novel import Novel
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = session.query(Novel).options(load_only(Novel.source_state_json)).filter_by(slug=novel_id).one_or_none()
         if novel is None or not isinstance(novel.source_state_json, dict):
             return None
         return dict(novel.source_state_json)
@@ -270,7 +302,7 @@ def save_source_state(storage: Any, novel_id: str, data: dict[str, Any]) -> Path
     from novelai.db.models.novel import Novel
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             raise ValueError(f"No metadata found for novel {novel_id!r}")
         novel.source_state_json = dict(data)
@@ -285,7 +317,7 @@ def load_glossary(storage: Any, novel_id: str) -> list[dict[str, Any]]:
     from novelai.services.glossary_repository import GlossaryRepository
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             return []
         entries = GlossaryRepository(session).list_glossary_entries_for_novel(novel.id)
@@ -446,10 +478,27 @@ def get_novel_chapter_summary(storage: Any, novel_id: str) -> dict[str, Any] | N
     from novelai.db.models.novel import Novel
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = (
+            session.query(Novel)
+            .options(load_only(Novel.id, Novel.metadata_json))
+            .filter_by(slug=novel_id)
+            .one_or_none()
+        )
         if novel is None:
             return None
-        rows = session.query(Chapter).filter_by(novel_id=novel.id).all()
+        rows = (
+            session.query(Chapter)
+            .options(
+                load_only(
+                    Chapter.id,
+                    Chapter.logical_chapter_id,
+                    Chapter.raw_storage_key,
+                    Chapter.translated_storage_key,
+                )
+            )
+            .filter_by(novel_id=novel.id)
+            .all()
+        )
         metadata_chapters = novel.metadata_json.get("chapters") if isinstance(novel.metadata_json, dict) else []
         metadata_count = len(metadata_chapters) if isinstance(metadata_chapters, list) else 0
         raw_ids = {row.logical_chapter_id for row in rows if row.raw_storage_key}
@@ -466,7 +515,12 @@ def resolve_active_generation_id(storage: Any, novel_id: str) -> str | None:
     from novelai.db.models.novel import Novel
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = (
+            session.query(Novel)
+            .options(load_only(Novel.id, Novel.active_generation_id))
+            .filter_by(slug=novel_id)
+            .one_or_none()
+        )
         return str(novel.active_generation_id) if novel and novel.active_generation_id else None
 
 
@@ -475,10 +529,27 @@ def load_chapter(storage: Any, novel_id: str, chapter_id: str) -> dict[str, Any]
     from novelai.db.models.novel import Novel
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = (
+            session.query(Novel).options(load_only(Novel.id, Novel.source_site)).filter_by(slug=novel_id).one_or_none()
+        )
         if novel is None:
             return None
-        row = session.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id)).one_or_none()
+        row = (
+            session.query(Chapter)
+            .options(
+                load_only(
+                    Chapter.id,
+                    Chapter.logical_chapter_id,
+                    Chapter.title,
+                    Chapter.source_url,
+                    Chapter.raw_storage_key,
+                    Chapter.media_storage_key,
+                    Chapter.media_state_json,
+                )
+            )
+            .filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id))
+            .one_or_none()
+        )
         if row is None or not row.raw_storage_key:
             return None
         payload = storage.load_r2_json_artifact(row.raw_storage_key)
@@ -563,7 +634,7 @@ def list_stored_chapters(storage: Any, novel_id: str) -> list[str]:
     from novelai.db.models.novel import Novel
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             return []
         rows = (
@@ -714,10 +785,22 @@ def load_translated_chapter(storage: Any, novel_id: str, chapter_id: str) -> dic
     from novelai.db.models.novel import Novel
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             return None
-        row = session.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id)).one_or_none()
+        row = (
+            session.query(Chapter)
+            .options(
+                load_only(
+                    Chapter.id,
+                    Chapter.logical_chapter_id,
+                    Chapter.translated_storage_key,
+                    Chapter.translation_versions_json,
+                )
+            )
+            .filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id))
+            .one_or_none()
+        )
         if row is None or not row.translated_storage_key:
             return None
         payload = storage.load_r2_json_artifact(row.translated_storage_key)
@@ -742,10 +825,15 @@ def load_translated_chapter_by_version_id(
     from novelai.db.models.novel import Novel
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             return None
-        row = session.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id)).one_or_none()
+        row = (
+            session.query(Chapter)
+            .options(load_only(Chapter.id, Chapter.logical_chapter_id, Chapter.translation_versions_json))
+            .filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id))
+            .one_or_none()
+        )
         if row is None:
             return None
         record = next((item for item in _translation_version_rows(row) if item.get("version_id") == version_id), None)
@@ -766,10 +854,22 @@ def list_translated_chapter_versions(storage: Any, novel_id: str, chapter_id: st
     from novelai.db.models.novel import Novel
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             return []
-        row = session.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id)).one_or_none()
+        row = (
+            session.query(Chapter)
+            .options(
+                load_only(
+                    Chapter.id,
+                    Chapter.logical_chapter_id,
+                    Chapter.translated_storage_key,
+                    Chapter.translation_versions_json,
+                )
+            )
+            .filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id))
+            .one_or_none()
+        )
         if row is None:
             return []
         versions: list[dict[str, Any]] = []
@@ -792,7 +892,7 @@ def list_translated_chapters(storage: Any, novel_id: str) -> list[str]:
     from novelai.db.models.novel import Novel
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             return []
         rows = (
@@ -905,10 +1005,15 @@ def load_translation_edit_history(storage: Any, novel_id: str, chapter_id: str) 
     from novelai.db.models.novel import Novel
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             return []
-        row = session.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id)).one_or_none()
+        row = (
+            session.query(Chapter)
+            .options(load_only(Chapter.id, Chapter.translation_edit_history_json))
+            .filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id))
+            .one_or_none()
+        )
         history = getattr(row, "translation_edit_history_json", None) if row is not None else None
         return [dict(item) for item in history if isinstance(item, dict)] if isinstance(history, list) else []
 
@@ -926,7 +1031,7 @@ def activate_translated_chapter_version(
     from novelai.db.models.novel import Novel
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             return False
         row = session.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id)).one_or_none()
@@ -965,10 +1070,15 @@ def load_chapter_media_state(storage: Any, novel_id: str, chapter_id: str) -> di
     from novelai.db.models.novel import Novel
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             return None
-        row = session.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id)).one_or_none()
+        row = (
+            session.query(Chapter)
+            .options(load_only(Chapter.id, Chapter.media_state_json))
+            .filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id))
+            .one_or_none()
+        )
         if row is None or not isinstance(row.media_state_json, dict):
             return None
         return dict(row.media_state_json)
@@ -980,7 +1090,7 @@ def save_chapter_media_state(storage: Any, novel_id: str, chapter_id: str, **kwa
 
     fields = {key: value for key, value in kwargs.items() if value is not None}
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             raise ValueError(f"No metadata found for novel {novel_id!r}")
         row = session.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id)).one_or_none()
@@ -1044,7 +1154,7 @@ def clear_chapter_image_assets(storage: Any, novel_id: str, chapter_id: str) -> 
     from novelai.db.models.novel import Novel
 
     with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             return
         row = session.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id)).one_or_none()
