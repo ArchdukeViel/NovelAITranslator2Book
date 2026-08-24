@@ -11,16 +11,16 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from novelai.config.settings import settings
 from novelai.core.platform import JobStatus
@@ -158,6 +158,31 @@ class ActivityDatabaseBackend:
             "retry_count": int(row.retry_count or 0),
             "error": row.error,
             "metadata": _decode_metadata(row.metadata_json),
+        }
+
+    @staticmethod
+    def _mapping_to_dict(row: Mapping[Any, Any]) -> dict[str, Any]:
+        """Convert an UPDATE ... RETURNING row without hydrating an ORM row."""
+
+        return {
+            "activity_id": row["activity_id"],
+            "type": row["type"],
+            "kind": row["kind"],
+            "novel_id": row["novel_id"],
+            "source_key": row["source_key"],
+            "chapters": row["chapters"],
+            "source_url": row["source_url"],
+            "provider_key": row["provider_key"],
+            "provider_model": row["provider_model"],
+            "status": row["status"],
+            "created_at": _iso(row["created_at"]),
+            "started_at": _iso(row["started_at"]),
+            "finished_at": _iso(row["finished_at"]),
+            "lease_id": row["lease_id"],
+            "lease_expires_at": _iso(row["lease_expires_at"]),
+            "retry_count": int(row["retry_count"] or 0),
+            "error": row["error"],
+            "metadata": _decode_metadata(row["metadata_json"]),
         }
 
     @staticmethod
@@ -336,7 +361,23 @@ class ActivityDatabaseBackend:
 
     def _recover_expired(self, session: Session) -> None:
         now = _utc_now()
-        rows = session.scalars(select(ActivityRecord).where(ActivityRecord.status == JobStatus.RUNNING.value)).all()
+        rows = session.scalars(
+            select(ActivityRecord)
+            .options(
+                load_only(
+                    ActivityRecord.activity_id,
+                    ActivityRecord.status,
+                    ActivityRecord.started_at,
+                    ActivityRecord.lease_id,
+                    ActivityRecord.lease_expires_at,
+                    ActivityRecord.last_heartbeat_at,
+                    ActivityRecord.error,
+                    ActivityRecord.metadata_json,
+                    ActivityRecord.updated_at,
+                )
+            )
+            .where(ActivityRecord.status == JobStatus.RUNNING.value)
+        ).all()
         for row in rows:
             if not self._lease_expired(row, now):
                 continue
@@ -483,38 +524,113 @@ class ActivityDatabaseBackend:
     def claim_activity(self, activity_id: str) -> dict[str, Any] | None:
         with self._timed("claim"), self._session() as session:
             self._recover_expired(session)
-            row = self._load_locked(session, activity_id)
-            if row is None or row.status != JobStatus.PENDING.value:
-                return None
-            result = self._claim_row(row, _utc_now())
             session.flush()
-            return result
+            now = _utc_now()
+            lease_id = uuid4().hex
+            result = (
+                session.execute(
+                    self._claim_update_statement(
+                        now=now,
+                        lease_id=lease_id,
+                        activity_id=activity_id,
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            return self._mapping_to_dict(result) if result is not None else None
+
+    @staticmethod
+    def _claim_returning_columns() -> tuple[Any, ...]:
+        return (
+            ActivityRecord.activity_id,
+            ActivityRecord.type,
+            ActivityRecord.kind,
+            ActivityRecord.novel_id,
+            ActivityRecord.source_key,
+            ActivityRecord.chapters,
+            ActivityRecord.source_url,
+            ActivityRecord.provider_key,
+            ActivityRecord.provider_model,
+            ActivityRecord.status,
+            ActivityRecord.created_at,
+            ActivityRecord.started_at,
+            ActivityRecord.finished_at,
+            ActivityRecord.lease_id,
+            ActivityRecord.lease_expires_at,
+            ActivityRecord.retry_count,
+            ActivityRecord.error,
+            ActivityRecord.metadata_json,
+        )
+
+    @classmethod
+    def _claim_update_statement(
+        cls,
+        *,
+        now: datetime,
+        lease_id: str,
+        activity_id: str | None = None,
+        activity_type: str | None = None,
+    ) -> Any:
+        pending = select(ActivityRecord.activity_id).where(ActivityRecord.status == JobStatus.PENDING.value)
+        if activity_id is not None:
+            pending = pending.where(ActivityRecord.activity_id == activity_id)
+        else:
+            if activity_type is not None:
+                pending = pending.where(ActivityRecord.type == activity_type)
+            pending = pending.order_by(ActivityRecord.created_at).limit(1).with_for_update(skip_locked=True)
+
+        return (
+            update(ActivityRecord)
+            .where(ActivityRecord.activity_id == pending.scalar_subquery())
+            .where(ActivityRecord.status == JobStatus.PENDING.value)
+            .values(
+                status=JobStatus.RUNNING.value,
+                started_at=func.coalesce(ActivityRecord.started_at, now),
+                claimed_at=now,
+                last_heartbeat_at=now,
+                lease_id=lease_id,
+                lease_expires_at=cls._lease_deadline(now),
+                updated_at=now,
+            )
+            .returning(*cls._claim_returning_columns())
+        )
 
     def claim_next_activity(self, *, activity_type: str | None = None) -> dict[str, Any] | None:
         with self._timed("claim"), self._session() as session:
             self._recover_expired(session)
             session.flush()
-            stmt = select(ActivityRecord).where(ActivityRecord.status == JobStatus.PENDING.value)
-            if activity_type is not None:
-                stmt = stmt.where(ActivityRecord.type == activity_type)
-            stmt = stmt.order_by(ActivityRecord.created_at).limit(1).with_for_update(skip_locked=True)
-            row = session.scalar(stmt)
-            if row is None:
-                return None
-            result = self._claim_row(row, _utc_now())
-            session.flush()
-            return result
+            now = _utc_now()
+            result = (
+                session.execute(
+                    self._claim_update_statement(
+                        now=now,
+                        lease_id=uuid4().hex,
+                        activity_type=activity_type,
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            return self._mapping_to_dict(result) if result is not None else None
 
     def renew_activity_lease(self, activity_id: str, lease_id: str) -> bool:
         with self._timed("heartbeat"), self._session() as session:
-            row = self._load_locked(session, activity_id)
-            if row is None or row.status != JobStatus.RUNNING.value or row.lease_id != lease_id:
-                return False
             now = _utc_now()
-            row.lease_expires_at = self._lease_deadline(now)
-            row.last_heartbeat_at = now
-            row.updated_at = now
-            return True
+            result = session.execute(
+                update(ActivityRecord)
+                .where(
+                    ActivityRecord.activity_id == activity_id,
+                    ActivityRecord.status == JobStatus.RUNNING.value,
+                    ActivityRecord.lease_id == lease_id,
+                )
+                .values(
+                    lease_expires_at=self._lease_deadline(now),
+                    last_heartbeat_at=now,
+                    updated_at=now,
+                )
+            )
+            return getattr(result, "rowcount", -1) == 1
 
     def find_active_translation(
         self,

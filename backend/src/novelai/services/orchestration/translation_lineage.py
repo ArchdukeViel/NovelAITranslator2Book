@@ -14,6 +14,8 @@ import re
 from itertools import pairwise
 from typing import Any
 
+from sqlalchemy.orm import load_only
+
 from novelai.config.settings import settings
 from novelai.db.engine import session_scope
 from novelai.db.models.novel import Novel
@@ -109,7 +111,7 @@ def _normalize_lineage_item(
         return None
     try:
         paragraph_index = int(item.get("paragraph_index") or fallback_index)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         paragraph_index = fallback_index
     normalized = {
         "chapter_id": chapter_id,
@@ -644,7 +646,7 @@ def _json_map_for_expected_ids(
     """
     try:
         raw_obj = json.loads(extract_unambiguous_json_object(raw))
-    except (json.JSONDecodeError, ValueError):
+    except json.JSONDecodeError, ValueError:
         return None
     if not isinstance(raw_obj, dict):
         return None
@@ -1014,7 +1016,7 @@ def _count_pending_glossary_entries(novel_id: str) -> int:
     from novelai.db.models.glossary import NovelGlossaryEntry
 
     with session_scope() as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             return 0
         stmt = (

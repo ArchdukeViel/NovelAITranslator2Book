@@ -15,7 +15,7 @@ GEMINI_FALLBACK_MODEL = GEMINI_DEFAULT_MODEL
 
 
 def _default_runtime_dir() -> Path:
-    return PROJECT_ROOT / "storage" / "runtime"
+    return PROJECT_ROOT / "data" / "runtime"
 
 
 def _resolve_project_path(path: Path) -> Path:
@@ -106,6 +106,24 @@ class AppSettings(BaseSettings):
     )
     JOB_WORKER_ENABLED: bool = False
     JOB_WORKER_POLL_SECONDS: float = 2.0
+    RUNTIME_TELEMETRY_SAMPLE_INTERVAL_SECONDS: float = Field(
+        default=0.25,
+        ge=0.05,
+        le=60.0,
+        description="Interval for bounded event-loop/process telemetry sampling; keep at the default until measured.",
+    )
+    RUNTIME_TELEMETRY_MAX_OBSERVATIONS: int = Field(
+        default=256,
+        ge=32,
+        le=4096,
+        description="Maximum runtime observations retained in-process; lower to 32 as the rollback value.",
+    )
+    RUNTIME_EVENT_LOOP_LAG_THRESHOLD_MS: float = Field(
+        default=1000.0,
+        ge=1.0,
+        le=60_000.0,
+        description="Operator stop threshold for sampled event-loop lag; this does not auto-restart workloads.",
+    )
     ACTIVITY_HISTORY_MAX_ENTRIES: int = Field(
         default=10_000,
         ge=100,
@@ -239,7 +257,12 @@ class AppSettings(BaseSettings):
     )
 
     # --- Translation
-    TRANSLATION_CONCURRENCY: int = 4
+    TRANSLATION_CONCURRENCY: int = Field(
+        default=4,
+        ge=1,
+        le=256,
+        description="Maximum in-flight provider chunk calls per translation pipeline.",
+    )
     TRANSLATION_CHAPTER_CONCURRENCY: int = Field(
         default=1,
         ge=1,
@@ -249,6 +272,37 @@ class AppSettings(BaseSettings):
             "orchestrator run. 1 preserves the previous sequential behavior. "
             "Upper bound keeps in-flight chapter work within a single worker process."
         ),
+    )
+    TRANSLATION_PERSISTENCE_EXPANSION_ENABLED: bool = Field(
+        default=False,
+        description=(
+            "Enable the measured multi-worker persistence profile. False is the rollback value and uses one worker "
+            "with no queued persistence work."
+        ),
+    )
+    TRANSLATION_PERSISTENCE_WORKERS: int = Field(
+        default=2,
+        ge=1,
+        le=8,
+        description="Bounded persistence worker count used only when expansion is enabled.",
+    )
+    TRANSLATION_PERSISTENCE_QUEUE_SIZE: int = Field(
+        default=8,
+        ge=0,
+        le=64,
+        description="Bounded persistence queue size used only when expansion is enabled; zero is the rollback value.",
+    )
+    TRANSLATION_PERSISTENCE_OBSERVATION_LIMIT: int = Field(
+        default=256,
+        ge=32,
+        le=4096,
+        description="Maximum persistence observations retained in-process.",
+    )
+    TRANSLATION_PERSISTENCE_SHUTDOWN_TIMEOUT_SECONDS: float = Field(
+        default=30.0,
+        ge=1.0,
+        le=300.0,
+        description="Maximum persistence drain time during shutdown; one second is the bounded rollback value.",
     )
     TRANSLATION_TARGET_CHARS_PER_CHUNK: int = 4500
     TRANSLATION_HARD_MAX_CHARS_PER_CHUNK: int = 7000

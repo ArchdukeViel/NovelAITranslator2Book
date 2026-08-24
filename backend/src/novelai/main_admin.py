@@ -46,6 +46,7 @@ from novelai.config.production_validator import assert_production_config
 from novelai.config.settings import session_cookie_secure, settings
 from novelai.runtime.bootstrap import bootstrap
 from novelai.runtime.container import container
+from novelai.services.runtime_telemetry import runtime_telemetry
 
 if settings.ENV == "production":
     assert_production_config(settings)
@@ -53,6 +54,11 @@ if settings.ENV == "production":
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    runtime_telemetry.configure(
+        max_observations=settings.RUNTIME_TELEMETRY_MAX_OBSERVATIONS,
+        sample_interval_seconds=settings.RUNTIME_TELEMETRY_SAMPLE_INTERVAL_SECONDS,
+    )
+    await runtime_telemetry.start()
     if settings.JOB_WORKER_ENABLED:
         await container.activity_runner.start()
     if settings.BACKUP_ENABLED or settings.MAINTENANCE_ENABLED or settings.DATABASE_BACKUP_ENABLED:
@@ -73,6 +79,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         from novelai.db.engine import dispose_engines
 
         dispose_engines()
+        await runtime_telemetry.stop()
 
 
 bootstrap()

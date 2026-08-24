@@ -41,6 +41,34 @@ def test_default_settings() -> None:
     assert s.MIGRATION_DATABASE_URL is None
 
 
+def test_capacity_settings_default_to_conservative_rollback_profile() -> None:
+    s = AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+    assert s.TRANSLATION_PERSISTENCE_EXPANSION_ENABLED is False
+    assert s.TRANSLATION_PERSISTENCE_WORKERS == 2
+    assert s.TRANSLATION_PERSISTENCE_QUEUE_SIZE == 8
+    assert s.RUNTIME_TELEMETRY_SAMPLE_INTERVAL_SECONDS == 0.25
+    assert s.RUNTIME_TELEMETRY_MAX_OBSERVATIONS == 256
+    assert s.RUNTIME_EVENT_LOOP_LAG_THRESHOLD_MS == 1000.0
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("TRANSLATION_PERSISTENCE_WORKERS", 0),
+        ("TRANSLATION_PERSISTENCE_QUEUE_SIZE", -1),
+        ("TRANSLATION_PERSISTENCE_OBSERVATION_LIMIT", 16),
+        ("TRANSLATION_PERSISTENCE_SHUTDOWN_TIMEOUT_SECONDS", 0),
+        ("RUNTIME_TELEMETRY_SAMPLE_INTERVAL_SECONDS", 0.01),
+        ("RUNTIME_TELEMETRY_MAX_OBSERVATIONS", 16),
+        ("RUNTIME_EVENT_LOOP_LAG_THRESHOLD_MS", 0),
+    ],
+)
+def test_capacity_settings_reject_values_outside_safe_ranges(field: str, value: object) -> None:
+    with pytest.raises(ValueError):
+        AppSettings(_env_file=None, **{field: value})  # type: ignore[call-arg]
+
+
 def test_runtime_dir_uses_canonical_setting() -> None:
     s = AppSettings(
         _env_file=None,  # type: ignore[call-arg]
@@ -53,10 +81,10 @@ def test_runtime_dir_uses_canonical_setting() -> None:
 def test_relative_runtime_dir_resolves_from_project_root() -> None:
     s = AppSettings(
         _env_file=None,  # type: ignore[call-arg]
-        RUNTIME_DIR=Path("storage/runtime"),
+        RUNTIME_DIR=Path("data/runtime"),
     )
     assert s.RUNTIME_DIR.is_absolute()
-    assert s.RUNTIME_DIR.parts[-2:] == ("storage", "runtime")
+    assert s.RUNTIME_DIR.parts[-2:] == ("data", "runtime")
 
 
 def test_web_defaults() -> None:

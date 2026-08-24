@@ -12,6 +12,7 @@ class StubWorker:
         self.activity = list(activity or [])
         self.calls = 0
         self.processed = asyncio.Event()
+        self.shutdown_calls = 0
 
     async def run_next(self, *, activity_type: str | None = None) -> dict[str, object] | None:
         self.calls += 1
@@ -22,6 +23,10 @@ class StubWorker:
             activity["activity_type"] = activity_type
         self.processed.set()
         return activity
+
+    async def shutdown(self, timeout_seconds: float = 30.0) -> bool:
+        self.shutdown_calls += 1
+        return timeout_seconds >= 0
 
 
 @pytest.mark.asyncio
@@ -36,6 +41,7 @@ async def test_runner_start_stop_status() -> None:
     assert stopped["running"] is False
     assert stopped["started_at"] is not None
     assert stopped["stopped_at"] is not None
+    assert worker.shutdown_calls == 1
 
 
 @pytest.mark.asyncio
@@ -64,3 +70,12 @@ async def test_runner_run_once_reports_idle() -> None:
     assert activity is None
     assert status["idle_ticks"] == 1
     assert status["last_tick_at"] is not None
+
+
+def test_runner_idle_poll_backoff_is_bounded_and_resets() -> None:
+    runner = BackgroundActivityRunner(StubWorker(), poll_seconds=2.0)  # type: ignore[arg-type]
+
+    assert [runner.next_idle_poll_seconds() for _ in range(5)] == [5.0, 10.0, 20.0, 30.0, 30.0]
+
+    runner._reset_idle_backoff()
+    assert runner.next_idle_poll_seconds() == 5.0

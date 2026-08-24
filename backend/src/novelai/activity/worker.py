@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from collections.abc import Callable
-from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any
+
+from sqlalchemy.orm import load_only
 
 from novelai.activity.queue import ActivityQueueService, normalize_crawl_result
 from novelai.core.errors import ProviderError
@@ -213,7 +215,12 @@ class ActivityWorkerService:
             from novelai.db.models.novel import Novel
 
             with session_scope() as session:
-                novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+                novel = (
+                    session.query(Novel)
+                    .options(load_only(Novel.glossary_revision))
+                    .filter_by(slug=novel_id)
+                    .one_or_none()
+                )
                 if novel is not None:
                     return int(novel.glossary_revision or 0)
         except Exception:
@@ -515,19 +522,42 @@ class ActivityWorkerService:
         if not resolved_lease_id or activity.get("lease_id") != resolved_lease_id:
             raise ValueError("Activity lease is missing or no longer valid")
 
-        heartbeat = asyncio.create_task(self._lease_heartbeat(activity_id, resolved_lease_id))
-        try:
-            return await self._run_claimed_activity(activity, resolved_lease_id)
-        finally:
-            heartbeat.cancel()
-            with suppress(asyncio.CancelledError):
-                await heartbeat
+        return await self._run_claimed_with_heartbeat(activity, resolved_lease_id)
 
-    async def _lease_heartbeat(self, activity_id: str, lease_id: str) -> None:
-        interval = max(1.0, self.activity_log.LEASE_SECONDS / 3)
-        while True:
-            await asyncio.sleep(interval)
-            if not self.activity_log.renew_activity_lease(activity_id, lease_id):
+    async def _run_claimed_with_heartbeat(self, activity: dict[str, Any], lease_id: str) -> dict[str, Any] | None:
+        """Run an already-claimed row without reloading it from the database."""
+
+        activity_id = str(activity["activity_id"])
+        heartbeat_stop = threading.Event()
+        heartbeat = threading.Thread(
+            target=self._lease_heartbeat,
+            args=(activity_id, lease_id, heartbeat_stop),
+            daemon=True,
+            name=f"activity-lease-heartbeat-{activity_id}",
+        )
+        heartbeat.start()
+        try:
+            return await self._run_claimed_activity(activity, lease_id)
+        finally:
+            heartbeat_stop.set()
+            heartbeat.join(timeout=max(5.0, min(float(self.activity_log.LEASE_SECONDS), 30.0)))
+            if heartbeat.is_alive():
+                logger.warning("Activity lease heartbeat thread did not stop promptly for %s", activity_id)
+
+    def _lease_heartbeat(self, activity_id: str, lease_id: str, stop_event: threading.Event) -> None:
+        lease_seconds = float(self.activity_log.LEASE_SECONDS)
+        # Production leases are five minutes, so the normal heartbeat remains
+        # within the 15-30 second operating window. Explicitly shortened
+        # leases (used by tests and local probes) must still be renewed before
+        # their first heartbeat can expire.
+        interval = max(1.0, lease_seconds / 3) if lease_seconds < 45.0 else min(30.0, max(15.0, lease_seconds / 3))
+        while not stop_event.wait(interval):
+            try:
+                if not self.activity_log.renew_activity_lease(activity_id, lease_id):
+                    logger.warning("Activity lease heartbeat was rejected for %s", activity_id)
+                    return
+            except Exception:
+                logger.exception("Activity lease heartbeat failed for %s", activity_id)
                 return
 
     async def _run_claimed_activity(self, activity: dict[str, Any], lease_id: str) -> dict[str, Any] | None:
@@ -813,10 +843,15 @@ class ActivityWorkerService:
         activity = self.activity_log.claim_next_activity(activity_type=activity_type)
         if activity is None:
             return None
-        return await self.run_activity(
-            str(activity["activity_id"]),
-            lease_id=str(activity["lease_id"]),
-        )
+        lease_id = str(activity.get("lease_id") or "")
+        if not lease_id:
+            raise ValueError("Activity claim did not return a lease")
+        return await self._run_claimed_with_heartbeat(activity, lease_id)
+
+    async def shutdown(self, timeout_seconds: float | None = None) -> bool:
+        """Drain translation persistence work before the worker process stops."""
+
+        return await self.orchestrator.shutdown_translation_persistence(timeout_seconds)
 
     async def retry_activity(self, activity_id: str) -> dict[str, Any] | None:
         return self.activity_log.retry_activity(activity_id)

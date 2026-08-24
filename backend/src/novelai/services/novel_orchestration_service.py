@@ -36,6 +36,7 @@ from novelai.services.orchestration.translation_metadata import (
     _translate_text,
     estimate_translation_requests,
 )
+from novelai.services.orchestration.translation_persistence import TranslationPersistencePort
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
@@ -102,6 +103,7 @@ class NovelOrchestrationService:
             provider_factory = get_provider
 
         self.storage = storage
+        self._translation_persistence: TranslationPersistencePort | None = None
         self.translation = translation
         self._source_factory = _source_factory_with_error
         self._input_adapter_factory = input_adapter_factory
@@ -109,6 +111,24 @@ class NovelOrchestrationService:
         self._settings = settings_service or PreferencesService()
         self._cache = translation_cache or TranslationCache()
         self._usage = usage_service or UsageService()
+
+    @property
+    def translation_persistence(self) -> TranslationPersistencePort:
+        """Create the blocking-I/O boundary only when translation is used."""
+
+        if self._translation_persistence is None:
+            self._translation_persistence = TranslationPersistencePort(self.storage)
+        return self._translation_persistence
+
+    async def shutdown_translation_persistence(self, timeout_seconds: float | None = None) -> bool:
+        """Drain the translation I/O boundary during service shutdown."""
+
+        if self._translation_persistence is None:
+            return True
+        effective_timeout = (
+            settings.TRANSLATION_PERSISTENCE_SHUTDOWN_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+        )
+        return await self._translation_persistence.shutdown(effective_timeout)
 
     @staticmethod
     def _infer_source_language(source_key: str, metadata: dict[str, Any] | None = None) -> str | None:

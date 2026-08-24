@@ -105,7 +105,7 @@ async def _run_worker_forever(poll_seconds: float | None) -> None:
     while True:
         activity = await runner.run_once()
         if activity is None:
-            await asyncio.sleep(runner.poll_seconds)
+            await asyncio.sleep(runner.next_idle_poll_seconds())
         else:
             print(f"Processed job {activity.get('activity_id')} -> {activity.get('status')}")
 

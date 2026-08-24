@@ -327,7 +327,15 @@ async def test_translate_stage_records_provider_request_and_chunk_output(
         storage=scheduler_storage,
     )
 
-    context = await stage.run(_context())
+    context = _context()
+    context.metadata.update(
+        {
+            "credential_id": "stale-contributor-id",
+            "credential_owner_user_id": 999,
+            "credential_scope": "contributor",
+        }
+    )
+    context = await stage.run(context)
 
     assert provider.calls == ["fast"]
     assert context.chunk_states["c0001"]["provider_model"] == "fast"
@@ -338,6 +346,11 @@ async def test_translate_stage_records_provider_request_and_chunk_output(
     assert request["scheduler_policy"] == SchedulerPolicy.VOLUME_FIRST.value
     assert request["selection_reason"] == SelectionReason.PRIMARY_AVAILABLE.value
     assert request["attempt_number"] == 1
+    assert request["credential_id"] is None
+    assert request["credential_owner_user_id"] is None
+    assert request["requesting_user_id"] is None
+    assert request["credential_scope"] == "owner"
+    assert request["contribution_mode"] == "owner"
     outputs = scheduler_storage.read_translation_output("novel1", chunk_id="c0001")
     assert isinstance(outputs, list)
     assert outputs[0]["provider_model"] == "fast"

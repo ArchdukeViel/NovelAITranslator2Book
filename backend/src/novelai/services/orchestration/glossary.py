@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from sqlalchemy import select
+from sqlalchemy.orm import load_only
 
 from novelai.config.settings import settings
 from novelai.core.errors import ProviderError, ProviderErrorCode
@@ -171,6 +172,8 @@ async def discover_incremental_glossary_terms(
     provider_model: str | None,
     source_language: str,
     existing_entries: list[dict[str, Any]] | None = None,
+    metadata: dict[str, Any] | None = None,
+    chapter_cache: dict[str, dict[str, Any] | None] | None = None,
     max_terms: int = 50,
 ) -> dict[str, Any]:
     """Discover new terms for the selected chapters before body translation.
@@ -185,7 +188,13 @@ async def discover_incremental_glossary_terms(
         if raw_chapter_id is None and isinstance(record, dict):
             raw_chapter_id = record.get("chapter_id")
         chapter_id = str(raw_chapter_id or "")
-        chapter = self.storage.load_chapter(novel_id, chapter_id) or {}
+        if chapter_cache is not None and chapter_id in chapter_cache:
+            chapter = chapter_cache[chapter_id] or {}
+        else:
+            loaded_chapter = self.storage.load_chapter(novel_id, chapter_id)
+            chapter = loaded_chapter if isinstance(loaded_chapter, dict) else {}
+            if chapter_cache is not None:
+                chapter_cache[chapter_id] = chapter or None
         text = chapter.get("text") if isinstance(chapter, dict) else None
         if isinstance(text, str) and text.strip():
             source_text_by_chapter[chapter_id] = text.strip()
@@ -221,7 +230,7 @@ async def discover_incremental_glossary_terms(
     provider_calls = 0
     discovered: list[dict[str, Any]] = []
     deferred = False
-    metadata = self.storage.load_metadata(novel_id) or {}
+    metadata = metadata if isinstance(metadata, dict) else self.storage.load_metadata(novel_id) or {}
     raw_discovery_state = metadata.get("incremental_glossary_discovery") if isinstance(metadata, dict) else None
     raw_state = raw_discovery_state if isinstance(raw_discovery_state, dict) else {}
     discovery_state: dict[str, dict[str, str]] = {
@@ -304,6 +313,7 @@ async def discover_incremental_glossary_terms(
                     break
                 except ProviderError as exc:
                     retryable = exc.provider_error_code in {
+                        ProviderErrorCode.INVALID_JSON,
                         ProviderErrorCode.RATE_LIMITED,
                         ProviderErrorCode.QUOTA_EXHAUSTED,
                         ProviderErrorCode.TEMPORARY,
@@ -354,6 +364,8 @@ async def discover_incremental_glossary_terms(
     ordered_entries = sorted(entries_by_source.values(), key=lambda item: str(item.get("source") or "").casefold())
     if ordered_entries != current_entries:
         self.storage.save_glossary(novel_id, ordered_entries)
+    if existing_entries is not None:
+        existing_entries[:] = [dict(entry) for entry in ordered_entries]
 
     if discovery_state != raw_state and isinstance(metadata, dict):
         metadata["incremental_glossary_discovery"] = discovery_state
@@ -362,7 +374,7 @@ async def discover_incremental_glossary_terms(
     # Keep the canonical DB glossary aligned when the platform row exists;
     # failure here must not discard the runtime audit record.
     with contextlib.suppress(Exception), _session_scope() as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
         if novel is not None:
             from novelai.services.glossary_repository import GlossaryRepository
 
@@ -773,6 +785,7 @@ async def _translate_glossary_batch(
             return translations, attempt + 1
         except ProviderError as exc:
             retryable = exc.provider_error_code in {
+                ProviderErrorCode.INVALID_JSON,
                 ProviderErrorCode.RATE_LIMITED,
                 ProviderErrorCode.QUOTA_EXHAUSTED,
                 ProviderErrorCode.TEMPORARY,
@@ -1087,9 +1100,15 @@ def _run_apply_glossary(
 
     with _session_scope() as db_session:
         # Resolve DB novel
-        novel_db = db_session.execute(select(Novel).where(Novel.slug == novel_id)).scalar_one_or_none()
+        novel_db = db_session.execute(
+            select(Novel).options(load_only(Novel.id, Novel.glossary_revision)).where(Novel.slug == novel_id)
+        ).scalar_one_or_none()
         if novel_db is None and novel_id.isdigit():
-            novel_db = db_session.get(Novel, int(novel_id))
+            novel_db = db_session.get(
+                Novel,
+                int(novel_id),
+                options=(load_only(Novel.id, Novel.glossary_revision),),
+            )
         if novel_db is None:
             raise RuntimeError(f"Novel not found in DB: {novel_id}")
         db_novel_id = novel_db.id

@@ -15,7 +15,7 @@ from contextlib import AbstractContextManager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from novelai.db.engine import session_scope
 from novelai.db.models.chapter import Chapter
@@ -281,7 +281,16 @@ class CatalogService:
         Returns:
             The Novel ORM instance (added to session, not yet committed).
         """
-        novel = self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        # The history document can be hundreds of kilobytes. Routine catalog
+        # reconciliation only needs the current projection; SQLAlchemy will
+        # fetch the deferred history column lazily if a metadata change
+        # actually requires appending an audit snapshot below.
+        novel = (
+            self._session.query(Novel)
+            .options(defer(Novel.metadata_history_json))
+            .filter_by(slug=novel_id)
+            .one_or_none()
+        )
         has_publication_status = "publication_status" in metadata
         publication_status = normalize_publication_status(metadata.get("publication_status"))
         source_updated_at = _metadata_datetime(
@@ -385,7 +394,12 @@ class CatalogService:
         Returns:
             The Chapter ORM instance (added to session, not yet committed).
         """
-        novel = self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = (
+            self._session.query(Novel)
+            .options(defer(Novel.metadata_history_json))
+            .filter_by(slug=novel_id)
+            .one_or_none()
+        )
         if novel is None or novel.id is None:
             raise ValueError(f"No metadata found for novel {novel_id!r}")
         novel_db_id = novel.id
@@ -455,7 +469,12 @@ class CatalogService:
         Returns:
             The Chapter ORM instance (updated in session, not yet committed).
         """
-        novel = self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = (
+            self._session.query(Novel)
+            .options(defer(Novel.metadata_history_json))
+            .filter_by(slug=novel_id)
+            .one_or_none()
+        )
         if novel is None or novel.id is None:
             raise ValueError(f"No metadata found for novel {novel_id!r}")
         novel_db_id = novel.id
@@ -499,7 +518,13 @@ class CatalogService:
         Mirrors the current public catalog's PostgreSQL projection semantics so later
         DB-backed listing phases can switch storage without changing values.
         """
-        novel = novel or self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = (
+            novel
+            or self._session.query(Novel)
+            .options(defer(Novel.metadata_history_json))
+            .filter_by(slug=novel_id)
+            .one_or_none()
+        )
         if novel is None:
             return None
 
@@ -626,7 +651,12 @@ class CatalogService:
         the same CatalogService ownership path used by write refreshes.
         """
         metadata = self._storage.load_metadata(novel_id)
-        novel = self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = (
+            self._session.query(Novel)
+            .options(defer(Novel.metadata_history_json))
+            .filter_by(slug=novel_id)
+            .one_or_none()
+        )
         if novel is None and metadata is None:
             return None
 
@@ -776,7 +806,12 @@ class CatalogService:
         if reconciliation is None:
             return None
 
-        novel = self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        novel = (
+            self._session.query(Novel)
+            .options(defer(Novel.metadata_history_json))
+            .filter_by(slug=novel_id)
+            .one_or_none()
+        )
         if novel is None:
             return None
 
@@ -866,6 +901,11 @@ class CatalogService:
         if novel_db_id is not None:
             chapter = (
                 self._session.query(Chapter)
+                .options(
+                    defer(Chapter.media_state_json),
+                    defer(Chapter.translation_versions_json),
+                    defer(Chapter.translation_edit_history_json),
+                )
                 .filter_by(novel_id=novel_db_id, logical_chapter_id=str(chapter_id))
                 .one_or_none()
             )
@@ -877,7 +917,12 @@ class CatalogService:
             derived_sequence_number = sequence_number
             if novel_db_id is not None:
                 try:
-                    novel = self._session.query(Novel).filter_by(id=novel_db_id).one_or_none()
+                    novel = (
+                        self._session.query(Novel)
+                        .options(defer(Novel.metadata_history_json))
+                        .filter_by(id=novel_db_id)
+                        .one_or_none()
+                    )
                     if novel is not None:
                         meta = self._storage.load_metadata(novel.slug)
                         if meta:

@@ -63,6 +63,11 @@ def seeded_novel(db_session):
 
 
 class TestGetOrCreateNovel:
+    def test_routine_reconciliation_defers_metadata_history(self, catalog, db_session, seeded_novel) -> None:
+        novel = catalog.get_or_create_novel("novel-001", {"title": "Different Title"})
+
+        assert "metadata_history_json" in inspect(novel).unloaded
+
     def test_creates_novel_when_absent(self, catalog, db_session) -> None:
         metadata = {
             "title": "New Novel",
@@ -337,6 +342,28 @@ class TestSaveRawChapter:
 
 
 class TestSaveTranslatedChapter:
+    def test_existing_chapter_lookup_defers_large_json_columns(self, catalog, db_session, seeded_novel) -> None:
+        chapter = Chapter(
+            novel_id=seeded_novel.id,
+            chapter_number=1,
+            logical_chapter_id="ch001",
+            media_state_json={"images": [{"url": "https://example.invalid/image"}]},
+            translation_versions_json=[{"version": 1, "text": "translated"}],
+            translation_edit_history_json=[{"action": "created"}],
+        )
+        db_session.add(chapter)
+        db_session.commit()
+        db_session.expire_all()
+
+        resolved = catalog._get_or_create_chapter(seeded_novel.id, "ch001")
+
+        unloaded = inspect(resolved).unloaded
+        assert "media_state_json" in unloaded
+        assert "translation_versions_json" in unloaded
+        assert "translation_edit_history_json" in unloaded
+        assert resolved.chapter_number == 1
+        assert "media_state_json" in inspect(resolved).unloaded
+
     def test_saves_translated_to_file_storage(self, catalog, db_session, seeded_novel, storage) -> None:
         # Save raw first so the chapter exists in file storage
         catalog.save_raw_chapter("novel-001", "ch001", "Raw content", chapter_number=1)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import time
 from uuid import uuid4
 
 import pytest
@@ -91,6 +92,36 @@ async def test_run_crawl_metadata_activity(worker_env) -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_next_reuses_claimed_activity_without_second_lookup(worker_env, monkeypatch) -> None:
+    _storage, activity_log, _orchestrator, worker = worker_env
+    created = activity_log.create_crawl_activity(
+        novel_id="novel-1",
+        source_key="syosetu_ncode",
+        kind="metadata",
+    )
+
+    claimed: list[tuple[dict[str, object], str]] = []
+
+    async def capture_claimed_activity(activity: dict[str, object], lease_id: str) -> dict[str, object]:
+        claimed.append((activity, lease_id))
+        return {"activity_id": activity["activity_id"], "status": "completed"}
+
+    async def unexpected_delegation(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("run_next must not delegate to run_activity after claiming a row")
+
+    monkeypatch.setattr(worker, "_run_claimed_with_heartbeat", capture_claimed_activity)
+    monkeypatch.setattr(worker, "run_activity", unexpected_delegation)
+
+    result = await worker.run_next(activity_type="crawl")
+
+    assert result is not None
+    assert result["status"] == "completed"
+    assert claimed[0][0]["activity_id"] == created["activity_id"]
+    assert claimed[0][0]["status"] == "running"
+    assert claimed[0][1] == claimed[0][0]["lease_id"]
+
+
+@pytest.mark.asyncio
 async def test_run_scrape_activity_runs_metadata_and_chapters_in_one_lease(worker_env) -> None:
     _storage, activity_log, orchestrator, worker = worker_env
     activity = activity_log.create_crawl_activity(
@@ -159,6 +190,41 @@ async def test_run_translation_activity_uses_canonical_provider_fields(worker_en
     assert orchestrator.calls[0][0] == "translate_chapters"
     assert orchestrator.calls[0][2]["provider_key"] == "canonical-provider"
     assert orchestrator.calls[0][2]["provider_model"] == "canonical-model"
+
+
+@pytest.mark.asyncio
+async def test_run_activity_renews_lease_while_orchestrator_blocks_event_loop(worker_env, monkeypatch) -> None:
+    storage, activity_log, orchestrator, worker = worker_env
+    storage.save_metadata("novel-1", {"source_key": "kakuyomu", "chapters": [{"id": "1"}]})
+    activity = activity_log.create_translation_activity(
+        novel_id="novel-1",
+        chapters="1",
+        provider_key="gemini",
+        provider_model="gemini-2.0-flash",
+    )
+    activity_log.LEASE_SECONDS = 1
+    renewals: list[tuple[str, str]] = []
+    original_renew = activity_log.renew_activity_lease
+
+    def record_renewal(activity_id: str, lease_id: str) -> bool:
+        renewals.append((activity_id, lease_id))
+        return original_renew(activity_id, lease_id)
+
+    monkeypatch.setattr(activity_log, "renew_activity_lease", record_renewal)
+
+    async def blocking_translate(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        time.sleep(1.25)
+
+    monkeypatch.setattr(orchestrator, "translate_chapters", blocking_translate)
+
+    result = await worker.run_activity(activity["activity_id"])
+
+    assert result is not None
+    assert result["status"] == "completed"
+    assert len(renewals) == 1
+    assert renewals[0][0] == activity["activity_id"]
+    assert renewals[0][1]
 
 
 @pytest.mark.asyncio

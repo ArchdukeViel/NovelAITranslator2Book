@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
+from novelai.core.errors import ProviderError, ProviderErrorCode
 from novelai.glossary.glossary import (
     Glossary,
     GlossaryTerm,
@@ -251,6 +252,19 @@ class _IncrementalGlossaryProvider:
         return {"text": '{"items": []}', "metadata": {"usage": {"total_tokens": 4}}}
 
 
+class _IncrementalGlossaryProviderError(_IncrementalGlossaryProvider):
+    async def translate(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
+        self.calls += 1
+        if self.calls == 1:
+            raise ProviderError(
+                ProviderErrorCode.INVALID_JSON,
+                provider_key="gemini",
+                provider_model=GEMINI_DEFAULT_MODEL,
+                message="Provider returned invalid JSON",
+            )
+        return {"text": '{"items": []}', "metadata": {"usage": {"total_tokens": 4}}}
+
+
 class _IncrementalGlossaryService:
     def __init__(self) -> None:
         self.storage = _IncrementalGlossaryStorage()
@@ -294,6 +308,26 @@ async def test_incremental_glossary_retries_structured_response_and_resumes(monk
     assert resumed["provider_calls"] == 0
     assert resumed["unchanged_chapters"] == ["1"]
     assert resumed["changed_chapters"] == []
+
+
+@pytest.mark.asyncio
+async def test_incremental_glossary_retries_provider_invalid_json(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TRANSLATION_MAX_ATTEMPTS_PER_CHUNK", 2)
+    service = _IncrementalGlossaryService()
+    service.provider = _IncrementalGlossaryProviderError()
+
+    result = await discover_incremental_glossary_terms(
+        service,
+        "novel-1",
+        [{"chapter_id": "1"}],
+        provider_key="gemini",
+        provider_model=GEMINI_DEFAULT_MODEL,
+        source_language="Japanese",
+    )
+
+    assert service.provider.calls == 2
+    assert result["provider_calls"] == 1
+    assert result["changed_chapters"] == ["1"]
 
 
 class _BatchGlossaryProvider:
