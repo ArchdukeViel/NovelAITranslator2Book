@@ -111,18 +111,18 @@ Updated: 2026-08-24
   - Last result: `powershell -ExecutionPolicy Bypass -File tools/ruff.ps1 check backend/src/novelai/api/app.py` exited 0 with `All checks passed!`.
   - Evidence: `tools/ruff.ps1` now normalizes non-option path arguments from `/` to `\` before invoking the canonical `.venv\Scripts\python.exe`; PowerShell parser and whitespace checks passed. Conformance review confirmed the change is limited to wrapper argument handling and introduces no secrets or architectural boundary changes.
 
-- [ ] **T-009 Verify Python virtualenv path check across all tools (R9)**
+- [x] **T-009 Verify Python virtualenv path check across all tools (R9)**
   - Verify all `tools/*.ps1` scripts fail with exit code 2 if `.venv` is missing.
   - Verification: `rg -n "venvPython|venv\\Scripts\\python\.exe" tools --glob "*.ps1"`
   - Maps to: REQ-002, AC-002
   - Depends on: T-008
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for wrapper safety verification
   - Scope: Strict `.venv\Scripts\python.exe` checks and missing-interpreter behavior across `tools/*.ps1`
   - Expected: Every wrapper fails closed when the project interpreter is absent and does not fall through to the system Python
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record the wrapper inventory and isolated failure check
+  - Attempts: 3
+  - Last result: The inventory command exited 0; an isolated copy of all 4 `tools/**/*.ps1` scripts returned exit code 2 for `pytest.ps1`, `pyright.ps1`, `ruff.ps1`, and `capacity/run_reader_load.ps1` when `.venv\Scripts\python.exe` was absent. Focused normal-environment regression checks returned `pytest=0`, `pyright=0`, and `ruff=0`.
+  - Evidence: The three canonical wrappers now emit their diagnostic without terminating before the explicit exit, so missing-interpreter behavior is consistently exit code 2. The capacity load harness uses the same fail-closed exit contract. All 4 PowerShell scripts parsed with 0 errors, and the real project virtualenv was never renamed, removed, or modified.
 
 ## Phase 3: VS Code & Developer Experience (R10–R13)
 - [ ] **T-010 Add Backend Test Watch task to .vscode/tasks.json (R10)**

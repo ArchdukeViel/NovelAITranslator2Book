@@ -32,7 +32,8 @@ Set-StrictMode -Version Latest
 $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $pythonPath = Join-Path $repositoryRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
-    throw "The canonical project interpreter is missing: .venv\Scripts\python.exe"
+    Write-Error "The canonical project interpreter is missing: .venv\Scripts\python.exe" -ErrorAction Continue
+    exit 2
 }
 
 $profiles = @{
