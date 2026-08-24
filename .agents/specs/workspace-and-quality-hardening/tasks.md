@@ -243,18 +243,18 @@ Updated: 2026-08-24
   - Last result: `npm --prefix frontend run typecheck` exited 0 and `npm --prefix frontend run lint` exited 0; both completed without diagnostics.
   - Evidence: The active frontend TypeScript and ESLint checks passed through the documented npm prefix form. No source or generated tracked files changed during validation.
 
-- [ ] **T-019 Reconcile documentation and work registers (R19)**
+- [x] **T-019 Reconcile documentation and work registers (R19)**
   - Verify `docs/WORK.md` and `docs/HISTORY.md` state.
   - Verification: `powershell -NoProfile -Command "if ((Test-Path 'docs/WORK.md') -and (Test-Path 'docs/HISTORY.md')) { exit 0 } else { exit 1 }"`
   - Maps to: REQ-005, AC-005
   - Depends on: T-018
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for work-register reconciliation
   - Scope: Active and completed specification references in `docs/WORK.md` and `docs/HISTORY.md`
   - Expected: Each active spec has a truthful pending or completed status and completed evidence is not left in the active register
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record the cross-document status comparison
+  - Attempts: 1
+  - Last result: The required `docs/WORK.md` and `docs/HISTORY.md` existence check exited 0; the cross-document audit confirmed both pipeline specifications have completion entries in `HISTORY.md`, launch readiness remains pending, and workspace hardening is accurately recorded as T-001 through T-018 complete with T-019/T-020 in progress.
+  - Evidence: `docs/WORK.md` now lists only the genuinely unfinished active specifications with truthful task status. Completed pipeline work is not left in the active register and remains preserved in `docs/HISTORY.md`; workspace hardening stays active until the final Graphify task and history handoff.
 
 - [ ] **T-020 Synchronize knowledge graph index (R20)**
   - Run Graphify update to index all changes.

@@ -517,11 +517,16 @@ takedown enforcement, unrecoverable loss, or missing rollback cannot be informal
 
 Only genuinely unfinished specs remain under `.agents/specs/`:
 
-- `launch-readiness-checklist`: operator acceptance above.
-- `workspace-and-quality-hardening`: repository hygiene, developer tooling, VS Code, and verification hardening.
+- `launch-readiness-checklist`: operator acceptance above; all five implementation
+  tasks remain pending and were not executed by this slice.
+- `workspace-and-quality-hardening`: repository hygiene, developer tooling, VS
+  Code, and verification hardening; T-001 through T-018 are complete, while
+  T-019 documentation reconciliation and T-020 final Graphify synchronization
+  remain in progress.
 
-Both active specifications are approved planning records; their task checkboxes
-remain pending until implementation and verification evidence is recorded.
+Both active specifications remain approved planning records. The pipeline async
+and resource-efficiency specifications are resolved and recorded in
+`HISTORY.md`; they are not listed here as active work.
 
 Task boxes are planning aids, not completion evidence. Architecture, current
 code/tests, this file, and operator evidence determine status.
