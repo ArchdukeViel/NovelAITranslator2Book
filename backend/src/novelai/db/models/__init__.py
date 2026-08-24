@@ -10,7 +10,6 @@ from __future__ import annotations
 from novelai.db.models.activity import ActivityRecord
 from novelai.db.models.analytics_event import AnalyticsEvent
 from novelai.db.models.chapter import Chapter
-from novelai.db.models.contributor import ContributorCredential, ContributorUsageLedger
 from novelai.db.models.genre import Genre, novel_genres
 from novelai.db.models.glossary import (
     NovelGlossaryAlias,
@@ -24,7 +23,7 @@ from novelai.db.models.jobs import CrawlJob, ProviderRequest, TranslationJob
 from novelai.db.models.notification import Notification, NotificationDelivery, NotificationPreference
 from novelai.db.models.novel import Novel
 from novelai.db.models.scheduler_runtime_state import SchedulerRuntimeState
-from novelai.db.models.system import AuditLog, ProviderCredential, ScheduledJobLease, SystemSetting
+from novelai.db.models.system import AuditLog, ProviderCredential, ProviderUsageLedger, ScheduledJobLease, SystemSetting
 from novelai.db.models.tag import Tag, novel_tags
 from novelai.db.models.takedown import TakedownRequest
 from novelai.db.models.users import (
@@ -44,8 +43,6 @@ __all__ = [
     "AnalyticsEvent",
     "AuditLog",
     "Chapter",
-    "ContributorCredential",
-    "ContributorUsageLedger",
     "CrawlJob",
     "EmailVerificationToken",
     "Genre",
@@ -63,6 +60,7 @@ __all__ = [
     "PasswordResetToken",
     "ProviderCredential",
     "ProviderRequest",
+    "ProviderUsageLedger",
     "ReadingHistory",
     "ReadingProgress",
     "Review",
@@ -84,8 +82,7 @@ REGISTERED_MODELS = (
     AuditLog,
     Chapter,
     CrawlJob,
-    ContributorCredential,
-    ContributorUsageLedger,
+    ProviderUsageLedger,
     EmailVerificationToken,
     Genre,
     LibraryItem,

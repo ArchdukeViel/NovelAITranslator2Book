@@ -11,13 +11,14 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from starlette.middleware.sessions import SessionMiddleware
 
+from novelai.api.auth.security import reset_public_rate_limits
 from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.dependencies import get_db_session
 from novelai.api.routers.user_contributions import router
 from novelai.config.settings import settings
 from novelai.db.base import Base
-from novelai.db.models.contributor import ContributorCredential, ContributorUsageLedger
+from novelai.db.models.system import ProviderCredential, ProviderUsageLedger
 from novelai.db.models.users import User
 from novelai.providers.gemini_provider import GeminiProvider
 
@@ -146,26 +147,53 @@ def test_contribution_api_masks_key_and_enforces_ownership_and_lifecycle(
         == "active"
     )
     assert client.delete(f"/api/user/contributions/{credential_id}", headers=_csrf(client)).status_code == 204
-    assert app.state.db_session.get(ContributorCredential, credential_id) is None
-    assert app.state.db_session.query(ContributorUsageLedger).count() == 1
+    assert app.state.db_session.get(ProviderCredential, credential_id) is None
+    assert app.state.db_session.query(ProviderUsageLedger).count() == 1
 
 
 def test_failed_validation_is_persisted_as_invalid_and_not_eligible(
     app: FastAPI, client: TestClient, monkeypatch
 ) -> None:
     async def invalid_validate(self: GeminiProvider, model: str | None = None, **kwargs: object) -> tuple[bool, str]:
-        del self, model, kwargs
-        return False, "invalid key"
+        del model, kwargs
+        return False, f"invalid key {self._explicit_api_key}"
 
     monkeypatch.setattr(GeminiProvider, "validate_connection", invalid_validate)
     _as_user(app, "first")
+    submitted_key = "bad-key"
     response = client.put(
         "/api/user/contributions",
-        json=_payload(client, key="bad-key"),
+        json=_payload(client, key=submitted_key),
         headers=_csrf(client),
     )
 
     assert response.status_code == 200
+    assert submitted_key not in response.text
     assert response.json()["validation_ok"] is False
     assert response.json()["credential"]["status"] == "invalid"
     assert response.json()["credential"]["validation_status"] == "failed"
+
+
+def test_contributor_validation_is_rate_limited_per_authenticated_user(
+    app: FastAPI, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def valid_validate(self: GeminiProvider, model: str | None = None, **kwargs: object) -> tuple[bool, str]:
+        del self, model, kwargs
+        return True, "valid"
+
+    monkeypatch.setattr(GeminiProvider, "validate_connection", valid_validate)
+    reset_public_rate_limits()
+    _as_user(app, "first")
+    try:
+        responses = [
+            client.put(
+                "/api/user/contributions",
+                json=_payload(client, key=f"router-rate-key-{index}"),
+                headers=_csrf(client),
+            )
+            for index in range(4)
+        ]
+    finally:
+        reset_public_rate_limits()
+
+    assert [response.status_code for response in responses] == [200, 200, 200, 429]

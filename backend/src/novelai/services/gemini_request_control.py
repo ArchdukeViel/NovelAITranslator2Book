@@ -22,6 +22,7 @@ class QuotaReservation:
     estimated_input_tokens: int
     estimated_output_tokens: int
     reserved_at: str
+    linked_reservation_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -292,6 +293,90 @@ class GeminiQuotaController:
                 "in_flight": self._inflight_count(events, now),
                 "today": {"requests": requests_today},
             }
+
+
+class CompositeGeminiQuotaController(GeminiQuotaController):
+    """Apply a shared project cap and a per-credential cap atomically enough.
+
+    A contributor key does not create a new provider quota domain merely by
+    existing.  The shared controller reserves project capacity first, then
+    the credential controller reserves the per-key allowance.  A failed
+    second reservation reconciles the first one immediately; provider
+    success/failure/timeout reconciliation fans out to both reservations.
+    """
+
+    def __init__(self, controllers: tuple[GeminiQuotaController, ...]) -> None:
+        if len(controllers) < 2:
+            raise ValueError("composite quota control requires project and credential controllers")
+        self._controllers = controllers
+
+    def reserve(
+        self,
+        *,
+        purpose: str,
+        model: str,
+        estimated_input_tokens: int,
+        estimated_output_tokens: int,
+    ) -> QuotaReservation | QuotaRejection:
+        reservations: list[QuotaReservation] = []
+        for controller in self._controllers:
+            decision = controller.reserve(
+                purpose=purpose,
+                model=model,
+                estimated_input_tokens=estimated_input_tokens,
+                estimated_output_tokens=estimated_output_tokens,
+            )
+            if isinstance(decision, QuotaRejection):
+                for reservation, reserved_controller in zip(reservations, self._controllers, strict=False):
+                    reserved_controller.reconcile(
+                        reservation,
+                        input_tokens=None,
+                        output_tokens=None,
+                        total_tokens=None,
+                        success=False,
+                    )
+                return decision
+            reservations.append(decision)
+
+        return QuotaReservation(
+            reservation_id=uuid.uuid4().hex,
+            estimated_input_tokens=max(1, int(estimated_input_tokens)),
+            estimated_output_tokens=max(1, int(estimated_output_tokens)),
+            reserved_at=reservations[0].reserved_at,
+            linked_reservation_ids=tuple(reservation.reservation_id for reservation in reservations),
+        )
+
+    def reconcile(
+        self,
+        reservation: QuotaReservation,
+        *,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        total_tokens: int | None = None,
+        success: bool,
+    ) -> None:
+        linked_ids = reservation.linked_reservation_ids
+        if len(linked_ids) != len(self._controllers):
+            return
+        for controller, linked_id in zip(self._controllers, linked_ids, strict=True):
+            controller.reconcile(
+                QuotaReservation(
+                    reservation_id=linked_id,
+                    estimated_input_tokens=reservation.estimated_input_tokens,
+                    estimated_output_tokens=reservation.estimated_output_tokens,
+                    reserved_at=reservation.reserved_at,
+                ),
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+                success=success,
+            )
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "project": self._controllers[0].snapshot(),
+            "credential": self._controllers[1].snapshot(),
+        }
 
 
 class RedisGeminiQuotaController(GeminiQuotaController):

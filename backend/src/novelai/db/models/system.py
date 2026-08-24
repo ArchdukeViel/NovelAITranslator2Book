@@ -1,14 +1,16 @@
-"""System-level ORM models: audit logs and settings.
+"""System-level ORM models and the unified provider credential ledger.
 
 AuditLog records every dangerous owner action for accountability.
 SystemSetting is a key/value store for runtime configuration.
+ProviderCredential and ProviderUsageLedger form the single credential and
+accounting boundary for owner-managed and user-contributed provider keys.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from novelai.db.base import Base
@@ -80,14 +82,25 @@ class ScheduledJobLease(Base):
 
 
 class ProviderCredential(Base):
-    """Encrypted owner-managed provider API credential.
+    """Unified encrypted provider credential registry.
 
+    Every credential is stored once, tied to its authenticated owner when
+    known, and carries independent owner-job and contributor-pool eligibility.
     Full keys are stored only as encrypted ciphertext. API responses expose
     safe metadata such as fingerprint and last4 only.
     """
 
     __tablename__ = "provider_credentials"
-    __table_args__ = (UniqueConstraint("provider", name="uq_provider_credentials_provider"),)
+    __table_args__ = (
+        Index("ix_provider_credentials_owner_provider", "credential_owner_user_id", "provider"),
+        Index(
+            "ix_provider_credentials_pool_status",
+            "provider",
+            "contributor_pool_eligible",
+            "status",
+            "last_used_at",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     provider: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
@@ -96,10 +109,21 @@ class ProviderCredential(Base):
     key_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     last4: Mapped[str] = mapped_column(String(16), nullable=False)
     is_active: Mapped[bool] = mapped_column(nullable=False, default=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", index=True)
     validation_status: Mapped[str] = mapped_column(String(32), nullable=False, default="unchecked")
     validation_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    credential_owner_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="owner_admin")
+    owner_job_eligible: Mapped[bool] = mapped_column(nullable=False, default=True)
+    contributor_pool_eligible: Mapped[bool] = mapped_column(nullable=False, default=False)
+    consent_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consent_revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    failure_count: Mapped[int] = mapped_column(nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow
     )
@@ -107,6 +131,51 @@ class ProviderCredential(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow, onupdate=_utcnow
     )
     last_validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     def __repr__(self) -> str:
-        return f"<ProviderCredential id={self.id} provider={self.provider!r} active={self.is_active}>"
+        return (
+            f"<ProviderCredential id={self.id} provider={self.provider!r} "
+            f"owner={self.credential_owner_user_id} status={self.status!r}>"
+        )
+
+
+class ProviderUsageLedger(Base):
+    """Sanitized accounting for every credential-backed provider request."""
+
+    __tablename__ = "contributor_usage_ledger"
+    __table_args__ = (
+        Index("ix_contributor_usage_ledger_credential_created", "credential_id", "created_at"),
+        Index("ix_contributor_usage_ledger_owner_created", "credential_owner_user_id", "created_at"),
+        Index("ix_contributor_usage_ledger_requesting_created", "requesting_user_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Deliberately not a foreign key: permanent credential deletion preserves
+    # the historical accounting identity in this ledger.
+    credential_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    credential_owner_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    requesting_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    provider_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_model: Mapped[str] = mapped_column(String(255), nullable=False)
+    request_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    job_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    activity_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contribution_mode: Mapped[str] = mapped_column(String(64), nullable=False, default="contributor")
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    estimated_input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    estimated_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    estimated_cost_usd: Mapped[float | None] = mapped_column(nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow, index=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<ProviderUsageLedger id={self.id} credential_id={self.credential_id!r} status={self.status!r}>"

@@ -241,6 +241,53 @@ def test_gemini_provider_normalizes_daily_quota_exhaustion(monkeypatch: pytest.M
     assert caught.value.provider_model == GEMINI_DEFAULT_MODEL
 
 
+def test_gemini_provider_prioritizes_maximum_daily_quota_over_context_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {
+        "raise": _FakeGeminiError(
+            "429 RESOURCE_EXHAUSTED: Maximum requests per day exceeded",
+        )
+    }
+
+    with pytest.raises(ProviderError) as caught:
+        _run_gemini_with_state(monkeypatch, state)
+
+    assert caught.value.provider_error_code == ProviderErrorCode.QUOTA_EXHAUSTED
+
+
+def test_gemini_provider_prioritizes_maximum_rpm_over_context_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {
+        "raise": _FakeGeminiError(
+            "429 RESOURCE_EXHAUSTED: Maximum requests per minute exceeded",
+        )
+    }
+
+    with pytest.raises(ProviderError) as caught:
+        _run_gemini_with_state(monkeypatch, state)
+
+    assert caught.value.provider_error_code == ProviderErrorCode.RATE_LIMITED
+
+
+def test_gemini_provider_keeps_actual_context_errors_as_context_too_large(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {
+        "raise": _FakeGeminiError(
+            "400 INVALID_ARGUMENT: input token count exceeds the context window",
+            status_code=400,
+            code="INVALID_ARGUMENT",
+        )
+    }
+
+    with pytest.raises(ProviderError) as caught:
+        _run_gemini_with_state(monkeypatch, state)
+
+    assert caught.value.provider_error_code == ProviderErrorCode.CONTEXT_TOO_LARGE
+
+
 def test_gemini_provider_normalizes_unknown_provider_error(monkeypatch: pytest.MonkeyPatch) -> None:
     state = {"raise": RuntimeError("provider transport exploded")}
 

@@ -29,6 +29,7 @@ _PUBLIC_RATE_LIMITS = {
     "history_record": 120,
     "review_mutation": 20,
     "request_create": 10,
+    "contributor_validation": 3,
 }
 _rate_hits: dict[str, list[float]] = {}
 _public_rate_limiter: RateLimiter | None = None

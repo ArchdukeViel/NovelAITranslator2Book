@@ -37,6 +37,8 @@ class ProviderCredentialUpdateRequest(BaseModel):
     provider_model: str | None = None
     is_active: bool | None = None
     notes: str | None = None
+    owner_job_eligible: bool | None = None
+    contributor_pool_eligible: bool | None = None
 
 
 class ProviderFallbackPolicyRequest(BaseModel):

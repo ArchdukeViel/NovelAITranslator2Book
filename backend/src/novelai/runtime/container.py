@@ -273,10 +273,10 @@ class Container:
     @staticmethod
     def _cleanup_contributor_usage(retention_days: int) -> int:
         from novelai.db.engine import session_scope
-        from novelai.services.contributor_credentials import ContributorCredentialService
+        from novelai.services.provider_credentials import ProviderCredentialService
 
         with session_scope() as db_session:
-            return ContributorCredentialService(db_session).cleanup_old_usage(ttl_days=retention_days)
+            return ProviderCredentialService(db_session).cleanup_old_usage(ttl_days=retention_days)
 
     @property
     def operator_alert_service(self) -> OperatorAlertService:

@@ -308,16 +308,37 @@ class GeminiProvider(TranslationProvider):
             marker in combined for marker in ("not found", "unsupported model", "model is not supported", "unavailable")
         ):
             return ProviderErrorCode.MODEL_UNAVAILABLE, retry_after, details
-        if any(marker in combined for marker in ("context", "token", "too large", "maximum", "max output")):
-            return ProviderErrorCode.CONTEXT_TOO_LARGE, retry_after, details
         if "429" in combined or "resource_exhausted" in combined or "rate limit" in combined or "quota" in combined:
             quota_markers = ("daily", "per day", "quota exceeded", "quota exhausted", "billing", "free tier")
-            rate_markers = ("rpm", "per minute", "rate limit", "retrydelay", "retry delay")
+            rate_markers = (
+                "rpm",
+                "per minute",
+                "rate limit",
+                "retrydelay",
+                "retry delay",
+                "too many requests",
+            )
             if any(marker in combined for marker in quota_markers) and not any(
                 marker in combined for marker in rate_markers
             ):
                 return ProviderErrorCode.QUOTA_EXHAUSTED, retry_after, details
             return ProviderErrorCode.RATE_LIMITED, retry_after, details
+        if any(
+            marker in combined
+            for marker in (
+                "context",
+                "context window",
+                "context length",
+                "input token",
+                "maximum number of tokens",
+                "max output",
+                "maximum output",
+                "too many tokens",
+                "too large",
+                "token limit",
+            )
+        ):
+            return ProviderErrorCode.CONTEXT_TOO_LARGE, retry_after, details
         return ProviderErrorCode.UNKNOWN, retry_after, details
 
     def _provider_error_from_exception(self, exc: BaseException, *, model_name: str) -> ProviderError:
