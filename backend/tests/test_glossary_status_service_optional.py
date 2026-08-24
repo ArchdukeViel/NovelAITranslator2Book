@@ -81,7 +81,12 @@ def test_every_status_transition_writes_decision_event(session, target_status: s
         actor_user_id=99,
     )
 
-    event = session.query(NovelGlossaryDecisionEvent).filter_by(novel_id=updated.id).order_by(NovelGlossaryDecisionEvent.id.desc()).first()
+    event = (
+        session.query(NovelGlossaryDecisionEvent)
+        .filter_by(novel_id=updated.id)
+        .order_by(NovelGlossaryDecisionEvent.id.desc())
+        .first()
+    )
     assert event is not None
     assert event.actor_user_id == 99
     assert json.loads(event.old_value_json) == {"glossary_status": "glossary_pending"}

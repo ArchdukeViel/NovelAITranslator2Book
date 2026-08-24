@@ -42,6 +42,7 @@ def test_register_and_get_by_key() -> None:
 
 def test_list_adapters_is_sorted() -> None:
     registry = AdapterRegistry()
+
     class BetaSource(_FakeSource):
         source_key = "beta"
 

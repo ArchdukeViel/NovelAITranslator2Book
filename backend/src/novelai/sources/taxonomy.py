@@ -66,6 +66,7 @@ KAKUYOMU_GENRE_MAP: dict[str, str] = {
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def map_genre(source_text: str | None, genre_map: dict[str, str]) -> str | None:
     """Map a source genre text to an internal slug.
 
@@ -101,6 +102,7 @@ def normalize_keywords(raw_items: Any) -> list[str]:
 
     if isinstance(raw_items, str):
         import re
+
         parts = re.split(r"[,、\s]+", raw_items)
         return normalize_keywords(parts)
 

@@ -30,7 +30,7 @@ def upgrade() -> None:
     op.create_index(op.f("ix_scheduled_job_leases_expires_at"), "scheduled_job_leases", ["expires_at"])
     op.execute("ALTER TABLE public.scheduled_job_leases ENABLE ROW LEVEL SECURITY")
     op.execute(
-        "CREATE POLICY \"Owner has full access to scheduled_job_leases\" "
+        'CREATE POLICY "Owner has full access to scheduled_job_leases" '
         "ON public.scheduled_job_leases FOR ALL TO authenticated "
         "USING ((SELECT private.is_owner())) WITH CHECK ((SELECT private.is_owner()))"
     )

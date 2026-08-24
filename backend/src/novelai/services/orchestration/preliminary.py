@@ -126,7 +126,9 @@ def chapter_rows(metadata: dict[str, Any]) -> list[dict[str, Any]]:
         if not isinstance(chapter, dict):
             continue
         row = dict(chapter)
-        date_added = chapter.get("date_added") or chapter.get("updated_at") or chapter.get("published_at") or fallback_date
+        date_added = (
+            chapter.get("date_added") or chapter.get("updated_at") or chapter.get("published_at") or fallback_date
+        )
         if date_added:
             row.setdefault("date_added", date_added)
         rows.append(row)

@@ -32,9 +32,7 @@ def compare_models(
     most_expensive = max(estimates, key=lambda estimate: estimate.estimated_total_cost_usd)
     difference = most_expensive.estimated_total_cost_usd - cheapest.estimated_total_cost_usd
     percentage_difference = (
-        (difference / cheapest.estimated_total_cost_usd) * 100
-        if cheapest.estimated_total_cost_usd > 0
-        else 0.0
+        (difference / cheapest.estimated_total_cost_usd) * 100 if cheapest.estimated_total_cost_usd > 0 else 0.0
     )
 
     return CostComparison(

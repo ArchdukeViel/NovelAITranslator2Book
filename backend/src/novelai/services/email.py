@@ -38,11 +38,9 @@ class AuthEmailMessage:
 
 
 class AuthEmailService(Protocol):
-    def send_password_reset_email(self, *, email: str, token: str) -> EmailDeliveryResult:
-        ...
+    def send_password_reset_email(self, *, email: str, token: str) -> EmailDeliveryResult: ...
 
-    def send_email_verification_email(self, *, email: str, token: str) -> EmailDeliveryResult:
-        ...
+    def send_email_verification_email(self, *, email: str, token: str) -> EmailDeliveryResult: ...
 
 
 def _recipient_fingerprint(email: str) -> str:

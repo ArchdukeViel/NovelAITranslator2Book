@@ -33,5 +33,3 @@ class DummyProvider(TranslationProvider):
 
     async def validate_connection(self, model: str | None = None, **kwargs: Any) -> tuple[bool, str]:
         return True, "Dummy provider does not require an API key."
-
-

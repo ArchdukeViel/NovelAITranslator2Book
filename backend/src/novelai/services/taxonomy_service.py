@@ -33,14 +33,14 @@ class TaxonomyService:
             return None
 
         genre_slugs = [g.slug for g in novel.genres if g.is_active]
-        genre_slugs.sort(key=lambda s: next(
-            (g.display_order for g in novel.genres if g.slug == s), 999
-        ))
+        genre_slugs.sort(key=lambda s: next((g.display_order for g in novel.genres if g.slug == s), 999))
 
         tag_names = sorted({t.name for t in novel.tags})
         return genre_slugs, tag_names
 
-    def set_taxonomy(self, novel_ref: str, genre_slugs: list[str], raw_tags: list[str]) -> tuple[list[str], list[str]] | None:
+    def set_taxonomy(
+        self, novel_ref: str, genre_slugs: list[str], raw_tags: list[str]
+    ) -> tuple[list[str], list[str]] | None:
         """Replace admin-managed taxonomy assignments for a novel.
 
         Returns (genre_slugs, tag_names) after the change, or None if
@@ -170,9 +170,7 @@ class TaxonomyService:
         return {
             row.genre_id: row.assigned_by
             for row in self._session.execute(
-                select(novel_genres.c.genre_id, novel_genres.c.assigned_by).where(
-                    novel_genres.c.novel_id == novel_id
-                )
+                select(novel_genres.c.genre_id, novel_genres.c.assigned_by).where(novel_genres.c.novel_id == novel_id)
             )
         }
 
@@ -180,9 +178,7 @@ class TaxonomyService:
         return {
             row.tag_id: row.assigned_by
             for row in self._session.execute(
-                select(novel_tags.c.tag_id, novel_tags.c.assigned_by).where(
-                    novel_tags.c.novel_id == novel_id
-                )
+                select(novel_tags.c.tag_id, novel_tags.c.assigned_by).where(novel_tags.c.novel_id == novel_id)
             )
         }
 

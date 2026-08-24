@@ -411,7 +411,9 @@ class GlossaryProviderSuggestionService:
                     if (number := chapter_number(storage_id)) is not None and low <= number <= high
                 ]
             else:
-                warnings.append("Selected chapter range was incomplete; provider suggestion used latest saved chapters.")
+                warnings.append(
+                    "Selected chapter range was incomplete; provider suggestion used latest saved chapters."
+                )
                 scope = "latest"
 
         if scope == "latest":
@@ -424,7 +426,9 @@ class GlossaryProviderSuggestionService:
                 reverse=True,
             )
         else:
-            candidates.sort(key=lambda storage_id: (chapter_number(storage_id) is None, chapter_number(storage_id) or 0, storage_id))
+            candidates.sort(
+                key=lambda storage_id: (chapter_number(storage_id) is None, chapter_number(storage_id) or 0, storage_id)
+            )
         if len(candidates) > max_chapters:
             warnings.append(
                 f"Provider context scanned {max_chapters} of {len(candidates)} saved chapters due to the safety cap."
@@ -476,7 +480,8 @@ class GlossaryProviderSuggestionService:
             "Use Reviewing candidates only. Avoid common words, duplicates, long excerpts, provider/model names, and uncertain invented source terms.",
             "Use compact chapter references instead of copyrighted excerpts. Return an empty candidates array if there are no good candidates.",
             f"Novel id: {novel_id}; storage novel id: {storage_novel_id}; max candidates: {max_candidates}.",
-            "Existing glossary terms to avoid or merge:\n" + ("\n".join(existing_lines) if existing_lines else "- none"),
+            "Existing glossary terms to avoid or merge:\n"
+            + ("\n".join(existing_lines) if existing_lines else "- none"),
         ]
         for chapter in chapters:
             sections.append(
@@ -820,7 +825,7 @@ def _coerce_confidence(value: Any) -> float | None:
         return None
     try:
         confidence = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return round(max(0.0, min(1.0, confidence)), 3)
 

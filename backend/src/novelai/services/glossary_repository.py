@@ -80,9 +80,7 @@ class GlossaryRepository:
         public_visible: bool | None = None,
     ) -> list[NovelGlossaryEntry]:
         """List global-scope entries with optional filters."""
-        stmt = select(NovelGlossaryEntry).where(
-            NovelGlossaryEntry.scope == NovelGlossaryEntry.SCOPE_GLOBAL
-        )
+        stmt = select(NovelGlossaryEntry).where(NovelGlossaryEntry.scope == NovelGlossaryEntry.SCOPE_GLOBAL)
         if status is not None:
             stmt = stmt.where(NovelGlossaryEntry.status == status)
         if term_type is not None:
@@ -261,7 +259,9 @@ class GlossaryRepository:
         )
         # Increment glossary_revision when approving an entry, or when an
         # approved entry is deprecated or rejected (the active set changed).
-        if (status == "approved" or (old_status == "approved" and status in {"deprecated", "rejected"})) and novel_id is not None:
+        if (
+            status == "approved" or (old_status == "approved" and status in {"deprecated", "rejected"})
+        ) and novel_id is not None:
             self._increment_glossary_revision(novel_id)
         self.db.flush()
         return entry

@@ -41,13 +41,13 @@ def normalize_source_blocks(blocks: Any) -> list[dict[str, Any]]:
         line_index += 1
         source_order += 1
         normalized.append(
-                {
-                    "type": "line",
-                    "source_block_id": f"s{line_index:04d}",
-                    "paragraph_id": f"p{line_index:04d}",
-                    "text": text.strip("\n"),
-                    "source_order": source_order,
-                }
+            {
+                "type": "line",
+                "source_block_id": f"s{line_index:04d}",
+                "paragraph_id": f"p{line_index:04d}",
+                "text": text.strip("\n"),
+                "source_order": source_order,
+            }
         )
         previous_type = "line"
 
@@ -56,7 +56,9 @@ def normalize_source_blocks(blocks: Any) -> list[dict[str, Any]]:
     return normalized
 
 
-def source_blocks_from_text_blocks(text_blocks: list[str], *, add_break_between_blocks: bool = False) -> list[dict[str, Any]]:
+def source_blocks_from_text_blocks(
+    text_blocks: list[str], *, add_break_between_blocks: bool = False
+) -> list[dict[str, Any]]:
     """Build source-layout blocks from source text units."""
     raw_blocks: list[dict[str, Any]] = []
     for block in text_blocks:

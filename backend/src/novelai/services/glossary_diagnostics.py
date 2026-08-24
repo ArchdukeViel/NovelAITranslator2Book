@@ -66,9 +66,11 @@ def _extract_glossary_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
         return {
             "glossary_revision": metadata.get("glossary_revision"),
             "glossary_hash": metadata.get("glossary_hash"),
-            "term_count_available": metadata.get("glossary_term_count_available") or metadata.get("glossary_term_count", 0),
+            "term_count_available": metadata.get("glossary_term_count_available")
+            or metadata.get("glossary_term_count", 0),
             "term_count_injected": metadata.get("glossary_term_count_injected", 0),
-            "prompt_block_truncated": metadata.get("glossary_prompt_truncated") or metadata.get("prompt_block_truncated"),
+            "prompt_block_truncated": metadata.get("glossary_prompt_truncated")
+            or metadata.get("prompt_block_truncated"),
             "warnings": metadata.get("glossary_warnings") or metadata.get("warnings", []),
             "conflicts": metadata.get("glossary_conflicts") or metadata.get("conflicts", []),
         }

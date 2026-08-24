@@ -74,6 +74,7 @@ novel_tags = Table(
 # Tag model
 # ---------------------------------------------------------------------------
 
+
 class Tag(Base):
     """A tag — open-vocabulary label for novel classification."""
 

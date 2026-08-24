@@ -10,7 +10,7 @@ def _parse_utc_iso(value: str) -> datetime | None:
     """Parse an ISO-8601 UTC timestamp, tolerating 'Z' and +00:00."""
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
+    except ValueError, AttributeError:
         return None
     if parsed.tzinfo is None:
         return None

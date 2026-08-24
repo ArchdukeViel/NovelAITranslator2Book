@@ -109,12 +109,18 @@ def _seed_novel(db_session, slug: str, title: str = "Test Novel") -> Novel:
 
 
 def _seed_genre(
-    db_session, slug: str, name_ja: str,
-    display_order: int = 0, is_active: bool = True,
+    db_session,
+    slug: str,
+    name_ja: str,
+    display_order: int = 0,
+    is_active: bool = True,
 ) -> Genre:
     genre = Genre(
-        slug=slug, name_ja=name_ja, name_en=slug,
-        display_order=display_order, is_active=is_active,
+        slug=slug,
+        name_ja=name_ja,
+        name_en=slug,
+        display_order=display_order,
+        is_active=is_active,
     )
     db_session.add(genre)
     db_session.flush()
@@ -122,7 +128,10 @@ def _seed_genre(
 
 
 def _assign_genre_as(
-    db_session, novel_id: int, genre_id: int, assigned_by: str = "scraper",
+    db_session,
+    novel_id: int,
+    genre_id: int,
+    assigned_by: str = "scraper",
 ) -> None:
     db_session.execute(
         novel_genres.insert().values(
@@ -142,8 +151,11 @@ def _seed_tag(db_session, name: str) -> Tag:
 
 
 def _assign_tag_as(
-    db_session, novel_id: int, tag_id: int,
-    assigned_by: str = "scraper", origin: str = "scraper",
+    db_session,
+    novel_id: int,
+    tag_id: int,
+    assigned_by: str = "scraper",
+    origin: str = "scraper",
 ) -> None:
     db_session.execute(
         novel_tags.insert().values(
@@ -175,7 +187,9 @@ class TestAdminTaxonomyAuth:
         assert resp.status_code == 401
 
     def test_get_with_owner(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """Owner can GET taxonomy (returns 200 or 404 for missing novel)."""
         resp = owner_client.get("/api/admin/novels/n001/taxonomy")
@@ -193,7 +207,9 @@ class TestAdminTaxonomyGet:
         assert "not found" in resp.json()["detail"].lower()
 
     def test_get_empty_taxonomy(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """GET returns empty lists when no genres/tags assigned."""
         _seed_novel(db_session, "n001")
@@ -205,7 +221,9 @@ class TestAdminTaxonomyGet:
         assert data["tags"] == []
 
     def test_get_returns_genre_slugs(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """GET returns assigned genre slugs."""
         novel = _seed_novel(db_session, "n001")
@@ -216,7 +234,9 @@ class TestAdminTaxonomyGet:
         assert resp.json()["genres"] == ["fantasy"]
 
     def test_get_returns_tag_names(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """GET returns assigned tag names."""
         novel = _seed_novel(db_session, "n001")
@@ -227,7 +247,9 @@ class TestAdminTaxonomyGet:
         assert resp.json()["tags"] == ["魔法"]
 
     def test_get_filters_inactive_genres(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """GET excludes inactive genres."""
         novel = _seed_novel(db_session, "n001")
@@ -253,7 +275,9 @@ class TestAdminTaxonomyPut:
         assert "not found" in resp.json()["detail"].lower()
 
     def test_put_unknown_genre_slug(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """PUT returns 422 for unknown genre slug."""
         _seed_novel(db_session, "n001")
@@ -265,7 +289,9 @@ class TestAdminTaxonomyPut:
         assert "unknown" in resp.json()["detail"].lower()
 
     def test_put_inactive_genre_slug(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """PUT returns 422 for inactive genre slug."""
         _seed_novel(db_session, "n001")
@@ -278,7 +304,9 @@ class TestAdminTaxonomyPut:
         assert "inactive" in resp.json()["detail"].lower()
 
     def test_put_upserts_new_tag(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """PUT creates tag that doesn't exist yet and assigns it."""
         _seed_novel(db_session, "n001")
@@ -293,7 +321,9 @@ class TestAdminTaxonomyPut:
         assert tag is not None
 
     def test_put_reuses_existing_tag(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """PUT reuses existing tag without creating duplicate."""
         _seed_novel(db_session, "n001")
@@ -309,7 +339,9 @@ class TestAdminTaxonomyPut:
         assert count == 1
 
     def test_put_assigns_genres_with_admin_flag(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """PUT assigns genres with assigned_by='admin'."""
         novel = _seed_novel(db_session, "n001")
@@ -327,7 +359,9 @@ class TestAdminTaxonomyPut:
         assert row[0] == "admin"
 
     def test_put_assigns_tags_with_admin_origin(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """PUT assigns tags with assigned_by='admin' and origin='admin'."""
         novel = _seed_novel(db_session, "n001")
@@ -336,9 +370,7 @@ class TestAdminTaxonomyPut:
             json={"genre_slugs": [], "tags": ["admin-tag"]},
         )
         row = db_session.execute(
-            text(
-                "SELECT assigned_by, origin FROM novel_tags WHERE novel_id = :nid"
-            ),
+            text("SELECT assigned_by, origin FROM novel_tags WHERE novel_id = :nid"),
             {"nid": novel.id},
         ).one_or_none()
         assert row is not None
@@ -346,7 +378,9 @@ class TestAdminTaxonomyPut:
         assert row[1] == "admin"
 
     def test_put_preserves_scraper_assignments(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """PUT does not delete scraper-assigned genres/tags."""
         novel = _seed_novel(db_session, "n001")
@@ -363,7 +397,7 @@ class TestAdminTaxonomyPut:
         )
         assert resp.status_code == 200
         data = resp.json()
-        #scraper-genre should still be present (combined view)
+        # scraper-genre should still be present (combined view)
         assert "scraper-genre" in data["genres"]
         assert "scraper-tag" in data["tags"]
 
@@ -391,9 +425,14 @@ class TestAdminTaxonomyPut:
         assert "fantasy" in resp.json()["genres"]
 
         # Only one row exists for this novel+genre
-        count = db_session.query(novel_genres).filter_by(
-            novel_id=novel.id, genre_id=genre.id,
-        ).count()
+        count = (
+            db_session.query(novel_genres)
+            .filter_by(
+                novel_id=novel.id,
+                genre_id=genre.id,
+            )
+            .count()
+        )
         assert count == 1
 
         # Row should now be assigned_by="admin" (promoted)
@@ -444,7 +483,9 @@ class TestAdminTaxonomyPut:
         assert row2[1] == "admin"
 
     def test_put_is_idempotent(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """Repeated PUT with same body produces identical result."""
         _seed_novel(db_session, "n001")
@@ -457,7 +498,9 @@ class TestAdminTaxonomyPut:
         assert resp1.json() == resp2.json()
 
     def test_put_replaces_prior_admin_assignments(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """PUT replaces previous admin assignments with new ones."""
         _seed_novel(db_session, "n001")
@@ -480,7 +523,9 @@ class TestAdminTaxonomyPut:
         assert "romance" in data["genres"]
 
     def test_put_handles_empty_arrays(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """PUT with empty arrays clears previous admin assignments."""
         novel = _seed_novel(db_session, "n001")
@@ -511,7 +556,9 @@ class TestAdminTaxonomyPut:
         assert len(admin_rows) == 0
 
     def test_put_normalizes_tags(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """PUT trims whitespace, drops empty strings, deduplicates tags."""
         _seed_novel(db_session, "n001")
@@ -526,7 +573,9 @@ class TestAdminTaxonomyPut:
         assert resp.json()["tags"] == ["dupe", "spaced"]
 
     def test_put_returns_combined_scraper_and_admin(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """PUT response includes both scraper and admin assignments."""
         novel = _seed_novel(db_session, "n001")
@@ -550,7 +599,9 @@ class TestPromotionDurability:
     """Promoted taxonomy items must survive scraper re-scrape."""
 
     def test_promoted_genre_survives_rescrape(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """Admin promotes a scraper genre, then scraper re-scrape drops that genre.
         The promoted row (assigned_by='admin') must survive."""
@@ -579,7 +630,8 @@ class TestPromotionDurability:
 
         # Scraper re-scrape: source no longer lists fantasy (empty genre)
         persist_taxonomy_assignments(
-            db_session, novel.id,
+            db_session,
+            novel.id,
             {"genre_slug": None, "source_keywords": [], "source_tags": []},
         )
         db_session.commit()
@@ -598,7 +650,9 @@ class TestPromotionDurability:
         assert assigned_by_after == "admin"
 
     def test_promoted_tag_survives_rescrape(
-        self, owner_client: TestClient, db_session,
+        self,
+        owner_client: TestClient,
+        db_session,
     ) -> None:
         """Admin promotes a scraper tag, then scraper re-scrape drops that tag.
         The promoted row must survive."""
@@ -629,7 +683,8 @@ class TestPromotionDurability:
 
         # Scraper re-scrape: source no longer lists the tag
         persist_taxonomy_assignments(
-            db_session, novel.id,
+            db_session,
+            novel.id,
             {"genre_slug": None, "source_keywords": [], "source_tags": []},
         )
         db_session.commit()

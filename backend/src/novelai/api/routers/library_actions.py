@@ -218,10 +218,14 @@ async def diff_source_metadata_history_snapshots(
 ) -> SourceMetadataSnapshotDiff:
     try:
         from_snapshot_entry, from_metadata, from_warnings = _load_sanitized_metadata_snapshot(
-            storage, novel_id, from_snapshot,
+            storage,
+            novel_id,
+            from_snapshot,
         )
         to_snapshot_entry, to_metadata, to_warnings = _load_sanitized_metadata_snapshot(
-            storage, novel_id, to_snapshot,
+            storage,
+            novel_id,
+            to_snapshot,
         )
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid snapshot id") from None
@@ -262,10 +266,7 @@ async def inspect_source_metadata_snapshot_detail(
     if raw_metadata is None:
         raw_metadata = {}
     sanitized_metadata, metadata_keys, sanitize_warnings = _sanitize_metadata_snapshot(raw_metadata)
-    warnings = sorted(
-        set(sanitize_warnings)
-        | set(_source_metadata_warnings(raw_metadata, metadata_missing=False))
-    )
+    warnings = sorted(set(sanitize_warnings) | set(_source_metadata_warnings(raw_metadata, metadata_missing=False)))
     return SourceMetadataSnapshotDetail(
         novel_id=novel_id,
         snapshot_id=str(snapshot["snapshot_id"]),
@@ -343,13 +344,15 @@ async def get_reader_novel(
     chapters = []
     for chapter in metadata_chapters(meta):
         chapter_id = str(chapter.get("id"))
-        chapters.append({
-            "id": chapter_id,
-            "num": chapter.get("num"),
-            "title": chapter.get("translated_title") or chapter.get("title"),
-            "source_title": chapter.get("title"),
-            "translated": chapter_id in translated_ids,
-        })
+        chapters.append(
+            {
+                "id": chapter_id,
+                "num": chapter.get("num"),
+                "title": chapter.get("translated_title") or chapter.get("title"),
+                "source_title": chapter.get("title"),
+                "translated": chapter_id in translated_ids,
+            }
+        )
 
     return {
         "novel_id": novel_id,
@@ -430,8 +433,7 @@ async def list_novel_checkpoints(
                 ChapterCheckpoints(
                     chapter_id=chapter_id,
                     checkpoints=[
-                        ChapterCheckpointFile(name=cp["checkpoint_name"], timestamp=cp.get("timestamp"))
-                        for cp in cps
+                        ChapterCheckpointFile(name=cp["checkpoint_name"], timestamp=cp.get("timestamp")) for cp in cps
                     ],
                 )
             )

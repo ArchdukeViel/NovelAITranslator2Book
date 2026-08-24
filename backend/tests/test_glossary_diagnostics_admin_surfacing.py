@@ -34,14 +34,16 @@ class TestNormalizer:
         assert r["term_count_injected"] == 3
 
     def test_with_injection_service_metadata(self) -> None:
-        r = normalize_glossary_diagnostics({
-            "glossary_injection": {
-                "terms_available": 15,
-                "terms_injected": 12,
-                "truncated": True,
-                "warnings": ["long_term_warning"],
+        r = normalize_glossary_diagnostics(
+            {
+                "glossary_injection": {
+                    "terms_available": 15,
+                    "terms_injected": 12,
+                    "truncated": True,
+                    "warnings": ["long_term_warning"],
+                }
             }
-        })
+        )
         assert r["diagnostics_available"] is True
         assert r["term_count_available"] == 15
         assert r["term_count_injected"] == 12
@@ -60,36 +62,44 @@ class TestNormalizer:
 
     def test_warnings_list_bounded(self) -> None:
         many_warnings = [f"warning_{i}" for i in range(100)]
-        r = normalize_glossary_diagnostics({
-            "glossary_term_count": 1,
-            "glossary_warnings": many_warnings,
-        })
+        r = normalize_glossary_diagnostics(
+            {
+                "glossary_term_count": 1,
+                "glossary_warnings": many_warnings,
+            }
+        )
         assert len(r["warnings"]) <= MAX_DIAGNOSTIC_ITEMS
 
     def test_conflicts_list_bounded(self) -> None:
         many = [f"conflict_{i}" for i in range(100)]
-        r = normalize_glossary_diagnostics({
-            "glossary_term_count": 1,
-            "glossary_conflicts": many,
-        })
+        r = normalize_glossary_diagnostics(
+            {
+                "glossary_term_count": 1,
+                "glossary_conflicts": many,
+            }
+        )
         assert len(r["conflicts"]) <= MAX_DIAGNOSTIC_ITEMS
 
     def test_overlong_terms_truncated(self) -> None:
-        r = normalize_glossary_diagnostics({
-            "glossary_term_count": 1,
-            "glossary_warnings": ["x" * 100],
-        })
+        r = normalize_glossary_diagnostics(
+            {
+                "glossary_term_count": 1,
+                "glossary_warnings": ["x" * 100],
+            }
+        )
         assert len(r["warnings"][0]) <= MAX_TERM_LENGTH
 
     def test_serializable(self) -> None:
-        r = normalize_glossary_diagnostics({
-            "glossary_term_count": 5,
-            "glossary_revision": 3,
-            "glossary_hash": "h1",
-            "glossary_term_count_injected": 4,
-            "glossary_conflicts": ["term_a", "term_b"],
-            "glossary_warnings": ["warning_1"],
-        })
+        r = normalize_glossary_diagnostics(
+            {
+                "glossary_term_count": 5,
+                "glossary_revision": 3,
+                "glossary_hash": "h1",
+                "glossary_term_count_injected": 4,
+                "glossary_conflicts": ["term_a", "term_b"],
+                "glossary_warnings": ["warning_1"],
+            }
+        )
         json.dumps(r)
         assert r["conflict_count"] == 2
         assert r["warning_count"] == 1
@@ -106,10 +116,18 @@ class TestAggregation:
         assert r["chapters_missing_diagnostics"] == 0
 
     def test_single_chapter(self) -> None:
-        r = aggregate_glossary_diagnostics([
-            {"diagnostics_available": True, "term_count_available": 10, "term_count_injected": 8,
-             "conflict_count": 1, "warning_count": 2, "prompt_block_truncated": False},
-        ])
+        r = aggregate_glossary_diagnostics(
+            [
+                {
+                    "diagnostics_available": True,
+                    "term_count_available": 10,
+                    "term_count_injected": 8,
+                    "conflict_count": 1,
+                    "warning_count": 2,
+                    "prompt_block_truncated": False,
+                },
+            ]
+        )
         assert r["chapters_with_diagnostics"] == 1
         assert r["total_terms_available"] == 10
         assert r["total_terms_injected"] == 8
@@ -119,25 +137,49 @@ class TestAggregation:
         assert r["chapters_with_warnings"] == 1
 
     def test_mixed_available_and_unavailable(self) -> None:
-        r = aggregate_glossary_diagnostics([
-            {"diagnostics_available": True, "term_count_available": 5, "term_count_injected": 3,
-             "conflict_count": 0, "warning_count": 0, "prompt_block_truncated": False},
-            {"diagnostics_available": False},
-        ])
+        r = aggregate_glossary_diagnostics(
+            [
+                {
+                    "diagnostics_available": True,
+                    "term_count_available": 5,
+                    "term_count_injected": 3,
+                    "conflict_count": 0,
+                    "warning_count": 0,
+                    "prompt_block_truncated": False,
+                },
+                {"diagnostics_available": False},
+            ]
+        )
         assert r["chapters_with_diagnostics"] == 1
         assert r["chapters_missing_diagnostics"] == 1
         assert r["total_terms_available"] == 5
 
     def test_zero_injected_terms(self) -> None:
-        r = aggregate_glossary_diagnostics([
-            {"diagnostics_available": True, "term_count_available": 5, "term_count_injected": 0,
-             "conflict_count": 0, "warning_count": 0, "prompt_block_truncated": False},
-        ])
+        r = aggregate_glossary_diagnostics(
+            [
+                {
+                    "diagnostics_available": True,
+                    "term_count_available": 5,
+                    "term_count_injected": 0,
+                    "conflict_count": 0,
+                    "warning_count": 0,
+                    "prompt_block_truncated": False,
+                },
+            ]
+        )
         assert r["chapters_with_zero_injected_terms"] == 1
 
     def test_truncated_blocks(self) -> None:
-        r = aggregate_glossary_diagnostics([
-            {"diagnostics_available": True, "term_count_available": 5, "term_count_injected": 3,
-             "conflict_count": 0, "warning_count": 0, "prompt_block_truncated": True},
-        ])
+        r = aggregate_glossary_diagnostics(
+            [
+                {
+                    "diagnostics_available": True,
+                    "term_count_available": 5,
+                    "term_count_injected": 3,
+                    "conflict_count": 0,
+                    "warning_count": 0,
+                    "prompt_block_truncated": True,
+                },
+            ]
+        )
         assert r["chapters_with_truncated_blocks"] == 1

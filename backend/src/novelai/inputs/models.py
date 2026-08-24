@@ -42,4 +42,3 @@ class ImportedDocument:
     source_language: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     units: tuple[ImportedUnit, ...] = ()
-

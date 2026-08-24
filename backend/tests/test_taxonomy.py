@@ -58,20 +58,23 @@ def session():
 def _seed_genres(session) -> None:
     """Insert the curated genre seed list."""
     for slug, name_ja, name_en, is_adult, display_order in _GENRE_SEEDS:
-        session.add(Genre(
-            slug=slug,
-            name_ja=name_ja,
-            name_en=name_en,
-            is_adult=is_adult,
-            display_order=display_order,
-            is_active=True,
-        ))
+        session.add(
+            Genre(
+                slug=slug,
+                name_ja=name_ja,
+                name_en=name_en,
+                is_adult=is_adult,
+                display_order=display_order,
+                is_active=True,
+            )
+        )
     session.commit()
 
 
 # ---------------------------------------------------------------------------
 # Schema tests
 # ---------------------------------------------------------------------------
+
 
 class TestTaxonomySchema:
     def test_genres_table_exists(self, session) -> None:
@@ -119,6 +122,7 @@ class TestTaxonomySchema:
 # Genre model tests
 # ---------------------------------------------------------------------------
 
+
 class TestGenreModel:
     def test_create_genre(self, session) -> None:
         genre = Genre(slug="test-genre", name_ja="テスト", name_en="Test", is_adult=False)
@@ -160,6 +164,7 @@ class TestGenreModel:
 # ---------------------------------------------------------------------------
 # Genre seed data tests
 # ---------------------------------------------------------------------------
+
 
 class TestGenreSeedData:
     def test_seed_count(self, session) -> None:
@@ -212,6 +217,7 @@ class TestGenreSeedData:
 # Tag model tests
 # ---------------------------------------------------------------------------
 
+
 class TestTagModel:
     def test_tags_table_starts_empty(self, session) -> None:
         count = session.query(Tag).count()
@@ -237,6 +243,7 @@ class TestTagModel:
 # Junction table tests
 # ---------------------------------------------------------------------------
 
+
 class TestJunctionTables:
     def test_novel_genre_assignment(self, session) -> None:
         _seed_genres(session)
@@ -245,9 +252,13 @@ class TestJunctionTables:
         session.commit()
 
         fantasy = session.query(Genre).filter_by(slug="fantasy").one()
-        session.execute(novel_genres.insert().values(
-            novel_id=novel.id, genre_id=fantasy.id, assigned_by="test",
-        ))
+        session.execute(
+            novel_genres.insert().values(
+                novel_id=novel.id,
+                genre_id=fantasy.id,
+                assigned_by="test",
+            )
+        )
         session.commit()
 
         # Verify through relationship
@@ -262,16 +273,24 @@ class TestJunctionTables:
         session.commit()
 
         fantasy = session.query(Genre).filter_by(slug="fantasy").one()
-        session.execute(novel_genres.insert().values(
-            novel_id=novel.id, genre_id=fantasy.id, assigned_by="test",
-        ))
+        session.execute(
+            novel_genres.insert().values(
+                novel_id=novel.id,
+                genre_id=fantasy.id,
+                assigned_by="test",
+            )
+        )
         session.commit()
 
         # Attempting duplicate should raise
         with pytest.raises(IntegrityError):
-            session.execute(novel_genres.insert().values(
-                novel_id=novel.id, genre_id=fantasy.id, assigned_by="test",
-            ))
+            session.execute(
+                novel_genres.insert().values(
+                    novel_id=novel.id,
+                    genre_id=fantasy.id,
+                    assigned_by="test",
+                )
+            )
             session.commit()
 
     def test_novel_tag_assignment(self, session) -> None:
@@ -281,9 +300,14 @@ class TestJunctionTables:
         session.add(tag)
         session.commit()
 
-        session.execute(novel_tags.insert().values(
-            novel_id=novel.id, tag_id=tag.id, origin="test", assigned_by="test",
-        ))
+        session.execute(
+            novel_tags.insert().values(
+                novel_id=novel.id,
+                tag_id=tag.id,
+                origin="test",
+                assigned_by="test",
+            )
+        )
         session.commit()
 
         session.refresh(novel)
@@ -297,15 +321,25 @@ class TestJunctionTables:
         session.add(tag)
         session.commit()
 
-        session.execute(novel_tags.insert().values(
-            novel_id=novel.id, tag_id=tag.id, origin="test", assigned_by="test",
-        ))
+        session.execute(
+            novel_tags.insert().values(
+                novel_id=novel.id,
+                tag_id=tag.id,
+                origin="test",
+                assigned_by="test",
+            )
+        )
         session.commit()
 
         with pytest.raises(IntegrityError):
-            session.execute(novel_tags.insert().values(
-                novel_id=novel.id, tag_id=tag.id, origin="test", assigned_by="test",
-            ))
+            session.execute(
+                novel_tags.insert().values(
+                    novel_id=novel.id,
+                    tag_id=tag.id,
+                    origin="test",
+                    assigned_by="test",
+                )
+            )
             session.commit()
 
     def test_cascade_delete_novel_removes_genre_assignment(self, session) -> None:
@@ -315,9 +349,13 @@ class TestJunctionTables:
         session.commit()
 
         fantasy = session.query(Genre).filter_by(slug="fantasy").one()
-        session.execute(novel_genres.insert().values(
-            novel_id=novel.id, genre_id=fantasy.id, assigned_by="test",
-        ))
+        session.execute(
+            novel_genres.insert().values(
+                novel_id=novel.id,
+                genre_id=fantasy.id,
+                assigned_by="test",
+            )
+        )
         session.commit()
 
         # Count assignments before delete
@@ -340,6 +378,7 @@ class TestJunctionTables:
 # ---------------------------------------------------------------------------
 # GET /api/public/genres endpoint tests
 # ---------------------------------------------------------------------------
+
 
 class TestPublicGenreEndpoint:
     @pytest.fixture()

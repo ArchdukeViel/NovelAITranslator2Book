@@ -44,10 +44,16 @@ def _seed_genres(session) -> None:
         ("adult-romance", "大人向け恋愛", "Adult Romance", True, 101),
     ]
     for slug, name_ja, name_en, is_adult, order in _SEEDS:
-        session.add(Genre(
-            slug=slug, name_ja=name_ja, name_en=name_en,
-            is_adult=is_adult, display_order=order, is_active=True,
-        ))
+        session.add(
+            Genre(
+                slug=slug,
+                name_ja=name_ja,
+                name_en=name_en,
+                is_adult=is_adult,
+                display_order=order,
+                is_active=True,
+            )
+        )
     session.commit()
 
 
@@ -61,6 +67,7 @@ def _make_novel(session, slug: str) -> Novel:
 # ---------------------------------------------------------------------------
 # Genre assignment
 # ---------------------------------------------------------------------------
+
 
 class TestGenreAssignment:
     def test_genre_slug_creates_one_novel_genres_row(self, session) -> None:
@@ -152,6 +159,7 @@ class TestGenreAssignment:
 # ---------------------------------------------------------------------------
 # Tag assignment
 # ---------------------------------------------------------------------------
+
 
 class TestTagAssignment:
     def test_source_keywords_create_tags_and_novel_tags_rows(self, session) -> None:
@@ -246,6 +254,7 @@ class TestTagAssignment:
 # Idempotency
 # ---------------------------------------------------------------------------
 
+
 class TestIdempotency:
     def test_genre_idempotent(self, session) -> None:
         _seed_genres(session)
@@ -326,6 +335,7 @@ class TestIdempotency:
 # Combined genre + tags
 # ---------------------------------------------------------------------------
 
+
 class TestCombinedAssignment:
     def test_genre_and_keywords_together(self, session) -> None:
         _seed_genres(session)
@@ -349,6 +359,7 @@ class TestCombinedAssignment:
 # ---------------------------------------------------------------------------
 # CatalogService integration
 # ---------------------------------------------------------------------------
+
 
 class TestCatalogServiceIntegration:
     def test_get_or_create_novel_calls_persist_taxonomy(self, session) -> None:
@@ -424,6 +435,7 @@ class TestCatalogServiceIntegration:
 # Data honesty
 # ---------------------------------------------------------------------------
 
+
 class TestDataHonesty:
     def test_no_fake_tags_invented(self, session) -> None:
         _seed_genres(session)
@@ -477,6 +489,7 @@ class TestDataHonesty:
 # Admin preservation during re-scrape (TAXONOMY-4D)
 # ---------------------------------------------------------------------------
 
+
 class TestAdminPersistenceDuringReScrape:
     """Admin-managed assignments must survive scraper persistence."""
 
@@ -488,7 +501,8 @@ class TestAdminPersistenceDuringReScrape:
         genre = session.query(Genre).filter_by(slug="fantasy").one()
         session.execute(
             novel_genres.insert().values(
-                novel_id=novel.id, genre_id=genre.id,
+                novel_id=novel.id,
+                genre_id=genre.id,
                 assigned_by="admin",
             )
         )
@@ -516,8 +530,10 @@ class TestAdminPersistenceDuringReScrape:
         session.flush()
         session.execute(
             novel_tags.insert().values(
-                novel_id=novel.id, tag_id=tag.id,
-                origin="admin", assigned_by="admin",
+                novel_id=novel.id,
+                tag_id=tag.id,
+                origin="admin",
+                assigned_by="admin",
             )
         )
         session.commit()
@@ -544,7 +560,8 @@ class TestAdminPersistenceDuringReScrape:
         genre = session.query(Genre).filter_by(slug="fantasy").one()
         session.execute(
             novel_genres.insert().values(
-                novel_id=novel.id, genre_id=genre.id,
+                novel_id=novel.id,
+                genre_id=genre.id,
                 assigned_by="admin",
             )
         )
@@ -583,8 +600,10 @@ class TestAdminPersistenceDuringReScrape:
         session.flush()
         session.execute(
             novel_tags.insert().values(
-                novel_id=novel.id, tag_id=tag.id,
-                origin="admin", assigned_by="admin",
+                novel_id=novel.id,
+                tag_id=tag.id,
+                origin="admin",
+                assigned_by="admin",
             )
         )
         session.commit()

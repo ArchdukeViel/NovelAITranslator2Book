@@ -74,9 +74,7 @@ class ChapterMetadata:
     error_count: int = 0
     retry_count: int = 0
 
-    def transition_to(
-        self, new_state: ChapterState, error: str | None = None
-    ) -> None:
+    def transition_to(self, new_state: ChapterState, error: str | None = None) -> None:
         """Record a state transition."""
         if error:
             self.error_count += 1

@@ -85,6 +85,7 @@ class StageLogContext:
             yield
         except Exception:
             import traceback
+
             self.stage_error(marker, error_code="pipeline.stage_error", stack_trace=traceback.format_exc())
             raise
         else:

@@ -92,6 +92,7 @@ def _normalize_honorific_policy(honorific_policy: str | None) -> str | None:
         raise ValueError(f"Unsupported honorific policy '{honorific_policy}'. Supported: {supported}.")
     return normalized
 
+
 def _format_additional_instructions(
     *,
     glossary_entries: Iterable[GlossaryEntryLike] | Glossary | None = None,
@@ -134,6 +135,7 @@ def _format_additional_instructions(
         return ("", conflict_warnings)
     return ("\n\n" + "\n\n".join(blocks), conflict_warnings)
 
+
 def _format_honorific_block(honorific_policy: str | None) -> str:
     normalized = _normalize_honorific_policy(honorific_policy)
     if normalized is None:
@@ -166,11 +168,7 @@ def build_user_prompt(
     raw_text = _require_non_empty_text(text, "text")
     normalized_source_language = _normalize_language(source_language, "source_language")
     normalized_target_language = _normalize_language(target_language, "target_language")
-    template = (
-        STRONG_CONSISTENCY_USER_PROMPT_TEMPLATE
-        if consistency_mode
-        else DEFAULT_USER_PROMPT_TEMPLATE
-    )
+    template = STRONG_CONSISTENCY_USER_PROMPT_TEMPLATE if consistency_mode else DEFAULT_USER_PROMPT_TEMPLATE
     additional, _ = _format_additional_instructions(
         glossary_entries=glossary_entries,
         prompt_glossary_block=prompt_glossary_block,
@@ -299,9 +297,7 @@ def build_translation_request(
         json_output=json_output,
         honorific_policy=_normalize_honorific_policy(honorific_policy),
         prompt_template_version=PROMPT_TEMPLATE_VERSION,
-        prompt_policy=JP_EN_PROMPT_POLICY
-        if is_jp_en_prompt(source_language, target_language)
-        else None,
+        prompt_policy=JP_EN_PROMPT_POLICY if is_jp_en_prompt(source_language, target_language) else None,
         prompt_policy_version=JP_EN_PROMPT_POLICY_VERSION
         if is_jp_en_prompt(source_language, target_language)
         else None,

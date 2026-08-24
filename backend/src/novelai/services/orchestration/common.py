@@ -61,12 +61,14 @@ def _make_state_data(
         transitions = previous.get("transitions", [])
         error_count = previous.get("error_count", 0)
 
-    transitions.append(ChapterStateTransition(
-        from_state=prev_state,
-        to_state=state,
-        timestamp=now,
-        error=error,
-    ))
+    transitions.append(
+        ChapterStateTransition(
+            from_state=prev_state,
+            to_state=state,
+            timestamp=now,
+            error=error,
+        )
+    )
 
     if error:
         error_count += 1

@@ -21,7 +21,7 @@ JSON_TRANSLATION_SCHEMA: dict[str, Any] = {
                 },
                 "required": ["paragraph_id", "translated_text"],
             },
-        }
+        },
     },
     "required": ["translated_text", "paragraph_map"],
 }

@@ -10,7 +10,6 @@ from novelai.infrastructure.http.client import validate_safe_url
 logger = logging.getLogger(__name__)
 
 
-
 def validate_url(url: str) -> str:
     """Validate URL scheme and reject private/internal targets (SSRF protection).
 
@@ -65,5 +64,4 @@ class SourceAdapter(ABC):
 class SourceFactory(Protocol):
     """Factory signature for source adapter registrations."""
 
-    def __call__(self, settings: Any) -> SourceAdapter:
-        ...
+    def __call__(self, settings: Any) -> SourceAdapter: ...

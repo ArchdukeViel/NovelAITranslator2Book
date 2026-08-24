@@ -50,9 +50,7 @@ class GlossaryResolver:
     def resolve(self, novel_id: int) -> ResolvedGlossary:
         """Build resolved glossary: global base + novel overrides."""
         global_entries = self._repo.list_approved_global_entries()
-        novel_entries = self._repo.list_glossary_entries_for_novel(
-            novel_id, status="approved"
-        )
+        novel_entries = self._repo.list_glossary_entries_for_novel(novel_id, status="approved")
 
         global_map: dict[str, ResolvedGlossaryTerm] = {}
         for e in global_entries:
@@ -67,9 +65,7 @@ class GlossaryResolver:
         merged = dict(global_map)
         merged.update(novel_map)
 
-        sorted_terms = tuple(
-            sorted(merged.values(), key=lambda t: (t.source_text.lower(), t.entry_id))
-        )
+        sorted_terms = tuple(sorted(merged.values(), key=lambda t: (t.source_text.lower(), t.entry_id)))
 
         return ResolvedGlossary(
             novel_id=novel_id,
@@ -98,7 +94,5 @@ class GlossaryResolver:
         """Deterministic SHA-256 of resolved entry list."""
         h = hashlib.sha256()
         for e in entries:
-            h.update(
-                f"{e.source_text}\0{e.target_text}\0{e.scope}\0{e.entry_id}\0".encode()
-            )
+            h.update(f"{e.source_text}\0{e.target_text}\0{e.scope}\0{e.entry_id}\0".encode())
         return h.hexdigest()
