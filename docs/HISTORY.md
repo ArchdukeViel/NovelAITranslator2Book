@@ -816,9 +816,10 @@ Validation evidence:
   0 errors, 0 warnings, 0 informations.
 - Ruff migration check: all checks passed; affected formatter check:
   4 files already formatted.
-- `graphify update . --no-cluster`: exited 0 with 14,326 nodes and 39,305
-  edges. The known nonfatal zero-node warning for JSON/configuration and
-  generated evidence files remains unchanged.
+- `graphify update . --no-cluster`: the task-ledger refresh exited 0 with
+  14,326 nodes and 39,305 edges; the final documentation refresh exited 0
+  with 14,327 nodes and 39,306 edges. The known nonfatal zero-node warning
+  for JSON/configuration and generated evidence files remains unchanged.
 - The spec validator, `git diff --check`, JSON/parser checks, and enabled
   pre-commit hooks passed. No database migration, provider/R2 mutation,
   secret-file change, push, or remote repository action was performed.
