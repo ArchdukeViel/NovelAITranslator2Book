@@ -32,18 +32,18 @@ Updated: 2026-08-24
   - Last result: The exact empty `C:\Akmal\Novel AI\Caddyfile` directory was removed after path, workspace-boundary, non-reparse, and emptiness checks; the post-deletion existence check passed.
   - Evidence: Project-owner authorization was received. A non-recursive bounded deletion removed only the explicit directory target, and the target was verified absent afterward. No canonical deployment file or workspace-root content was changed.
 
-- [ ] **T-003 Verify .gitignore tracking for .vscode configs (R3)**
+- [x] **T-003 Verify .gitignore tracking for .vscode configs (R3)**
   - Ensure `.vscode/tasks.json` and `.vscode/mcp.json` are not ignored.
   - Verification: `git ls-files --error-unmatch -- .vscode/tasks.json .vscode/mcp.json`
   - Maps to: REQ-001, AC-001
   - Depends on: T-002
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for workspace configuration tracking
   - Scope: Git ignore and tracking state for the two named VS Code configuration files
   - Expected: Both files are tracked and neither is hidden by an ignore rule
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record `git ls-files` and ignore-boundary results
+  - Attempts: 1
+  - Last result: `git ls-files --error-unmatch -- .vscode/tasks.json .vscode/mcp.json` exited 0; both required files are tracked and `git check-ignore` returned no matches.
+  - Evidence: All four repository-approved `.vscode` files parse as JSON. A credential and machine-path scan found no matches, and `.gitignore` explicitly permits the approved files. No `.vscode` content was changed.
 
 - [ ] **T-004 Verify .vscode search exclusion rules (R4)**
   - Confirm `.agents/**` is un-excluded in `.vscode/settings.json`.
