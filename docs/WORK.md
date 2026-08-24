@@ -518,6 +518,10 @@ takedown enforcement, unrecoverable loss, or missing rollback cannot be informal
 Only genuinely unfinished specs remain under `.agents/specs/`:
 
 - `launch-readiness-checklist`: operator acceptance above.
+- `workspace-and-quality-hardening`: repository hygiene, developer tooling, VS Code, and verification hardening.
+
+Both active specifications are approved planning records; their task checkboxes
+remain pending until implementation and verification evidence is recorded.
 
 Task boxes are planning aids, not completion evidence. Architecture, current
 code/tests, this file, and operator evidence determine status.

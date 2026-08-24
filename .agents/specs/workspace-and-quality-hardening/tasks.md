@@ -1,0 +1,270 @@
+# Tasks: Workspace and Quality Hardening
+
+Spec ID: workspace-and-quality-hardening
+Version: 1.0.0
+Status: Approved
+Updated: 2026-08-24
+
+## Phase 1: Workspace & Root Hygiene (R1–R5)
+- [ ] **T-001 Clean root stray file (R1)**
+  - Delete empty `file` from repo root.
+  - Verification: `powershell -NoProfile -Command "if (Test-Path 'file') { exit 1 } else { exit 0 }"`
+  - Maps to: REQ-001, AC-001
+  - Depends on: none
+  - State: pending
+  - Authorization: Project-owner approval for repository-root cleanup
+  - Scope: The empty `file` entry at the repository root
+  - Expected: The named stray file is absent and no canonical file is removed
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record the path-safe check and review result
+
+- [ ] **T-002 Clean root stray directory (R2)**
+  - Delete empty `Caddyfile/` folder from repo root.
+  - Verification: `powershell -NoProfile -Command "if (Test-Path 'Caddyfile') { exit 1 } else { exit 0 }"`
+  - Maps to: REQ-001, AC-001
+  - Depends on: T-001
+  - State: pending
+  - Authorization: Project-owner approval for repository-root cleanup
+  - Scope: The empty `Caddyfile/` entry at the repository root
+  - Expected: The named stray directory is absent and no canonical deployment file is removed
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record the path-safe check and review result
+
+- [ ] **T-003 Verify .gitignore tracking for .vscode configs (R3)**
+  - Ensure `.vscode/tasks.json` and `.vscode/mcp.json` are not ignored.
+  - Verification: `git ls-files --error-unmatch -- .vscode/tasks.json .vscode/mcp.json`
+  - Maps to: REQ-001, AC-001
+  - Depends on: T-002
+  - State: pending
+  - Authorization: Project-owner approval for workspace configuration tracking
+  - Scope: Git ignore and tracking state for the two named VS Code configuration files
+  - Expected: Both files are tracked and neither is hidden by an ignore rule
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record `git ls-files` and ignore-boundary results
+
+- [ ] **T-004 Verify .vscode search exclusion rules (R4)**
+  - Confirm `.agents/**` is un-excluded in `.vscode/settings.json`.
+  - Verification: `powershell -NoProfile -Command "if ((Get-Content .vscode/settings.json -Raw) -match '\"\.agents/\*\*\"') { exit 1 } else { exit 0 }"`
+  - Maps to: REQ-001, AC-001
+  - Depends on: T-003
+  - State: pending
+  - Authorization: Project-owner approval for VS Code search configuration
+  - Scope: `.vscode/settings.json` search exclusions for `.agents/**`
+  - Expected: The active specification and guidance files remain discoverable through workspace search
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record the sanitized settings check
+
+- [ ] **T-005 Validate .opencode gitignore boundary (R5)**
+  - Confirm `.opencode/` remains untracked while scripts stay in `.opencode/scripts/`.
+  - Verification: `git check-ignore -v .opencode/package.json`
+  - Maps to: REQ-001, AC-001
+  - Depends on: T-004
+  - State: pending
+  - Authorization: Project-owner approval for local scratch-boundary verification
+  - Scope: The `.opencode/` ignore boundary and canonical `.opencode/scripts/` location
+  - Expected: Local scratch files remain ignored while canonical scripts are reviewed separately
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record the ignore rule and tracked-script review
+
+## Phase 2: Tooling & CLI Wrappers (R6–R9)
+- [ ] **T-006 Normalize path arguments in tools/pytest.ps1 (R6)**
+  - Update `tools/pytest.ps1` to normalize slash direction in passed file paths.
+  - Verification: `powershell -ExecutionPolicy Bypass -File tools/pytest.ps1 backend/tests/test_health_api.py`
+  - Maps to: REQ-002, AC-002
+  - Depends on: T-005
+  - State: pending
+  - Authorization: Project-owner approval for the pytest wrapper implementation
+  - Scope: Path argument handling and strict interpreter resolution in `tools/pytest.ps1`
+  - Expected: The wrapper accepts Windows path forms and runs the focused test through `.venv\Scripts\python.exe`
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record focused wrapper output and exit code
+
+- [ ] **T-007 Normalize path arguments in tools/pyright.ps1 (R7)**
+  - Update `tools/pyright.ps1` to normalize slash direction in passed file paths.
+  - Verification: `powershell -ExecutionPolicy Bypass -File tools/pyright.ps1 backend/src/novelai/api/app.py`
+  - Maps to: REQ-002, AC-002
+  - Depends on: T-006
+  - State: pending
+  - Authorization: Project-owner approval for the pyright wrapper implementation
+  - Scope: Path argument handling and strict interpreter resolution in `tools/pyright.ps1`
+  - Expected: The wrapper accepts Windows path forms and runs the focused type check through the canonical virtual environment
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record focused wrapper output and exit code
+
+- [ ] **T-008 Normalize path arguments in tools/ruff.ps1 (R8)**
+  - Update `tools/ruff.ps1` to normalize slash direction in passed file paths.
+  - Verification: `powershell -ExecutionPolicy Bypass -File tools/ruff.ps1 check backend/src/novelai/api/app.py`
+  - Maps to: REQ-002, AC-002
+  - Depends on: T-007
+  - State: pending
+  - Authorization: Project-owner approval for the Ruff wrapper implementation
+  - Scope: Path argument handling and strict interpreter resolution in `tools/ruff.ps1`
+  - Expected: The wrapper accepts Windows path forms and runs the focused lint check through the canonical virtual environment
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record focused wrapper output and exit code
+
+- [ ] **T-009 Verify Python virtualenv path check across all tools (R9)**
+  - Verify all `tools/*.ps1` scripts fail with exit code 2 if `.venv` is missing.
+  - Verification: `rg -n "venvPython|venv\\Scripts\\python\.exe" tools --glob "*.ps1"`
+  - Maps to: REQ-002, AC-002
+  - Depends on: T-008
+  - State: pending
+  - Authorization: Project-owner approval for wrapper safety verification
+  - Scope: Strict `.venv\Scripts\python.exe` checks and missing-interpreter behavior across `tools/*.ps1`
+  - Expected: Every wrapper fails closed when the project interpreter is absent and does not fall through to the system Python
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record the wrapper inventory and isolated failure check
+
+## Phase 3: VS Code & Developer Experience (R10–R13)
+- [ ] **T-010 Add Backend Test Watch task to .vscode/tasks.json (R10)**
+  - Add `"Backend: Test Watch"` background task.
+  - Verification: `powershell -NoProfile -Command "Get-Content .vscode/tasks.json | Select-String 'Backend: Test Watch'"`
+  - Maps to: REQ-003, AC-003
+  - Depends on: T-009
+  - State: pending
+  - Authorization: Project-owner approval for VS Code task configuration
+  - Scope: The background backend test-watch task and its problem matcher
+  - Expected: The task starts a useful backend watch workflow without blocking the VS Code task runner
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record parsed task configuration and a watch-start check
+
+- [ ] **T-011 Add Backend Pytest Focused task to .vscode/tasks.json (R11)**
+  - Add `"Backend: Pytest Focused"` with an input prompt for a focused path.
+  - Verification: `powershell -NoProfile -Command "Get-Content .vscode/tasks.json | Select-String 'Backend: Pytest Focused'"`
+  - Maps to: REQ-003, AC-003
+  - Depends on: T-010
+  - State: pending
+  - Authorization: Project-owner approval for VS Code task configuration
+  - Scope: The focused backend test task, input prompt, and wrapper invocation
+  - Expected: A contributor can choose one test path and run it through the canonical test wrapper
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record parsed task configuration and input-definition review
+
+- [ ] **T-012 Add Frontend Build task to .vscode/tasks.json (R12)**
+  - Add `"Frontend: Build"` task to `.vscode/tasks.json`.
+  - Verification: `powershell -NoProfile -Command "Get-Content .vscode/tasks.json | Select-String 'Frontend: Build'"`
+  - Maps to: REQ-003, AC-003
+  - Depends on: T-011
+  - State: pending
+  - Authorization: Project-owner approval for VS Code task configuration
+  - Scope: The frontend production-build task and its working-directory contract
+  - Expected: The task invokes the documented frontend build command and reports failures to VS Code
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record parsed task configuration and a dry-run command review
+
+- [ ] **T-013 Validate VS Code extensions and formatter bindings (R13)**
+  - Verify active recommendations are non-redundant and formatter bindings use Ruff for Python and Prettier for TypeScript and JSON.
+  - Verification: `rg -n "charliermarsh.ruff|editor.defaultFormatter|esbenp.prettier" .vscode/extensions.json .vscode/settings.json`
+  - Maps to: REQ-003, AC-003
+  - Depends on: T-012
+  - State: pending
+  - Authorization: Project-owner approval for VS Code workspace recommendations
+  - Scope: `.vscode/extensions.json` recommendations and `.vscode/settings.json` formatter bindings
+  - Expected: Only active workspace tooling is recommended and each supported language has its intended formatter
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record the recommendation and formatter review
+
+## Phase 4: Testing, Database & CI Hardening (R14–R20)
+- [ ] **T-014 Validate Frontend Vitest CLI test suite execution (R14)**
+  - Run frontend test suite via `npm --prefix frontend run test`.
+  - Verification: `npm --prefix frontend run test`
+  - Maps to: REQ-004, AC-004
+  - Depends on: T-013
+  - State: pending
+  - Authorization: Project-owner approval for local frontend test execution
+  - Scope: The Windows-compatible Vitest invocation and complete frontend test suite
+  - Expected: Vitest starts through the documented npm prefix form and exits 0 with the declared test count
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record the frontend test output and exit code
+
+- [ ] **T-015 Validate Alembic migration heads and syntax (R15)**
+  - Run Pyright and Ruff on `backend/alembic/versions/2026-08-22_*.py`.
+  - Verification: Run `tools\pyright.ps1` on `backend/alembic/versions/2026-08-22_*.py` and then run `tools\ruff.ps1 check backend/alembic/versions`
+  - Maps to: REQ-004, AC-004
+  - Depends on: T-014
+  - State: pending
+  - Authorization: Project-owner approval for read-only migration validation
+  - Scope: Untracked `2026-08-22_*.py` migration syntax, typing, and lint behavior
+  - Expected: The migration files pass both checks or produce a concrete file-specific blocker before any migration is applied
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record both validation outputs and the exact migration paths
+
+- [ ] **T-016 Run Ruff formatter check on working tree (R16)**
+  - Format backend Python files and check diff.
+  - Verification: `tools\ruff.ps1 format --check backend`
+  - Maps to: REQ-004, AC-004
+  - Depends on: T-015
+  - State: pending
+  - Authorization: Project-owner approval for formatting checks on modified backend files
+  - Scope: Ruff format enforcement before staging and the resulting diff check
+  - Expected: Modified backend files are formatter-clean without rewriting unrelated files
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record formatter output and `git diff --check`
+
+- [ ] **T-017 Verify Frontend production build (R17)**
+  - Run Next.js build.
+  - Verification: `npm --prefix frontend run build`
+  - Maps to: REQ-004, AC-004
+  - Depends on: T-016
+  - State: pending
+  - Authorization: Project-owner approval for local production-build validation
+  - Scope: The frontend production build and generated-output safety boundary
+  - Expected: Next.js builds successfully without modifying tracked source or exposing environment values
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record build output and tracked-file review
+
+- [ ] **T-018 Verify Frontend typecheck and linting (R18)**
+  - Run TypeScript typecheck and ESLint.
+  - Verification: Run `npm --prefix frontend run typecheck` and then `npm --prefix frontend run lint`
+  - Maps to: REQ-004, AC-004
+  - Depends on: T-017
+  - State: pending
+  - Authorization: Project-owner approval for local frontend quality checks
+  - Scope: Frontend TypeScript and ESLint checks over the active application
+  - Expected: Both checks exit 0 and report no new errors attributable to the active worktree
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record both command results and exact exit codes
+
+- [ ] **T-019 Reconcile documentation and work registers (R19)**
+  - Verify `docs/WORK.md` and `docs/HISTORY.md` state.
+  - Verification: `powershell -NoProfile -Command "if ((Test-Path 'docs/WORK.md') -and (Test-Path 'docs/HISTORY.md')) { exit 0 } else { exit 1 }"`
+  - Maps to: REQ-005, AC-005
+  - Depends on: T-018
+  - State: pending
+  - Authorization: Project-owner approval for work-register reconciliation
+  - Scope: Active and completed specification references in `docs/WORK.md` and `docs/HISTORY.md`
+  - Expected: Each active spec has a truthful pending or completed status and completed evidence is not left in the active register
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record the cross-document status comparison
+
+- [ ] **T-020 Synchronize knowledge graph index (R20)**
+  - Run Graphify update to index all changes.
+  - Verification: `graphify update . --no-cluster`
+  - Maps to: REQ-005, AC-005
+  - Depends on: T-019
+  - State: pending
+  - Authorization: Project-owner approval for local Graphify refresh
+  - Scope: The repository graph index after the documentation and configuration changes
+  - Expected: Graphify completes successfully and the refreshed index includes the active specification lifecycle
+  - Attempts: 0
+  - Last result: not run
+  - Evidence: Pending: record Graphify exit code and refresh summary
