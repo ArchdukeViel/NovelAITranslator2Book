@@ -10,5 +10,15 @@ if (-not (Test-Path $venvPython)) {
     exit 2
 }
 
-& $venvPython -m ruff @args
+$normalizedArgs = @(
+    foreach ($argument in $args) {
+        if ($argument -is [string] -and -not $argument.StartsWith("-") -and $argument.Contains("/")) {
+            $argument.Replace("/", "\")
+        } else {
+            $argument
+        }
+    }
+)
+
+& $venvPython -m ruff @normalizedArgs
 exit $LASTEXITCODE

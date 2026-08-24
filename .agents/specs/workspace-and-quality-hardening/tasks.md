@@ -98,18 +98,18 @@ Updated: 2026-08-24
   - Last result: `powershell -ExecutionPolicy Bypass -File tools/pyright.ps1 backend/src/novelai/api/app.py` exited 0 with 0 errors, 0 warnings, and 0 informations.
   - Evidence: `tools/pyright.ps1` now normalizes non-option path arguments from `/` to `\` before invoking the canonical `.venv\Scripts\python.exe`; PowerShell parser and whitespace checks passed. Conformance review confirmed the change is limited to wrapper argument handling and introduces no secrets or architectural boundary changes.
 
-- [ ] **T-008 Normalize path arguments in tools/ruff.ps1 (R8)**
+- [x] **T-008 Normalize path arguments in tools/ruff.ps1 (R8)**
   - Update `tools/ruff.ps1` to normalize slash direction in passed file paths.
   - Verification: `powershell -ExecutionPolicy Bypass -File tools/ruff.ps1 check backend/src/novelai/api/app.py`
   - Maps to: REQ-002, AC-002
   - Depends on: T-007
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for the Ruff wrapper implementation
   - Scope: Path argument handling and strict interpreter resolution in `tools/ruff.ps1`
   - Expected: The wrapper accepts Windows path forms and runs the focused lint check through the canonical virtual environment
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record focused wrapper output and exit code
+  - Attempts: 1
+  - Last result: `powershell -ExecutionPolicy Bypass -File tools/ruff.ps1 check backend/src/novelai/api/app.py` exited 0 with `All checks passed!`.
+  - Evidence: `tools/ruff.ps1` now normalizes non-option path arguments from `/` to `\` before invoking the canonical `.venv\Scripts\python.exe`; PowerShell parser and whitespace checks passed. Conformance review confirmed the change is limited to wrapper argument handling and introduces no secrets or architectural boundary changes.
 
 - [ ] **T-009 Verify Python virtualenv path check across all tools (R9)**
   - Verify all `tools/*.ps1` scripts fail with exit code 2 if `.venv` is missing.
