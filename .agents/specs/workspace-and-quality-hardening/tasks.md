@@ -72,18 +72,18 @@ Updated: 2026-08-24
   - Evidence: The local `.opencode/` boundary is intact. `package.json` is ignored, the scripts directory is non-empty, and `git ls-files -- .opencode` returned no entries. No local scratch content was changed.
 
 ## Phase 2: Tooling & CLI Wrappers (R6–R9)
-- [ ] **T-006 Normalize path arguments in tools/pytest.ps1 (R6)**
+- [x] **T-006 Normalize path arguments in tools/pytest.ps1 (R6)**
   - Update `tools/pytest.ps1` to normalize slash direction in passed file paths.
   - Verification: `powershell -ExecutionPolicy Bypass -File tools/pytest.ps1 backend/tests/test_health_api.py`
   - Maps to: REQ-002, AC-002
   - Depends on: T-005
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for the pytest wrapper implementation
   - Scope: Path argument handling and strict interpreter resolution in `tools/pytest.ps1`
   - Expected: The wrapper accepts Windows path forms and runs the focused test through `.venv\Scripts\python.exe`
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record focused wrapper output and exit code
+  - Attempts: 1
+  - Last result: `powershell -ExecutionPolicy Bypass -File tools/pytest.ps1 backend/tests/test_health_api.py` exited 0 with 8 passed in 8.83s.
+  - Evidence: `tools/pytest.ps1` now normalizes non-option path arguments from `/` to `\` before invoking the canonical `.venv\Scripts\python.exe`; parser and diff checks passed, and pytest options remain unchanged.
 
 - [ ] **T-007 Normalize path arguments in tools/pyright.ps1 (R7)**
   - Update `tools/pyright.ps1` to normalize slash direction in passed file paths.

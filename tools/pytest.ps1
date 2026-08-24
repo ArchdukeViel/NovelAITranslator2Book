@@ -14,5 +14,17 @@ if (-not (Test-Path $venvPython)) {
     exit 2
 }
 
-& $venvPython -m pytest @args
+# Normalize positional/path arguments for Windows while preserving pytest
+# options and expressions such as ``-k`` values exactly as provided.
+$normalizedArgs = @(
+    foreach ($argument in $args) {
+        if ($argument -is [string] -and -not $argument.StartsWith("-") -and $argument.Contains("/")) {
+            $argument.Replace("/", "\")
+        } else {
+            $argument
+        }
+    }
+)
+
+& $venvPython -m pytest @normalizedArgs
 exit $LASTEXITCODE
