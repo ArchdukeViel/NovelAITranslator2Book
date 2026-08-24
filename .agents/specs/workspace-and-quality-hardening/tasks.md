@@ -164,18 +164,18 @@ Updated: 2026-08-24
   - Last result: `powershell -NoProfile -Command "Get-Content .vscode/tasks.json | Select-String 'Frontend: Build'"` exited 0; the task parsed and `npm --prefix frontend run build` exited 0 after compiling, TypeScript, static generation, and route optimization.
   - Evidence: `.vscode/tasks.json` defines `Frontend: Build` with `npm --prefix frontend run build`, build grouping, and workspace-root cwd. The production build completed successfully with 48 static pages generated; no credentials or machine-specific paths were added.
 
-- [ ] **T-013 Validate VS Code extensions and formatter bindings (R13)**
+- [x] **T-013 Validate VS Code extensions and formatter bindings (R13)**
   - Verify active recommendations are non-redundant and formatter bindings use Ruff for Python and Prettier for TypeScript and JSON.
   - Verification: `rg -n "charliermarsh.ruff|editor.defaultFormatter|esbenp.prettier" .vscode/extensions.json .vscode/settings.json`
   - Maps to: REQ-003, AC-003
   - Depends on: T-012
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for VS Code workspace recommendations
   - Scope: `.vscode/extensions.json` recommendations and `.vscode/settings.json` formatter bindings
   - Expected: Only active workspace tooling is recommended and each supported language has its intended formatter
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record the recommendation and formatter review
+  - Attempts: 1
+  - Last result: `rg -n "charliermarsh.ruff|editor.defaultFormatter|esbenp.prettier" .vscode/extensions.json .vscode/settings.json` exited 0; both JSON files parsed, all 10 extension recommendations were unique, and formatter bindings passed.
+  - Evidence: `.vscode/extensions.json` retains 10 unique active recommendations. `.vscode/settings.json` binds Python to Ruff and TypeScript, JSON, and JSONC to Prettier with format-on-save; no credential or machine-specific configuration was introduced.
 
 ## Phase 4: Testing, Database & CI Hardening (R14–R20)
 - [ ] **T-014 Validate Frontend Vitest CLI test suite execution (R14)**
