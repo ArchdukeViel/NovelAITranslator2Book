@@ -79,6 +79,27 @@
       }
     },
     {
+      "label": "Backend: Pytest Focused",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "tools/pytest.ps1",
+        "${input:backendTestPath}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
       "label": "Frontend: Typecheck",
       "type": "shell",
       "command": "npm",
@@ -112,6 +133,14 @@
         "reveal": "silent",
         "panel": "shared"
       }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "backendTestPath",
+      "type": "promptString",
+      "description": "Backend test path (relative to the workspace)",
+      "default": "backend/tests/test_health_api.py"
     }
   ]
 }

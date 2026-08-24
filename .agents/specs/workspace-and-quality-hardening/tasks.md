@@ -138,18 +138,18 @@ Updated: 2026-08-24
   - Last result: `powershell -NoProfile -Command "Get-Content .vscode/tasks.json | Select-String 'Backend: Test Watch'"` exited 0; JSON parsing and the venv watcher `--version` check passed. The first absolute-path startup exposed a workspace-space quoting failure; the corrected relative-path task started `watchfiles v1.2.0` successfully and was intentionally interrupted after startup.
   - Evidence: `.vscode/tasks.json` contains one background `Backend: Test Watch` task with `activeOnStart`, a backend-test problem matcher, workspace-root cwd, Python-filtered source/test paths, and the canonical `tools/pytest.ps1` target. No credentials or machine-specific paths were added.
 
-- [ ] **T-011 Add Backend Pytest Focused task to .vscode/tasks.json (R11)**
+- [x] **T-011 Add Backend Pytest Focused task to .vscode/tasks.json (R11)**
   - Add `"Backend: Pytest Focused"` with an input prompt for a focused path.
   - Verification: `powershell -NoProfile -Command "Get-Content .vscode/tasks.json | Select-String 'Backend: Pytest Focused'"`
   - Maps to: REQ-003, AC-003
   - Depends on: T-010
-  - State: pending
+  - State: complete
   - Authorization: Project-owner approval for VS Code task configuration
   - Scope: The focused backend test task, input prompt, and wrapper invocation
   - Expected: A contributor can choose one test path and run it through the canonical test wrapper
-  - Attempts: 0
-  - Last result: not run
-  - Evidence: Pending: record parsed task configuration and input-definition review
+  - Attempts: 1
+  - Last result: `powershell -NoProfile -Command "Get-Content .vscode/tasks.json | Select-String 'Backend: Pytest Focused'"` exited 0; the task/input JSON review passed and the default focused path ran with 8 passed in 15.48s.
+  - Evidence: `.vscode/tasks.json` defines one focused backend task using `tools/pytest.ps1`, a workspace-relative `backendTestPath` prompt, and a safe default of `backend/tests/test_health_api.py`. JSON parsing, the wrapper run, and whitespace checks passed; no credentials or machine-specific paths were added.
 
 - [ ] **T-012 Add Frontend Build task to .vscode/tasks.json (R12)**
   - Add `"Frontend: Build"` task to `.vscode/tasks.json`.
