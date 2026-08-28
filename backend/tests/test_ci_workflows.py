@@ -277,6 +277,29 @@ def test_uv_locked_contract_in_ci_and_managed_verification() -> None:
         assert "--locked" in source, f"--locked missing in {name}"
 
 
+def test_managed_services_verification_uses_current_restore_contract() -> None:
+    source = _workflow("managed-services-verification.yml")
+
+    assert "backend/tests/integration/test_r2_backup_integration.py" in source
+    assert "backend/tests/integration/test_r2_restore_integration.py" in source
+    assert "test_r2_snapshot_integration.py" not in source
+    for name in (
+        "TEST_R2_APP_ACCESS_KEY_ID",
+        "TEST_R2_APP_SECRET_ACCESS_KEY",
+        "TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY_ID",
+        "TEST_R2_SNAPSHOT_SOURCE_SECRET_ACCESS_KEY",
+        "TEST_R2_BACKUP_ACCESS_KEY_ID",
+        "TEST_R2_BACKUP_SECRET_ACCESS_KEY",
+    ):
+        assert name in source
+    assert "TEST_R2_APP_ACCESS_KEY:" not in source
+    assert "TEST_R2_BACKUP_ACCESS_KEY:" not in source
+
+    managed_postgres = (Path(__file__).parent / "integration" / "test_managed_postgres.py").read_text(encoding="utf-8")
+    assert 'EXPECTED_ALEMBIC_HEAD = "e7f1a9c3b5d2"' in managed_postgres
+    assert "9c2e4a6b8d0f" not in managed_postgres
+
+
 def test_build_workflow_run_trust_guards_and_concurrency() -> None:
     source = _workflow("build.yml")
     assert "concurrency:" in source
