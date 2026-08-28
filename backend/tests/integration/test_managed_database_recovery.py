@@ -90,7 +90,21 @@ def _create_backup_role(engine: Engine, source_uri: str, role_name: str, passwor
 def _drop_backup_role(engine: Engine, role_name: str) -> None:
     role = _identifier(role_name, label="backup role")
     with engine.connect() as connection:
-        connection.exec_driver_sql(f"DROP OWNED BY {role}")
+        database_name = engine.url.database
+        if database_name:
+            database = _identifier(str(database_name), label="source database")
+            connection.exec_driver_sql(f"REVOKE ALL PRIVILEGES ON DATABASE {database} FROM {role}")
+        for schema_name in ("public", "private"):
+            exists = connection.execute(
+                text("SELECT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = :schema_name)"),
+                {"schema_name": schema_name},
+            ).scalar_one()
+            if not exists:
+                continue
+            schema = _identifier(schema_name, label="schema")
+            connection.exec_driver_sql(f"REVOKE ALL PRIVILEGES ON SCHEMA {schema} FROM {role}")
+            connection.exec_driver_sql(f"REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA {schema} FROM {role}")
+            connection.exec_driver_sql(f"REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA {schema} FROM {role}")
         connection.exec_driver_sql(f"DROP ROLE IF EXISTS {role}")
 
 
