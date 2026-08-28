@@ -838,6 +838,35 @@ Ruff, Pyright, Graphify, and direct migration upgrade/downgrade smoke passed.
 The remaining open work is operator/production evidence, not this local
 fixture contract.
 
+## Non-production R2 data-plane evidence - 2026-08-28
+
+The isolated R2 test configuration was transferred to the repository's
+GitHub Actions secrets without recording any secret values. The source and
+target variables are `test-dokushodo` and `test-dokushodo-backup`; the target
+bucket is distinct from the source and from both canonical production bucket
+names.
+
+The local backup/restore integration checks passed (`2 passed in 15.60s`). The
+first hosted run at commit `8e2957d` reached the new managed database and
+reported `2 failed, 2 passed in 17.77s`: both R2 checks passed, while the two
+database checks exposed the expected empty-schema condition
+(`public.alembic_version` and `scheduled_job_leases` were absent).
+
+The confirmation-gated migration run
+[`33170998029`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33170998029)
+completed successfully at commit `3c1dcf6`. The independent hosted verification
+run
+[`33171154023`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33171154023)
+then passed all four managed PostgreSQL/R2 integration checks (`4 passed in
+18.93s`). `MANAGED_DATABASE_TEST_URL` was used only as a GitHub secret, and
+`MANAGED_SERVICE_TESTS_ENABLED` was returned to `false` after the run.
+
+This closes disposable non-production managed-service schema/R2 verification;
+it does not establish managed-PostgreSQL recovery, recurring backup freshness
+or alert delivery, reader SLO, provider/R2 billing telemetry, or production
+capacity. The reader worker/full queue remains subject to the existing
+fail-closed gate.
+
 ## Priority Recommendation
 
 1. `OWN-001` — assign owners (unblocks every evidence record).

@@ -11,12 +11,13 @@ verification workflow does not apply migrations automatically; this preserves
 stale-schema detection.
 
 When the candidate schema must be created or refreshed, run the manual
-confirmation-gated workflow
-`.github/workflows/managed-services-test-migrate.yml` with
-`confirm_test_database=true`. It runs Alembic once with the privileged
-`MIGRATION_DATABASE_URL` variable and does not start an application or worker.
-After it succeeds, run `managed-services-verification.yml` for the observed
-database and R2 checks, then leave `MANAGED_SERVICE_TESTS_ENABLED=false`.
+confirmation-gated `managed-services-verification.yml` workflow with
+`migrate_test_database=true` and `confirm_test_database=true`. It calls
+`.github/workflows/managed-services-test-migrate.yml`, which runs Alembic once
+with the privileged `MIGRATION_DATABASE_URL` variable and does not start an
+application or worker. After it succeeds, run the same verification workflow
+again with migration disabled for the observed database and R2 checks, then
+leave `MANAGED_SERVICE_TESTS_ENABLED=false`.
 Record only the workflow URL, commit, UTC timestamp, pass/skip/fail counts,
 and sanitized schema evidence; never record the URL or its credentials.
 

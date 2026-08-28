@@ -114,6 +114,34 @@ not claim that the five live follow-ups passed:
 - A read-only operator-phone liveness check through the approved Tailscale service was observed successfully; this does not establish the 1k reader profile, queue/writer safety, hosted telemetry, or recovery gates.
 - The final handoff remains blocked (`artifacts/operations/reader-capacity-follow-up/handoff.md`); worker/full-queue state was not broadened or resumed.
 
+## 2026-08-28 NON-PRODUCTION R2 DATA-PLANE VERIFICATION
+
+The existing isolated R2 test settings were used without rotating the test
+credentials or recording their values. The repository now has the required
+R2 Actions secrets and the non-secret source/target variables point to
+`test-dokushodo` and `test-dokushodo-backup`. No canonical production bucket,
+object, or deployment secret was changed.
+
+The local backup and restore integration checks passed (`2 passed in 15.60s`).
+The first hosted managed-services workflow at commit `8e2957d` reached the
+new test database and reported `2 failed, 2 passed in 17.77s`: both R2 checks
+passed, while the two database checks found that `public.alembic_version` and
+`scheduled_job_leases` were absent. This confirmed database reachability and
+identified the empty test-project schema without exposing the secret value.
+
+The confirmation-gated migration run
+[`33170998029`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33170998029)
+successfully applied the candidate Alembic migrations at commit `3c1dcf6`.
+The independent hosted verification run
+[`33171154023`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33171154023)
+then passed all four managed PostgreSQL/R2 integration checks (`4 passed in
+18.93s`). The temporary `MANAGED_SERVICE_TESTS_ENABLED` flag was returned to
+`false`; no production database, bucket, or deployment secret was changed.
+
+This closes disposable non-production managed-service schema/R2 verification.
+It does not close managed PostgreSQL recovery, recurring backup/alert,
+reader-capacity, hosted telemetry, or production-readiness gates.
+
 ## 2026-08-24 PIPELINE ASYNC EXECUTION AND CAPACITY COMPLETION CONTINUATION
 
 The authorized completion slice for `pipeline-async-execution-and-capacity`
