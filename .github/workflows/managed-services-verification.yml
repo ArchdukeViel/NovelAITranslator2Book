@@ -53,7 +53,11 @@ jobs:
       MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
 
   isolated-managed-recovery:
-    if: ${{ inputs.confirm_test_recovery == true }}
+    # The repository variable is a temporary branch-local dispatch fallback:
+    # GitHub validates workflow_dispatch inputs against the default-branch copy
+    # until this branch is merged. It is intentionally ignored by schedules
+    # and the production reusable-workflow call.
+    if: ${{ inputs.confirm_test_recovery == true || (github.event_name == 'workflow_dispatch' && vars.MANAGED_SERVICE_RECOVERY_ENABLED == 'true') }}
     uses: ./.github/workflows/managed-services-recovery-verification.yml
     with:
       confirm_test_recovery: true

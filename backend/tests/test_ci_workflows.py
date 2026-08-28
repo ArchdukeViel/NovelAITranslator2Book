@@ -327,7 +327,9 @@ def test_managed_verification_dispatches_recovery_with_explicit_confirmation() -
     source = _workflow("managed-services-verification.yml")
 
     assert "confirm_test_recovery:" in source
-    assert "if: ${{ inputs.confirm_test_recovery == true }}" in source
+    assert "if: ${{ inputs.confirm_test_recovery == true ||" in source
+    assert "MANAGED_SERVICE_RECOVERY_ENABLED" in source
+    assert "github.event_name == 'workflow_dispatch'" in source
     assert "uses: ./.github/workflows/managed-services-recovery-verification.yml" in source
     assert "secrets: inherit" in source
 
