@@ -27,12 +27,12 @@ jobs:
       TEST_R2_ENDPOINT: ${{ secrets.TEST_R2_ENDPOINT }}
       TEST_R2_SOURCE_BUCKET: ${{ vars.TEST_R2_SOURCE_BUCKET }}
       TEST_R2_TARGET_BUCKET: ${{ vars.TEST_R2_TARGET_BUCKET }}
-      TEST_R2_APP_ACCESS_KEY: ${{ secrets.TEST_R2_APP_ACCESS_KEY }}
-      TEST_R2_APP_SECRET_KEY: ${{ secrets.TEST_R2_APP_SECRET_KEY }}
-      TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY: ${{ secrets.TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY }}
-      TEST_R2_SNAPSHOT_SOURCE_SECRET_KEY: ${{ secrets.TEST_R2_SNAPSHOT_SOURCE_SECRET_KEY }}
-      TEST_R2_BACKUP_ACCESS_KEY: ${{ secrets.TEST_R2_BACKUP_ACCESS_KEY }}
-      TEST_R2_BACKUP_SECRET_KEY: ${{ secrets.TEST_R2_BACKUP_SECRET_KEY }}
+      TEST_R2_APP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_APP_ACCESS_KEY_ID }}
+      TEST_R2_APP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_APP_SECRET_ACCESS_KEY }}
+      TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY_ID: ${{ secrets.TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY_ID }}
+      TEST_R2_SNAPSHOT_SOURCE_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_SNAPSHOT_SOURCE_SECRET_ACCESS_KEY }}
+      TEST_R2_BACKUP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_BACKUP_ACCESS_KEY_ID }}
+      TEST_R2_BACKUP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_BACKUP_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,4 +47,5 @@ jobs:
         run: >
           uv run --locked pytest -q -m integration
           backend/tests/integration/test_managed_postgres.py
-          backend/tests/integration/test_r2_snapshot_integration.py
+          backend/tests/integration/test_r2_backup_integration.py
+          backend/tests/integration/test_r2_restore_integration.py

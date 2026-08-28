@@ -96,6 +96,7 @@ __MACOSX/
 .env.*
 !.env.example
 !.env.*.example
+deploy/.cloudflared/
 
 # Runtime data
 data/runtime/
@@ -120,6 +121,9 @@ storage/backups/
 *.tgz
 *.7z
 *.rar
+
+# Regenerated sanitized operational evidence
+artifacts/operations/
 
 # Session exports
 SESSION_EXPORT_*.json

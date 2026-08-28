@@ -48,7 +48,7 @@ services:
     environment:
       SITE_DOMAIN: ${SITE_DOMAIN:-localhost}
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider --header='Host: ${SITE_DOMAIN:-localhost}' http://127.0.0.1/health/ready || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null --header='Host: ${SITE_DOMAIN:-localhost}' http://127.0.0.1/health/ready || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -57,6 +57,19 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    networks:
+      - novelai-net
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.8.0@sha256:2535e54b16adf1d50630f99d0886471926c5ef3f6b328100ec6589f731c48969
+    command: ["tunnel", "--no-autoupdate", "run", "--token-file", "/run/secrets/cloudflare_tunnel_token"]
+    depends_on:
+      caddy:
+        condition: service_healthy
+    secrets:
+      - cloudflare_tunnel_token
     networks:
       - novelai-net
     restart: unless-stopped
@@ -374,6 +387,10 @@ volumes:
   caddy_config:
   redis_data:
   restore_db_data:
+
+secrets:
+  cloudflare_tunnel_token:
+    file: ./.cloudflared/dokushodo-dev.token
 
 networks:
   novelai-net:
