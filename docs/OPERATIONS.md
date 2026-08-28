@@ -2,6 +2,24 @@
 
 Solo-owner runbook for health, maintenance, backup, recovery, incidents, and reader budgets. For topology, environment setup, and release procedures, see [`DEPLOYMENT.md`](DEPLOYMENT.md). Never record secret values in evidence.
 
+## Managed test database verification
+
+`MANAGED_DATABASE_TEST_URL` is reserved for the disposable Supabase project
+named `testdatabase=dokushodo`. It may use the Supabase session pooler, but it
+must never point at the active application database. The strict hosted
+verification workflow does not apply migrations automatically; this preserves
+stale-schema detection.
+
+When the candidate schema must be created or refreshed, run the manual
+confirmation-gated workflow
+`.github/workflows/managed-services-test-migrate.yml` with
+`confirm_test_database=true`. It runs Alembic once with the privileged
+`MIGRATION_DATABASE_URL` variable and does not start an application or worker.
+After it succeeds, run `managed-services-verification.yml` for the observed
+database and R2 checks, then leave `MANAGED_SERVICE_TESTS_ENABLED=false`.
+Record only the workflow URL, commit, UTC timestamp, pass/skip/fail counts,
+and sanitized schema evidence; never record the URL or its credentials.
+
 ## Health
 
 | Endpoint | Expected behavior |
