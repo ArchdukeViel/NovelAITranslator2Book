@@ -21,6 +21,23 @@ leave `MANAGED_SERVICE_TESTS_ENABLED=false`.
 Record only the workflow URL, commit, UTC timestamp, pass/skip/fail counts,
 and sanitized schema evidence; never record the URL or its credentials.
 
+## Managed non-production recovery verification
+
+`managed-services-recovery-verification.yml` is a manual, confirmation-gated
+development workflow for the disposable `testdatabase=dokushodo` project and
+the dedicated test R2 target. It creates a temporary backup-capable database
+role for the run, generates the database-backup encryption key in the runner,
+uses the existing `DatabaseBackupService`, and restores into an ephemeral local
+PostgreSQL service. The run uses a unique R2 prefix and removes the temporary
+role and test objects before recording sanitized evidence.
+
+Run it only with `confirm_test_recovery=true`. The workflow refuses the
+canonical production bucket names and refuses a non-local restore target. Its
+success proves one current isolated backup/restore path and representative
+schema/public-isolation checks; it does not prove recurring production backup
+freshness, operator alert delivery, or production recovery readiness. Keep the
+worker/full queue paused and leave `MANAGED_SERVICE_TESTS_ENABLED=false`.
+
 ## Health
 
 | Endpoint | Expected behavior |
