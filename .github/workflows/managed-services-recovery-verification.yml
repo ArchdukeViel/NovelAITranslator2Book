@@ -82,12 +82,21 @@ jobs:
             --env PGUSER
             --env PGPASSWORD
             --env PGSSLMODE
-            postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
           )
+          tool_args=("$@")
+          if [[ "$tool_name" == "pg_restore" ]]; then
+            archive_index=$((${#tool_args[@]} - 1))
+            archive_path="${tool_args[$archive_index]}"
+            archive_directory="$(dirname "$archive_path")"
+            archive_name="$(basename "$archive_path")"
+            tool_args[$archive_index]="/pgrestore/$archive_name"
+            docker_args+=(--volume "${archive_directory}:/pgrestore:ro")
+          fi
+          docker_args+=(postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94)
           if [[ "$tool_name" == "pg_restore" && -n "${PG_RESTORE_DIAGNOSTIC_PATH:-}" ]]; then
             raw_path="${PG_RESTORE_DIAGNOSTIC_PATH}.raw"
             set +e
-            docker run "${docker_args[@]}" "$tool_name" "$@" 2>"$raw_path"
+            docker run "${docker_args[@]}" "$tool_name" "${tool_args[@]}" 2>"$raw_path"
             exit_code=$?
             set -e
             classification="success"
@@ -113,8 +122,7 @@ jobs:
             rm -f "$raw_path"
             exit "$exit_code"
           fi
-          exec docker run "${docker_args[@]}" \
-            "$tool_name" "$@"
+          exec docker run "${docker_args[@]}" "$tool_name" "${tool_args[@]}"
           EOF
           chmod 700 "$RUNNER_TEMP/pg17-client"
           ln -s "$RUNNER_TEMP/pg17-client" "$RUNNER_TEMP/pg_dump"

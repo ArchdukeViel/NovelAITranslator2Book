@@ -37,7 +37,8 @@ test objects before recording sanitized evidence.
 The recovery runner uses a pinned PostgreSQL 17 client container so the dump
 client matches the managed database major version. Its generated encryption
 key is masked at the runner boundary and is never part of the evidence. A
-failed restore records only a fixed diagnostic class and deletes raw client
+restore archive is mounted read-only into that client container. A failed
+restore records only a fixed diagnostic class and deletes raw client
 diagnostics before evidence publication.
 
 GitHub validates manual-dispatch inputs against the default-branch workflow
