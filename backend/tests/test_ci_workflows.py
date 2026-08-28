@@ -352,6 +352,7 @@ def test_managed_verification_dispatches_recovery_with_explicit_confirmation() -
     )
     assert "DatabaseBackupService" in recovery_test
     assert '"CREATE ROLE' in recovery_test
+    assert '"DROP OWNED BY' in recovery_test
     assert '"DROP ROLE IF EXISTS' in recovery_test
     assert "_PRODUCTION_BUCKETS" in recovery_test
     assert "ephemeral local restore database" in recovery_test

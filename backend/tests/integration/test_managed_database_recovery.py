@@ -90,6 +90,7 @@ def _create_backup_role(engine: Engine, source_uri: str, role_name: str, passwor
 def _drop_backup_role(engine: Engine, role_name: str) -> None:
     role = _identifier(role_name, label="backup role")
     with engine.connect() as connection:
+        connection.exec_driver_sql(f"DROP OWNED BY {role}")
         connection.exec_driver_sql(f"DROP ROLE IF EXISTS {role}")
 
 
