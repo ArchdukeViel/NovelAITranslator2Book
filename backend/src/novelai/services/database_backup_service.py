@@ -327,7 +327,7 @@ class DatabaseBackupService:
         engine = create_engine(sqlalchemy_uri, pool_pre_ping=True, isolation_level="AUTOCOMMIT")
         try:
             with engine.connect() as connection:
-                for role_name in ("anon", "authenticated", "service_role"):
+                for role_name in ("anon", "authenticated", "service_role", "novelai_app"):
                     exists = connection.execute(
                         text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :role_name)"),
                         {"role_name": role_name},

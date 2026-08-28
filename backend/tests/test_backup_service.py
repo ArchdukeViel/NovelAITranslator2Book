@@ -105,3 +105,16 @@ def test_database_backup_health_enforces_freshness(hours: int, status: str) -> N
     ]
 
     assert DatabaseBackupService(client, "backup-bucket").get_backup_health()["status"] == status
+
+
+def test_restore_target_prepares_all_application_policy_roles(monkeypatch: pytest.MonkeyPatch) -> None:
+    connection = MagicMock()
+    connection.execute.return_value.scalar_one.return_value = False
+    engine = MagicMock()
+    engine.connect.return_value.__enter__.return_value = connection
+    monkeypatch.setattr("novelai.services.database_backup_service.create_engine", lambda *_args, **_kwargs: engine)
+
+    DatabaseBackupService._prepare_restore_target("postgresql+psycopg://restore:restore@127.0.0.1/novelai_restore")
+
+    statements = [str(call.args[0]) for call in connection.exec_driver_sql.call_args_list]
+    assert 'CREATE ROLE "novelai_app" NOLOGIN' in statements
