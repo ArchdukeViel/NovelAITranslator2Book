@@ -335,6 +335,8 @@ def test_managed_recovery_workflow_is_confirmation_gated_and_isolated() -> None:
     assert 'echo "::add-mask::$BACKUP_KEY"' in source
     assert "ephemeral" in source.lower()
     assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in source
+    assert "TEST_R2_BACKUP_ACCESS_KEY_ID:" in source
+    assert "TEST_R2_BACKUP_SECRET_ACCESS_KEY:" in source
 
 
 def test_managed_verification_dispatches_recovery_with_explicit_confirmation() -> None:
@@ -345,7 +347,10 @@ def test_managed_verification_dispatches_recovery_with_explicit_confirmation() -
     assert "MANAGED_SERVICE_RECOVERY_ENABLED" in source
     assert "github.event_name == 'workflow_dispatch'" in source
     assert "uses: ./.github/workflows/managed-services-recovery-verification.yml" in source
-    assert "secrets: inherit" in source
+    assert "MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}" in source
+    assert "TEST_R2_ENDPOINT: ${{ secrets.TEST_R2_ENDPOINT }}" in source
+    assert "TEST_R2_BACKUP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_BACKUP_ACCESS_KEY_ID }}" in source
+    assert "TEST_R2_BACKUP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_BACKUP_SECRET_ACCESS_KEY }}" in source
 
     recovery_test = (Path(__file__).parent / "integration" / "test_managed_database_recovery.py").read_text(
         encoding="utf-8"

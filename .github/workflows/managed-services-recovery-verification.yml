@@ -14,6 +14,15 @@ on:
         description: "Confirm disposable testdatabase=dokushodo and test R2 buckets only"
         required: true
         type: boolean
+    secrets:
+      MANAGED_DATABASE_TEST_URL:
+        required: true
+      TEST_R2_ENDPOINT:
+        required: true
+      TEST_R2_BACKUP_ACCESS_KEY_ID:
+        required: true
+      TEST_R2_BACKUP_SECRET_ACCESS_KEY:
+        required: true
 
 permissions:
   contents: read

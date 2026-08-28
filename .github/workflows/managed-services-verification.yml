@@ -61,7 +61,11 @@ jobs:
     uses: ./.github/workflows/managed-services-recovery-verification.yml
     with:
       confirm_test_recovery: true
-    secrets: inherit
+    secrets:
+      MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
+      TEST_R2_ENDPOINT: ${{ secrets.TEST_R2_ENDPOINT }}
+      TEST_R2_BACKUP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_BACKUP_ACCESS_KEY_ID }}
+      TEST_R2_BACKUP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_BACKUP_SECRET_ACCESS_KEY }}
 
   hosted-postgres-and-r2:
     if: ${{ inputs.migrate_test_database != true && (inputs.required || vars.MANAGED_SERVICE_TESTS_ENABLED == 'true') }}
