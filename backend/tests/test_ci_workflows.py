@@ -319,6 +319,9 @@ def test_managed_recovery_workflow_is_confirmation_gated_and_isolated() -> None:
     assert "MANAGED_DATABASE_TEST_URL" in source
     assert "TEST_R2_TARGET_BUCKET" in source
     assert "DATABASE_RESTORE_TARGET_URL" in source
+    assert "postgresql-client-17" in source
+    assert "PG_DUMP_PATH: /usr/lib/postgresql/17/bin/pg_dump" in source
+    assert 'echo "::add-mask::$BACKUP_KEY"' in source
     assert "ephemeral" in source.lower()
     assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in source
 

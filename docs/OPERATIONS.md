@@ -34,6 +34,10 @@ database-backup encryption key in the runner, uses the existing
 service. The run uses a unique R2 prefix and removes the temporary role and
 test objects before recording sanitized evidence.
 
+The recovery runner installs the PostgreSQL 17 client explicitly so the dump
+client matches the managed database major version. Its generated encryption
+key is masked at the runner boundary and is never part of the evidence.
+
 GitHub validates manual-dispatch inputs against the default-branch workflow
 copy. Until this workflow is merged, a branch-local run may use the temporary
 repository variable `MANAGED_SERVICE_RECOVERY_ENABLED=true` as the explicit

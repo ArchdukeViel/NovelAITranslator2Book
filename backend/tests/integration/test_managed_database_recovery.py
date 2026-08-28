@@ -164,10 +164,12 @@ def test_managed_database_backup_and_isolated_restore(monkeypatch: pytest.Monkey
     role_name = f"novelai_backup_{secrets.token_hex(8)}"
     role_created = False
     failure: Exception | None = None
+    failure_stage = "initialization"
     cleanup_errors: list[str] = []
 
     try:
         backup_password = secrets.token_urlsafe(32)
+        failure_stage = "create_backup_role"
         _create_backup_role(source_engine, source_uri, role_name, backup_password)
         role_created = True
         backup_username = _pooler_username(make_url(source_uri).username, role_name)
@@ -185,11 +187,13 @@ def test_managed_database_backup_and_isolated_restore(monkeypatch: pytest.Monkey
         monkeypatch.setattr(settings, "DATABASE_RESTORE_SSL_MODE", "disable")
 
         service = DatabaseBackupService(target_client, target_bucket)
+        failure_stage = "create_backup"
         backup_result = service.create_backup()
         if backup_result.get("status") != "succeeded":
             raise RuntimeError("managed database backup did not succeed")
         evidence["backup_status"] = "succeeded"
 
+        failure_stage = "verify_manifest"
         manifest = service._latest_manifest()
         required_manifest_fields = {
             "backup_id",
@@ -204,17 +208,20 @@ def test_managed_database_backup_and_isolated_restore(monkeypatch: pytest.Monkey
         evidence["manifest_status"] = "verified"
         evidence["checksum_status"] = "verified"
 
+        failure_stage = "verify_backup_freshness"
         backup_health = service.get_backup_health()
         if backup_health.get("status") != "healthy":
             raise RuntimeError("fresh managed database backup was not healthy")
         evidence["backup_freshness_status"] = "healthy"
 
+        failure_stage = "restore_backup"
         restore_result = service.verify_latest_restore()
         if restore_result.get("status") != "succeeded":
             raise RuntimeError("managed database restore did not succeed")
         evidence["restore_status"] = "succeeded"
         evidence["alembic_head_verified"] = bool(restore_result.get("alembic_head"))
 
+        failure_stage = "verify_restored_database"
         target_engine = create_engine(_sqlalchemy_uri(restore_uri), pool_pre_ping=True)
         with target_engine.connect() as connection:
             public_tables = int(
@@ -253,6 +260,7 @@ def test_managed_database_backup_and_isolated_restore(monkeypatch: pytest.Monkey
     except Exception as exc:
         failure = exc
         evidence["result"] = "failed"
+        evidence["failure_stage"] = failure_stage
         evidence["failure_class"] = type(exc).__name__
     finally:
         if target_engine is not None:
