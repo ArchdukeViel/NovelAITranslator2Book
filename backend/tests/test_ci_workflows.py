@@ -320,8 +320,12 @@ def test_managed_recovery_workflow_is_confirmation_gated_and_isolated() -> None:
     assert "TEST_R2_TARGET_BUCKET" in source
     assert "DATABASE_RESTORE_TARGET_URL" in source
     assert "postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94" in source
-    assert "docker run --rm --network host" in source
+    assert "docker_args=(" in source
+    assert "--network host" in source
     assert 'echo "PG_DUMP_PATH=$RUNNER_TEMP/pg_dump"' in source
+    assert 'echo "PG_RESTORE_DIAGNOSTIC_PATH=$RUNNER_TEMP/pg_restore_diagnostic_class"' in source
+    assert "version_mismatch" in source
+    assert "missing_dependency" in source
     assert 'echo "::add-mask::$BACKUP_KEY"' in source
     assert "ephemeral" in source.lower()
     assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in source

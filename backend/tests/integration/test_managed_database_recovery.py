@@ -107,6 +107,17 @@ def _write_evidence(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _restore_diagnostic_class() -> str | None:
+    diagnostic_path = os.environ.get("PG_RESTORE_DIAGNOSTIC_PATH")
+    if not diagnostic_path:
+        return None
+    try:
+        value = Path(diagnostic_path).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return value if re.fullmatch(r"[a-z_]{1,64}", value) else "unclassified"
+
+
 @pytest.mark.integration
 def test_managed_database_backup_and_isolated_restore(monkeypatch: pytest.MonkeyPatch) -> None:
     boto3 = pytest.importorskip("boto3")
@@ -262,6 +273,10 @@ def test_managed_database_backup_and_isolated_restore(monkeypatch: pytest.Monkey
         evidence["result"] = "failed"
         evidence["failure_stage"] = failure_stage
         evidence["failure_class"] = type(exc).__name__
+        if failure_stage == "restore_backup":
+            diagnostic_class = _restore_diagnostic_class()
+            if diagnostic_class is not None:
+                evidence["restore_failure_class"] = diagnostic_class
     finally:
         if target_engine is not None:
             target_engine.dispose()

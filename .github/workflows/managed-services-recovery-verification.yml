@@ -73,14 +73,47 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           tool_name="$(basename "$0")"
-          exec docker run --rm --network host \
-            --env PGHOST \
-            --env PGPORT \
-            --env PGDATABASE \
-            --env PGUSER \
-            --env PGPASSWORD \
-            --env PGSSLMODE \
-            postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94 \
+          docker_args=(
+            --rm
+            --network host
+            --env PGHOST
+            --env PGPORT
+            --env PGDATABASE
+            --env PGUSER
+            --env PGPASSWORD
+            --env PGSSLMODE
+            postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
+          )
+          if [[ "$tool_name" == "pg_restore" && -n "${PG_RESTORE_DIAGNOSTIC_PATH:-}" ]]; then
+            raw_path="${PG_RESTORE_DIAGNOSTIC_PATH}.raw"
+            set +e
+            docker run "${docker_args[@]}" "$tool_name" "$@" 2>"$raw_path"
+            exit_code=$?
+            set -e
+            classification="success"
+            if [[ "$exit_code" -ne 0 ]]; then
+              classification="unclassified"
+              if grep -Eqi "server version|client version" "$raw_path"; then
+                classification="version_mismatch"
+              elif grep -Eqi "could not connect|connection refused|connection.*failed|no route" "$raw_path"; then
+                classification="connection"
+              elif grep -Eqi "permission denied|must be owner|not owner|permission" "$raw_path"; then
+                classification="permission"
+              elif grep -Eqi "extension" "$raw_path"; then
+                classification="extension"
+              elif grep -Eqi "does not exist|undefined|not found" "$raw_path"; then
+                classification="missing_dependency"
+              elif grep -Eqi "already exists|duplicate" "$raw_path"; then
+                classification="object_conflict"
+              elif grep -Eqi "syntax error|fatal|error" "$raw_path"; then
+                classification="pg_restore_error"
+              fi
+            fi
+            printf '%s\n' "$classification" > "$PG_RESTORE_DIAGNOSTIC_PATH"
+            rm -f "$raw_path"
+            exit "$exit_code"
+          fi
+          exec docker run "${docker_args[@]}" \
             "$tool_name" "$@"
           EOF
           chmod 700 "$RUNNER_TEMP/pg17-client"
@@ -88,6 +121,7 @@ jobs:
           ln -s "$RUNNER_TEMP/pg17-client" "$RUNNER_TEMP/pg_restore"
           echo "PG_DUMP_PATH=$RUNNER_TEMP/pg_dump" >> "$GITHUB_ENV"
           echo "PG_RESTORE_PATH=$RUNNER_TEMP/pg_restore" >> "$GITHUB_ENV"
+          echo "PG_RESTORE_DIAGNOSTIC_PATH=$RUNNER_TEMP/pg_restore_diagnostic_class" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/pg_dump" --version
           "$RUNNER_TEMP/pg_restore" --version
       - name: Generate ephemeral backup encryption key
