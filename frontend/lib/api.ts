@@ -103,6 +103,10 @@ async function getCsrfToken(): Promise<string> {
   return csrfTokenPromise;
 }
 
+function resetCsrfTokenCache() {
+  csrfTokenPromise = null;
+}
+
 export class ApiError extends Error {
   status: number;
   code: string;
@@ -490,12 +494,38 @@ export const api = {
 // ===========================================
 export const adminAuth = {
   me: () => request<import("./api-types").AuthUser>("/auth/me"),
-  ownerBootstrapLogin: (secret: string) =>
-    request<import("./api-types").AuthUser>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ secret })
-    }),
-  logout: () => request<{ status: string }>("/auth/logout", { method: "POST" })
+  ownerBootstrapLogin: async (secret: string) => {
+    // A new login can follow a stale session cookie or a prior logout. Fetch
+    // a CSRF token for the current session rather than reusing that token.
+    resetCsrfTokenCache();
+    try {
+      return await request<import("./api-types").AuthUser>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ secret })
+      });
+    } finally {
+      // The login response may replace the signed session cookie.
+      resetCsrfTokenCache();
+    }
+  },
+  logout: async () => {
+    resetCsrfTokenCache();
+    try {
+      return await request<{ status: string }>("/auth/logout", { method: "POST" });
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 403) {
+        throw error;
+      }
+
+      // Recover once from a stale CSRF token/session pair without weakening
+      // the backend CSRF requirement.
+      resetCsrfTokenCache();
+      return await request<{ status: string }>("/auth/logout", { method: "POST" });
+    } finally {
+      // Logout clears the server-side session payload, including CSRF state.
+      resetCsrfTokenCache();
+    }
+  }
 };
 
 function appendQuery(path: string, search: URLSearchParams): string {

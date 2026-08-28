@@ -176,4 +176,40 @@ describe("admin owner login", () => {
       expect(mockRefresh).toHaveBeenCalled();
     });
   });
+
+  it("returns the admin guard to login after a successful logout", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.includes("/api/auth/me")) {
+        return Promise.resolve(jsonResponse(owner));
+      }
+      if (url.includes("/api/auth/csrf")) {
+        return Promise.resolve(jsonResponse({ csrf_token: "logout-csrf" }));
+      }
+      if (url.includes("/api/auth/logout")) {
+        return Promise.resolve(jsonResponse({ status: "logged_out" }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    renderWithQuery(
+      <AdminAuthGuard>
+        <>
+          <LogoutControl />
+          <div>Admin dashboard content</div>
+        </>
+      </AdminAuthGuard>
+    );
+
+    expect(await screen.findByText("Admin dashboard content")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /sign out/i }));
+
+    expect(await screen.findByRole("heading", { name: /admin sign in/i })).toBeInTheDocument();
+    expect(screen.queryByText("Admin dashboard content")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/auth/logout"),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
 });

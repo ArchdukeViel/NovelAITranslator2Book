@@ -60,7 +60,7 @@ export function AdminAuthGuard({ children }: AdminAuthGuardProps) {
   const triggerReauth = useCallback(() => {
     setShowLogin(true);
     setIsOwner(false);
-    setAuthChecked(false);
+    setAuthChecked(true);
   }, []);
 
   // Make triggerReauth globally accessible for adminApi error handling

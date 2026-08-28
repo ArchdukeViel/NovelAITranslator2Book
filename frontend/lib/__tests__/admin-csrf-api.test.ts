@@ -116,6 +116,26 @@ describe("admin API CSRF wiring", () => {
     expect(new Headers(fetchMock.mock.calls[0][1]?.headers).has("X-CSRF-Token")).toBe(false);
   });
 
+  it("refreshes the CSRF token once when logout receives a stale-token rejection", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ csrf_token: "stale-csrf" }))
+      .mockResolvedValueOnce(jsonResponse({ detail: "Invalid CSRF token." }, { status: 403 }))
+      .mockResolvedValueOnce(jsonResponse({ csrf_token: "fresh-csrf" }))
+      .mockResolvedValueOnce(jsonResponse({ status: "logged_out" }));
+    const { adminAuth } = await loadApi();
+
+    await adminAuth.logout();
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/auth/csrf");
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/auth/logout");
+    expect(new Headers(fetchMock.mock.calls[1][1]?.headers).get("X-CSRF-Token")).toBe("stale-csrf");
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/auth/csrf");
+    expect(fetchMock.mock.calls[3][0]).toBe("/api/auth/logout");
+    expect(new Headers(fetchMock.mock.calls[3][1]?.headers).get("X-CSRF-Token")).toBe("fresh-csrf");
+  });
+
   it("keeps runActivity on the pending-only run endpoint", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
