@@ -328,7 +328,10 @@ def test_managed_recovery_workflow_is_confirmation_gated_and_isolated() -> None:
     assert 'echo "PG_DUMP_PATH=$RUNNER_TEMP/pg_dump"' in source
     assert 'echo "PG_RESTORE_DIAGNOSTIC_PATH=$RUNNER_TEMP/pg_restore_diagnostic_class"' in source
     assert "version_mismatch" in source
-    assert "missing_dependency" in source
+    assert "missing_schema" in source
+    assert "missing_relation" in source
+    assert "missing_function" in source
+    assert "missing_extension" in source
     assert 'echo "::add-mask::$BACKUP_KEY"' in source
     assert "ephemeral" in source.lower()
     assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in source

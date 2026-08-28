@@ -102,16 +102,28 @@ jobs:
             classification="success"
             if [[ "$exit_code" -ne 0 ]]; then
               classification="unclassified"
-              if grep -Eqi "server version|client version" "$raw_path"; then
+              if grep -Eqi "could not open input file|no such file or directory|cannot open" "$raw_path"; then
+                classification="input_file"
+              elif grep -Eqi "server version|client version" "$raw_path"; then
                 classification="version_mismatch"
               elif grep -Eqi "could not connect|connection refused|connection.*failed|no route" "$raw_path"; then
                 classification="connection"
               elif grep -Eqi "permission denied|must be owner|not owner|permission" "$raw_path"; then
                 classification="permission"
-              elif grep -Eqi "extension" "$raw_path"; then
-                classification="extension"
+              elif grep -Eqi "schema .* does not exist" "$raw_path"; then
+                classification="missing_schema"
+              elif grep -Eqi "relation .* does not exist|table .* does not exist" "$raw_path"; then
+                classification="missing_relation"
+              elif grep -Eqi "function .* does not exist" "$raw_path"; then
+                classification="missing_function"
+              elif grep -Eqi "type .* does not exist" "$raw_path"; then
+                classification="missing_type"
+              elif grep -Eqi "role .* does not exist" "$raw_path"; then
+                classification="missing_role"
+              elif grep -Eqi "extension .* (does not exist|is not available)" "$raw_path"; then
+                classification="missing_extension"
               elif grep -Eqi "does not exist|undefined|not found" "$raw_path"; then
-                classification="missing_dependency"
+                classification="missing_object"
               elif grep -Eqi "already exists|duplicate" "$raw_path"; then
                 classification="object_conflict"
               elif grep -Eqi "syntax error|fatal|error" "$raw_path"; then
