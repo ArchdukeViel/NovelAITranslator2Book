@@ -314,6 +314,15 @@ procedure.
 7. Run production smoke against the isolated recovery target.
 8. Destroy disposable targets only after evidence is captured.
 
+Current checkpoint (2026-08-28): the confirmation-gated run
+[`33182847311`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33182847311)
+passed the encrypted database backup, manifest/checksum/freshness checks,
+isolated restore, representative queries, public isolation, dedicated R2
+cleanup, and temporary-role cleanup. It restored 37 public tables with 37 RLS
+tables and zero invalid constraints. This records one current non-production
+database recovery path; it does not establish recurring production freshness,
+operator alert delivery, production smoke, or production capacity.
+
 #### C. Alert closure
 
 Existing tooling: `OperatorAlertService.send`,

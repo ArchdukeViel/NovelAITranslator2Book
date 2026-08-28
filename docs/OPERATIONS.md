@@ -48,9 +48,12 @@ operator confirmation, dispatch `Managed Services Verification` against the
 candidate branch, and delete the variable after the run. The variable is
 honored only for `workflow_dispatch`; it must not be left enabled.
 
-Run it only with `confirm_test_recovery=true`. The workflow refuses the
-canonical production bucket names and refuses a non-local restore target. Its
-success proves one current isolated backup/restore path and representative
+For a workflow revision that exposes the input, run it only with
+`confirm_test_recovery=true`. When the default-branch workflow copy does not
+yet expose that input, the documented temporary repository variable is the
+explicit confirmation and must be deleted after the run. The workflow refuses
+the canonical production bucket names and refuses a non-local restore target.
+Its success proves one current isolated backup/restore path and representative
 schema/public-isolation checks; it does not prove recurring production backup
 freshness, operator alert delivery, or production recovery readiness. Keep the
 worker/full queue paused and leave `MANAGED_SERVICE_TESTS_ENABLED=false`.
@@ -576,6 +579,28 @@ The 38 pre-remediation and stage-1000 telemetry records are joinable but
 explicitly unavailable. Recovery freshness, alert delivery, hosted restore,
 and provider/R2 telemetry remain unobserved; `production_capacity_claim` is
 `not_established`.
+
+## Managed non-production recovery checkpoint - 2026-08-28
+
+The confirmation-gated recovery run
+[`33182847311`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33182847311)
+ran at candidate commit `30fe82c` against the disposable managed test
+database and dedicated non-production R2 target. Its sanitized artifact is
+`artifacts/operations/reader-capacity-follow-up/remote-recovery-33182847311/managed-database-recovery-evidence.json`.
+
+The run passed encrypted database backup creation, manifest and checksum
+verification, backup freshness, isolated local restore, Alembic-head
+verification, representative queries, public isolation, R2-prefix cleanup,
+temporary-role cleanup, and overall cleanup. The restored target contained 37
+public tables, all 37 had RLS enabled, and there were zero invalid
+constraints. The run recorded `production_mutation=none`; the temporary
+confirmation variable was removed and `MANAGED_SERVICE_TESTS_ENABLED` remains
+`false`.
+
+This is current non-production recovery evidence for one isolated path. It
+does not establish recurring production backup freshness, alert delivery,
+production smoke, reader capacity, hosted telemetry, or production recovery
+readiness. Keep the worker and original full queue stopped/paused.
 
 ## Pipeline async execution and capacity runbook checkpoint - 2026-08-24
 

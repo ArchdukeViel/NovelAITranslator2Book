@@ -138,9 +138,32 @@ then passed all four managed PostgreSQL/R2 integration checks (`4 passed in
 18.93s`). The temporary `MANAGED_SERVICE_TESTS_ENABLED` flag was returned to
 `false`; no production database, bucket, or deployment secret was changed.
 
-This closes disposable non-production managed-service schema/R2 verification.
-It does not close managed PostgreSQL recovery, recurring backup/alert,
-reader-capacity, hosted telemetry, or production-readiness gates.
+This closes disposable non-production managed-service schema/R2 verification at
+that earlier checkpoint. It did not by itself close managed PostgreSQL
+recovery, recurring backup/alert, reader-capacity, hosted telemetry, or
+production-readiness gates.
+
+## 2026-08-28 NON-PRODUCTION MANAGED DATABASE RECOVERY VERIFICATION
+
+The confirmation-gated recovery workflow ran against the disposable managed
+test database and dedicated non-production R2 target at candidate commit
+`30fe82c`:
+[`33182847311`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33182847311).
+The sanitized record is stored at
+`artifacts/operations/reader-capacity-follow-up/remote-recovery-33182847311/managed-database-recovery-evidence.json`.
+
+The run passed encrypted database backup creation, manifest/checksum
+verification, freshness, isolated local restore, Alembic-head verification,
+representative queries, public isolation, R2-prefix cleanup, temporary-role
+cleanup, and overall cleanup. The restored target contained 37 public tables,
+37 RLS tables, and zero invalid constraints. No production mutation occurred;
+the temporary confirmation variable was deleted and
+`MANAGED_SERVICE_TESTS_ENABLED` remained `false`.
+
+This closes the current one-run non-production managed database recovery drill.
+It does not establish recurring production backup freshness, operator alert
+delivery, production smoke, reader capacity, hosted telemetry, or production
+recovery readiness. The worker and original full queue remain stopped/paused.
 
 ## 2026-08-24 PIPELINE ASYNC EXECUTION AND CAPACITY COMPLETION CONTINUATION
 
