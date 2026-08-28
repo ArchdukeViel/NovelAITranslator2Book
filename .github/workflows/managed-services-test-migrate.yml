@@ -8,6 +8,15 @@ on:
         required: true
         type: boolean
         default: false
+  workflow_call:
+    inputs:
+      confirm_test_database:
+        description: "Confirm this targets the disposable testdatabase=dokushodo Supabase project"
+        required: true
+        type: boolean
+    secrets:
+      MANAGED_DATABASE_TEST_URL:
+        required: true
 
 permissions:
   contents: read

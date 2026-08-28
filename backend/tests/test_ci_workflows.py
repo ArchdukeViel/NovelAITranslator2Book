@@ -271,7 +271,7 @@ def test_dependency_review_least_privilege() -> None:
 
 
 def test_uv_locked_contract_in_ci_and_managed_verification() -> None:
-    for name in ("ci.yml", "managed-services-verification.yml"):
+    for name in ("ci.yml", "managed-services-verification.yml", "managed-services-test-migrate.yml"):
         source = _workflow(name)
         assert "--frozen" not in source, f"--frozen found in {name}"
         assert "--locked" in source, f"--locked missing in {name}"
@@ -298,6 +298,16 @@ def test_managed_services_verification_uses_current_restore_contract() -> None:
     managed_postgres = (Path(__file__).parent / "integration" / "test_managed_postgres.py").read_text(encoding="utf-8")
     assert 'EXPECTED_ALEMBIC_HEAD = "e7f1a9c3b5d2"' in managed_postgres
     assert "9c2e4a6b8d0f" not in managed_postgres
+
+
+def test_managed_test_database_migration_is_confirmation_gated() -> None:
+    source = _workflow("managed-services-test-migrate.yml")
+
+    assert "workflow_dispatch:" in source
+    assert "workflow_call:" in source
+    assert "confirm_test_database == true" in source
+    assert "MIGRATION_DATABASE_URL" in source
+    assert "MANAGED_DATABASE_TEST_URL" in source
 
 
 def test_build_workflow_run_trust_guards_and_concurrency() -> None:

@@ -4,6 +4,17 @@ on:
   schedule:
     - cron: "17 2 * * 1"
   workflow_dispatch:
+    inputs:
+      migrate_test_database:
+        description: "Apply candidate migrations to the disposable test database only"
+        required: true
+        type: boolean
+        default: false
+      confirm_test_database:
+        description: "Confirm this targets the disposable testdatabase=dokushodo Supabase project"
+        required: true
+        type: boolean
+        default: false
   workflow_call:
     # When called as a pre-deployment gate (required=true) the job runs
     # unconditionally so a production deploy cannot silently skip hosted
@@ -13,13 +24,32 @@ on:
         description: "Run unconditionally (pre-deployment gate)"
         type: boolean
         default: false
+      migrate_test_database:
+        description: "Apply candidate migrations to the disposable test database only"
+        type: boolean
+        default: false
+      confirm_test_database:
+        description: "Confirm this targets the disposable testdatabase=dokushodo Supabase project"
+        type: boolean
+        default: false
+    secrets:
+      MANAGED_DATABASE_TEST_URL:
+        required: false
 
 permissions:
   contents: read
 
 jobs:
+  migrate-test-database:
+    if: ${{ inputs.migrate_test_database == true && inputs.confirm_test_database == true }}
+    uses: ./.github/workflows/managed-services-test-migrate.yml
+    with:
+      confirm_test_database: ${{ inputs.confirm_test_database }}
+    secrets:
+      MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
+
   hosted-postgres-and-r2:
-    if: ${{ inputs.required || vars.MANAGED_SERVICE_TESTS_ENABLED == 'true' }}
+    if: ${{ inputs.migrate_test_database != true && (inputs.required || vars.MANAGED_SERVICE_TESTS_ENABLED == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
