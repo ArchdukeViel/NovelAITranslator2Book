@@ -32,6 +32,10 @@ on:
         description: "Confirm this targets the disposable testdatabase=dokushodo Supabase project"
         type: boolean
         default: false
+      confirm_test_recovery:
+        description: "Confirm disposable database recovery and test R2 buckets only"
+        type: boolean
+        default: false
     secrets:
       MANAGED_DATABASE_TEST_URL:
         required: false
@@ -47,6 +51,13 @@ jobs:
       confirm_test_database: ${{ inputs.confirm_test_database }}
     secrets:
       MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
+
+  isolated-managed-recovery:
+    if: ${{ inputs.confirm_test_recovery == true }}
+    uses: ./.github/workflows/managed-services-recovery-verification.yml
+    with:
+      confirm_test_recovery: true
+    secrets: inherit
 
   hosted-postgres-and-r2:
     if: ${{ inputs.migrate_test_database != true && (inputs.required || vars.MANAGED_SERVICE_TESTS_ENABLED == 'true') }}

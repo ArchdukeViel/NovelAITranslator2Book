@@ -25,11 +25,14 @@ and sanitized schema evidence; never record the URL or its credentials.
 
 `managed-services-recovery-verification.yml` is a manual, confirmation-gated
 development workflow for the disposable `testdatabase=dokushodo` project and
-the dedicated test R2 target. It creates a temporary backup-capable database
-role for the run, generates the database-backup encryption key in the runner,
-uses the existing `DatabaseBackupService`, and restores into an ephemeral local
-PostgreSQL service. The run uses a unique R2 prefix and removes the temporary
-role and test objects before recording sanitized evidence.
+the dedicated test R2 target. The existing `Managed Services Verification`
+workflow dispatches it when `confirm_test_recovery=true`, so a branch-local
+candidate can be run with `--ref` without merging to the default branch. It
+creates a temporary backup-capable database role for the run, generates the
+database-backup encryption key in the runner, uses the existing
+`DatabaseBackupService`, and restores into an ephemeral local PostgreSQL
+service. The run uses a unique R2 prefix and removes the temporary role and
+test objects before recording sanitized evidence.
 
 Run it only with `confirm_test_recovery=true`. The workflow refuses the
 canonical production bucket names and refuses a non-local restore target. Its

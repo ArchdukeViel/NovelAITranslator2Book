@@ -314,12 +314,22 @@ def test_managed_recovery_workflow_is_confirmation_gated_and_isolated() -> None:
     source = _workflow("managed-services-recovery-verification.yml")
 
     assert "workflow_dispatch:" in source
+    assert "workflow_call:" in source
     assert "confirm_test_recovery == true" in source
     assert "MANAGED_DATABASE_TEST_URL" in source
     assert "TEST_R2_TARGET_BUCKET" in source
     assert "DATABASE_RESTORE_TARGET_URL" in source
     assert "ephemeral" in source.lower()
     assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in source
+
+
+def test_managed_verification_dispatches_recovery_with_explicit_confirmation() -> None:
+    source = _workflow("managed-services-verification.yml")
+
+    assert "confirm_test_recovery:" in source
+    assert "if: ${{ inputs.confirm_test_recovery == true }}" in source
+    assert "uses: ./.github/workflows/managed-services-recovery-verification.yml" in source
+    assert "secrets: inherit" in source
 
     recovery_test = (Path(__file__).parent / "integration" / "test_managed_database_recovery.py").read_text(
         encoding="utf-8"

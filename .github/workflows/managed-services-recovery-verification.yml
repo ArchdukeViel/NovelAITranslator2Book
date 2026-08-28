@@ -8,6 +8,12 @@ on:
         required: true
         type: boolean
         default: false
+  workflow_call:
+    inputs:
+      confirm_test_recovery:
+        description: "Confirm disposable testdatabase=dokushodo and test R2 buckets only"
+        required: true
+        type: boolean
 
 permissions:
   contents: read
