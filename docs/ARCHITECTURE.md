@@ -79,6 +79,24 @@ The production topology is the target.
 - Migrations: one-shot Compose ``migrate`` service must succeed before APIs.
 - Purpose: production-like local acceptance and smoke testing.
 
+### Current development origin (Windows Docker + Cloudflare Tunnel)
+
+- The temporary development URL is ``https://dev.dokushodo.online``. It is
+  separate from the production apex and ``www`` hostnames; neither production
+  DNS record is repointed by this topology.
+- A remotely managed Cloudflare Tunnel named ``dokushodo-dev`` routes only
+  ``dev.dokushodo.online`` to the internal Caddy service at
+  ``http://caddy:80``. Caddy receives the same development host header and
+  remains the only HTTP router for frontend, admin, reader, and health paths.
+- The Compose ``cloudflared`` service uses the digest-pinned Cloudflare image
+  and an ignored local token file under ``deploy/.cloudflared/``. The token is
+  never checked into the repository or passed through tracked configuration.
+- This is an externally reachable development smoke path over the current
+  Windows Docker host. It is not the Tailscale production topology and does
+  not establish production capacity, recovery, monitoring, or launch
+  readiness. The worker/full queue remains stopped unless a separate gate
+  explicitly authorizes it.
+
 ### Tailscale-hosted production (WSL/Docker + split containers + managed PostgreSQL + R2)
 
 - **Frontend**: pinned Node.js 26.7.x Next.js container behind Caddy on the
@@ -121,8 +139,12 @@ The production topology is the target.
   mutations, explicit allowed hosts, ``X-Forwarded-Proto`` enforcement.
 - **Observability**: health endpoints (``/health/live``, ``/health/ready``,
   ``/api/admin/health``), structured logging, runtime error monitoring.
-- **Email**: SMTP delivery configured through ``AUTH_EMAIL_DELIVERY_MODE``
-  and canonical SMTP settings.
+- **Email**: Auth mail is capability-gated through
+  ``AUTH_EMAIL_DELIVERY_MODE`` and the canonical SMTP settings. The safe
+  ``noop`` profile remains the current baseline: password signup may create an
+  unverified ``user`` and establish a session, but verification and password
+  reset messages are not delivered until the ``DEBT-118`` SMTP acceptance
+  gate passes.
   - **Backup and restore**: independently restorable copies with verified
     restore procedure; encrypted database dumps and incremental R2 snapshots.
     ``R2IncrementalBackupTarget.apply_retention()`` keeps manifests and shared

@@ -2932,6 +2932,11 @@ Evidence: `artifacts/capacity/pac-8a109a5ad1cd-recovery-evidence.md`.
 
 # 67B. Async Capacity and R2 Completion Checkpoint — 2026-08-24
 
+> Historical checkpoint. The later reader-capacity-and-recovery follow-up in
+> section 70 supersedes the reader and recovery operational status here. The
+> checkboxes below record the earlier bounded scope and are not current hosted
+> restore, reader-SLO, billing, or production-capacity proof.
+
 The authorized completion slice is recorded below. Each item is complete as a
 task, evidence, or safety decision; a bounded stop is not rewritten as a
 production-scale success.
@@ -3082,3 +3087,72 @@ documentation conformance review: task-ledger/requirements/design review, target
 
 This report is complete for the authorized bounded scope. Do not convert its
 bounded evidence into a production-scale capacity, billing, or quota claim.
+
+# 70. Reader Capacity and Recovery Follow-up — 2026-08-25
+
+This later follow-up supersedes only the reader/recovery operational status in
+the preceding completion handoff. Its local schema, contract tests, semantic
+validators, and safety decisions are complete; the operational gates are not
+passed. The 1k reader artifact records `reader_slo_status=blocked`,
+`path_profile_status=blocked`, `telemetry_status=unavailable`,
+`recovery_status=not_assessed` for the stage artifact, and
+`production_capacity_claim=not_established`. The final handoff records
+recovery as blocked.
+
+The generated route matrix contains explicit unavailable cells for every
+topology, required route, and warm/controlled-cold dimension because no
+approved fixture/target or cold-cache control was supplied. All attribution
+layers and hosted metric snapshots are unavailable; no R2/provider bottleneck,
+billing, quota, or capacity value is inferred. Local backup/restore tests are
+not a current hosted restore proof, and the managed-services workflow contains
+a missing integration-test path. The worker and original full queue remain
+stopped/paused, higher reader stages remain unadmitted, and no production
+mutation or secret operation was performed.
+
+Evidence: `artifacts/operations/reader-capacity-follow-up/handoff.md`,
+`artifacts/operations/reader-capacity-follow-up/validation.md`, and the JSON
+artifacts in the same directory. Resolve the handoff blockers before
+describing this project as production-capacity-ready.
+
+# 71. Reader Capacity and Recovery Runtime Recheck — 2026-08-27
+
+The local runtime was restored after Docker Desktop had been stopped. Backend,
+reader, Caddy, frontend, Redis, and restore-db were healthy, and local Caddy
+returned HTTP 200 with empty bodies for `/health/live` and `/health/ready`.
+The dedicated worker remained absent. This is local runtime evidence only and
+does not prove production or independent private-peer availability.
+
+The current follow-up campaign is `camp-20260827T130658Z`, with
+`private_network` as the selected reader gate. The bounded 1k invocation
+produced no live samples because no approved fixture/target binding or
+controlled cold-cache reset was available. Queue/writer state also remains
+unobservable. The route matrix is valid fail-closed evidence with explicit
+unavailable cells; `reader_slo_status=blocked`, `path_profile_status=blocked`,
+`telemetry_status=unavailable`, and `production_capacity_claim=not_established`.
+
+Local quality gates, semantic artifact validation, and Graphify passed. Hosted
+pooler/R2/provider metrics, recurring backup and alert evidence, isolated
+restore, release configuration parity, cross-source readiness, provider/bulk
+readiness, production CDN propagation, credential rotation, and the
+dedicated-host decision remain open. No worker, full queue, higher-stage,
+canonical-content, bucket, schema, secret, or production-restore operation was
+performed.
+
+# 72. Reader Capacity and Recovery Runtime Recheck - 2026-08-28
+
+The current follow-up campaign is `camp-20260828T042235Z`, with
+`private_network` selected as the reader gate. The stage report
+`reader-stage-1000/reader-stage-1000-20260828T042533Z.json` contains 60
+required route/cache cells, 30 quantified blockers, and no live samples. The
+worker/full queue remain stopped or paused; queue/writer observation, the
+approved fixture/target, and controlled cold-cache evidence remain
+unavailable.
+
+The pre-remediation and stage-1000 telemetry snapshots are joinable across 38
+records but explicitly unavailable. Recovery freshness, alert delivery,
+hosted restore, and provider/R2 telemetry remain unobserved. Local validation
+and Graphify passed, while `reader_slo_status=blocked`,
+`path_profile_status=blocked`, `telemetry_status=unavailable`, and
+`production_capacity_claim=not_established` remain the authoritative
+dispositions. No worker, full queue, higher-stage, bucket, schema, secret, or
+production-restore operation was performed.

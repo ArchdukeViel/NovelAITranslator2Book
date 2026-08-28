@@ -1,3 +1,119 @@
+## 2026-08-28 READER CAPACITY AND RECOVERY CURRENT RECHECK
+
+The follow-up package was refreshed against campaign
+`camp-20260828T042235Z`. The current stage report
+`reader-stage-1000/reader-stage-1000-20260828T042533Z.json` contains 60
+required route/cache cells and 30 quantified blockers with no live samples.
+The selected `private_network` gate remains blocked because the approved
+fixture/target, queue/writer observation, and controlled cold-cache method are
+not available. The worker/full queue remain stopped or paused.
+
+Pre-remediation and stage-1000 telemetry are joinable across 38 snapshot
+records, but required operational values remain explicitly unavailable.
+Recovery freshness, alert delivery, hosted restore, provider/R2 telemetry,
+and production capacity remain unestablished. Local quality checks and
+Graphify passed; they do not substitute for hosted evidence.
+
+## 2026-08-28 CLOUDFLARE MCP ACCESS VERIFICATION
+
+Codex OAuth authentication for the configured `cloudflare-api` MCP server was
+completed in a fresh subprocess. Read-only zone lookup, DNS-record listing,
+and R2 bucket listing all returned HTTP 200: one zone (`dokushodo.online`),
+two DNS records (targets omitted), and four buckets (`dokushodo`,
+`dokushodo-backup`, `test-dokushodo`, and `test-dokushodo-backup`). No
+Cloudflare resource, credential, DNS record, or R2 object was changed.
+
+This establishes authenticated read/list access through the Cloudflare MCP;
+it does not claim write permission, provider billing/quota telemetry, or
+application R2 credential validity. Any future domain or bucket mutation must
+name an explicit target and action first.
+
+## 2026-08-28 DEVELOPMENT CLOUDFLARE TUNNEL DEPLOYMENT
+
+The explicitly authorized development edge was established without changing
+the production apex or `www` DNS records. The remotely managed
+`dokushodo-dev` tunnel now routes `dev.dokushodo.online` to the internal
+Caddy service, with the exact host header and a 404 catch-all. Cloudflare
+reported the tunnel healthy, the intended DNS/configuration checks matched,
+and one connector was active.
+
+Compose now carries a digest-pinned `cloudflared:2026.8.0` service on the
+existing application network. Its connector token is mounted only from the
+ignored local `deploy/.cloudflared/dokushodo-dev.token` secret file; no token
+value is recorded in the repository. External development smoke checks
+returned HTTP 200 for liveness, readiness, the frontend root, and the public
+catalog. The worker/full queue, provider work, recovery, and production
+acceptance gates remain unchanged and unestablished.
+
+## 2026-08-27 RELEASE CONTROLS AND DOCUMENTATION RECONCILIATION
+
+The current release-control audit was recorded in
+`artifacts/operations/release-controls-2026-08-27.md`. This is a sanitized
+documentation and local-validation record, not a production approval.
+
+- The local GitGuardian engine scanned five existing test/utility files with
+  `--all-secrets --exit-zero` and reported zero incidents/occurrences. This is
+  a negative control; no real secret, hosted incident, ignore rule, or
+  credential mutation was involved. The hosted incident/false-positive
+  exercise remains blocked pending an authorized sanitized incident or review
+  record.
+- Workflow, takedown, production-config, ranking/cache, analytics-writer, SEO,
+  and frontend accessibility tests passed locally. Frontend typecheck, lint,
+  and build also passed. These results do not close current production SEO,
+  browser/network, CDN/takedown, reviewer, or candidate-freeze gates.
+- FE-02 is reconciled: automated accessibility coverage is a local pass, while
+  current-candidate manual keyboard, screen-reader, zoom, reduced-motion,
+  forced-colors, and physical-device acceptance remains pending. The earlier
+  attestation is historical evidence only.
+- Historical candidate, worker, queue, and production-readiness wording is
+  explicitly separated from the current dirty, unfrozen, NO-GO state. Release
+  configuration parity, cross-source acceptance, provider/bulk readiness,
+  populated ranking, pool behavior, analytics writer behavior, shared-cache
+  behavior, credential rotation, and dedicated-host availability are each
+  recorded as blocked or locally partial with an owner and retry condition.
+
+## 2026-08-27 READER CAPACITY AND RECOVERY CURRENT RECHECK
+
+The follow-up evidence package was refreshed against campaign
+`camp-20260827T130658Z` after Docker Desktop recovery. Local backend, reader,
+Caddy, frontend, Redis, and restore-db services were healthy, and Caddy
+`/health/live` plus `/health/ready` returned HTTP 200 with empty bodies. The
+dedicated worker remained absent.
+
+The bounded 1k profile was invoked with the approved read-only contract but no
+fixture or target was supplied, so it generated 60 explicit unavailable
+route/cache cells and no live samples. Queue/writer state and controlled cold
+cache remain unavailable; the selected private-network reader gate remains
+blocked. Current telemetry contains joinable pre-remediation and stage-1000
+records with explicit unavailable provenance. Recovery freshness, alert
+delivery, hosted restore, release configuration parity, provider/bulk
+readiness, production CDN propagation, actual credential rotation, and a
+dedicated always-on host remain open gates.
+
+The current quality-gate orchestrator passed: spec validation, Pyright (0
+errors), affected Ruff, focused profile/recovery/restore tests, router and
+workflow-path checks, evidence validators, and Graphify. These local results
+do not establish reader SLO, hosted telemetry, recovery success, or production
+capacity; `production_capacity_claim` remains `not_established`.
+
+## 2026-08-25 READER CAPACITY AND RECOVERY OPERATIONAL FOLLOW-UP
+
+The execution package for `.agents/specs/reader-capacity-and-recovery-follow-up/`
+was reconciled with fail-closed evidence. The task actions and safety decisions
+were recorded, but the operational outcome remains blocked; this entry does
+not claim that the five live follow-ups passed:
+- Structured schema and semantic postcondition validator implemented (`tools/capacity/validate_reader_follow_up.ps1`).
+- Sanitized preflight safety baseline generated (`artifacts/operations/reader-capacity-follow-up/baseline.json`).
+- Route profile and latency attribution contracts were tested, but the generated route matrix contains unavailable cells and all layer timings are unavailable.
+- Hosted telemetry contains joinable explicit-unavailable snapshots; no provider, R2 billing, or quota value was inferred.
+- Remediation is a safe no-op pending non-overlapping layer evidence; no hosted R2 bottleneck was claimed.
+- The 1k artifact records `reader_slo_status=blocked`, `path_profile_status=blocked`, `recovery_status=not_assessed`, and `production_capacity_claim=not_established`; no live 1k samples were collected in this run.
+- Recovery control tests passed locally, while current backup freshness, alert delivery, and isolated hosted restore remain unavailable or blocked.
+- The recovery-owner and rotation procedure is recorded; actual credential rotation remains deferred.
+- Quality-gate results and the stale workflow test-path blocker are recorded in `artifacts/operations/reader-capacity-follow-up/validation.md`.
+- A read-only operator-phone liveness check through the approved Tailscale service was observed successfully; this does not establish the 1k reader profile, queue/writer safety, hosted telemetry, or recovery gates.
+- The final handoff remains blocked (`artifacts/operations/reader-capacity-follow-up/handoff.md`); worker/full-queue state was not broadened or resumed.
+
 ## 2026-08-24 PIPELINE ASYNC EXECUTION AND CAPACITY COMPLETION CONTINUATION
 
 The authorized completion slice for `pipeline-async-execution-and-capacity`

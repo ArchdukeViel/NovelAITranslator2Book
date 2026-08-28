@@ -136,6 +136,12 @@ preserves owner and user identity on each row while independent eligibility
 flags prevent a user key from entering owner-only work and prevent an owner
 key from entering the contributor pool unless an owner explicitly shares it.
 
+Historical bulk-state boundary (2026-08-27): the queue and lease paragraphs
+above describe the authorized 2026-08-22 execution checkpoint. They are not a
+current worker or queue-status claim. The current checkpoint is the stopped or
+unadmitted worker/full-queue state recorded under Operator Acceptance below;
+queue/writer safety, provider readiness, and production admission remain open.
+
 ## Novel Detail Stage B Decision (2026-08-19)
 
 The public novel detail redesign keeps the existing Overview, Chapters, and
@@ -153,17 +159,17 @@ exists and is recorded in `HISTORY.md`.
 
 | Order | ID | Work | Dependency | Done when |
 |---:|---|---|---|---|
-| 1 | OWN-001 | Assign launch, rollback, monitoring, security, recovery, accessibility, performance, SEO, legal owners | None | All nine gates owned by single operator (email on file in operator record, not committed); legal owner = operator for now; no backup contacts — accepted as waiver-eligible single-operator risk, expiry at GO-001; no unowned gate |
+| 1 | OWN-001 | Assign launch, rollback, monitoring, security, recovery, accessibility, performance, SEO, legal owners | None | All nine gates assigned to the operator (email on file in operator record, not committed); legal owner = operator for now; no backup contacts; a second reviewer or explicitly approved solo-operator waiver with expiry and mitigation is still required before GO-001; no unowned gate |
 | 2 | REL-001 | Freeze exact candidate | OWN-001 | Candidate commit/image tags, domains, environment, UTC time recorded |
 | 3 | GH-001 | Finish GitHub controls | REL-001 | `main` protected; exact CI, CodeQL, and GitGuardian checks required; no force push/deletion; sanitized secret-scan incident/false-positive exercise recorded |
 | 4 | DEBT-079A | Deploy always-on candidate | REL-001 | Migrations one-shot succeeds; immutable images run; production config validated (COMPLETED 2026-08-17) |
 | 5 | DEBT-079B | Hosted auth/security smoke | DEBT-079A | OAuth, cookies, CSRF, CORS, hosts, roles, disabled users, admin/reader boundaries pass (COMPLETED 2026-08-17) |
 | 6 | DEBT-075A | Verify hosted PostgreSQL/R2 workflow | DEBT-079A | Managed-services workflow passes against isolated targets (COMPLETED 2026-08-17) |
 | 7 | DEBT-075B | Current-head recovery drill | DEBT-075A | User-deferred for the current R2 cutover; do not claim DB/object restore evidence until separately authorized and recorded |
-| 8 | DEBT-118 | Activate and verify SMTP | DEBT-079A | Domain/SPF/DKIM/DMARC, auth mail, bounce/error handling, redaction, limits, `noop` rollback proven |
+| 8 | DEBT-118 | Activate and verify SMTP, including signup verification and password-reset delivery | DEBT-079A | Domain/SPF/DKIM/DMARC, auth mail, bounce/error handling, redaction, limits, `noop` rollback proven |
 | 9 | DEBT-075C | Real operator alert | DEBT-118 | Stale/failure alert delivered; threshold, cooldown, redaction, escalation proven |
 | 10 | DEBT-079C | External monitoring | DEBT-079A, OWN-001 | Scheduled runs, dashboard, operator delivery, escalation ownership proven |
-| 11 | DEBT-FE-01A | FE-01 manual acceptance | DEBT-079A | Keyboard, screen reader, 200% zoom, reduced motion, focus, contrast verified on shipped tokens; operator physical acceptance complete (COMPLETED 2026-08-17) |
+| 11 | DEBT-FE-01A | FE-01 manual acceptance | DEBT-079A | Automated accessibility coverage passes; current-candidate manual keyboard, screen-reader, 200% zoom, reduced-motion, focus, contrast, forced-colors, and physical-device acceptance recorded |
 | 12 | DEBT-079D | Performance/SEO/legal acceptance | DEBT-079A | Minimal real staging fixtures populated across 3 source adapters; adult gating proven; payload size budgets met; hosted latency budget blocked on remote network topology / WAN latency to Supabase SG & R2 (FAIL / BLOCKED 2026-08-17) |
 | 13 | DEBT-079E | Rollback rehearsal | DEBT-075B, DEBT-079B | Worker/scheduler paused, reader disabled, cache purged, prior image compatibility checked, redeployed, smoke rerun |
 | 14 | GO-001 | Final launch decision | All above | Zero unwaived blockers; launch/rollback/monitoring owners named |
@@ -181,6 +187,12 @@ Recorded 2026-07-31T17:13:13Z; re-frozen 2026-07-31T17:52:47Z on merged
 | Environment | Production: always-on Docker Compose — Caddy, admin 8000, reader 8001, frontend 3000, PostgreSQL (Supabase), Redis, R2, SMTP (`DEPLOYMENT.md`) |
 | Domains | PENDING — operator records hosted domain; `PRODUCTION_BASE_URL` GitHub secret |
 | Candidate status | FROZEN (merged to `main`); `DEBT-079A` deploy blocked on domains |
+
+This is historical candidate-freeze evidence from 2026-07-31, not the current
+release candidate. As of 2026-08-27 the current freeze is **blocked**: the
+worktree is dirty, no current immutable image digest set or production domains
+were supplied, and `PRODUCTION_BASE_URL` is not configured in the local
+environment. No production-readiness claim may use the historical freeze.
 
 ## GitHub Controls Audit (GH-001)
 
@@ -240,6 +252,14 @@ ruleset rules preserved: `deletion`, `pull_request`
 (`58da35c`, 63 commits) verified `mergeStateStatus=CLEAN` after the change;
 merge intentionally deferred. Re-enable both flags when a second
 write-access reviewer exists.
+
+Current release-control status (2026-08-27): the local GitGuardian engine ran
+against five existing test/utility files with zero incidents and no API key was
+present locally. This is a sanitized negative-control scan, not a hosted
+incident or false-positive workflow exercise. The current incident/triage
+exercise remains blocked until an authorized sanitized test incident or
+equivalent review record is available; no ignore rule or repository secret was
+changed.
 
 ## Active Work
 
@@ -416,7 +436,7 @@ PR/change, each with exact tests:
 
 | ID | Slice | Dependency |
 |---|---|---|
-| FE-02 | FE-01 accessibility: persistent token regression test covers 34 checks across both modes at WCAG AA 4.5:1 + two-layer primary-button focus treatment shipped; manual browser checks (keyboard, screen reader, zoom, reduced motion) pending operator | FE-01 |
+| FE-02 | FE-01 automated accessibility: persistent token regression test covers 34 checks across both modes at WCAG AA 4.5:1 + two-layer primary-button focus treatment shipped; current-candidate manual browser checks (keyboard, screen reader, zoom, reduced motion) remain pending operator | FE-01 |
 | FE-03 | Desktop header inline nav, mobile bottom tab bar, Account/More hub, reader chrome suppression — shipped (typecheck, 766 tests, build pass) | FE-02 |
 | FE-04 | Shared search overlay, keyboard behavior, request cancellation, local recent searches — shipped (typecheck, 781 tests, build, backend 156 tests pass); original-title search added to catalog DB + storage fallback | FE-03 |
 | FE-05 | Browse/catalog layout, URL filter state, taxonomy/source canonical routes — shipped (typecheck, 790 tests, build, backend public-router 123 tests pass); authors route remains deferred pending stable identity/alias contract | FE-04 |
@@ -458,7 +478,11 @@ new community review list `/novels/[slug]?tab=reviews`,
 | 10 | Forced colors mode (Windows High Contrast): borders, focus rings, status badges, and input boundaries remain visible. | Windows High Contrast |
 | 11 | Real-device mobile testing: tab bar, bottom sheets, gesture-bar safe areas, and reader controls functional on actual iOS/Android browsers. | Physical phone / tablet |
 
-Status: COMPLETED 2026-08-17 (Automated AX & responsive suite passed; operator attested physical mobile and native screen-reader acceptance).
+Status: **Automated coverage passed** on the recorded implementation baseline.
+The 2026-08-17 physical-device/native-screen-reader attestation is historical
+and does not close current-candidate manual acceptance. Keyboard-only,
+screen-reader, 200% zoom, 320px/physical-device, reduced-motion, forced-colors,
+and current shipped-token checks remain pending a new operator record.
 
 Per-slice validation:
 
@@ -471,18 +495,71 @@ graphify update . --no-cluster
 
 ## Operator Acceptance
 
+Current follow-up checkpoint — 2026-08-27:
+`reader-capacity-and-recovery-follow-up` remains an active, blocked operational
+spec. Its local contracts and evidence postconditions are valid, and the
+approved private-service liveness evidence remains historical provenance.
+Docker, Compose, Caddy, `/health/live`, and `/health/ready` were rechecked
+locally on 2026-08-27, but the selected reader gate still has no approved
+fixture/target binding or controlled cold-cache run; queue/writer state and
+hosted telemetry remain unavailable; and current recovery freshness, alert
+delivery, and isolated hosted restore are not observed. The repaired workflow
+path has a passing local reference audit but has not run at the candidate
+revision. The worker and original full queue remain stopped/paused by policy;
+production capacity is not established. The Recovery and Performance rows
+below retain their earlier audit provenance and must not be read as overriding
+this current checkpoint.
+
+Current follow-up evidence refresh - 2026-08-28:
+The current baseline campaign is `camp-20260828T042235Z`, with
+`private_network` selected as the reader gate. The bounded stage artifact
+`reader-stage-1000/reader-stage-1000-20260828T042533Z.json` contains 60
+required route/cache cells, 30 quantified blockers, and no live reader
+samples. Pre-remediation and stage-1000 telemetry are joinable across 38
+snapshot records, but every required operational value remains explicitly
+unavailable. Recovery controls remain unavailable and no hosted restore or
+backup-alert delivery was observed. The worker/full queue remain stopped or
+paused, and `production_capacity_claim` remains `not_established`.
+
+Current reconciliation of the audit additions: release configuration parity,
+Syosetu/Novel18/Kakuyomu live hierarchy acceptance, provider/bulk translation
+readiness, production pool/analytics/cache behavior, CDN/takedown propagation,
+actual credential rotation, and a dedicated always-on/second-host availability
+decision remain open launch gates. Privacy-policy/pseudonymity sign-off,
+manual admin Spotlight persistence/API contract, and library plan-to-read/
+dropped mutations remain deferred; the existing FE-06/FE-09 rows are the
+canonical records for the latter two items.
+
+Current development edge checkpoint - 2026-08-28:
+the explicitly authorized `https://dev.dokushodo.online` origin is reachable
+through the new remotely managed Cloudflare development tunnel. Cloudflare
+reports the tunnel healthy with the intended ingress and DNS route, and the
+development URL returned HTTP 200 for liveness, readiness, frontend root, and
+the public catalog smoke request. This closes only the temporary development
+origin wiring; it does not close hosted production smoke/auth acceptance,
+reader-capacity and recovery evidence, provider/R2 telemetry, alerts,
+monitoring, rollback, or the production-domain gate. The worker/full queue
+remain stopped or paused.
+
+The current release-control ledger is maintained in
+`artifacts/operations/release-controls-2026-08-27.md`. It records local
+automated evidence separately from current production evidence. Every missing
+external input has an owner, reason, next action, retry condition, and safety
+disposition; a local pass does not close its hosted counterpart.
+
 | Gate | Status | Required evidence |
 |---|---|---|
+| Reader capacity and recovery follow-up (current) | Blocked | `artifacts/operations/reader-capacity-follow-up/handoff.md`; approved fixture/targets, controlled cold-cache evidence, hosted telemetry, and isolated recovery evidence remain required. |
 | Hosted smoke and auth/security boundaries | Blocked | Candidate commit, domains, UTC time, commands/URLs, sanitized results. |
-| Secret scanning | Partial (hosted scans passed) | PR #12 proved successful GitGuardian push and same-repo PR checks. Still require protected required-check configuration and sanitized incident/false-positive triage evidence. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
+| Secret scanning | Local negative control pass / hosted exercise blocked | Five sanitized local files scanned with zero incidents; historical hosted checks remain historical. The authorized incident/false-positive triage record is still required; no repository secret or ignore rule was changed. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
 | Alerts and monitoring | Blocked (tooling complete) | Configure `PRODUCTION_BASE_URL`, prove scheduled external runs and real operator delivery, cooldown/redaction, dashboards, escalation, and ownership. |
 | Recovery | Needs current run (tooling complete) | Current-head database restore and object snapshot restore into isolated targets. Backup-stale alert threshold, restore-freshness max age, and runtime-role verifier implemented locally. |
-| Accessibility | Pass (COMPLETED 2026-08-17) | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast verified via automated test suite and operator physical device attestation. |
+| Accessibility | Automated pass / current manual pending | Automated AX/responsive coverage and focused frontend tests pass. Current-candidate keyboard, screen-reader, 200% zoom, 320px/physical-device, reduced-motion, and forced-colors acceptance is not recorded; the 2026-08-17 attestation is historical. |
 | Performance | Partial / Fail (AUDITED 2026-08-17) | Catalog API p95 on hosted staging exceeds hard budget (reader direct p95=1001.60ms, Tailscale HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + object-store metadata-list latency in the pre-cutover measurement). Novel detail and Chapter APIs NOT RUN on hosted staging (no published novel/chapter fixture in DB). First-load JS passes (169.8 KiB <= 250 KiB). |
-| SEO | Staging Pass / Production Deferred (AUDITED 2026-08-17) | Staging robots.txt, sitemap.xml, Open Graph / Twitter metadata, canonical URLs verified on staging hostname; production domain SEO validation deferred until public domain cutover. |
-| Legal propagation | Pass (AUDITED 2026-08-17) | HTTP 451 legal takedown verified (Cache-Control: no-store, no private info leak); sitemap exclusion & 404 contracts verified; CDN purge deferred to public edge. |
+| SEO | Local contract pass / current production blocked | Robots, sitemap, metadata, canonical, and indexability tests pass locally; current production domain and edge validation are unavailable until the candidate/domain gate is supplied. |
+| Legal propagation | Local HTTP 451 contract pass / production CDN blocked | Local HTTP 451, no-store, redaction, sitemap exclusion, and 404 tests pass; current production edge purge and takedown propagation are not observed. |
 | Rollback | Blocked | Pause worker/scheduler, purge cache, disable reader, redeploy previous immutable version, rerun smoke. |
-| Ownership | Assigned | All nine gates owned by single operator; email on file in operator record (not committed). Legal owner: operator (temporary). No rollback/monitoring backup — waiver-eligible single-operator risk: risk = alert/rollback response may not reach a second person; reason = solo operation; mitigation = escalate via hosting provider support line on incident; owner = operator; approver = operator; expiry = GO-001. No unowned gate. |
+| Ownership | Assigned / waiver not approved | All gates are assigned to the operator, but no second reviewer or approved solo-operator waiver with expiry and mitigation record is present for the current release. No launch approval may rely on the historical waiver-eligible wording. |
 
 `GO` requires zero unwaived blockers. A waiver records risk, reason, mitigation,
 owner, approver, and expiry. Security bypass, private-content exposure, broken
@@ -493,6 +570,9 @@ takedown enforcement, unrecoverable loss, or missing rollback cannot be informal
 Only genuinely unfinished specs remain under `.agents/specs/`:
 
 - `launch-readiness-checklist`: operator acceptance above.
+- `reader-capacity-and-recovery-follow-up`: blocked after a valid local
+  evidence-and-safety decision; do not mark operational readiness until its
+  handoff blockers are resolved.
 
 Task boxes are planning aids, not completion evidence. Architecture, current
 code/tests, this file, and operator evidence determine status.
@@ -506,6 +586,13 @@ names the current baseline, the gate, and the ordered steps.
 
 Nonblocking while `AUTH_EMAIL_DELIVERY_MODE=noop`. Existing baseline:
 `SMTPAuthEmailService`, `NoopAuthEmailService`, `backend/tests/test_email_service.py`.
+
+Current status (2026-08-27): **Deferred / not delivered**. A live password
+signup created an active `user` account, and sign-out/sign-in worked, but no
+verification email was sent because the runtime is intentionally using
+`noop` with no SMTP sender configured. The account remains unverified. Do not
+claim verification or password-reset delivery until the acceptance gate below
+is completed and recorded.
 
 1. Verify sending domain ownership plus SPF, DKIM, and DMARC.
 2. Store SMTP credentials only in provider secret storage.

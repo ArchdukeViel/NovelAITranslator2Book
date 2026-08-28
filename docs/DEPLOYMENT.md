@@ -112,9 +112,9 @@ Startup fails closed for fatal production defects. Validate:
 - TLS DB connection and reviewed per-process connection budget;
 - backup encryption, SMTP/recipient when alerts enabled;
 - worker/scheduler settings consistent with topology.
-- the `worker` service is running the same admin image revision as `backend`,
-  has no published port, and claims the `activity_records` queue after the
-  migration has succeeded;
+- when the `worker` service is admitted, it must run the same admin image
+  revision as `backend`, have no published port, and claim the
+  `activity_records` queue only after the migration has succeeded;
 
 Validator output remains redacted.
 
@@ -253,10 +253,12 @@ Owner-operated settings should match tracked workflow expectations:
   Node/ESLint/TypeScript checks. `dependency-review` uses read-only Trivy
   lockfile and misconfiguration scanning because GitHub Dependency Review and
   CodeQL are unavailable without GitHub Code Security on this private repo.
-  No approving-review requirement: this is a single-operator repository and GitHub
-  forbids PR authors from approving their own pull request, so a review gate would
-  block every merge. Re-enable review requirements if a second write-access
-  reviewer is added.
+  No approving-review requirement is currently configured because this is a
+  single-operator repository and GitHub forbids PR authors from approving their
+  own pull request. Re-enable review requirements if a second write-access
+  reviewer is added. This repository setting does not approve a release: the
+  current launch control still requires a second reviewer or an explicitly
+  approved solo-operator waiver with expiry and mitigation.
 - Keep default `GITHUB_TOKEN` read-only; grant write only per job.
 - Python CI dependencies are installed from `uv.lock` via `uv sync --locked --extra ...` and executed via `uv run --locked <cmd>`. `--locked` fails CI if `uv.lock` is stale relative to `pyproject.toml`.
 - Local, CI, and Docker Node is pinned to 26.7.x in `frontend/.nvmrc`, `frontend/package.json`, the CI setup, and production `frontend.Dockerfile`.
@@ -267,7 +269,7 @@ Owner-operated settings should match tracked workflow expectations:
   add CodeQL only through a separate protected change; it is not assumed by
   this private-repository release.
 - Keep deployment secrets in GitHub environments/provider secret stores, never files.
-- Run `.github/workflows/gitguardian.yaml` (ggshield v1.52.2 pinned) on push and
+- Run `.github/workflows/gitguardian.yaml` (ggshield v1.53.0 pinned) on push and
   same-repository PR; `GITGUARDIAN_API_KEY` repo secret, read-only token, no
   `pull_request_target`. Fork PRs are skipped — secrets are not exposed to
   untrusted fork code. Fork owners should enable GitGuardian's native public-repo
@@ -371,3 +373,65 @@ operation. Production approval still requires:
 Provider configuration must be verified against tracked topology. Account or
 payment blocks remain blocks; screenshots or free previews are not production
 reliability evidence.
+
+### Historical versus current release evidence — 2026-08-27
+
+The historical 2026-07-31 candidate freeze and the 2026-08-15 staging cutover
+are retained as dated evidence only. They do not identify the current release
+candidate. The current worktree is dirty, current immutable image digests,
+production domains, and `PRODUCTION_BASE_URL` are not supplied, and the current
+production decision remains **NO-GO**.
+
+The historical worker/bulk-queue paragraphs in `WORK.md` are superseded by the
+2026-08-27 operational checkpoint: the dedicated worker is not admitted, the
+original full queue remains paused, and queue/writer safety is not independently
+observed. Local Compose health is not production readiness. The current
+release-control ledger is
+`artifacts/operations/release-controls-2026-08-27.md`.
+
+### Earlier Cloudflare control-plane check - 2026-08-28
+
+Before the development edge was established, an authenticated fresh Codex
+subprocess used the Cloudflare MCP for read-only verification. The
+`dokushodo.online` zone was active and its DNS listing contained only the
+apex `A` record and `www.dokushodo.online` `CNAME` record. No
+`dev.dokushodo.online` record was present. The same read-only session listed
+the four R2 buckets `dokushodo`, `dokushodo-backup`, `test-dokushodo`, and
+`test-dokushodo-backup`, with no bucket or DNS mutation performed at that
+checkpoint.
+
+That earlier checkpoint proved read/list access only. It was superseded for
+the explicitly authorized development hostname by the current deployment
+record below; it still does not establish application R2 credential validity
+or production readiness.
+
+## Current development edge deployment - 2026-08-28
+
+The authenticated Cloudflare MCP created one remotely managed development
+tunnel named `dokushodo-dev` and configured exactly two ingress rules: the
+`dev.dokushodo.online` hostname to `http://caddy:80` with the development host
+header, followed by an HTTP 404 catch-all. The zone now has one proxied,
+automatic-TTL CNAME for `dev.dokushodo.online` targeting that tunnel. The
+apex and `www` records were not changed.
+
+The local Compose stack uses the digest-pinned `cloudflared:2026.8.0` image,
+the ignored `deploy/.cloudflared/dokushodo-dev.token` secret file, and the
+existing `novelai-net` network. Cloudflare reported the tunnel as `healthy`,
+the ingress and DNS checks matched the intended values, and one connector was
+active. Compose configuration validation exited 0.
+
+External smoke evidence from the development URL returned HTTP 200 for
+`/health/live`, `/health/ready`, `/`, and
+`/api/public/catalog?page_size=1`. This is current development-origin
+evidence only. It does not close the worker/queue, provider, R2 write,
+recovery, alerting, monitoring, capacity, or production-domain gates.
+
+When restarting this temporary stack, target `cloudflared` explicitly so the
+worker is not started accidentally:
+
+```powershell
+docker compose --env-file deploy/.env -f deploy/compose.yml up -d --no-build cloudflared
+```
+
+The worker was stopped after an earlier broad Compose start and remains
+paused by policy.

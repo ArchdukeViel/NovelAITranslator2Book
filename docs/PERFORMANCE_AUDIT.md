@@ -1131,6 +1131,65 @@ readback found raw and translated artifacts for each selected chapter. The
 sample containers exited cleanly. This closes the bounded validation evidence,
 while the original full queues remain paused for the separate scale redesign.
 
+## Reader capacity and recovery follow-up — current checkpoint 2026-08-25
+
+The current follow-up package is a valid fail-closed evidence decision, not an
+operational pass. The selected Caddy reader gate is blocked because an approved
+fixture/target and controlled cold-cache procedure were not supplied. The
+generated matrix preserves all required topology/route/cache dimensions as
+explicit unavailable cells; it contains no fabricated latency samples.
+
+Latency attribution and hosted telemetry remain unavailable, so the earlier
+historical R2-latency wording is not a current root-cause finding. Recovery
+freshness, alert-delivery, and isolated hosted-restore evidence are likewise
+not established. Local focused tests and semantic validators pass, while the
+workflow audit reports a missing integration-test path. The worker/full queue
+remain stopped/paused and no production capacity, billing, quota, or higher
+stage claim is made. The authoritative current handoff is
+`artifacts/operations/reader-capacity-follow-up/handoff.md`.
+
+## Reader capacity and recovery runtime recheck — current checkpoint 2026-08-27
+
+Docker Desktop and the local split Compose runtime were restored for a bounded
+read-only recheck. Backend, reader, Caddy, frontend, Redis, and restore-db were
+healthy; local Caddy returned HTTP 200 with zero-length bodies for
+`/health/live` and `/health/ready`. The worker remained stopped/absent. This
+resolves the local runtime outage observed in the audit input, but it does not
+establish private second-peer reachability or hosted availability.
+
+The current baseline campaign is `camp-20260827T130658Z` with
+`private_network` as the selected Caddy gate. The current 1k runner produced a
+complete 3-topology x 5-route x warm/unknown-cache matrix with 30 quantified
+unavailable blockers and no live samples: the fixture/target binding,
+queue/writer state, and controlled cold-cache method are still unavailable.
+The independent dispositions remain `reader_slo_status=blocked`,
+`path_profile_status=blocked`, `telemetry_status=unavailable`,
+`recovery_status=not_assessed` for the stage artifact, and
+`production_capacity_claim=not_established`.
+
+Local quality evidence is current and passing, but it does not substitute for
+hosted pooler/R2/provider counters, recurring backup freshness and alert
+delivery, isolated restore, release configuration parity, cross-source
+content acceptance, provider/bulk readiness, populated ranking/shared-cache
+load, production CDN/takedown propagation, actual credential rotation, or a
+dedicated always-on availability decision. The worker/full queue and higher
+reader stages remain unadmitted.
+
+## Reader capacity and recovery runtime recheck - current checkpoint 2026-08-28
+
+The current campaign is `camp-20260828T042235Z`, with `private_network` as the
+selected Caddy gate. The current stage report
+`reader-stage-1000/reader-stage-1000-20260828T042533Z.json` contains 60
+required route/cache cells, 30 quantified blockers, and no live samples. The
+38 pre-remediation and stage-1000 telemetry records are joinable but remain
+explicitly unavailable. The worker was absent, queue/writer state was not
+independently observable, and the controlled cold-cache method and approved
+fixture/target remain unavailable. The current dispositions remain
+`reader_slo_status=blocked`, `path_profile_status=blocked`,
+`telemetry_status=unavailable`, and
+`production_capacity_claim=not_established`; no hosted recovery or production
+capacity claim is made.
+
 ## Positive observations to preserve
 
 - The public ranking contract correctly returns unavailable when analytics is disabled rather than fabricating popularity.

@@ -944,7 +944,7 @@ Ruff and Pyright passed, and the full backend suite passed `2,904` tests with
 stopped. The latest canary remains nonterminal, so the byte-level egress effect
 of these projections still requires a later terminal workload comparison.
 
-## Async execution and capacity handoff - 2026-08-24
+## Async execution and capacity handoff - 2026-08-24 (historical checkpoint)
 
 Completed local slices:
 
@@ -992,3 +992,62 @@ Rollback remains configuration-first: disable
 terminal work within the deadline, and verify state through the application.
 Do not claim production SLO, billing, egress, provider quota, or reader
 capacity from the local artifacts.
+
+### Reader capacity and recovery follow-up — current checkpoint 2026-08-25
+
+The follow-up specification's execution package is structurally validated, but
+its operational disposition is blocked. The latest generated report contains
+the complete 3-topology x 5-required-route x warm/unknown-cache matrix; all
+cells are explicitly unavailable because no approved fixture/target or
+controlled cold-cache method was supplied. `reader_slo_status=blocked` and
+`path_profile_status=blocked`; no live 1k sample result is claimed.
+
+All attribution layers and hosted telemetry snapshots are explicitly
+unavailable, so no largest contributor or hosted R2/provider billing/quota
+value is established and no speculative remediation was applied. Recovery
+control tests pass locally, but current backup freshness, alert delivery, and
+isolated hosted restore evidence remain unavailable/blocked. The managed
+services workflow also references a missing integration-test path. The worker,
+original full queue, 10k/100k stages, and production-capacity admission remain
+stopped or unadmitted. See
+`artifacts/operations/reader-capacity-follow-up/handoff.md` and
+`artifacts/operations/reader-capacity-follow-up/validation.md` for exact
+blockers and next actions.
+
+### Reader capacity and recovery runtime recheck — current checkpoint 2026-08-27
+
+The local Compose baseline was restored after Docker Desktop had been stopped.
+Backend, reader, Caddy, frontend, Redis, and restore-db were healthy, and local
+Caddy returned HTTP 200 with an empty body for both `/health/live` and
+`/health/ready`. This is a local runtime recovery observation, not production
+availability or private second-peer evidence.
+
+The current campaign `camp-20260827T130658Z` selected `private_network` as the
+only reader SLO gate. Its bounded 1k runner invocation produced no live samples
+because no approved fixture/target binding or controlled cold-cache method was
+available. The 60 route/cache cells are explicit unavailable evidence;
+`reader_slo_status=blocked`, `path_profile_status=blocked`,
+`telemetry_status=unavailable`, and `production_capacity_claim=not_established`.
+The worker stayed absent, while original-queue and other-writer state remain
+unobservable. No remediation is selected without non-overlapping layer timing.
+
+The T-011 local quality gates passed, including Pyright, affected Ruff,
+focused tests, workflow-path and router checks, semantic artifact validators,
+and Graphify. Hosted pooler/R2/provider telemetry, recovery freshness/alert/
+restore evidence, release configuration parity, cross-source acceptance,
+provider/bulk readiness, production CDN/takedown propagation, actual
+credential rotation, and dedicated-host availability remain external gates.
+
+### Reader capacity and recovery runtime recheck - current checkpoint 2026-08-28
+
+The current campaign is `camp-20260828T042235Z`, with `private_network` as the
+selected reader gate. The stage artifact
+`reader-stage-1000/reader-stage-1000-20260828T042533Z.json` records 60 required
+route/cache cells, 30 quantified blockers, and no live samples. The 38
+pre-remediation and stage-1000 telemetry records are joinable but explicitly
+unavailable. The worker/full queue remain stopped or paused, and the approved
+fixture/target, queue/writer observation, controlled cold-cache method,
+hosted telemetry, and isolated recovery evidence remain unavailable. The
+dispositions are still `reader_slo_status=blocked`,
+`path_profile_status=blocked`, `telemetry_status=unavailable`, and
+`production_capacity_claim=not_established`.

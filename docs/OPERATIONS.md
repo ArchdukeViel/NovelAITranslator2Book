@@ -296,6 +296,11 @@ storage failure, severe reader errors, or failed recovery without safe mitigatio
 
 `AUTH_EMAIL_DELIVERY_MODE=noop` is the safe default. Before switching to `smtp`:
 
+While `noop` is active, public password signup is intentionally a deferred
+email-delivery path: account creation and session login can be tested, but
+verification and password-reset messages are not sent. Do not treat an
+unverified account or a generated but undelivered token as SMTP evidence.
+
 1. Verify sending domain ownership plus SPF, DKIM, and DMARC.
 2. Store SMTP credentials only in provider secret storage.
 3. Test verification/reset delivery, bounce handling, timeout, and rate limits.
@@ -462,6 +467,63 @@ maintenance task according to `CONTRIBUTOR_USAGE_RETENTION_DAYS`. Permanent
 credential deletion preserves rows until that retention task removes them;
 dry-run the task before changing the policy.
 
+## Reader capacity and recovery follow-up checkpoint — 2026-08-25
+
+The current operational evidence package is blocked, with local validation
+complete. The 1k reader report has a complete required matrix but no approved
+fixture/target or controlled cold-cache evidence; all cells are therefore
+unavailable and `reader_slo_status=blocked`. Layer attribution and hosted
+telemetry are explicitly unavailable. Recovery control tests do not prove
+current backup freshness, alert delivery, or an isolated hosted restore; the
+workflow audit also identifies a missing integration-test path.
+
+Keep the worker and original full queue stopped/paused. Do not run 10k/100k,
+provider-volume, or full-queue traffic and do not make a production-capacity,
+billing, or quota claim. Before any retry, an owner must supply the approved
+opaque fixture and targets, establish a disposable cold-cache control, enable
+fixed-label layer telemetry, repair or disposition the workflow path, and
+authorize isolated recovery targets. The sanitized handoff and validation
+records are under `artifacts/operations/reader-capacity-follow-up/`.
+
+## Reader capacity and recovery runtime recheck — 2026-08-27
+
+The local runtime baseline was re-established after Docker Desktop recovery.
+Backend, reader, Caddy, frontend, Redis, and the isolated `restore-db` service
+were healthy; the dedicated worker remained absent. Through local Caddy,
+`/health/live` and `/health/ready` both returned HTTP 200 with empty bodies.
+This closes the previously observed local Docker/Caddy outage only; it is not
+private second-peer, hosted, or production availability evidence.
+
+The current campaign is `camp-20260827T130658Z`. The selected reader gate is
+`private_network`, but the queue and other-writer states remain unobservable,
+no approved fixture/target binding was supplied, and no controlled cold-cache
+reset exists. The bounded 1k invocation therefore produced explicit
+unavailable cells, `reader_slo_status=blocked`, `path_profile_status=blocked`,
+`telemetry_status=unavailable`, and
+`production_capacity_claim=not_established`. Keep the worker/full queue
+stopped/paused and preserve the remaining release-configuration, cross-source,
+provider/bulk, hosted pool/cache/analytics, CDN propagation, credential
+rotation, and dedicated-host gates in `docs/WORK.md`.
+
+## Reader capacity and recovery runtime recheck - 2026-08-28
+
+The current local split Compose runtime remained healthy for the bounded
+recheck: backend, reader, Caddy, frontend, Redis, and restore-db were healthy,
+while the dedicated worker was absent. Local Caddy returned HTTP 200 with
+empty bodies for `/health/live` and `/health/ready`. This is local runtime
+evidence only and does not establish hosted, private second-peer, or
+production availability.
+
+The current campaign is `camp-20260828T042235Z`. Its bounded stage report is
+`reader-stage-1000/reader-stage-1000-20260828T042533Z.json`, with 60 required
+route/cache cells, 30 quantified blockers, and no live samples. The selected
+`private_network` gate remains blocked because the approved fixture/target,
+queue/writer observation, and controlled cold-cache method are unavailable.
+The 38 pre-remediation and stage-1000 telemetry records are joinable but
+explicitly unavailable. Recovery freshness, alert delivery, hosted restore,
+and provider/R2 telemetry remain unobserved; `production_capacity_claim` is
+`not_established`.
+
 ## Pipeline async execution and capacity runbook checkpoint - 2026-08-24
 
 The local audit completed the bounded persistence boundary, fixed-label runtime
@@ -487,3 +549,31 @@ the original queues.
 The isolated R2 benchmark is unavailable when `TEST_R2_ENDPOINT` is absent.
 The source canary and reader stages are operator/hosted gates; missing hosted
 telemetry is an unavailable result, never a pass.
+
+## Cloudflare development tunnel operation - 2026-08-28
+
+The temporary external development origin is
+`https://dev.dokushodo.online`. Cloudflare manages the `dokushodo-dev`
+tunnel configuration and its single development DNS route; the production
+apex and `www` records are not part of this operation. The tunnel forwards to
+the existing internal Caddy service at `http://caddy:80` on `novelai-net`.
+
+The connector token is stored only in the ignored local file
+`deploy/.cloudflared/dokushodo-dev.token` and is mounted as a Compose secret.
+Do not print, commit, copy, or place it in an environment example. If the
+token is exposed, rotate it through the Cloudflare control plane before
+restarting the connector.
+
+Use the explicit service target below for a restart; a bare Compose `up`
+also includes the worker service, which must remain stopped while the reader
+capacity and recovery gates are blocked:
+
+```powershell
+docker compose --env-file deploy/.env -f deploy/compose.yml up -d --no-build cloudflared
+docker compose --env-file deploy/.env -f deploy/compose.yml stop --timeout 0 worker
+```
+
+Verify the connector with `docker compose ... ps -a` and the Cloudflare MCP
+tunnel/DNS read path, then verify the real development URL. A healthy tunnel
+and HTTP smoke result do not authorize provider work, the original full
+queue, recovery writes, or a production launch.

@@ -108,6 +108,23 @@ and forwards to the loopback-only internal Caddy listener. Staging and
 production always force secure session cookies, even when an old environment
 file contains an explicit false override.
 
+## Current development HTTPS origin
+
+The temporary Windows/Docker development profile uses
+`https://dev.dokushodo.online` for `PUBLIC_FRONTEND_URL`,
+`WEB_CORS_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, `ALLOWED_HOSTS`, and `SITE_DOMAIN`.
+Cloudflare terminates the public HTTPS connection through the remotely managed
+`dokushodo-dev` Tunnel and forwards the request to the internal Caddy service
+over `http://caddy:80`; Caddy remains the only host-published application
+entry point. The connector token is a local Compose secret at
+`deploy/.cloudflared/dokushodo-dev.token`, which is ignored and must never be
+added to tracked or example configuration.
+
+This development origin is not the production apex or `www` topology. Keep
+the worker/full queue stopped and use an explicit Compose service target when
+restarting the tunnel; external development HTTP success does not establish
+production capacity, recovery, monitoring, or launch acceptance.
+
 ## Storage and Recovery Groups
 
 Application R2 uses `R2_*` and the fixed bucket `dokushodo`. Independent object
@@ -318,7 +335,10 @@ Public OAuth/password registration creates users only.
 
 Email defaults to `AUTH_EMAIL_DELIVERY_MODE=noop`. SMTP requires host, port,
 credentials, sender, TLS/SSL choice, tested domain, operator recipient where
-alerts are enabled, and acceptance gates in `WORK.md`.
+alerts are enabled, and acceptance gates in `WORK.md`. With `noop`, signup and
+session testing remain available, but verification and password-reset emails
+are not delivered and the account remains unverified until delivery is
+configured and the verification flow is completed.
 
 ## Profiles
 
