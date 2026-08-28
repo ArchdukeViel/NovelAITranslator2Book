@@ -49,8 +49,6 @@ jobs:
       TEST_R2_TARGET_BUCKET: ${{ vars.TEST_R2_TARGET_BUCKET }}
       TEST_R2_BACKUP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_BACKUP_ACCESS_KEY_ID }}
       TEST_R2_BACKUP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_BACKUP_SECRET_ACCESS_KEY }}
-      PG_DUMP_PATH: /usr/lib/postgresql/17/bin/pg_dump
-      PG_RESTORE_PATH: /usr/lib/postgresql/17/bin/pg_restore
       TEST_R2_REGION: auto
       DATABASE_BACKUP_ENABLED: "true"
       DATABASE_BACKUP_PREFIX: recovery-${{ github.run_id }}
@@ -68,14 +66,30 @@ jobs:
       - run: pip install "uv==0.12.0"
       - run: >-
           uv sync --locked --extra dev --extra test --extra s3 --extra auth
-      - name: Install PostgreSQL 17 client tools
+      - name: Prepare pinned PostgreSQL 17 client container
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-client-17
-          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
-          /usr/lib/postgresql/17/bin/pg_dump --version
-          /usr/lib/postgresql/17/bin/pg_restore --version
+          cat > "$RUNNER_TEMP/pg17-client" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          tool_name="$(basename "$0")"
+          exec docker run --rm --network host \
+            --env PGHOST \
+            --env PGPORT \
+            --env PGDATABASE \
+            --env PGUSER \
+            --env PGPASSWORD \
+            --env PGSSLMODE \
+            postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94 \
+            "$tool_name" "$@"
+          EOF
+          chmod 700 "$RUNNER_TEMP/pg17-client"
+          ln -s "$RUNNER_TEMP/pg17-client" "$RUNNER_TEMP/pg_dump"
+          ln -s "$RUNNER_TEMP/pg17-client" "$RUNNER_TEMP/pg_restore"
+          echo "PG_DUMP_PATH=$RUNNER_TEMP/pg_dump" >> "$GITHUB_ENV"
+          echo "PG_RESTORE_PATH=$RUNNER_TEMP/pg_restore" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/pg_dump" --version
+          "$RUNNER_TEMP/pg_restore" --version
       - name: Generate ephemeral backup encryption key
         run: |
           set -euo pipefail
