@@ -324,6 +324,7 @@ def test_managed_recovery_workflow_is_confirmation_gated_and_isolated() -> None:
     assert "--network host" in source
     assert "--volume" in source
     assert "/pgrestore" in source
+    assert '[[ "$tool_name" == "pg_restore" && ${#tool_args[@]} -gt 1 ]]' in source
     assert 'echo "PG_DUMP_PATH=$RUNNER_TEMP/pg_dump"' in source
     assert 'echo "PG_RESTORE_DIAGNOSTIC_PATH=$RUNNER_TEMP/pg_restore_diagnostic_class"' in source
     assert "version_mismatch" in source

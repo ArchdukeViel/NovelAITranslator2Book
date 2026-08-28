@@ -84,7 +84,7 @@ jobs:
             --env PGSSLMODE
           )
           tool_args=("$@")
-          if [[ "$tool_name" == "pg_restore" ]]; then
+          if [[ "$tool_name" == "pg_restore" && ${#tool_args[@]} -gt 1 ]]; then
             archive_index=$((${#tool_args[@]} - 1))
             archive_path="${tool_args[$archive_index]}"
             archive_directory="$(dirname "$archive_path")"
