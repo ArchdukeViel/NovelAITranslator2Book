@@ -34,7 +34,7 @@ concurrency:
 jobs:
   isolated-managed-recovery:
     if: ${{ inputs.confirm_test_recovery == true }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
     timeout-minutes: 30
     services:
       restore-db:

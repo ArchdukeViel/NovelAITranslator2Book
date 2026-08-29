@@ -74,7 +74,7 @@ jobs:
 
   hosted-postgres-and-r2:
     if: ${{ inputs.migrate_test_database != true && (inputs.required || vars.MANAGED_SERVICE_TESTS_ENABLED == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
     timeout-minutes: 20
     env:
       MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
