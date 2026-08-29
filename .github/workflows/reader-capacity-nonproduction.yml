@@ -169,6 +169,65 @@ jobs:
             --file "$COMPOSE_FILE" up -d --wait --wait-timeout 180 \
             redis backend reader frontend caddy
 
+      - name: Capture sanitized runtime startup diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          mkdir -p artifacts/operations/reader-capacity-follow-up
+          ps_text="$(docker compose --project-name "$COMPOSE_PROJECT" --env-file deploy/.env \
+            --file "$COMPOSE_FILE" ps --format json 2>/dev/null || true)"
+          reader_state="unavailable"
+          if [[ "$ps_text" =~ unhealthy ]]; then reader_state="unhealthy"; fi
+          if [[ "$ps_text" =~ running && ! "$ps_text" =~ unhealthy ]]; then reader_state="running_or_starting"; fi
+          if [[ "$ps_text" =~ exited ]]; then reader_state="exited"; fi
+
+          container_id="$(docker compose --project-name "$COMPOSE_PROJECT" --env-file deploy/.env \
+            --file "$COMPOSE_FILE" ps -q reader 2>/dev/null || true)"
+          exit_code="unknown"
+          if [[ -n "$container_id" ]]; then
+            exit_code="$(docker inspect --format '{{.State.ExitCode}}' "$container_id" 2>/dev/null || true)"
+            [[ -n "$exit_code" ]] || exit_code="unknown"
+          fi
+
+          validation=false
+          database=false
+          r2=false
+          redis=false
+          traceback=false
+          permission=false
+          oom=false
+          port=false
+          health=false
+          while IFS= read -r line; do
+            case "$line" in
+              *ValidationError*|*validation*|*pydantic*) validation=true ;;
+              *database*|*Database*|*psycopg*|*"connection refused"*) database=true ;;
+              *R2*|*S3*|*botocore*) r2=true ;;
+              *Redis*|*redis*) redis=true ;;
+              *Traceback*) traceback=true ;;
+              *Permission*|*permission*) permission=true ;;
+              *OOM*|*oom*|*killed*) oom=true ;;
+              *"address already in use"*|*"port is already allocated"*) port=true ;;
+              *health*|*Health*) health=true ;;
+            esac
+          done < <(docker compose --project-name "$COMPOSE_PROJECT" --env-file deploy/.env \
+            --file "$COMPOSE_FILE" logs --no-color reader 2>&1 || true)
+
+          markers=""
+          for marker in validation database r2 redis traceback permission oom port health; do
+            value="${!marker}"
+            if [[ "$value" == true ]]; then
+              [[ -n "$markers" ]] && markers+=","
+              markers+="\"$marker\""
+            fi
+          done
+          if [[ -z "$markers" ]]; then markers='"unknown_startup_failure"'; fi
+          printf '{"schema_version":1,"status":"startup_failure","reader_state":"%s","reader_exit_code":"%s","error_classes":[%s]}\n' \
+            "$reader_state" "$exit_code" "$markers" \
+            > artifacts/operations/reader-capacity-follow-up/startup-diagnostic.json
+          echo "::warning::Isolated reader startup diagnostic captured with fixed error classes only."
+
       - name: Capture the isolated safety baseline
         shell: pwsh
         run: |
