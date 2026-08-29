@@ -3170,3 +3170,26 @@ detail/chapter fixture returned HTTP 404, and controlled cold-cache evidence
 remains unavailable. This does not establish R2 fixture content, recovery
 readiness, or production capacity. Earlier private-network observations remain
 historical only.
+
+# 74. Test-only managed recovery checkpoint - 2026-08-30
+
+The explicitly authorized test-only recovery workflow
+[`33270802038`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33270802038)
+completed successfully at merged `main` commit
+`01f106ade3700405f3f4a998a1c708ed7113505b`. It used only the disposable
+managed test database, `test-dokushodo` for application R2,
+`test-dokushodo-backup` for recovery material, and an ephemeral local
+PostgreSQL restore target. The sanitized artifact passed backup creation,
+healthy freshness, manifest/checksum verification, isolated restore,
+representative queries, migration-head verification, public isolation, and
+cleanup. It recorded 37 public tables, 37 RLS tables, zero invalid constraints,
+and `production_mutation=none`.
+
+Independent Supabase and Cloudflare MCP checks confirmed zero fixture rows and
+zero objects under the exact test prefixes. Recovery is now `partial`, not
+`not_assessed`: recurring schedule/retention evidence, stale/failure alert
+transition and delivery, production smoke, and production recovery readiness
+remain unverified. Reader SLO/path remain blocked, hosted telemetry remains
+unavailable, and `production_capacity_claim=not_established`. No production
+database, canonical R2 content, public route, secret, or repository variable
+was changed.

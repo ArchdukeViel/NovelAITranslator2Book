@@ -1131,7 +1131,7 @@ readback found raw and translated artifacts for each selected chapter. The
 sample containers exited cleanly. This closes the bounded validation evidence,
 while the original full queues remain paused for the separate scale redesign.
 
-## Reader capacity and recovery follow-up — current checkpoint 2026-08-25
+## Reader capacity and recovery follow-up — historical checkpoint 2026-08-25
 
 The current follow-up package is a valid fail-closed evidence decision, not an
 operational pass. The selected Caddy reader gate is blocked because an approved
@@ -1147,6 +1147,28 @@ workflow audit reports a missing integration-test path. The worker/full queue
 remain stopped/paused and no production capacity, billing, quota, or higher
 stage claim is made. The authoritative current handoff is
 `artifacts/operations/reader-capacity-follow-up/handoff.md`.
+
+## Managed non-production recovery checkpoint - 2026-08-30
+
+The explicitly authorized test-only recovery workflow
+[`33270802038`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33270802038)
+completed successfully at merged `main` commit
+`01f106ade3700405f3f4a998a1c708ed7113505b`. It used only the disposable
+managed test database, the dedicated `test-dokushodo` application bucket,
+`test-dokushodo-backup` for recovery material, and an ephemeral local restore
+target. The sanitized artifact reports successful backup creation, healthy
+freshness, manifest/checksum verification, isolated restore, representative
+queries, migration-head verification, public isolation, and cleanup; it
+records 37 public tables, 37 RLS tables, zero invalid constraints, and
+`production_mutation=none`.
+
+Independent Supabase and Cloudflare MCP checks confirmed zero fixture rows and
+zero objects under the exact test prefixes. This changes recovery from
+`not_assessed` to `partial`; recurring schedule/retention evidence, alert
+transition and delivery, production smoke, and production recovery readiness
+remain unverified. The reader SLO/path disposition remains blocked,
+hosted telemetry remains unavailable, and `production_capacity_claim` remains
+`not_established`.
 
 ## Reader capacity and recovery runtime recheck — retired topology checkpoint 2026-08-27
 

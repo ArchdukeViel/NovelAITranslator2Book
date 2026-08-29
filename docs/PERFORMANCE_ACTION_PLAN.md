@@ -993,7 +993,7 @@ terminal work within the deadline, and verify state through the application.
 Do not claim production SLO, billing, egress, provider quota, or reader
 capacity from the local artifacts.
 
-### Reader capacity and recovery follow-up — current checkpoint 2026-08-25
+### Reader capacity and recovery follow-up — historical checkpoint 2026-08-25
 
 The follow-up specification's execution package is structurally validated, but
 its operational disposition is blocked. The latest generated report contains
