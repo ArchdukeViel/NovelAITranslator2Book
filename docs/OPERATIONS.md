@@ -623,6 +623,12 @@ constraints. The run recorded `production_mutation=none`; the temporary
 confirmation variable was removed and `MANAGED_SERVICE_TESTS_ENABLED` remains
 `false`.
 
+A later candidate-only check synchronized the disposable test project's
+Alembic marker to `f8a2c4e6b0d1` after applying the idempotent RLS-helper
+revocation. Its application fixture tables remain empty and the security
+advisor reports no lints. This does not change the scope of the recovery run
+above or establish reader-fixture, production, or capacity readiness.
+
 This is current non-production recovery evidence for one isolated path. It
 does not establish recurring production backup freshness, alert delivery,
 production smoke, reader capacity, hosted telemetry, or production recovery

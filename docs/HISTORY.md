@@ -26,6 +26,12 @@ contains conditional Alembic migration `f8a2c4e6b0d1`; it revokes broad
 execution on the optional `public.rls_auto_enable()` helper when present and
 does not claim production schema or capacity readiness.
 
+The disposable test project's Alembic marker was synchronized to
+`f8a2c4e6b0d1` after that idempotent hardening check; its application fixture
+tables remain empty. This is isolated non-production schema evidence only and
+does not imply that a reader fixture exists at the Cloudflare development
+origin.
+
 ## 2026-08-28 READER CAPACITY AND RECOVERY CURRENT RECHECK
 
 The follow-up package was refreshed against campaign

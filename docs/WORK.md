@@ -527,6 +527,8 @@ The disposable test project's security advisor was rerun after the optional
 RLS-helper execution was revoked and reported no lints. Repository migration
 `f8a2c4e6b0d1` carries that conditional hardening for the next normal schema
 deployment; this does not establish production security or capacity readiness.
+The disposable test project's Alembic marker is now synchronized to that head,
+while its application fixture tables remain empty.
 
 Operator authorization input refresh - 2026-08-29:
 The project owner supplied a non-production read-only reader-capacity
