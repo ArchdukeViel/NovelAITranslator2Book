@@ -99,6 +99,10 @@ jobs:
           echo "::add-mask::$owner_secret"
 
           mkdir -p artifacts/operations/reader-capacity-follow-up "$RUNNER_TEMP/reader-capacity-runtime"
+          # The application images run as the non-root novelai user. This is an
+          # ephemeral runner directory, so make only this disposable mount
+          # writable without weakening permissions on the checkout or secrets.
+          chmod 0777 "$RUNNER_TEMP/reader-capacity-runtime"
           {
             printf 'ENV=staging\n'
             printf 'DATABASE_URL=%s\n' "$database_url"

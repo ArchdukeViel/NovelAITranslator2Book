@@ -92,6 +92,25 @@ def test_workflow_actions_are_pinned_to_full_commit_shas() -> None:
     assert all(PINNED_ACTION.fullmatch(line) for line in action_lines), action_lines
 
 
+def test_nonproduction_reader_capacity_workflow_is_isolated_and_cleanup_gated() -> None:
+    source = _workflow("reader-capacity-nonproduction.yml")
+
+    assert "MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}" in source
+    assert "TEST_R2_APPLICATION_BUCKET: test-dokushodo" in source
+    assert "R2_BACKUP_ENABLED=false" in source
+    assert "R2_BACKUP_BUCKET=test-dokushodo-backup" in source
+    assert "READER_CAPACITY_FIXTURE_TARGET=non-production" in source
+    assert "JOB_WORKER_ENABLED=false" in source
+    assert "TRANSLATION_PERSISTENCE_EXPANSION_ENABLED=false" in source
+    assert 'chmod 0777 "$RUNNER_TEMP/reader-capacity-runtime"' in source
+    assert "reset_reader_cache.ps1" in source
+    assert "ColdCacheMode disposable_reader_reset" in source
+    assert "cloudflare/cloudflared:2026.8.0@sha256:" in source
+    assert "if: always()" in source
+    assert "seed_reader_capacity_fixture cleanup" in source
+    assert 'docker compose --project-name "$COMPOSE_PROJECT"' in source
+
+
 def test_build_summary_fails_unless_publication_succeeds() -> None:
     source = _workflow("build.yml")
 
