@@ -702,10 +702,37 @@ revocation. Its application fixture tables remain empty and the security
 advisor reports no lints. This does not change the scope of the recovery run
 above or establish reader-fixture, production, or capacity readiness.
 
-This is current non-production recovery evidence for one isolated path. It
-does not establish recurring production backup freshness, alert delivery,
-production smoke, reader capacity, hosted telemetry, or production recovery
-readiness. Keep the worker and original full queue stopped/paused.
+At the 2026-08-28 checkpoint, this was current non-production recovery
+evidence for one isolated path. It did not establish recurring production
+backup freshness, alert delivery, production smoke, reader capacity, hosted
+telemetry, or production recovery readiness. Keep the worker and original full
+queue stopped/paused.
+
+## Managed non-production recovery rerun - 2026-08-30
+
+The explicitly authorized test-only recovery workflow
+[`33270802038`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33270802038)
+completed successfully in 1m51s at merged `main` commit
+`01f106ade3700405f3f4a998a1c708ed7113505b`. It used only the disposable
+managed test database, `test-dokushodo` for application R2,
+`test-dokushodo-backup` for recovery material, and an ephemeral local
+PostgreSQL restore target. The sanitized artifact is
+`managed-database-recovery-evidence-33270802038`.
+
+Backup creation, healthy freshness, manifest/checksum verification, isolated
+restore, representative queries, Alembic-head verification, public isolation,
+R2 cleanup, temporary-role cleanup, and overall cleanup passed. The restored
+target contained 37 public tables, all 37 with RLS enabled, zero invalid
+constraints, and `production_mutation=none`.
+
+Independent Supabase MCP SQL confirmed zero fixture novel rows and zero
+fixture chapter rows. Cloudflare MCP read-only listings confirmed zero objects
+under `novels/123/` in `test-dokushodo` and zero `recovery-` objects in
+`test-dokushodo-backup`. The recovery status is `partial`, because recurring
+schedule history, retention behavior, stale/failure alert transition and
+delivery, production smoke, and production recovery readiness remain
+unverified. No production resource, secret, or repository variable changed;
+keep the worker and original full queue stopped/paused.
 
 ## Pipeline async execution and capacity runbook checkpoint - 2026-08-24
 

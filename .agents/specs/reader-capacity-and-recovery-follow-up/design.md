@@ -1,9 +1,9 @@
 # Reader Capacity and Recovery Operational Follow-up Design
 
 Spec ID: reader-capacity-and-recovery-follow-up
-Version: 0.4.1
+Version: 0.4.2
 Status: Approved
-Updated: 2026-08-29
+Updated: 2026-08-30
 
 ## Source of Truth Mapping
 

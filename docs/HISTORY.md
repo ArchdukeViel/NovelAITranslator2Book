@@ -1,3 +1,31 @@
+## 2026-08-30 TEST-ONLY MANAGED DATABASE RECOVERY RERUN
+
+The explicitly authorized test-only recovery workflow [run
+33270802038](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33270802038)
+completed successfully in 1m51s at merged `main` commit
+`01f106ade3700405f3f4a998a1c708ed7113505b`. It used only the disposable
+managed test database, `test-dokushodo` for application R2, and
+`test-dokushodo-backup` for recovery material, with an ephemeral local
+PostgreSQL restore target. The sanitized uploaded artifact is
+`managed-database-recovery-evidence-33270802038`.
+
+The artifact reports successful backup creation, healthy freshness,
+manifest/checksum verification, isolated restore, representative queries,
+Alembic-head verification, public isolation, R2 cleanup, temporary-role
+cleanup, and overall cleanup. The restored target contained 37 public tables,
+all 37 had RLS enabled, and there were zero invalid constraints. It records
+`production_mutation=none`.
+
+Independent post-run Supabase MCP SQL found zero fixture novel rows and zero
+fixture chapter rows. Cloudflare MCP read-only listings found zero objects
+under `novels/123/` in `test-dokushodo` and zero `recovery-` objects in
+`test-dokushodo-backup`. This changes the current recovery disposition to
+`partial`: recurring schedule history, retention behavior, stale/failure alert
+transition and delivery, production smoke, and production recovery readiness
+remain unverified. Reader SLO/path remain blocked, hosted telemetry remains
+unavailable, and `production_capacity_claim=not_established`. No production
+resource, secret, or repository variable was changed.
+
 ## 2026-08-29 NON-PRODUCTION CLOUDFLARE READER FOLLOW-UP RERUN
 
 The confirmation-gated non-production reader workflow [run

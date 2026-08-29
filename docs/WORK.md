@@ -165,7 +165,7 @@ exists and is recorded in `HISTORY.md`.
 | 4 | DEBT-079A | Deploy always-on candidate | REL-001 | Migrations one-shot succeeds; immutable images run; production config validated (COMPLETED 2026-08-17) |
 | 5 | DEBT-079B | Hosted auth/security smoke | DEBT-079A | OAuth, cookies, CSRF, CORS, hosts, roles, disabled users, admin/reader boundaries pass (COMPLETED 2026-08-17) |
 | 6 | DEBT-075A | Verify hosted PostgreSQL/R2 workflow | DEBT-079A | Managed-services workflow passes against isolated targets (COMPLETED 2026-08-17) |
-| 7 | DEBT-075B | Current-head recovery drill | DEBT-075A | Current disposable managed PostgreSQL backup/restore evidence recorded on 2026-08-28; recurring backup/alert, production smoke, and production recovery readiness remain separate gates |
+| 7 | DEBT-075B | Current-head recovery drill | DEBT-075A | Current disposable managed PostgreSQL backup/restore evidence recorded by test-only run 33270802038 on 2026-08-29 UTC; recurring backup/alert, production smoke, and production recovery readiness remain separate gates |
 | 8 | DEBT-118 | Activate and verify SMTP, including signup verification and password-reset delivery | DEBT-079A | Domain/SPF/DKIM/DMARC, auth mail, bounce/error handling, redaction, limits, `noop` rollback proven |
 | 9 | DEBT-075C | Real operator alert | DEBT-118 | Stale/failure alert delivered; threshold, cooldown, redaction, escalation proven |
 | 10 | DEBT-079C | External monitoring | DEBT-079A, OWN-001 | Scheduled runs, dashboard, operator delivery, escalation ownership proven |
@@ -504,7 +504,7 @@ graphify update . --no-cluster
 
 ## Operator Acceptance
 
-Current follow-up checkpoint — 2026-08-29:
+Current follow-up checkpoint — 2026-08-30:
 `reader-capacity-and-recovery-follow-up` remains an active, blocked operational
 spec. Its local contracts and evidence postconditions are valid, and the
 confirmation-gated non-production workflow [33259176327](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33259176327)
@@ -519,18 +519,26 @@ attempted another 1,000 requests with 800 valid samples and 189 timeouts. The
 Cloudflare gate remains blocked because the health/catalog/detail budgets were
 exceeded and chapter/search cells were incomplete. Therefore `reader_slo_status=blocked` and
 `path_profile_status=blocked`; `telemetry_status=unavailable`,
-`recovery_status=not_assessed`, and `production_capacity_claim=not_established`.
+`recovery_status=partial`, and `production_capacity_claim=not_established`.
 The worker remained stopped, while original queue and other-writer state
-remained unknown. This is current non-production evidence, not production
-recovery readiness or reader capacity evidence. The Recovery row below retains
-the separate earlier one-run restore provenance and does not override this
-current checkpoint.
+remained unknown. This is current non-production evidence, not reader-capacity
+admission or production capacity evidence.
 
-The prior successful isolated recovery artifact records backup, manifest, checksum, freshness,
-restore, representative-query, public-isolation, R2-cleanup, and role-cleanup
-success. The isolated target contained 37 public tables, 37 RLS tables, and
-zero invalid constraints. The temporary confirmation variable was removed;
-`MANAGED_SERVICE_TESTS_ENABLED` remains `false`.
+The latest explicitly authorized test-only recovery run [33270802038](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33270802038)
+passed backup creation, healthy freshness, manifest/checksum verification,
+isolated restore, representative queries, Alembic-head verification, public
+isolation, R2 cleanup, temporary-role cleanup, and overall cleanup. Its
+sanitized artifact is `managed-database-recovery-evidence-33270802038` and
+records 37 public tables, 37 RLS tables, zero invalid constraints, and
+`production_mutation=none`. Independent Supabase and Cloudflare MCP checks
+confirmed zero fixture rows and zero remaining objects under the exact test
+prefixes. Recovery is therefore `partial`, not complete: recurring schedule
+history, retention behavior, alert transition/delivery, production smoke, and
+production recovery readiness remain unverified. No production resource,
+secret, or repository variable was changed.
+
+The temporary confirmation variable was removed; `MANAGED_SERVICE_TESTS_ENABLED`
+remains `false`.
 The disposable test project's security advisor was rerun after the optional
 RLS-helper execution was revoked and reported no lints. Repository migration
 `f8a2c4e6b0d1` carries that conditional hardening for the next normal schema
@@ -558,7 +566,7 @@ remains unestablished.
 | Hosted smoke and auth/security boundaries | Blocked | Candidate commit, domains, UTC time, commands/URLs, sanitized results. |
 | Secret scanning | Partial (hosted scans passed) | PR #12 proved successful GitGuardian push and same-repo PR checks. Still require protected required-check configuration and sanitized incident/false-positive triage evidence. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
 | Alerts and monitoring | Blocked (tooling complete) | Configure `PRODUCTION_BASE_URL`, prove scheduled external runs and real operator delivery, cooldown/redaction, dashboards, escalation, and ownership. |
-| Recovery | Partial (one-run non-production restore passed) | The isolated database backup/restore and representative public-isolation checks are recorded by the earlier test-only recovery artifact. Recurring backup freshness, stale/failure alert delivery, production smoke, and production recovery readiness remain required; the new direct rerun was unavailable because its workflow is not registered on the default branch. |
+| Recovery | Partial (current test-only restore passed) | Test-only recovery workflow [33270802038](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33270802038) passed backup, freshness, manifest/checksum, isolated restore, public-isolation, and cleanup checks against disposable targets; independent MCP checks found zero fixture rows and zero test objects. Recurring schedule/retention evidence, stale/failure alert transition and delivery, production smoke, and production recovery readiness remain required. |
 | Accessibility | Pass (COMPLETED 2026-08-17) | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast verified via automated test suite and operator physical device attestation. |
 | Performance | Partial / Fail (AUDITED 2026-08-17; retired private transport) | Catalog API p95 on the retired hosted staging path exceeded the hard budget (reader direct p95=1001.60ms, private HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + object-store metadata-list latency in the pre-cutover measurement). The latest disposable run proves quick-tunnel readiness but remains blocked: Cloudflare health p95 was 85.434/1129.843ms, catalog 11008.173/11761.447ms, detail 13060.920/16360.286ms, chapter warm/cold were unavailable, and search warm was unavailable while cold was 16608.013ms. |
 | SEO | Staging Pass / Production Deferred (AUDITED 2026-08-17) | Staging robots.txt, sitemap.xml, Open Graph / Twitter metadata, canonical URLs verified on staging hostname; production domain SEO validation deferred until public domain cutover. |
