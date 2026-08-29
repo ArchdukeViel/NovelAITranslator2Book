@@ -106,6 +106,10 @@ def test_nonproduction_reader_capacity_workflow_is_isolated_and_cleanup_gated() 
     assert "reset_reader_cache.ps1" in source
     assert "ColdCacheMode disposable_reader_reset" in source
     assert "cloudflare/cloudflared:2026.8.0@sha256:" in source
+    assert "Disposable Cloudflare quick tunnel readiness reached HTTP 200." in source
+    assert "--connect-timeout 5 --max-time 15" in source
+    assert "-CaddyBaseUrl http://127.0.0.1:18080" in source
+    assert "-CaddyHostHeader localhost" in source
     assert "if: always()" in source
     assert "seed_reader_capacity_fixture cleanup" in source
     assert "fixture-cleanup.json" in source

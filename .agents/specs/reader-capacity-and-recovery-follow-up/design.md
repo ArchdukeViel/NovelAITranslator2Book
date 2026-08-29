@@ -1,7 +1,7 @@
 # Reader Capacity and Recovery Operational Follow-up Design
 
 Spec ID: reader-capacity-and-recovery-follow-up
-Version: 0.4.0
+Version: 0.4.1
 Status: Approved
 Updated: 2026-08-29
 
@@ -159,12 +159,16 @@ uses its cells; all other cells are comparison evidence.
    sample targets. An unavailable direct/Cloudflare target produces an explicit
    unavailable matrix cell, not a process failure. Keep topology and
    cache-state samples in separate reports and do not merge their percentile
-   distributions.
+   distributions. The disposable Cloudflare workflow must first obtain HTTP
+   200 from the isolated `/health/live` route through the ephemeral tunnel;
+   the same run may collect Caddy loopback cells with an explicit Host binding
+   as diagnostic comparison evidence.
 4. Use a deterministic percentile method (nearest-rank over completed request
    durations in milliseconds). Record attempted, completed, valid-latency,
-   status, error, timeout, and transport-error counts separately. Any timeout,
-   transport error, incorrect response, or incomplete required cell prevents
-   that Caddy gate cell from passing even if its p95 is below budget.
+   status, error, timeout, and transport-error counts separately, plus coarse
+   sanitized error-class counts when the runner exposes error names. Any
+   timeout, transport error, incorrect response, or incomplete required cell
+   prevents that Caddy gate cell from passing even if its p95 is below budget.
 5. Capture application, proxy, database, storage, container, and hosted
    snapshots over the same UTC interval. T-004 may create a pre-remediation
    telemetry window joined to T-002; T-007 must append a post-remediation
@@ -211,6 +215,13 @@ one campaign/run/topology/cache-state cell:
   "error_count": 0,
   "timeout_count": 0,
   "transport_error_count": 0,
+  "error_class_counts": {
+    "connect": 0,
+    "transport": 0,
+    "timeout": 0,
+    "redirect": 0,
+    "other": 0
+  },
   "status_counts": {"200": 50},
   "expected_status": 200,
   "response_contract_status": "valid|invalid|unavailable",

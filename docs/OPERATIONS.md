@@ -80,13 +80,21 @@ The workflow applies candidate migrations, seeds the explicit synthetic
 always cleans the exact fixture rows and R2 namespace. It starts an isolated
 Compose project with worker, provider, analytics, and translation expansion
 disabled, exposes only its internal Caddy listener through an ephemeral
-Cloudflare quick tunnel, and runs the bounded Cloudflare reader profile. The
-profile records 50-count warm cells and 50-count cold cells; each cold cell is
+Cloudflare quick tunnel, waits for that tunnel to return HTTP 200 from the
+isolated `/health/live` route, and runs the bounded reader profile. The profile
+records the Cloudflare SLO-gate cells plus a Caddy-loopback diagnostic target
+with an explicit `localhost` Host binding, 50-count warm cells, and 50-count
+cold cells; each cold cell is
 preceded by `reset_reader_cache.ps1`, which flushes only that project's Redis
 database, restarts only its reader service, waits for reader health, and emits a
 sanitized reset proof. The reset receives the same disposable `deploy/.env` as
 the Compose stack, and fixture cleanup is retained as a separate sanitized
 artifact record.
+
+Each route cell also records coarse sanitized error-class counts (`connect`,
+`transport`, `timeout`, `redirect`, and `other`) when the underlying runner
+exposes an error name. These counts are diagnostic only; they never convert an
+unavailable or incomplete Cloudflare gate cell into a passing result.
 
 The uploaded artifact is retained for seven days and contains sanitized route,
 cache-state, reset-proof, and disposition data only. A successful workflow or

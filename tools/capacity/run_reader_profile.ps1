@@ -99,6 +99,16 @@ function Get-OpaqueFixtureId() {
     return "fixture-" + (($hash | ForEach-Object { $_.ToString("x2") }) -join "").Substring(0, 16)
 }
 
+function Get-SafeErrorClass([string]$Name) {
+    switch -Regex ($Name) {
+        "timeout" { return "timeout" }
+        "connect" { return "connect" }
+        "read|write|protocol|network|remote" { return "transport" }
+        "redirect" { return "redirect" }
+        default { return "other" }
+    }
+}
+
 function New-Blocker([string]$Id, [string]$Target, [string]$Reason, [string]$UnavailableReason, [Nullable[double]]$MeasuredValue, [Nullable[double]]$Budget, [string]$NextAction, [string]$RetryCondition) {
     return [ordered]@{
         blocker_id = $Id
@@ -128,6 +138,7 @@ function New-Cell([string]$CampaignId, [string]$RunId, [string]$FixtureId, [stri
     $errors = 0
     $timeouts = 0
     $transport = 0
+    $errorClassCounts = [ordered]@{}
     $p50 = $null
     $p95 = $null
     $p99 = $null
@@ -145,6 +156,14 @@ function New-Cell([string]$CampaignId, [string]$RunId, [string]$FixtureId, [stri
             if ([string]$property.Name -eq "error") {
                 $errors += [int]$property.Value
                 $transport += [int]$property.Value
+            }
+        }
+        $errorProperty = $Summary.PSObject.Properties["errors"]
+        if ($null -ne $errorProperty -and $null -ne $errorProperty.Value) {
+            foreach ($property in @($errorProperty.Value.PSObject.Properties)) {
+                $safeClass = Get-SafeErrorClass ([string]$property.Name)
+                if (-not $errorClassCounts.Contains($safeClass)) { $errorClassCounts[$safeClass] = 0 }
+                $errorClassCounts[$safeClass] += [int]$property.Value
             }
         }
         $completed = $attempted - $timeouts - $transport
@@ -205,6 +224,7 @@ function New-Cell([string]$CampaignId, [string]$RunId, [string]$FixtureId, [stri
         error_count = $errors
         timeout_count = $timeouts
         transport_error_count = $transport
+        error_class_counts = $errorClassCounts
         status_counts = $statusCounts
         expected_status = $expectedStatus
         response_contract_status = $responseStatus

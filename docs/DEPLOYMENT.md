@@ -459,6 +459,9 @@ The confirmation-gated
 `.github/workflows/reader-capacity-nonproduction.yml` workflow builds an
 isolated Compose project against the managed test database and the dedicated
 `test-dokushodo` R2 application bucket, then uses an ephemeral Cloudflare quick
-tunnel to reach that project's Caddy listener. It always removes the synthetic
-fixture, test runtime, and quick tunnel. See [`OPERATIONS.md`](OPERATIONS.md)
-for the evidence and cold-cache reset contract.
+tunnel to reach that project's Caddy listener. Before profiling, the workflow
+waits for the tunnel to return HTTP 200 from the isolated `/health/live` route;
+it also samples the same Caddy listener through loopback as diagnostic
+comparison evidence. It always removes the synthetic fixture, test runtime,
+and quick tunnel. See [`OPERATIONS.md`](OPERATIONS.md) for the evidence and
+cold-cache reset contract.

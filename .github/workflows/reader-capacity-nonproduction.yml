@@ -269,6 +269,19 @@ jobs:
             echo "::error::The disposable Cloudflare quick tunnel did not start."
             exit 1
           fi
+          tunnel_status=""
+          for _ in $(seq 1 60); do
+            tunnel_status="$(curl --silent --connect-timeout 5 --max-time 15 \
+              --output /dev/null --write-out '%{http_code}' \
+              "$cloudflare_url/health/live" 2>/dev/null || true)"
+            if [[ "$tunnel_status" == "200" ]]; then break; fi
+            sleep 1
+          done
+          if [[ "$tunnel_status" != "200" ]]; then
+            echo "::error::The disposable Cloudflare quick tunnel did not reach the isolated liveness endpoint."
+            exit 1
+          fi
+          echo "Disposable Cloudflare quick tunnel readiness reached HTTP 200."
           printf 'READER_CLOUDFLARE_BASE_URL=%s\n' "$cloudflare_url" >> "$GITHUB_ENV"
 
       - name: Run the bounded Cloudflare reader profile
@@ -278,6 +291,8 @@ jobs:
             -ReadOnly `
             -Profile 1000 `
             -SloGateTopology cloudflare_tunnel `
+            -CaddyBaseUrl http://127.0.0.1:18080 `
+            -CaddyHostHeader localhost `
             -CloudflareBaseUrl $env:READER_CLOUDFLARE_BASE_URL `
             -NovelSlug test-novel `
             -ChapterId 456 `

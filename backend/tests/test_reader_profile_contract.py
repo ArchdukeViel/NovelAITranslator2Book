@@ -222,6 +222,8 @@ def test_reader_runner_contract_uses_cloudflare_gate_and_explicit_caddy_binding(
     assert 'Get-EnvValue "READER_CADDY_HOST_HEADER"' in runner
     assert '"--host-header", $HostHeader' in runner
     assert '"caddy_host_binding_unavailable"' in runner
+    assert "function Get-SafeErrorClass" in runner
+    assert "error_class_counts = $errorClassCounts" in runner
     assert "if ($baselineFixtureId -ne $fixtureId)" in runner
     assert '"^fixture-[0-9a-f]{16}$"' in preflight
     assert '"disposable_reader_reset_or_explicit_unavailable"' in preflight
