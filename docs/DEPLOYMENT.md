@@ -425,9 +425,12 @@ apex and `www` records were not changed.
 
 The local Compose stack uses the digest-pinned `cloudflared:2026.8.0` image,
 the ignored `deploy/.cloudflared/dokushodo-dev.token` secret file, and the
-existing `novelai-net` network. Cloudflare reported the tunnel as `healthy`,
-the ingress and DNS checks matched the intended values, and one connector was
-active. Compose configuration validation exited 0.
+existing `novelai-net` network. The 2026-08-28 deployment check reported the
+tunnel as `healthy`, with matching ingress/DNS checks and one active connector;
+Compose configuration validation exited 0. A fresh read-only MCP check on
+2026-08-29 found the named durable tunnel `down` with zero connectors. No DNS,
+Tunnel, or deployment configuration was changed; the disposable capacity
+workflow uses its own ephemeral quick Tunnel.
 
 External smoke evidence from the development URL returned HTTP 200 for
 `/health/live`, `/health/ready`, `/`, and

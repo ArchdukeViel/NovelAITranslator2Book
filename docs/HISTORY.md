@@ -1,3 +1,46 @@
+## 2026-08-29 NON-PRODUCTION CLOUDFLARE READER FOLLOW-UP RERUN
+
+The confirmation-gated non-production reader workflow [run
+33259176327](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33259176327)
+completed successfully in 36m55s at candidate commit
+`f2cfedde7912a29c691768d2b6cacc3016fbfdb9`. It resolved the exact active test
+Supabase project `testingdatabase-dokushodo` and used only `test-dokushodo` for
+the application fixture. The recovery bucket remained
+`test-dokushodo-backup`. The workflow seeded the explicit fixture, waited for
+the isolated Cloudflare quick Tunnel to return HTTP 200 from `/health/live`,
+ran the bounded 1k matrix, and completed guarded cleanup. The sanitized artifact
+is `reader-capacity-nonproduction-33259176327`.
+
+The five artifact validators passed. The 20 Cloudflare SLO-gate cells attempted
+1,000 read-only requests with 850 valid samples, zero transport errors, 144
+timeouts, nine passing cells, eight failed cells, and three unavailable cells.
+The 20 Caddy diagnostic cells attempted 1,000 requests with 800 valid samples,
+zero transport errors, 189 timeouts, ten passing cells, six failed cells, and
+four unavailable cells. The required Cloudflare cells had one passing cell, six
+over-budget cells, and three unavailable cells; twenty independent cold-reset
+proofs were recorded. The resulting disposition is
+`reader_slo_status=blocked`, `path_profile_status=blocked`,
+`telemetry_status=unavailable`, `recovery_status=not_assessed`, and
+`production_capacity_claim=not_established`. No remediation was applied because
+non-overlapping layer timings remained unavailable.
+
+Supabase MCP security/performance advisor calls and read-only SQL checks returned
+without exposing findings or rows. The sanitized database snapshot recorded zero
+fixture rows, one migration-marker row, 11 aggregate sessions (one active and
+three idle), and 26,147 cumulative statement calls with 133,608 cumulative rows;
+cumulative execution time was unavailable. Cloudflare MCP confirmed the exact
+test buckets and post-run zero-object cleanup. The named durable development
+tunnel was down with zero connectors at the check, while its DNS record remained
+proxied; the workflow's disposable quick Tunnel is separate. Zone analytics was
+unavailable and the R2 metrics endpoint was not bucket/window scoped, so no edge,
+tunnel, R2-operation, or billing metric was inferred.
+
+The direct recovery workflow dispatch was attempted but GitHub reported that the
+workflow file is absent from the default branch. No recovery write was performed
+in this run. The earlier successful isolated recovery record remains separate
+one-run evidence and does not establish recurring backup freshness, alert
+delivery, reader capacity, or production readiness.
+
 ## 2026-08-29 NON-PRODUCTION CLOUDFLARE READER RERUN AFTER TUNNEL READINESS FIX
 
 The confirmation-gated non-production reader workflow [run

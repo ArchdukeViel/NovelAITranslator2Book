@@ -44,8 +44,9 @@ read-only profile is recorded separately below.
 
 The disposition rows below retain the original evidence wording for
 provenance. In this amendment, the stale workflow reference is repaired in
-source; the bounded reader result and the separate managed recovery result are
-recorded without promoting either to production capacity.
+source; the latest bounded reader result, the separate one-run managed recovery
+result, and the failed direct-dispatch attempt are recorded without promoting
+any of them to production capacity.
 
 ## Current execution disposition
 
@@ -57,12 +58,13 @@ operation passed. The current operational dispositions are:
 |---|---|---|
 | T-000 | Complete | Semantic validator and contract self-test are implemented. |
 | T-001 | Complete with blockers | Baseline is valid with the selected Cloudflare gate and opaque fixture binding; the worker is stopped, while queue/writer state remains unavailable. |
-| T-002 | Complete with quantified blockers | The executable matrix contract is valid; the latest disposable run recorded 1,000 Cloudflare attempts with 850 valid samples, zero transport errors, 144 timeouts, 1,000 Caddy diagnostic attempts with 750 valid samples and 180 timeouts, and twenty cold-reset proofs. |
+| T-002 | Complete with quantified blockers | The executable matrix contract is valid; the latest disposable run recorded 1,000 Cloudflare attempts with 850 valid samples, zero transport errors, 144 timeouts, 1,000 Caddy diagnostic attempts with 800 valid samples and 189 timeouts, and twenty cold-reset proofs. |
 | T-003 | Blocked | Layer attribution is structurally recorded, but all layer timings are unavailable. |
 | T-004 | Complete with unavailable telemetry | All required snapshots are joinable and explicitly unavailable. |
 | T-005–T-006 | Complete as safe no-op | No evidence-backed local remediation was authorized or applied. |
-| T-007 | Blocked admission decision | Workflow run `33251479814` completed and its 60-cell report validated with 17 quantified blockers. The selected Cloudflare cells recorded 1,000 attempts, 850 valid samples, zero transport errors, 144 timeouts, and twenty cold-reset proofs; admission remains blocked. |
-| T-008–T-009 | Blocked operational evidence | Local tests pass, but current freshness/alert and isolated hosted restore evidence are absent. |
+| T-007 | Blocked admission decision | Workflow run `33259176327` completed and its 60-cell report validated with 17 quantified blockers. The selected Cloudflare cells recorded 1,000 attempts, 850 valid samples, zero transport errors, 144 timeouts, and twenty cold-reset proofs; admission remains blocked. |
+| T-008 | Complete with unavailable recurring evidence | Local control tests pass and the one-run recovery record is separate; current recurring freshness, retention, and alert-delivery observations remain unavailable. |
+| T-009 | Complete with one-run test-only restore evidence | The earlier isolated recovery run passed its declared backup/restore and cleanup checks; a newer direct dispatch was unavailable because the workflow file is absent from the default branch. |
 | T-010 | Complete as procedure-only | Actual credential rotation is deferred to a separately authorized maintenance action. |
 | T-011–T-012 | Complete with handoff blocker | Local quality and documentation gates pass; Cloudflare-only access is validated, but fixture, cold-cache, telemetry, and operational blockers remain. |
 
@@ -166,9 +168,9 @@ operation passed. The current operational dispositions are:
   - Scope: Run only the 1k DAU-equivalent sampled profile using the approved candidate revision and one explicitly supplied fixture binding across direct, Caddy, and Cloudflare paths. Collect at least 50 valid warm and 50 valid controlled-cold samples per required route/path cell, with a finite maximum attempt bound, concurrency 8, and a 20-second request timeout unless an owner-approved change is recorded. Capture the five required routes plus fixed diagnostic auxiliary routes, status/error/timeout/transport counts, payloads, process snapshots, joined pre/post telemetry references, and unavailable fields. Do not run 10k/100k, sustained capacity traffic, or translation traffic. The wrapper must recheck worker/queue/writer safety after the run and fail closed on drift. An unavailable comparison path is a quantified matrix blocker, not a runner crash.
   - Verification: `powershell -NoProfile -File tools/capacity/run_reader_profile.ps1 -ReadOnly -Profile 1000 -ReportDir artifacts/operations/reader-capacity-follow-up/reader-stage-1000 -BaselinePath artifacts/operations/reader-capacity-follow-up/baseline.json`
   - Expected: The report contains baseline/candidate revision linkage, `reader_slo_status`, `path_profile_status`, `telemetry_status`, `recovery_status`, `overall_follow_up_disposition`, and `production_capacity_claim`. Before recovery tasks run, `recovery_status=not_assessed` and the overall disposition cannot be `complete`. `reader_slo_status=passed` requires every required selected-gate route/cache cell to pass its budget with complete valid evidence; hosted billing/quota unavailability is recorded as a telemetry blocker and never becomes a capacity claim. Worker/queue/writer state remains paused and no canonical content or provider operation is performed. The validator accepts a quantified blocked disposition only when all NFR-006 fields are present.
-  - Attempts: 1
-  - Last result: blocked with quantified admission decision; workflow run `33251479814` seeded the explicit fixture in disposable managed DB/R2, waited for tunnel liveness, validated the complete report, recorded 1,000 Cloudflare attempts with 850 valid samples, zero transport errors, 144 timeouts, and over-budget/incomplete required cells, plus 20 Caddy diagnostic cells and 20 cold-reset proofs. Cleanup completed and production capacity remains unestablished.
-  - Evidence: [workflow run 33251479814](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33251479814) and its seven-day sanitized artifact `reader-capacity-nonproduction-33251479814`.
+  - Attempts: 2
+  - Last result: blocked with quantified admission decision; workflow run `33259176327` seeded the explicit fixture in the resolved disposable test project and exact test R2 bucket, waited for quick-tunnel liveness, validated the complete report, recorded 1,000 Cloudflare attempts with 850 valid samples, zero transport errors, 144 timeouts, and over-budget/incomplete required cells, plus 1,000 Caddy diagnostic attempts and 20 cold-reset proofs. Cleanup completed and production capacity remains unestablished.
+  - Evidence: [workflow run 33259176327](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33259176327) and its seven-day sanitized artifact `reader-capacity-nonproduction-33259176327`.
 
 - [x] **T-008 Verify recurring backup freshness, retention, and stale/failure alert controls**
   - Maps to: REQ-008, REQ-011, AC-008
@@ -191,8 +193,8 @@ operation passed. The current operational dispositions are:
   - Verification: `tools/pytest.ps1 backend/tests/test_database_backup_crypto.py backend/tests/test_r2_backup.py backend/tests/test_backup_service.py -q`
   - Expected: The isolated restore either passes all declared checks or records the exact blocked step, workflow/commit/UTC evidence, target-isolation proof, and cleanup status. Restore freshness is timestamped separately from backup creation freshness. Production database, canonical R2 content, and public production routes remain untouched.
   - Attempts: 1
-  - Last result: blocked; local restore-related tests pass, but no independently authorized hosted restore target or current restore evidence was available.
-  - Evidence: recorded in `artifacts/operations/reader-capacity-follow-up/restore-verification.md`.
+  - Last result: complete for the one-run test-only restore; the earlier hosted workflow passed isolated backup/restore, schema/public-isolation, and cleanup checks. A new direct dispatch on 2026-08-29 was blocked by default-branch workflow registration, so no newer recovery evidence was claimed.
+  - Evidence: recorded in `artifacts/operations/reader-capacity-follow-up/restore-verification.md` and `artifacts/operations/reader-capacity-follow-up/remote-recovery-33182847311/managed-database-recovery-evidence.json`.
 
 - [x] **T-010 Complete least-privilege and credential-rotation procedure**
   - Maps to: REQ-009, REQ-011, AC-009
@@ -217,7 +219,7 @@ operation passed. The current operational dispositions are:
   - Verification: `powershell -NoProfile -File tools/capacity/run_reader_follow_up_quality_gates.ps1 -SpecPath .agents/specs/reader-capacity-and-recovery-follow-up -ArtifactPath artifacts/operations/reader-capacity-follow-up`
   - Expected: All applicable checks pass or each failure is recorded as a concrete blocker with command/exit code/path evidence; no unrelated pre-existing error is silently attributed to this spec. A successful validator run does not erase an operational SLO or hosted-telemetry blocker.
   - Attempts: 1
-  - Last result: complete with an operational blocker; local checks and the accepted remote evidence validators pass, while reader admission, hosted telemetry, and queue/writer observation remain blocked.
+  - Last result: complete with an operational blocker; local checks and the latest remote evidence validators pass, while reader admission, exact reader-window telemetry, recurring alert evidence, and queue/writer observation remain blocked.
   - Evidence: recorded in `artifacts/operations/reader-capacity-follow-up/validation.md`.
 
 - [x] **T-012 Synchronize canonical documentation and close the handoff**
@@ -229,5 +231,5 @@ operation passed. The current operational dispositions are:
   - Verification: `graphify update . --no-cluster`
   - Expected: Canonical documents, evidence artifacts, this spec's task states, and the Graphify index agree on the current disposition; the final handoff names the independent SLO/telemetry/recovery statuses, next practical action, production-capacity non-claim, and safety stop where applicable.
   - Attempts: 1
-  - Last result: handoff recorded as blocked after the disposable Cloudflare evidence run; canonical documents preserve the distinction between this valid non-production package and unperformed hosted/production operations.
+  - Last result: handoff updated as blocked after the latest disposable Cloudflare evidence run; canonical documents preserve the distinction between this valid non-production package, the separate one-run restore evidence, and unperformed hosted/production operations.
   - Evidence: recorded in `artifacts/operations/reader-capacity-follow-up/handoff.md`.

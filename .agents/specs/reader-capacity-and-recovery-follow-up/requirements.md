@@ -11,7 +11,8 @@ Target project or release: Current split deployment after the quantified 1k read
 ## Context and Problem
 
 The follow-up now has a confirmation-gated disposable execution path. Workflow
-rerun [33251479814](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33251479814)
+rerun [33259176327](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33259176327)
+at candidate commit `f2cfedde7912a29c691768d2b6cacc3016fbfdb9`
 seeded the explicit published reader fixture into the managed test database and
 dedicated test R2 bucket, started an isolated runtime, captured a safety
 baseline, waited for an ephemeral Cloudflare quick tunnel to return HTTP 200
@@ -19,15 +20,17 @@ from `/health/live`, and completed cleanup. The report validators accepted the
 resulting 60-cell matrix and twenty cold-reset proofs. The 20 Cloudflare cells
 attempted 1,000 read-only requests with 850 valid samples, zero transport
 errors, 144 timeouts, and over-budget/incomplete required cells. The 20 Caddy
-loopback diagnostic cells attempted another 1,000 requests with 750 valid
-samples and 180 timeouts. The result is therefore a quantified stop rather
+loopback diagnostic cells attempted another 1,000 requests with 800 valid
+samples and 189 timeouts. The result is therefore a quantified stop rather
 than a capacity pass:
 `reader_slo_status=blocked`, `path_profile_status=blocked`,
 `telemetry_status=unavailable`, `recovery_status=not_assessed`, and
 `production_capacity_claim=not_established`. The worker remained stopped;
 queue/writer observation remained unknown; and production content, R2, and
-provider surfaces were not used. The readiness gate removes the prior tunnel
-startup ambiguity but does not establish route-budget or production capacity.
+provider surfaces were not used. Supabase and Cloudflare MCP checks confirmed
+the test identities and cleanup, while exact reader-window provider telemetry
+was unavailable. The readiness gate removes the prior tunnel startup ambiguity
+but does not establish route-budget or production capacity.
 
 ## Goal
 

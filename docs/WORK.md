@@ -507,25 +507,26 @@ graphify update . --no-cluster
 Current follow-up checkpoint — 2026-08-29:
 `reader-capacity-and-recovery-follow-up` remains an active, blocked operational
 spec. Its local contracts and evidence postconditions are valid, and the
-confirmation-gated non-production workflow [33251479814](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33251479814)
-successfully bound the explicit fixture to the disposable managed database and
-dedicated test R2 bucket. The isolated runtime, safety baseline, ephemeral
-Cloudflare quick tunnel readiness check, 60-cell matrix, twenty cold-reset
-proofs, and cleanup all completed. The selected Cloudflare cells attempted
-1,000 read-only requests with 850 valid samples, zero transport errors, 144
-timeouts, eight passing cells, nine over-budget cells, and three unavailable
-cells. Caddy loopback diagnostics attempted another 1,000 requests with 750
-valid samples and 180 timeouts. The Cloudflare gate remains blocked because
-health/catalog/detail budgets were exceeded and chapter/search cells were
-incomplete. Therefore `reader_slo_status=blocked` and
+confirmation-gated non-production workflow [33259176327](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33259176327)
+successfully bound the explicit fixture to the active test project
+`testingdatabase-dokushodo`, the `test-dokushodo` application bucket, and the
+isolated reader runtime. The safety baseline, ephemeral Cloudflare quick tunnel
+readiness check, 60-cell matrix, twenty cold-reset proofs, and cleanup all
+completed. The selected Cloudflare cells attempted 1,000 read-only requests
+with 850 valid samples, zero transport errors, 144 timeouts, nine passing cells,
+eight failed cells, and three unavailable cells. Caddy loopback diagnostics
+attempted another 1,000 requests with 800 valid samples and 189 timeouts. The
+Cloudflare gate remains blocked because the health/catalog/detail budgets were
+exceeded and chapter/search cells were incomplete. Therefore `reader_slo_status=blocked` and
 `path_profile_status=blocked`; `telemetry_status=unavailable`,
 `recovery_status=not_assessed`, and `production_capacity_claim=not_established`.
 The worker remained stopped, while original queue and other-writer state
 remained unknown. This is current non-production evidence, not production
 recovery readiness or reader capacity evidence. The Recovery row below retains
-its earlier audit provenance and does not override this current checkpoint.
+the separate earlier one-run restore provenance and does not override this
+current checkpoint.
 
-The current recovery artifact records backup, manifest, checksum, freshness,
+The prior successful isolated recovery artifact records backup, manifest, checksum, freshness,
 restore, representative-query, public-isolation, R2-cleanup, and role-cleanup
 success. The isolated target contained 37 public tables, 37 RLS tables, and
 zero invalid constraints. The temporary confirmation variable was removed;
@@ -545,19 +546,21 @@ removed by the guarded cleanup path. Independent post-run checks found zero
 fixture rows and zero objects under the exact fixture prefix. The active
 reader-capacity contract selects `cloudflare_tunnel` as its non-production SLO
 gate. The latest 20 Cloudflare cells recorded 1,000 attempts, 850 valid
-samples, zero transport errors, and 144 timeouts. The complete matrix records
-17 quantified blockers across over-budget and incomplete required cells. The report is a valid quantified
-blocker, not a capacity pass. Production capacity remains unestablished.
+samples, zero transport errors, and 144 timeouts; the Caddy comparison recorded
+1,000 attempts, 800 valid samples, and 189 timeouts. The complete matrix records
+17 quantified blockers across over-budget and incomplete required cells. The
+report is a valid quantified blocker, not a capacity pass. Production capacity
+remains unestablished.
 
 | Gate | Status | Required evidence |
 |---|---|---|
-| Reader capacity and recovery follow-up (current) | Blocked | Owner authorization, the disposable fixture binding, twenty controlled cold-reset proofs, and cleanup verification are recorded by workflow run [33251479814](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33251479814); the 1,000 selected Cloudflare requests produced 850 valid samples, zero transport errors, 144 timeouts, and over-budget/incomplete required cells, queue/writer state remains unknown, and hosted telemetry/recovery evidence remain required. |
+| Reader capacity and recovery follow-up (current) | Blocked | Owner authorization, the disposable fixture binding, twenty controlled cold-reset proofs, and cleanup verification are recorded by workflow run [33259176327](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33259176327); the 1,000 Cloudflare requests produced 850 valid samples, zero transport errors, 144 timeouts, and over-budget/incomplete required cells, queue/writer state remains unknown, and exact reader-window telemetry plus recurring recovery controls remain required. |
 | Hosted smoke and auth/security boundaries | Blocked | Candidate commit, domains, UTC time, commands/URLs, sanitized results. |
 | Secret scanning | Partial (hosted scans passed) | PR #12 proved successful GitGuardian push and same-repo PR checks. Still require protected required-check configuration and sanitized incident/false-positive triage evidence. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
 | Alerts and monitoring | Blocked (tooling complete) | Configure `PRODUCTION_BASE_URL`, prove scheduled external runs and real operator delivery, cooldown/redaction, dashboards, escalation, and ownership. |
-| Recovery | Partial (current non-production run passed) | Current isolated database backup/restore and representative public-isolation checks are recorded. Recurring backup freshness, stale/failure alert delivery, production smoke, and production recovery readiness remain required. |
+| Recovery | Partial (one-run non-production restore passed) | The isolated database backup/restore and representative public-isolation checks are recorded by the earlier test-only recovery artifact. Recurring backup freshness, stale/failure alert delivery, production smoke, and production recovery readiness remain required; the new direct rerun was unavailable because its workflow is not registered on the default branch. |
 | Accessibility | Pass (COMPLETED 2026-08-17) | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast verified via automated test suite and operator physical device attestation. |
-| Performance | Partial / Fail (AUDITED 2026-08-17; retired private transport) | Catalog API p95 on the retired hosted staging path exceeded the hard budget (reader direct p95=1001.60ms, private HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + object-store metadata-list latency in the pre-cutover measurement). The initial named-development-host Cloudflare probe also recorded catalog p95=1518.142ms, search p95=1368.677ms, and a detail/chapter fixture 404. The latest disposable run proves the quick tunnel readiness path but remains blocked: Cloudflare health p95 was 118.841/166.230ms, catalog 9735.853/10484.700ms, detail 11834.616/10759.448ms, chapter had 48/46 timeouts, and warm search had 50 timeouts. |
+| Performance | Partial / Fail (AUDITED 2026-08-17; retired private transport) | Catalog API p95 on the retired hosted staging path exceeded the hard budget (reader direct p95=1001.60ms, private HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + object-store metadata-list latency in the pre-cutover measurement). The latest disposable run proves quick-tunnel readiness but remains blocked: Cloudflare health p95 was 85.434/1129.843ms, catalog 11008.173/11761.447ms, detail 13060.920/16360.286ms, chapter warm/cold were unavailable, and search warm was unavailable while cold was 16608.013ms. |
 | SEO | Staging Pass / Production Deferred (AUDITED 2026-08-17) | Staging robots.txt, sitemap.xml, Open Graph / Twitter metadata, canonical URLs verified on staging hostname; production domain SEO validation deferred until public domain cutover. |
 | Legal propagation | Pass (AUDITED 2026-08-17) | HTTP 451 legal takedown verified (Cache-Control: no-store, no private info leak); sitemap exclusion & 404 contracts verified; CDN purge deferred to public edge. |
 | Rollback | Blocked | Pause worker/scheduler, purge cache, disable reader, redeploy previous immutable version, rerun smoke. |

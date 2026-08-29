@@ -15,6 +15,11 @@ on:
         required: true
         type: boolean
         default: false
+      confirm_test_recovery:
+        description: "Confirm disposable database recovery and test R2 buckets only"
+        required: true
+        type: boolean
+        default: false
   workflow_call:
     # When called as a pre-deployment gate (required=true) the job runs
     # unconditionally so a production deploy cannot silently skip hosted

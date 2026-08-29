@@ -32,11 +32,14 @@ or connection-string details into evidence.
 
 `managed-services-recovery-verification.yml` is a manual, confirmation-gated
 development workflow for the disposable `testdatabase=dokushodo` project and
-the dedicated test R2 target. The existing `Managed Services Verification`
-workflow dispatches it when `confirm_test_recovery=true`, so a branch-local
-candidate can be run with `--ref` without merging to the default branch. It
-creates a temporary backup-capable database role for the run, generates the
-database-backup encryption key in the runner, uses the existing
+the dedicated test R2 target. The candidate branch contains the workflow and
+the `Managed Services Verification` wrapper, but GitHub only exposes a manual
+workflow after its file is present on the default branch. On 2026-08-29 a direct
+dispatch therefore returned `404 workflow ... not found on the default branch`;
+no recovery write was performed in that attempt. Register the candidate workflow
+through the normal reviewed branch flow before relying on a new dispatch. The
+workflow creates a temporary backup-capable database role for the run, generates
+the database-backup encryption key in the runner, uses the existing
 `DatabaseBackupService`, and restores into an ephemeral local PostgreSQL
 service. The run uses a unique R2 prefix and removes the temporary role and
 test objects before recording sanitized evidence.
@@ -49,9 +52,11 @@ restore records only a fixed diagnostic class and deletes raw client
 diagnostics before evidence publication.
 
 GitHub validates manual-dispatch inputs against the default-branch workflow
-copy. Until this workflow is merged, a branch-local run may use the temporary
-repository variable `MANAGED_SERVICE_RECOVERY_ENABLED=true` as the explicit
-operator confirmation, dispatch `Managed Services Verification` against the
+copy. The candidate wrapper declares `confirm_test_recovery=true`, but that
+input is usable through the GitHub UI/API only after the wrapper revision is
+registered on the default branch. Until then, a branch-local run may use the
+temporary repository variable `MANAGED_SERVICE_RECOVERY_ENABLED=true` as the
+explicit confirmation, dispatch `Managed Services Verification` against the
 candidate branch, and delete the variable after the run. The variable is
 honored only for `workflow_dispatch`; it must not be left enabled.
 
@@ -104,26 +109,34 @@ production reader capacity.
 
 ### Latest disposable profile checkpoint - 2026-08-29
 
-The follow-up rerun [33251479814](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33251479814)
+The follow-up rerun [33259176327](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33259176327)
 completed after the workflow added a tunnel-readiness smoke check and a
 loopback Caddy diagnostic target. The readiness check returned HTTP 200 before
 sampling. Its 20 Cloudflare cells attempted 1,000 requests with 850 valid
-samples, zero transport errors, 144 timeouts, eight passing cells, nine
-over-budget cells, and three unavailable cells. Its 20 Caddy diagnostic cells
-attempted 1,000 requests with 750 valid samples, zero transport errors, 180
-timeouts, nine passing cells, six over-budget cells, and five unavailable
-cells. The Cloudflare gate remained blocked because health, catalog, and detail
-latencies exceeded budgets and chapter/search cells were incomplete; the Caddy
-comparison shows the same origin-side latency/timeout pattern.
+samples, zero transport errors, 144 timeouts, nine passing cells, eight failed
+cells, and three unavailable cells. Its 20 Caddy diagnostic cells attempted
+1,000 requests with 800 valid samples, zero transport errors, 189 timeouts, ten
+passing cells, six failed cells, and four unavailable cells. The Cloudflare gate
+remained blocked because the required health/catalog/detail budgets were
+exceeded and chapter/search cells were incomplete; the Caddy comparison shows
+the same origin-side latency/timeout pattern.
 
 The run recorded 20 controlled cold-reset proofs and completed guarded cleanup.
-Independent read-only checks confirmed zero fixture rows in the disposable
-managed database and zero objects under `novels/123/` in `test-dokushodo`.
+Independent Supabase and Cloudflare MCP checks confirmed zero fixture rows in
+the disposable managed database, zero objects under `novels/123/` in
+`test-dokushodo`, and zero `recovery-` objects in `test-dokushodo-backup`.
 The worker remained stopped, queue/writer state remained unknown, hosted
-telemetry was unavailable, recovery was not assessed, and production capacity
-remains unestablished. The readiness fix removes the earlier tunnel-startup
-transport ambiguity; it does not make the slow or incomplete reader routes a
-capacity pass.
+reader-window telemetry was unavailable, recovery was not assessed in this run,
+and production capacity remains unestablished. The named durable development
+tunnel was down with zero connectors at the control-plane check; the disposable
+quick Tunnel passed independently. The readiness fix removes the earlier
+tunnel-startup transport ambiguity; it does not make the slow or incomplete
+reader routes a capacity pass.
+
+The Supabase test-project advisor and aggregate SQL checks were read-only. The
+Cloudflare zone analytics call was unavailable, zone latency had no usable
+payload, and account-level R2 metrics lacked exact test-bucket/window
+granularity. These provider limitations remain explicit unavailable evidence.
 
 ## Health
 
