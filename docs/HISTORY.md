@@ -1,3 +1,37 @@
+## 2026-08-29 NON-PRODUCTION CLOUDFLARE READER RERUN AFTER TUNNEL READINESS FIX
+
+The confirmation-gated non-production reader workflow [run
+33251479814](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33251479814)
+completed successfully at candidate commit
+`3642ed2230ed9fbee5cc77fb18de5ecfafb0980e`. It built the isolated reader
+runtime, seeded the explicit published fixture into the disposable managed
+test database and dedicated `test-dokushodo` R2 bucket, and waited for the
+ephemeral Cloudflare quick tunnel to return HTTP 200 from the isolated
+`/health/live` route before profiling. It also collected Caddy loopback cells
+with an explicit `localhost` Host binding for diagnostic comparison.
+
+All four semantic artifact validators passed. The 60-cell matrix contains 20
+Caddy diagnostic cells and 20 Cloudflare SLO-gate cells, each with 1,000
+attempted read-only requests. Cloudflare produced 850 valid samples, eight
+passing cells, nine over-budget cells, and three unavailable cells with 144
+timeouts and zero transport errors. Caddy produced 750 valid samples, nine
+passing cells, six over-budget cells, and five unavailable cells with 180
+timeouts. Cloudflare health p95 was 118.841 ms warm and 166.230 ms cold;
+catalog and detail p95 values remained approximately 9.7-10.5 seconds and
+10.8-11.8 seconds, while chapter and warm search cells were incomplete from
+timeouts. The route sampler recorded only coarse sanitized timeout classes;
+no raw errors, URLs, headers, or credentials were retained.
+
+The independent dispositions remain `reader_slo_status=blocked`,
+`path_profile_status=blocked`, `telemetry_status=unavailable`,
+`recovery_status=not_assessed`, and `production_capacity_claim=not_established`.
+The baseline kept the worker stopped and queue/writer state unknown. Twenty
+controlled cold-reset proofs were recorded, cleanup completed, and independent
+post-run checks found zero fixture rows and zero objects under the exact
+`novels/123/` prefix. This is valid non-production evidence that isolates the
+remaining application/origin latency and timeout blockers; it is not a
+production-capacity or recovery approval.
+
 ## 2026-08-29 NON-PRODUCTION CLOUDFLARE READER EVIDENCE
 
 The confirmation-gated non-production reader workflow [run

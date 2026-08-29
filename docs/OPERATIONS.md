@@ -102,6 +102,29 @@ valid blocked report is non-production evidence: it does not change the named
 `dev.dokushodo.online` tunnel, prove hosted billing/queue telemetry, or establish
 production reader capacity.
 
+### Latest disposable profile checkpoint - 2026-08-29
+
+The follow-up rerun [33251479814](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33251479814)
+completed after the workflow added a tunnel-readiness smoke check and a
+loopback Caddy diagnostic target. The readiness check returned HTTP 200 before
+sampling. Its 20 Cloudflare cells attempted 1,000 requests with 850 valid
+samples, zero transport errors, 144 timeouts, eight passing cells, nine
+over-budget cells, and three unavailable cells. Its 20 Caddy diagnostic cells
+attempted 1,000 requests with 750 valid samples, zero transport errors, 180
+timeouts, nine passing cells, six over-budget cells, and five unavailable
+cells. The Cloudflare gate remained blocked because health, catalog, and detail
+latencies exceeded budgets and chapter/search cells were incomplete; the Caddy
+comparison shows the same origin-side latency/timeout pattern.
+
+The run recorded 20 controlled cold-reset proofs and completed guarded cleanup.
+Independent read-only checks confirmed zero fixture rows in the disposable
+managed database and zero objects under `novels/123/` in `test-dokushodo`.
+The worker remained stopped, queue/writer state remained unknown, hosted
+telemetry was unavailable, recovery was not assessed, and production capacity
+remains unestablished. The readiness fix removes the earlier tunnel-startup
+transport ambiguity; it does not make the slow or incomplete reader routes a
+capacity pass.
+
 ## Health
 
 | Endpoint | Expected behavior |

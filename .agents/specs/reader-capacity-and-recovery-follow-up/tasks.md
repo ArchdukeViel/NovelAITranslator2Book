@@ -1,7 +1,7 @@
 # Reader Capacity and Recovery Operational Follow-up Tasks
 
 Spec ID: reader-capacity-and-recovery-follow-up
-Version: 0.4.0
+Version: 0.4.1
 Status: Approved
 Updated: 2026-08-29
 
@@ -38,8 +38,9 @@ read-only profile is recorded separately below.
   migration head.
 - The workflow repair was source-level at amendment time. The confirmation-
   gated disposable reader workflow subsequently executed at run
-  `33246036636`; its accepted blocked result and cleanup verification are
-  recorded below. Hosted restore and production evidence remain pending.
+  `33251479814`; its accepted blocked result, tunnel-readiness check, Caddy
+  diagnostic comparison, and cleanup verification are recorded below. Hosted
+  restore and production evidence remain pending.
 
 The disposition rows below retain the original evidence wording for
 provenance. In this amendment, the stale workflow reference is repaired in
@@ -56,11 +57,11 @@ operation passed. The current operational dispositions are:
 |---|---|---|
 | T-000 | Complete | Semantic validator and contract self-test are implemented. |
 | T-001 | Complete with blockers | Baseline is valid with the selected Cloudflare gate and opaque fixture binding; the worker is stopped, while queue/writer state remains unavailable. |
-| T-002 | Complete with quantified unavailable cells | The executable matrix contract is valid; the disposable Cloudflare run recorded 1,000 error/transport outcomes across 20 selected warm/cold cells and ten cold-reset proofs, with zero valid latency samples. |
+| T-002 | Complete with quantified blockers | The executable matrix contract is valid; the latest disposable run recorded 1,000 Cloudflare attempts with 850 valid samples, zero transport errors, 144 timeouts, 1,000 Caddy diagnostic attempts with 750 valid samples and 180 timeouts, and twenty cold-reset proofs. |
 | T-003 | Blocked | Layer attribution is structurally recorded, but all layer timings are unavailable. |
 | T-004 | Complete with unavailable telemetry | All required snapshots are joinable and explicitly unavailable. |
 | T-005–T-006 | Complete as safe no-op | No evidence-backed local remediation was authorized or applied. |
-| T-007 | Blocked admission decision | Workflow run `33246036636` completed and its 60-cell report validated with 30 quantified blockers. The selected Cloudflare cells recorded 1,000 error/transport outcomes, zero valid latency samples, and ten cold-reset proofs; admission remains blocked. |
+| T-007 | Blocked admission decision | Workflow run `33251479814` completed and its 60-cell report validated with 17 quantified blockers. The selected Cloudflare cells recorded 1,000 attempts, 850 valid samples, zero transport errors, 144 timeouts, and twenty cold-reset proofs; admission remains blocked. |
 | T-008–T-009 | Blocked operational evidence | Local tests pass, but current freshness/alert and isolated hosted restore evidence are absent. |
 | T-010 | Complete as procedure-only | Actual credential rotation is deferred to a separately authorized maintenance action. |
 | T-011–T-012 | Complete with handoff blocker | Local quality and documentation gates pass; Cloudflare-only access is validated, but fixture, cold-cache, telemetry, and operational blockers remain. |
@@ -102,7 +103,7 @@ operation passed. The current operational dispositions are:
   - Verification: `tools/pytest.ps1 backend/tests/test_capacity_harness.py backend/tests/test_reader_profile_contract.py -q`
   - Expected: The harness produces a complete matrix or explicit quantified unavailable cells with campaign/run/fixture joins, path/route/cache-state records, attempted/valid/error/timeout counts, p50/p95/p99, status counts, payload summaries, and no raw request data. Readiness remains diagnostic while the worker is stopped.
   - Attempts: 1
-  - Last result: complete with quantified unavailable cells; the accepted 60-cell disposable artifact contains 20 Cloudflare warm/cold cells with 1,000 error/transport outcomes and zero valid latency samples, plus ten independently recorded cold-reset proofs.
+  - Last result: complete with quantified blockers; the accepted 60-cell disposable artifact contains 20 Cloudflare warm/cold cells with 1,000 attempts, 850 valid samples, zero transport errors, and 144 timeouts, plus 20 Caddy diagnostic cells with 1,000 attempts, 750 valid samples, and 180 timeouts. Twenty independently recorded cold-reset proofs were captured.
   - Evidence: recorded in `artifacts/operations/reader-capacity-follow-up/route-profile.json`.
 
 ## Attribution and Remediation
@@ -166,8 +167,8 @@ operation passed. The current operational dispositions are:
   - Verification: `powershell -NoProfile -File tools/capacity/run_reader_profile.ps1 -ReadOnly -Profile 1000 -ReportDir artifacts/operations/reader-capacity-follow-up/reader-stage-1000 -BaselinePath artifacts/operations/reader-capacity-follow-up/baseline.json`
   - Expected: The report contains baseline/candidate revision linkage, `reader_slo_status`, `path_profile_status`, `telemetry_status`, `recovery_status`, `overall_follow_up_disposition`, and `production_capacity_claim`. Before recovery tasks run, `recovery_status=not_assessed` and the overall disposition cannot be `complete`. `reader_slo_status=passed` requires every required selected-gate route/cache cell to pass its budget with complete valid evidence; hosted billing/quota unavailability is recorded as a telemetry blocker and never becomes a capacity claim. Worker/queue/writer state remains paused and no canonical content or provider operation is performed. The validator accepts a quantified blocked disposition only when all NFR-006 fields are present.
   - Attempts: 1
-  - Last result: blocked with quantified admission decision; workflow run `33246036636` seeded the explicit fixture in disposable managed DB/R2, validated the complete report, recorded 1,000 Cloudflare transport errors with zero valid latency samples, and produced ten cold-reset proofs. Cleanup completed and production capacity remains unestablished.
-  - Evidence: [workflow run 33246036636](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33246036636) and its seven-day sanitized artifact `reader-capacity-nonproduction-33246036636`.
+  - Last result: blocked with quantified admission decision; workflow run `33251479814` seeded the explicit fixture in disposable managed DB/R2, waited for tunnel liveness, validated the complete report, recorded 1,000 Cloudflare attempts with 850 valid samples, zero transport errors, 144 timeouts, and over-budget/incomplete required cells, plus 20 Caddy diagnostic cells and 20 cold-reset proofs. Cleanup completed and production capacity remains unestablished.
+  - Evidence: [workflow run 33251479814](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33251479814) and its seven-day sanitized artifact `reader-capacity-nonproduction-33251479814`.
 
 - [x] **T-008 Verify recurring backup freshness, retention, and stale/failure alert controls**
   - Maps to: REQ-008, REQ-011, AC-008
