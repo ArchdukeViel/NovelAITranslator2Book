@@ -1,8 +1,7 @@
 """Live admin Library summary service.
 
-Counts are derived from canonical R2/S3 storage, not from SQL catalog
-projections.  Uses a single recursive listing pass per uncached refresh,
-an in-process 30-second TTL cache, and true single-flight concurrency
+Counts are derived from the PostgreSQL catalog's exact R2 references, not by
+listing the bucket. Uses an in-process 30-second TTL cache and true single-flight concurrency
 for cold, expired, and forced refreshes.
 
 State model:
@@ -26,7 +25,6 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import PurePosixPath
 from threading import Condition
 from typing import Any
 
@@ -35,8 +33,6 @@ from novelai.storage.service import StorageService
 logger = logging.getLogger(__name__)
 
 CACHE_TTL_SECONDS = 30
-
-NOVELS_PREFIX = "novels/"
 
 
 @dataclass(frozen=True)
@@ -104,20 +100,6 @@ class SummaryResponse:
     cache: dict[str, Any]
     totals: NovelSummaryCounts
     items: list[NovelSummaryCounts]
-
-
-def _is_chapter_key(key: str) -> bool:
-    return key.endswith(".json") and "/chapters/" in key
-
-
-def _parse_novel_id_from_key(key: str, novels_prefix: str) -> str | None:
-    rest = key[len(novels_prefix) :]
-    if "/" not in rest:
-        return None
-    folder = rest[: rest.index("/")]
-    if not folder:
-        return None
-    return folder
 
 
 def _utc_now_iso() -> str:
@@ -208,69 +190,28 @@ def _build_summary_from_storage(
     activity_log: Any | None,
     catalogued_novel_ids: list[str],
 ) -> _CachedSummary:
-    """Single canonical build. Single recursive listing pass."""
-    all_keys = storage.list_keys_under(NOVELS_PREFIX, recursive=True)
+    """Single canonical build from PostgreSQL catalog projections."""
 
-    inventory: dict[str, dict[str, set[str]]] = {}
-
-    for key in all_keys:
-        if not _is_chapter_key(key):
-            continue
-        folder = _parse_novel_id_from_key(key, NOVELS_PREFIX)
-        if folder is None:
-            continue
-        stem = PurePosixPath(key).stem
-        logical = StorageService.logical_id_from_stem(stem)
-        bucket = inventory.setdefault(
-            folder,
-            {"chapter_ids": set(), "translated_ids": set(), "raw_ids": set()},
-        )
-        bucket["chapter_ids"].add(logical)
-
-        payload = storage.read_payload(key)
-        if payload is not None:
-            active_version_id = payload.get("active_translation_version_id")
-            versions = payload.get("translation_versions")
-            if (
-                isinstance(active_version_id, str)
-                and isinstance(versions, list)
-                and any(
-                    isinstance(version, dict) and version.get("version_id") == active_version_id for version in versions
-                )
-            ):
-                bucket["translated_ids"].add(logical)
-            if isinstance(payload.get("raw"), dict):
-                bucket["raw_ids"].add(logical)
-
-    all_novel_ids: set[str] = set(catalogued_novel_ids)
-    all_novel_ids.update(inventory.keys())
+    all_novel_ids = set(catalogued_novel_ids) if catalogued_novel_ids else set(storage.list_novels())
 
     items: list[NovelSummaryCounts] = []
     total_total = total_scraped = total_translated = total_failed = total_pending = 0
 
     for novel_id in sorted(all_novel_ids):
-        bucket = inventory.get(
-            novel_id,
-            {"chapter_ids": set(), "translated_ids": set(), "raw_ids": set()},
+        projection = storage.get_novel_chapter_summary(novel_id)
+        projection = projection if isinstance(projection, dict) else {}
+        raw_value = projection.get("raw_ids")
+        translated_value = projection.get("translated_ids")
+        raw_ids: set[str] = {str(item) for item in raw_value} if isinstance(raw_value, set) else set()
+        translated_ids: set[str] = (
+            {str(item) for item in translated_value} if isinstance(translated_value, set) else set()
         )
-        scraped = len(bucket["raw_ids"])
-        translated = len(bucket["translated_ids"])
-
-        try:
-            meta = storage.load_metadata(novel_id)
-        except Exception:
-            meta = None
-        chapter_list = (meta or {}).get("chapters")
-        if isinstance(chapter_list, list):
-            total = len(chapter_list)
-        elif meta is not None and isinstance(meta.get("chapter_count"), int):
-            total = meta["chapter_count"]
-        else:
-            total = max(scraped, translated, 0)
-        total = max(total, scraped, translated)
+        scraped = len(raw_ids)
+        translated = len(translated_ids)
+        total = max(int(projection.get("total") or 0), scraped, translated)
 
         failed_ids = _get_failed_ids(novel_id, activity_log)
-        failed = sum(1 for cid in failed_ids if cid not in bucket["raw_ids"])
+        failed = sum(1 for cid in failed_ids if cid not in raw_ids)
         failed = min(failed, max(0, total - scraped))
         pending = max(0, total - scraped - failed)
 
@@ -326,7 +267,7 @@ class LibrarySummaryService:
 
     Single-flight semantics:
 
-    * One storage listing per generation.
+    * One PostgreSQL projection read per catalogued novel per generation.
     * Concurrent callers (cold / expired / forced) share the same build.
     * Result and cache publication is atomic under one lock acquisition.
     * Failures wake every waiter and are propagated to all subscribers.

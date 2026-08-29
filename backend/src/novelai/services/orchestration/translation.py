@@ -19,6 +19,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from sqlalchemy.orm import load_only
+
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState, TranslationState
 from novelai.core.errors import TranslationInProgressError
@@ -30,17 +32,19 @@ from novelai.glossary import (
     glossary_status_counts,
     normalize_glossary_entries,
 )
-from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
+from novelai.services.catalog_service import (
+    safely_refresh_catalog_projection_after_storage_write as _legacy_catalog_projection_refresh,
+)
 from novelai.services.library_summary_service import best_effort_invalidate
 from novelai.services.orchestration.common import PreflightIssue, _make_state_data
 from novelai.services.orchestration.translation_lineage import (
     _count_pending_glossary_entries,
     _try_delta_translate_chapter,
 )
+from novelai.services.orchestration.translation_persistence import PersistenceOperation
 from novelai.services.orchestration.translation_progress import _build_chapter_summary
 from novelai.services.pipeline.checkpoint import Checkpoint
 from novelai.sources.base import SourceAdapter
-from novelai.storage.generations import resolve_active_generation_id
 from novelai.translation.pipeline.stages.translate_result_assembly import hash_text
 from novelai.translation.run_manifest import TranslationRunManifest
 from novelai.utils.chapter_selection import ResolvedChapterSelection, resolve_chapter_selection
@@ -49,6 +53,47 @@ logger = logging.getLogger(__name__)
 
 # Per-chapter lock to prevent concurrent translation of the same chapter
 _translation_locks: dict[str, asyncio.Lock] = {}
+_DB_REVIEW_GLOSSARY_STATUSES = {"candidate", "recommended", "rejected", "deprecated"}
+ChapterCache = dict[str, dict[str, Any] | None]
+# Kept as a module-level compatibility surface for isolated E2E fixtures and
+# older callers; the async orchestration path uses TranslationPersistencePort.
+safely_refresh_catalog_projection_after_storage_write = _legacy_catalog_projection_refresh
+
+
+def _load_cached_chapter(
+    storage: Any, novel_id: str, chapter_id: str, cache: ChapterCache | None
+) -> dict[str, Any] | None:
+    """Load one chapter at most once during a translation job."""
+
+    if cache is not None and chapter_id in cache:
+        return cache[chapter_id]
+    loaded = storage.load_chapter(novel_id, chapter_id)
+    chapter = loaded if isinstance(loaded, dict) else None
+    if cache is not None:
+        cache[chapter_id] = chapter
+    return chapter
+
+
+def _runtime_glossary_entries(entries: Any) -> list[dict[str, Any]]:
+    """Exclude PostgreSQL review rows from the runtime prompt glossary.
+
+    PostgreSQL retains candidate/recommended/rejected/deprecated rows for the
+    review workflow. Only approved/translated entries (plus legacy runtime
+    states supplied by test doubles or older callers) may reach prompt
+    normalization and hashing.
+    """
+
+    if not isinstance(entries, (list, tuple)):
+        return []
+    runtime: list[dict[str, Any]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        db_status = str(entry.get("_db_status") or "").strip().lower()
+        if db_status in _DB_REVIEW_GLOSSARY_STATUSES:
+            continue
+        runtime.append(dict(entry))
+    return runtime
 
 
 def _get_translation_lock(novel_id: str, chapter_id: str) -> asyncio.Lock:
@@ -143,6 +188,53 @@ def _resolve_effective_translation_source(
     return effective_text, effective_hash
 
 
+async def _resolve_effective_translation_source_async(
+    persistence: Any,
+    novel_id: str,
+    chapter_id: str,
+    raw_chapter: dict[str, Any] | None,
+) -> tuple[str | None, str]:
+    """Resolve the effective source after moving the media read off-loop."""
+
+    media_state = await persistence.storage_call("load_chapter_media_state", novel_id, chapter_id) or {}
+    effective_text: str | None = None
+    if isinstance(raw_chapter, dict):
+        reviewed_ocr_text = media_state.get("ocr_text")
+        if (
+            bool(media_state.get("ocr_required", False))
+            and str(media_state.get("ocr_status") or "").strip().lower() == "reviewed"
+            and isinstance(reviewed_ocr_text, str)
+            and reviewed_ocr_text.strip()
+        ):
+            effective_text = reviewed_ocr_text
+        else:
+            raw_text_obj = raw_chapter.get("text")
+            if isinstance(raw_text_obj, str):
+                effective_text = raw_text_obj
+    effective_hash = hash_text(effective_text) if effective_text else ""
+    return effective_text, effective_hash
+
+
+def _init_checkpoint_directory(
+    orchestration: Any,
+    *,
+    novel_id: str,
+    selected_chapter_ids: list[str],
+    force: bool,
+) -> str:
+    """Initialize checkpoints in the owned worker and return only its path."""
+
+    from novelai.services.orchestration.translation_resume import _init_checkpoint_manager
+
+    manager = _init_checkpoint_manager(
+        orchestration,
+        novel_id=novel_id,
+        selected_chapter_ids=selected_chapter_ids,
+        force=force,
+    )
+    return str(manager.checkpoint_dir)
+
+
 def _resolve_effective_output_policy(
     *,
     style_preset: str | None,
@@ -204,11 +296,13 @@ def _translation_lineage_kwargs(
     # Effective prompt template version the validator compares against; the
     # fallback below resolves the same value when not supplied.
     prompt_template_version: str | None = None,
+    raw_bundle: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Section 8: assemble the complete raw-to-version lineage fields for a
     stored machine translation version so validity checks can consume the
     actual stored fields instead of the run manifest alone."""
-    raw_bundle = storage.load_chapter(novel_id, chapter_id) or {}
+    loaded_bundle = raw_bundle if isinstance(raw_bundle, dict) else storage.load_chapter(novel_id, chapter_id)
+    raw_bundle = loaded_bundle if isinstance(loaded_bundle, dict) else {}
 
     def _json_hash(value: Any) -> str:
         return storage._hash_text(json.dumps(value, ensure_ascii=False, sort_keys=True, default=str))
@@ -262,14 +356,13 @@ def _update_db_translation_state(
     """
     try:
         with session_scope() as session:
-            novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+            novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
             if novel is None:
                 return
             row = _lookup_chapter_row(session, novel.id, chapter_id)
             if row is not None:
                 row.translation_state = state.value  # type: ignore[assignment]
-                if error is not None:
-                    row.translation_error = error[:1024] if len(error) > 1024 else error
+                row.translation_error = None if error is None else error[:1024]
                 session.commit()
     except Exception:
         logger.warning("Failed to update DB translation state %s/%s", novel_id, chapter_id, exc_info=True)
@@ -279,7 +372,7 @@ def _load_db_translation_state(novel_id: str, chapter_id: str) -> str:
     """Read ``translation_state`` from the Chapter row (REQ-3.1, Section 2)."""
     try:
         with session_scope() as session:
-            novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+            novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
             if novel is None:
                 return TranslationState.PENDING.value
             row = _lookup_chapter_row(session, novel.id, chapter_id)
@@ -309,6 +402,7 @@ def _lookup_chapter_row(session: Any, novel_id: int, chapter_id: str) -> Any | N
         if "logical_chapter_id" in {col.key for col in mapper.columns}:
             stable = (
                 session.query(Chapter)
+                .options(load_only(Chapter.id, Chapter.translation_state, Chapter.translation_error))
                 .filter(
                     Chapter.novel_id == novel_id,
                     Chapter.logical_chapter_id == str(chapter_id),
@@ -322,6 +416,7 @@ def _lookup_chapter_row(session: Any, novel_id: int, chapter_id: str) -> Any | N
     if str(chapter_id).isdigit():
         return (
             session.query(Chapter)
+            .options(load_only(Chapter.id, Chapter.translation_state, Chapter.translation_error))
             .filter(Chapter.novel_id == novel_id, Chapter.chapter_number == int(chapter_id))
             .one_or_none()
         )
@@ -352,7 +447,7 @@ def _resolve_platform_novel_id(novel_id: str, meta: dict[str, Any]) -> int | Non
         return explicit
     try:
         with session_scope() as session:
-            novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+            novel = session.query(Novel).options(load_only(Novel.id)).filter_by(slug=novel_id).one_or_none()
             if novel is not None:
                 return int(novel.id)
     except Exception:
@@ -363,9 +458,21 @@ def _resolve_platform_novel_id(novel_id: str, meta: dict[str, Any]) -> int | Non
 def _resolve_glossary_revision(novel_id: str, platform_novel_id: int | None) -> int:
     try:
         with session_scope() as session:
-            novel = session.get(Novel, platform_novel_id) if platform_novel_id is not None else None
+            novel = (
+                session.query(Novel)
+                .options(load_only(Novel.glossary_revision))
+                .filter(Novel.id == platform_novel_id)
+                .one_or_none()
+                if platform_novel_id is not None
+                else None
+            )
             if novel is None:
-                novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+                novel = (
+                    session.query(Novel)
+                    .options(load_only(Novel.glossary_revision))
+                    .filter_by(slug=novel_id)
+                    .one_or_none()
+                )
             if novel is not None:
                 return int(novel.glossary_revision or 0)
     except Exception:
@@ -459,6 +566,7 @@ def _preflight_translation(
     source_language: str | None,
     target_language: str | None,
     glossary: Any | None,
+    chapter_cache: ChapterCache | None = None,
     skip_glossary_gate: bool = False,
 ) -> list[PreflightIssue]:
 
@@ -498,7 +606,7 @@ def _preflight_translation(
     for record in selected:
         chapter_id = record.chapter_id
         chapter_meta = record.metadata
-        raw_chapter = self.storage.load_chapter(novel_id, chapter_id)
+        raw_chapter = _load_cached_chapter(self.storage, novel_id, chapter_id, chapter_cache)
         if chapter_meta.get("url") or (raw_chapter and isinstance(raw_chapter.get("text"), str)):
             continue
         unresolved_urls.append(chapter_id)
@@ -513,7 +621,7 @@ def _preflight_translation(
     effective_source_language = source_language or self._infer_source_language(source_key, meta)
     if not effective_source_language:
         for record in selected:
-            raw_chapter = self.storage.load_chapter(novel_id, record.chapter_id)
+            raw_chapter = _load_cached_chapter(self.storage, novel_id, record.chapter_id, chapter_cache)
             if raw_chapter is None:
                 continue
             raw_text = raw_chapter.get("text")
@@ -538,7 +646,7 @@ def _preflight_translation(
         )
 
     try:
-        normalized_glossary = normalize_glossary_entries(glossary)
+        normalized_glossary = normalize_glossary_entries(_runtime_glossary_entries(glossary))
     except Exception as exc:
         issues.append(
             PreflightIssue(
@@ -573,7 +681,9 @@ def _preflight_translation(
     if not skip_glossary_gate:
         _novel_is_pending = False
         with session_scope() as session:
-            _novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+            _novel = (
+                session.query(Novel).options(load_only(Novel.glossary_status)).filter_by(slug=novel_id).one_or_none()
+            )
             if _novel is not None:
                 _novel_is_pending = _novel.glossary_status == "glossary_pending"
         pending_count = _count_pending_glossary_entries(novel_id) if _novel_is_pending else 0
@@ -972,11 +1082,22 @@ async def translate_chapters(
     source: SourceAdapter | None = None
     with contextlib.suppress(Exception):
         source = self._source_factory(source_key)
-    meta = self.storage.load_metadata(novel_id)
+    persistence = self.translation_persistence
+    meta = await persistence.storage_call("load_metadata", novel_id)
     if not meta:
         raise RuntimeError("Metadata not found; run scrape-metadata first.")
-    platform_novel_id = _resolve_platform_novel_id(novel_id, meta)
-    glossary_revision = _resolve_glossary_revision(novel_id, platform_novel_id)
+    platform_novel_id = await persistence.call(
+        PersistenceOperation.DB_READ_SCALAR,
+        _resolve_platform_novel_id,
+        novel_id,
+        meta,
+    )
+    glossary_revision = await persistence.call(
+        PersistenceOperation.DB_READ_SCALAR,
+        _resolve_glossary_revision,
+        novel_id,
+        platform_novel_id,
+    )
 
     effective_source_language = source_language or self._infer_source_language(source_key, meta)
     effective_target_language = target_language or settings.TRANSLATION_TARGET_LANGUAGE
@@ -1026,11 +1147,14 @@ async def translate_chapters(
     # Incremental glossary preflight runs after chapter selection and before
     # the body preflight/pipeline. Approved terms remain authoritative; new
     # ambiguous terms are persisted as pending and excluded from prompts.
-    existing_glossary_entries = self.storage.load_glossary(novel_id)
+    chapter_cache: ChapterCache = {}
+    existing_glossary_entries = await persistence.storage_call("load_glossary", novel_id)
     preexisting_pending = {
         str(entry.get("source"))
         for entry in existing_glossary_entries
-        if isinstance(entry, dict) and str(entry.get("status") or "").lower() == "pending"
+        if isinstance(entry, dict)
+        and str(entry.get("status") or "").lower() == "pending"
+        and str(entry.get("_db_status") or "").lower() not in _DB_REVIEW_GLOSSARY_STATUSES
     }
     from novelai.services.orchestration.glossary import discover_incremental_glossary_terms
 
@@ -1042,6 +1166,8 @@ async def translate_chapters(
         provider_model=effective_provider_model,
         source_language=str(effective_source_language or "Unknown"),
         existing_entries=existing_glossary_entries,
+        metadata=meta,
+        chapter_cache=chapter_cache,
     )
     meta["_incremental_glossary_preflight"] = incremental_glossary
     incremental_pending_terms = incremental_glossary.get("pending", [])
@@ -1051,10 +1177,17 @@ async def translate_chapters(
         meta["incremental_glossary_discovery"] = incremental_glossary["discovery_state"]
     if not preexisting_pending:
         meta["_incremental_glossary_preflight"]["pending_only_new_terms"] = True
-    glossary = self.storage.load_glossary(novel_id)
-    glossary_revision = _resolve_glossary_revision(novel_id, platform_novel_id)
+    glossary = _runtime_glossary_entries(existing_glossary_entries)
+    glossary_revision = await persistence.call(
+        PersistenceOperation.DB_READ_SCALAR,
+        _resolve_glossary_revision,
+        novel_id,
+        platform_novel_id,
+    )
 
-    preflight_issues = self._preflight_translation(
+    preflight_issues = await persistence.storage_owned_call(
+        PersistenceOperation.DB_READ_BUNDLE,
+        self._preflight_translation,
         novel_id=novel_id,
         source_key=source_key,
         meta=meta,
@@ -1063,16 +1196,18 @@ async def translate_chapters(
         source_language=effective_source_language,
         target_language=effective_target_language,
         glossary=glossary,
+        chapter_cache=chapter_cache,
         skip_glossary_gate=skip_glossary_gate,
     )
     if preflight_issues:
         details = "; ".join(f"{issue.code}: {issue.reason}" for issue in preflight_issues)
         raise RuntimeError(f"Translation preflight failed: {details}")
 
-    # Initialize CheckpointManager for segment-level resume (REQ-2)
-    from novelai.services.orchestration.translation_resume import _init_checkpoint_manager
-
-    cp_mgr = _init_checkpoint_manager(
+    # Initialize checkpoint state in the owned runtime worker and return only
+    # the immutable directory path to the async coordinator.
+    checkpoint_dir = await persistence.storage_owned_call(
+        PersistenceOperation.RUNTIME_CHECKPOINT,
+        _init_checkpoint_directory,
         self,
         novel_id=novel_id,
         selected_chapter_ids=selected_chapter_ids,
@@ -1081,7 +1216,7 @@ async def translate_chapters(
 
     # Section 9: link the run to the active raw generation so every
     # translation version can be traced back to its immutable snapshot.
-    raw_generation_id = resolve_active_generation_id(self.storage, novel_id) or ""
+    raw_generation_id = await persistence.storage_call("resolve_active_generation_id", novel_id) or ""
 
     # Section 9: hash the glossary through the canonical serializer
     # (normalized source/target/status/locked/notes, sort_keys, JSON).
@@ -1126,7 +1261,7 @@ async def translate_chapters(
     # that the committed manifest went missing on the initial write.
     manifest_persistence_warnings: list[str] = []
     try:
-        self.storage.save_translation_run_manifest(novel_id, manifest)
+        await persistence.save_translation_run_manifest(novel_id, manifest.to_dict())
     except Exception as exc:
         warning = f"initial_manifest_persistence_failed: {type(exc).__name__}: {exc}"
         manifest_persistence_warnings.append(warning)
@@ -1145,6 +1280,14 @@ async def translate_chapters(
     chapter_concurrency = min(chapter_concurrency, max(1, len(selected_numbers)) or 1)
     chapter_semaphore = asyncio.Semaphore(chapter_concurrency)
 
+    async def _load_cached_chapter_async(chapter_id: str) -> dict[str, Any] | None:
+        if chapter_id in chapter_cache:
+            return chapter_cache[chapter_id]
+        loaded = await persistence.storage_call("load_chapter", novel_id, chapter_id)
+        chapter = loaded if isinstance(loaded, dict) else None
+        chapter_cache[chapter_id] = chapter
+        return chapter
+
     async def _run_chapter(record: ResolvedChapterSelection) -> dict[str, Any]:
         async with chapter_semaphore:
             chapter = record.metadata if isinstance(record.metadata, dict) else {}
@@ -1156,7 +1299,7 @@ async def translate_chapters(
             # (source text / structure / image hash). Loading twice (once for
             # the gate, once for translation) would be wasteful and would let
             # the bundle change between calls.
-            raw_chapter = self.storage.load_chapter(novel_id, chapter_id)
+            raw_chapter = await _load_cached_chapter_async(chapter_id)
             current_source_structure_hash = ""
             current_source_image_manifest_hash = ""
             if isinstance(raw_chapter, dict):
@@ -1182,8 +1325,8 @@ async def translate_chapters(
             # translation, stored source_hash lineage — uses it. Resolving
             # the media overlay here (before the gate) keeps the gate and the
             # translation path on the same source.
-            current_raw_text, current_source_text_hash = _resolve_effective_translation_source(
-                self.storage,
+            current_raw_text, current_source_text_hash = await _resolve_effective_translation_source_async(
+                persistence,
                 novel_id,
                 chapter_id,
                 raw_chapter,
@@ -1196,7 +1339,9 @@ async def translate_chapters(
             # Bypassed entirely when force=True (REQ-3.4).
             from novelai.services.orchestration.translation_resume import _check_chapter_resume_state
 
-            skip_result = _check_chapter_resume_state(
+            skip_result = await persistence.storage_owned_call(
+                PersistenceOperation.DB_READ_BUNDLE,
+                _check_chapter_resume_state,
                 self,
                 novel_id=novel_id,
                 chapter_id=chapter_id,
@@ -1226,11 +1371,19 @@ async def translate_chapters(
                 raise TranslationInProgressError(f"Translation is already in progress for {novel_id}/{chapter_id}")
             await lock.acquire()
 
-            _update_db_translation_state(novel_id, chapter_id, TranslationState.FETCHING)
+            await persistence.call(
+                PersistenceOperation.ACTIVITY_STATE,
+                _update_db_translation_state,
+                novel_id,
+                chapter_id,
+                TranslationState.FETCHING,
+            )
 
             from novelai.services.orchestration.translation_resume import _restore_checkpoint_for_chapter
 
-            prev_state, _checkpoint_restored = _restore_checkpoint_for_chapter(
+            prev_state, _checkpoint_restored = await persistence.storage_owned_call(
+                PersistenceOperation.RUNTIME_CHECKPOINT,
+                _restore_checkpoint_for_chapter,
                 self,
                 novel_id=novel_id,
                 chapter_id=chapter_id,
@@ -1291,8 +1444,14 @@ async def translate_chapters(
                             # was flipped to FETCHING above; restore COMPLETE
                             # and record the reuse (the run manifest carries
                             # it via the summary finalize below).
-                            _update_db_translation_state(novel_id, chapter_id, TranslationState.COMPLETE)
-                            cp_mgr.delete(chapter_id)
+                            await persistence.call(
+                                PersistenceOperation.ACTIVITY_STATE,
+                                _update_db_translation_state,
+                                novel_id,
+                                chapter_id,
+                                TranslationState.COMPLETE,
+                            )
+                            await persistence.delete_checkpoint(checkpoint_dir, chapter_id)
                             return {
                                 "chapter_id": chapter_id,
                                 "status": "reused",
@@ -1310,7 +1469,31 @@ async def translate_chapters(
                             confidence_score is None
                             or confidence_score >= settings.TRANSLATION_LOW_CONFIDENCE_ACTIVATION_THRESHOLD
                         )
-                        self.storage.save_translated_chapter(
+                        lineage_kwargs = await persistence.storage_owned_call(
+                            PersistenceOperation.DB_READ_BUNDLE,
+                            _translation_lineage_kwargs,
+                            self.storage,
+                            novel_id,
+                            chapter_id,
+                            raw_text=raw_text or "",
+                            translated=translated,
+                            translation_run_id=translation_run_id,
+                            raw_generation_id=raw_generation_id,
+                            source_language=effective_source_language,
+                            target_language=effective_target_language,
+                            style_preset=effective_style_preset,
+                            consistency_mode=effective_consistency_mode,
+                            json_output=effective_json_output,
+                            qa_policy_fingerprint=qa_policy_fingerprint,
+                            auto_activate=auto_activate,
+                            honorific_policy=effective_honorific_policy,
+                            source_episode_id=record.source_episode_id or chapter_id,
+                            glossary_hash=glossary_hash,
+                            prompt_template_version=prompt_template_version,
+                            raw_bundle=raw_chapter,
+                        )
+                        await persistence.storage_call(
+                            "save_translated_chapter",
                             novel_id,
                             chapter_id,
                             translated,
@@ -1332,51 +1515,36 @@ async def translate_chapters(
                             glossary_revision=glossary_revision,
                             glossary_injected_term_count=0,
                             auto_activate=auto_activate,
-                            **_translation_lineage_kwargs(
-                                self.storage,
-                                novel_id,
-                                chapter_id,
-                                raw_text=raw_text or "",
-                                translated=translated,
-                                translation_run_id=translation_run_id,
-                                raw_generation_id=raw_generation_id,
-                                source_language=effective_source_language,
-                                target_language=effective_target_language,
-                                style_preset=effective_style_preset,
-                                consistency_mode=effective_consistency_mode,
-                                json_output=effective_json_output,
-                                qa_policy_fingerprint=qa_policy_fingerprint,
-                                auto_activate=auto_activate,
-                                honorific_policy=effective_honorific_policy,
-                                source_episode_id=record.source_episode_id or chapter_id,
-                                glossary_hash=glossary_hash,
-                                prompt_template_version=prompt_template_version,
-                            ),
+                            **lineage_kwargs,
                         )
-                        safely_refresh_catalog_projection_after_storage_write(
-                            novel_id,
-                            self.storage,
-                            context="translate_delta",
-                        )
+                        await persistence.refresh_catalog_projection(novel_id, context="translate_delta")
                         # Invalidate library summary cache after successful storage write
                         best_effort_invalidate(context="translate_delta")
-                        self.storage.save_chapter_state(
+                        await persistence.storage_call(
+                            "save_chapter_state",
                             novel_id,
                             chapter_id,
                             _make_state_data(ChapterState.TRANSLATED, previous=prev_state),
                         )
-                        self.storage.create_checkpoint(novel_id, chapter_id, "translated")
-                        _update_db_translation_state(novel_id, chapter_id, TranslationState.COMPLETE)
-                        cp_mgr.save(
+                        await persistence.storage_call("create_checkpoint", novel_id, chapter_id, "translated")
+                        await persistence.call(
+                            PersistenceOperation.ACTIVITY_STATE,
+                            _update_db_translation_state,
+                            novel_id,
+                            chapter_id,
+                            TranslationState.COMPLETE,
+                        )
+                        await persistence.save_checkpoint(
+                            checkpoint_dir,
                             Checkpoint(
                                 chapter_id=chapter_id,
                                 state=TranslationState.COMPLETE,
                                 completed_stages=["delta_translate"],
                                 segments_completed=1,
                                 segments_total=1,
-                            )
+                            ).to_dict(),
                         )
-                        cp_mgr.delete(chapter_id)
+                        await persistence.delete_checkpoint(checkpoint_dir, chapter_id)
                         return {"chapter_id": chapter_id, "status": "succeeded"}
                     delta_fallback_reason = str(delta_result.get("fallback_reason") or "unsafe_delta")
                     fresh_full_required = bool(delta_result.get("fresh_full_required"))
@@ -1387,13 +1555,20 @@ async def translate_chapters(
                     fresh_full_required = False
 
                 # Update DB state + write checkpoint before full pipeline (REQ-1.4, REQ-2.3)
-                _update_db_translation_state(novel_id, chapter_id, TranslationState.TRANSLATING)
-                cp_mgr.save(
+                await persistence.call(
+                    PersistenceOperation.ACTIVITY_STATE,
+                    _update_db_translation_state,
+                    novel_id,
+                    chapter_id,
+                    TranslationState.TRANSLATING,
+                )
+                await persistence.save_checkpoint(
+                    checkpoint_dir,
                     Checkpoint(
                         chapter_id=chapter_id,
                         state=TranslationState.TRANSLATING,
                         current_stage="translate",
-                    )
+                    ).to_dict(),
                 )
 
                 result = await self.translation.translate_chapter(
@@ -1431,6 +1606,29 @@ async def translate_chapters(
                     confidence_score is None
                     or confidence_score >= settings.TRANSLATION_LOW_CONFIDENCE_ACTIVATION_THRESHOLD
                 )
+                lineage_kwargs = await persistence.storage_owned_call(
+                    PersistenceOperation.DB_READ_BUNDLE,
+                    _translation_lineage_kwargs,
+                    self.storage,
+                    novel_id,
+                    chapter_id,
+                    raw_text=raw_text or "",
+                    translated=translated,
+                    translation_run_id=translation_run_id,
+                    raw_generation_id=raw_generation_id,
+                    source_language=effective_source_language,
+                    target_language=effective_target_language,
+                    style_preset=effective_style_preset,
+                    consistency_mode=effective_consistency_mode,
+                    json_output=effective_json_output,
+                    qa_policy_fingerprint=qa_policy_fingerprint,
+                    auto_activate=auto_activate,
+                    honorific_policy=effective_honorific_policy,
+                    source_episode_id=record.source_episode_id or chapter_id,
+                    glossary_hash=glossary_hash,
+                    prompt_template_version=prompt_template_version,
+                    raw_bundle=raw_chapter,
+                )
                 scheduler_policy = (
                     result.scheduler_state.get("policy") if isinstance(result.scheduler_state, dict) else None
                 )
@@ -1461,7 +1659,8 @@ async def translate_chapters(
                         result.provider_key,
                         result.provider_model,
                     )
-                self.storage.save_translated_chapter(
+                await persistence.storage_call(
+                    "save_translated_chapter",
                     novel_id,
                     chapter_id,
                     translated,
@@ -1486,59 +1685,53 @@ async def translate_chapters(
                     glossary_revision=glossary_revision,
                     glossary_injected_term_count=glossary_injected_term_count,
                     auto_activate=auto_activate,
-                    **_translation_lineage_kwargs(
-                        self.storage,
-                        novel_id,
-                        chapter_id,
-                        raw_text=raw_text or "",
-                        translated=translated,
-                        translation_run_id=translation_run_id,
-                        raw_generation_id=raw_generation_id,
-                        source_language=effective_source_language,
-                        target_language=effective_target_language,
-                        style_preset=effective_style_preset,
-                        consistency_mode=effective_consistency_mode,
-                        json_output=effective_json_output,
-                        qa_policy_fingerprint=qa_policy_fingerprint,
-                        auto_activate=auto_activate,
-                        honorific_policy=effective_honorific_policy,
-                        source_episode_id=record.source_episode_id or chapter_id,
-                        glossary_hash=glossary_hash,
-                        prompt_template_version=prompt_template_version,
-                    ),
+                    **lineage_kwargs,
                 )
-                safely_refresh_catalog_projection_after_storage_write(
-                    novel_id,
-                    self.storage,
-                    context="translate_full",
-                )
+                await persistence.refresh_catalog_projection(novel_id, context="translate_full")
                 # Invalidate library summary cache after successful storage write
                 best_effort_invalidate()
-                self.storage.save_chapter_state(
+                await persistence.storage_call(
+                    "save_chapter_state",
                     novel_id,
                     chapter_id,
                     _make_state_data(ChapterState.TRANSLATED, previous=prev_state),
                 )
-                self.storage.append_pipeline_events(result.pipeline_events)
-                for chunk_state in result.chunk_states.values():
-                    self.storage.upsert_chunk_state(chunk_state)
-                manifest.chunk_outputs.update(
-                    _persist_chunk_qa_results_to_outputs(self.storage, novel_id, result.chunk_states)
+                await persistence.persist_progress_batch(
+                    events=[event for event in result.pipeline_events if isinstance(event, dict)],
+                    chunk_states=[
+                        chunk_state for chunk_state in result.chunk_states.values() if isinstance(chunk_state, dict)
+                    ],
                 )
-                self.storage.create_checkpoint(novel_id, chapter_id, "translated")
+                manifest.chunk_outputs.update(
+                    await persistence.storage_owned_call(
+                        PersistenceOperation.DB_WRITE_TERMINAL,
+                        _persist_chunk_qa_results_to_outputs,
+                        self.storage,
+                        novel_id,
+                        result.chunk_states,
+                    )
+                )
+                await persistence.storage_call("create_checkpoint", novel_id, chapter_id, "translated")
                 # Mark COMPLETE in DB + write CheckpointManager checkpoint (REQ-2.3, REQ-3.1)
-                _update_db_translation_state(novel_id, chapter_id, TranslationState.COMPLETE)
+                await persistence.call(
+                    PersistenceOperation.ACTIVITY_STATE,
+                    _update_db_translation_state,
+                    novel_id,
+                    chapter_id,
+                    TranslationState.COMPLETE,
+                )
                 n_segments = len(result.chunk_states)
-                cp_mgr.save(
+                await persistence.save_checkpoint(
+                    checkpoint_dir,
                     Checkpoint(
                         chapter_id=chapter_id,
                         state=TranslationState.COMPLETE,
                         completed_stages=["fetch", "parse", "segment", "translate", "qa", "post_process"],
                         segments_completed=n_segments,
                         segments_total=n_segments,
-                    )
+                    ).to_dict(),
                 )
-                cp_mgr.delete(chapter_id)
+                await persistence.delete_checkpoint(checkpoint_dir, chapter_id)
                 return {"chapter_id": chapter_id, "status": "succeeded"}
             except Exception as exc:
                 logger.error("Failed to translate chapter %s/%s: %s", novel_id, chapter_id, exc)
@@ -1554,7 +1747,8 @@ async def translate_chapters(
                     failed_state = ChapterState.NEEDS_REVIEW
                 else:
                     failed_state = ChapterState.NEEDS_RETRY if isinstance(provider_code, str) else ChapterState.FAILED
-                self.storage.save_chapter_state(
+                await persistence.storage_call(
+                    "save_chapter_state",
                     novel_id,
                     chapter_id,
                     _make_state_data(failed_state, error=str(exc), previous=prev_state),
@@ -1564,19 +1758,16 @@ async def translate_chapters(
                 error_code = provider_code or getattr(failure, "error_code", None) or failure.__class__.__name__
                 failed_context = _pipeline_context_from_exception(exc)
                 failed_events = _pipeline_events_from_exception(exc)
-                if failed_events:
-                    self.storage.append_pipeline_events(failed_events)
                 failed_event_recorded = any(event.get("status_after") == "failed" for event in failed_events)
                 chunk_states = getattr(failed_context, "chunk_states", None)
-                if isinstance(chunk_states, dict):
-                    for chunk_state in chunk_states.values():
-                        if isinstance(chunk_state, dict):
-                            self.storage.upsert_chunk_state(chunk_state)
-                    manifest.chunk_outputs.update(
-                        _persist_chunk_qa_results_to_outputs(self.storage, novel_id, chunk_states)
-                    )
+                progress_events = [event for event in failed_events if isinstance(event, dict)]
+                progress_states = (
+                    [chunk_state for chunk_state in chunk_states.values() if isinstance(chunk_state, dict)]
+                    if isinstance(chunk_states, dict)
+                    else []
+                )
                 if isinstance(failed_chunk_id, str) and failed_chunk_id.strip():
-                    self.storage.upsert_chunk_state(
+                    progress_states.append(
                         {
                             "chunk_id": failed_chunk_id,
                             "novel_id": novel_id,
@@ -1589,7 +1780,7 @@ async def translate_chapters(
                         }
                     )
                 if not failed_event_recorded:
-                    self.storage.append_pipeline_event(
+                    progress_events.append(
                         {
                             "job_id": job_id,
                             "activity_id": activity_id,
@@ -1606,14 +1797,36 @@ async def translate_chapters(
                             "message": str(exc),
                         }
                     )
-                self.storage.create_checkpoint(novel_id, chapter_id, "failed")
-                _update_db_translation_state(novel_id, chapter_id, TranslationState.FAILED, error=str(exc))
-                cp_mgr.save(
+                await persistence.persist_progress_batch(
+                    events=progress_events,
+                    chunk_states=progress_states,
+                )
+                if isinstance(chunk_states, dict):
+                    manifest.chunk_outputs.update(
+                        await persistence.storage_owned_call(
+                            PersistenceOperation.DB_WRITE_TERMINAL,
+                            _persist_chunk_qa_results_to_outputs,
+                            self.storage,
+                            novel_id,
+                            chunk_states,
+                        )
+                    )
+                await persistence.storage_call("create_checkpoint", novel_id, chapter_id, "failed")
+                await persistence.call(
+                    PersistenceOperation.ACTIVITY_STATE,
+                    _update_db_translation_state,
+                    novel_id,
+                    chapter_id,
+                    TranslationState.FAILED,
+                    error=str(exc),
+                )
+                await persistence.save_checkpoint(
+                    checkpoint_dir,
                     Checkpoint(
                         chapter_id=chapter_id,
                         state=TranslationState.FAILED,
                         error=str(exc)[:1024],
-                    )
+                    ).to_dict(),
                 )
                 raise
             finally:
@@ -1672,7 +1885,7 @@ async def translate_chapters(
     # missing; running translation still tolerates a manifest write
     # failure because the per-chapter storage writes already happened.
     try:
-        self.storage.save_translation_run_manifest(novel_id, manifest)
+        await persistence.save_translation_run_manifest(novel_id, manifest.to_dict())
     except Exception as exc:
         warning = f"final_manifest_persistence_failed: {type(exc).__name__}: {exc}"
         manifest_persistence_warnings.append(warning)

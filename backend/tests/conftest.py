@@ -14,12 +14,11 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState
 from novelai.db.base import Base
+from novelai.db.engine import get_engine, get_sessionmaker
 from novelai.db.model_registry import register_database_models
 from novelai.glossary.glossary import Glossary
 from novelai.providers.base import TranslationProvider
@@ -47,18 +46,16 @@ def pytest_configure() -> None:
     after collection, so establish the same fail-closed test environment here.
     """
     COLLECTION_RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
-    os.environ["NOVEL_LIBRARY_DIR"] = str(COLLECTION_RUNTIME_ROOT)
     os.environ["ENV"] = "test"
-    os.environ["STORAGE_BACKEND"] = "filesystem"
+    os.environ["RUNTIME_DIR"] = str(COLLECTION_RUNTIME_ROOT)
     os.environ["WEB_RATE_LIMITER_BACKEND"] = "memory"
     os.environ.pop("ALLOWED_HOSTS", None)
     os.environ.pop("CSRF_TRUSTED_ORIGINS", None)
     os.environ.pop("PROVIDER_GEMINI_API_KEY", None)
     os.environ.pop("DATABASE_URL", None)
     os.environ.pop("REDIS_URL", None)
-    settings.NOVEL_LIBRARY_DIR = COLLECTION_RUNTIME_ROOT
+    settings.RUNTIME_DIR = COLLECTION_RUNTIME_ROOT
     settings.ENV = "test"
-    settings.STORAGE_BACKEND = "filesystem"
     settings.WEB_RATE_LIMITER_BACKEND = "memory"
     settings.ALLOWED_HOSTS = []
     settings.CSRF_TRUSTED_ORIGINS = []
@@ -203,6 +200,30 @@ def register_orm_models() -> None:
     register_database_models()
 
 
+@pytest.fixture(autouse=True)
+def isolate_global_test_database(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Start ordinary tests with an empty application-owned test database.
+
+    The R2 storage facade reads PostgreSQL catalog truth through
+    ``session_scope``. Clearing the disposable application database between
+    tests prevents one test's catalog rows from becoming another test's
+    storage state. E2E tests patch their own database/session world and are
+    intentionally excluded.
+    """
+
+    if "/e2e/" in request.node.nodeid.replace("\\", "/"):
+        yield
+        return
+
+    from novelai.db.engine import get_engine
+
+    engine = get_engine(settings.DATABASE_URL)
+    with engine.begin() as connection:
+        for table in reversed(Base.metadata.sorted_tables):
+            connection.execute(table.delete())
+    yield
+
+
 @pytest.fixture(scope="session", autouse=True)
 def isolate_tests_from_runtime_library() -> Iterator[None]:
     """Route any implicit runtime writes into a disposable test library."""
@@ -210,16 +231,14 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
     runtime_dir = TESTS_RUNTIME_ROOT / f"session_{uuid4().hex}"
     runtime_dir.mkdir(parents=True, exist_ok=False)
 
-    previous_novel_library_dir = settings.NOVEL_LIBRARY_DIR
+    previous_runtime_dir = settings.RUNTIME_DIR
     previous_provider_default = settings.PROVIDER_DEFAULT
-    previous_storage_backend = settings.STORAGE_BACKEND
     previous_rate_limiter_backend = settings.WEB_RATE_LIMITER_BACKEND
     previous_allowed_hosts = settings.ALLOWED_HOSTS
     previous_csrf_trusted_origins = settings.CSRF_TRUSTED_ORIGINS
     previous_gemini_api_key = settings.PROVIDER_GEMINI_API_KEY
     previous_database_url = settings.DATABASE_URL
-    previous_env_novel_library = os.environ.get("NOVEL_LIBRARY_DIR")
-    previous_env_storage_backend = os.environ.get("STORAGE_BACKEND")
+    previous_env_runtime_dir = os.environ.get("RUNTIME_DIR")
     previous_env_rate_limiter_backend = os.environ.get("WEB_RATE_LIMITER_BACKEND")
     previous_env_allowed_hosts = os.environ.get("ALLOWED_HOSTS")
     previous_env_csrf_trusted_origins = os.environ.get("CSRF_TRUSTED_ORIGINS")
@@ -228,49 +247,46 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
     previous_env = os.environ.get("ENV")
     previous_settings_env = settings.ENV
 
-    os.environ["NOVEL_LIBRARY_DIR"] = str(runtime_dir)
+    os.environ["RUNTIME_DIR"] = str(runtime_dir)
     os.environ["ENV"] = "test"
-    os.environ["STORAGE_BACKEND"] = "filesystem"
     os.environ["WEB_RATE_LIMITER_BACKEND"] = "memory"
     os.environ.pop("ALLOWED_HOSTS", None)
     os.environ.pop("CSRF_TRUSTED_ORIGINS", None)
     os.environ.pop("PROVIDER_GEMINI_API_KEY", None)
-    os.environ.pop("DATABASE_URL", None)
+    database_path = (runtime_dir / "default-test.sqlite3").resolve()
+    database_url = f"sqlite:///{database_path.as_posix()}"
+    os.environ["DATABASE_URL"] = database_url
 
-    settings.NOVEL_LIBRARY_DIR = runtime_dir
+    settings.RUNTIME_DIR = runtime_dir
     settings.ENV = "test"
-    settings.STORAGE_BACKEND = "filesystem"
     settings.WEB_RATE_LIMITER_BACKEND = "memory"
     settings.ALLOWED_HOSTS = []
     settings.CSRF_TRUSTED_ORIGINS = []
     settings.PROVIDER_DEFAULT = "dummy"
     settings.PROVIDER_GEMINI_API_KEY = None
-    settings.DATABASE_URL = None
+    settings.DATABASE_URL = database_url
+    database_engine = create_engine(database_url)
+    Base.metadata.create_all(database_engine)
     _reset_global_container()
 
     try:
         yield
     finally:
         _reset_global_container()
-        settings.NOVEL_LIBRARY_DIR = previous_novel_library_dir
+        settings.RUNTIME_DIR = previous_runtime_dir
         settings.ENV = previous_settings_env
-        settings.STORAGE_BACKEND = previous_storage_backend
         settings.WEB_RATE_LIMITER_BACKEND = previous_rate_limiter_backend
         settings.ALLOWED_HOSTS = previous_allowed_hosts
         settings.CSRF_TRUSTED_ORIGINS = previous_csrf_trusted_origins
         settings.PROVIDER_DEFAULT = previous_provider_default
         settings.PROVIDER_GEMINI_API_KEY = previous_gemini_api_key
         settings.DATABASE_URL = previous_database_url
+        database_engine.dispose()
 
-        if previous_env_novel_library is None:
-            os.environ.pop("NOVEL_LIBRARY_DIR", None)
+        if previous_env_runtime_dir is None:
+            os.environ.pop("RUNTIME_DIR", None)
         else:
-            os.environ["NOVEL_LIBRARY_DIR"] = previous_env_novel_library
-
-        if previous_env_storage_backend is None:
-            os.environ.pop("STORAGE_BACKEND", None)
-        else:
-            os.environ["STORAGE_BACKEND"] = previous_env_storage_backend
+            os.environ["RUNTIME_DIR"] = previous_env_runtime_dir
 
         if previous_env_rate_limiter_backend is None:
             os.environ.pop("WEB_RATE_LIMITER_BACKEND", None)
@@ -638,13 +654,9 @@ def _configure_catalog_projection_db(data_dir, monkeypatch):
     database_path = (data_dir / "catalog.sqlite3").resolve()
     database_url = f"sqlite:///{database_path.as_posix()}"
     monkeypatch.setattr(settings, "DATABASE_URL", database_url)
-    engine = create_engine(
-        database_url,
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    engine = get_engine(database_url)
     Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(bind=engine)
+    SessionLocal = get_sessionmaker(database_url)
     return SessionLocal, engine
 
 

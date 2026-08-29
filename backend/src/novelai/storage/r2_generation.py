@@ -1,0 +1,21 @@
+"""R2 generation disposition values shared by crawl and activation code."""
+
+DISPOSITION_FETCHED_NEW = "fetched_new"
+DISPOSITION_FETCHED_REPLACED = "fetched_replaced"
+DISPOSITION_REUSED_PLANNER = "reused_planner"
+DISPOSITION_CARRIED_UNSELECTED = "carried_unselected"
+DISPOSITION_UNCHANGED_SELECTED = "unchanged_selected"
+DISPOSITION_REFRESH_FAILED_RETAINED = "refresh_failed_retained"
+DISPOSITION_UNAVAILABLE = "unavailable"
+
+ALL_CHAPTER_DISPOSITIONS: frozenset[str] = frozenset(
+    {
+        DISPOSITION_FETCHED_NEW,
+        DISPOSITION_FETCHED_REPLACED,
+        DISPOSITION_REUSED_PLANNER,
+        DISPOSITION_CARRIED_UNSELECTED,
+        DISPOSITION_UNCHANGED_SELECTED,
+        DISPOSITION_REFRESH_FAILED_RETAINED,
+        DISPOSITION_UNAVAILABLE,
+    }
+)

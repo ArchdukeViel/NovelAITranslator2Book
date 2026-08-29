@@ -5,8 +5,10 @@ Resolved work belongs in [`HISTORY.md`](HISTORY.md), not this file.
 
 ## Current Decision
 
-**NO-GO.** Local implementation is mature, but hosted security, monitoring,
-alerting, browser/network acceptance, and rollback evidence remain incomplete.
+**Implementation GO; production acceptance remains open.** The local R2-only
+implementation and its backend/static verification are in place, but hosted
+security, monitoring, alerting, browser/network acceptance, destructive
+cutover evidence, and rollback/restore evidence remain incomplete.
 
 ## Execution Policy
 
@@ -21,6 +23,124 @@ alerting, browser/network acceptance, and rollback evidence remain incomplete.
   operator, exact command/URL, sanitized result, blocker, waiver, and expiry.
 - Work closes only after evidence is recorded in `HISTORY.md`; passing local
   tests never substitutes for hosted/manual evidence.
+
+## R2-only Content Storage Cutover
+
+The approved hard cutover is implemented locally under
+[`R2-ONLY-CONFORMANCE.md`](R2-ONLY-CONFORMANCE.md). It replaces the historical
+filesystem/S3-prefix content model with immutable R2 objects in `dokushodo`, exact
+PostgreSQL artifact references, Redis/Valkey coordination, and disposable local
+runtime state. It also includes incremental backup manifests, protected
+garbage collection, and an operator-confirmed reset/repopulation workflow for
+the three existing novel identities.
+
+The implementation item is closed locally, but live acceptance is still
+partial. At the 2026-08-22 checkpoint, the authorized Supabase migration and
+fully paginated reset of both R2 buckets were completed, and all three novels
+were repopulated under their existing identities through the authenticated R2
+path. The populated legacy S3-compatible application settings were migrated to
+the current `R2_*` names and validated for the root and production profiles.
+A follow-up writer-frozen namespace migration then moved the 538 live
+application objects to numeric `novels/<novel_id>/` prefixes, rewrote database
+and nested manifest references, verified logical hashes, and removed the old
+slug-prefixed source namespaces. After the bulk worker created seven
+pre-existing slug-prefixed objects, the same application migration was rerun
+after safe worker quiescence: 5 Kakuyomu objects and 2 Novel18 objects moved,
+1 and 2 database references were rewritten, and all 7 old source objects were
+deleted only after commit. The old prefixes are now empty and the full
+post-migration audit contains only numeric namespaces. Public slugs and URLs
+remain unchanged.
+NCode chapters 1 and 2 now pass real Gemini translation through the durable
+worker path, deterministic QA, R2 readback, and the public reader route. The
+authorized three-novel bulk queue is now running or queued, with glossary-gate
+bypass explicitly recorded and no cross-provider fallback. At the live
+2026-08-22 22:46 UTC refresh, the PostgreSQL chapter projection was
+`n2056dn`: 66 complete, 23 failed, 58 pending, and 1 translating;
+`n3266mn`: 29 complete and 2 failed; and Kakuyomu: 9 complete, 78 failed, and
+1 translating.
+The Novel18 activity reached terminal failure on `paragraph_missing` and was
+then requeued through `Container.activity_log` at retry count 2. The Kakuyomu
+activity was recovered to pending after its expired lease. NCode later reached
+a terminal PostgreSQL SSL EOF during final novel persistence and was requeued
+through `Container.activity_log` at retry count 4, preserving the failed
+attempt in retry history. The source-level lease-heartbeat correction and
+blocking-event-loop regression test now pass. The stale worker was stopped
+after its lease expired, the rebuilt worker was recreated with restart count
+`0`, and the durable queue reclaimed NCode; live lease renewal was observed
+after recreation. The runtime directory was renamed from `storage/runtime` to
+`data/runtime` only after the active runtime write reached a safe checkpoint
+boundary, and the recreated worker was verified with the
+`data/runtime -> /app/data/runtime` bind. The old host path is absent, and no
+runtime JSON or database row was manually edited.
+At the current refresh NCode is running at retry count 4 with a renewed lease
+deadline of `2026-08-22T22:50:36Z`, Kakuyomu is pending after recovery from an
+expired lease, and Novel18 is failed at retry count 3 with
+`paragraph_missing`. The last read-only R2 inventory at 20:23 UTC reports 872
+application objects / 3,299,655 bytes and zero backup objects. The rebuilt worker has one
+live container/process and restart count `0`; five restarts caused by
+transient Supabase DNS failures belong to the superseded worker instance.
+The post-migration per-prefix audit reports `novels/11/` 424 objects,
+`novels/16/` 248 objects, and `novels/17/` 200 objects, with no nonnumeric or
+other prefix; direct database references to the two old source namespaces are
+zero.
+Bulk translation and the
+remaining published chapter reads,
+production telemetry, and backup/restore remain explicit acceptance gates. A
+live duplicate audit found
+two older unpublished PostgreSQL rows (IDs 18 and 19) for source URLs already
+represented by canonical active rows (IDs 11, 16, and 17); after reference
+verification those stale rows and their tag associations were removed. The R2
+prefix cleanup now snapshots paginated keys before deletion; its focused suite
+passes 8 tests, and a stopped synthetic Phase 6 seed was fully cleaned without
+leaving R2 objects or database rows. Production-scale telemetry remains open.
+The conformance ledger now records the measured per-novel R2 shape; logical
+uncompressed bytes and compression savings are measured by a read-only
+full-object verifier. Repeated-crawl counters, deduplicated asset savings, and
+backup reuse remain unmeasured rather than inferred from object counts. Focused
+takedown and public-isolation coverage passes 150 tests; hosted CDN/public
+origin propagation remains an operator acceptance gate. The focused R2
+catalog/cutover suite also passes 10 tests, including unchanged-recrawl no-op
+and incremental-backup reuse behavior.
+The live Supabase performance advisor's missing `novel_requests.chapter_id`
+foreign-key index was resolved by migration `c9d1e3f5a7b9`; remaining unused-
+index notices are informational. A Cloudflare control-plane audit independently
+confirmed that exactly `dokushodo` and `dokushodo-backup` exist with the
+intended lifecycle policies; recovery remains disabled by operator decision.
+The runtime storage factory now exposes only explicit R2 client names and no
+generic filesystem/S3 selection or compatibility alias remains.
+The earlier authorized attempt to create separate R2 snapshot credentials
+through the connected Cloudflare API returned `9109 Unauthorized`. The
+operator subsequently supplied separate source-read and backup-write
+credentials, rotated the application credentials, and the ignored root `.env`
+was synchronized with `deploy/.env`; the six active R2 credential assignments
+now match. No backup or restore operation is claimed while
+`R2_BACKUP_ENABLED=false`. The repository inventory path and an isolated
+source-read client then successfully listed the application bucket, while the
+backup-target credential listed the empty backup bucket; no object was written
+or deleted. After service recreation with the rotated application credentials,
+the public catalog, rankings, published details, translated chapter 1, Novel18
+isolation, and singular legacy-route rejection passed. Target write permission,
+restore evidence, and production readiness remain open; the local readiness
+probe is still 503 because disk is unhealthy and the worker probe is degraded.
+A translation workload audit estimated 267 provider chunks across the 267
+imported chapters. The replacement environment key is now imported into the
+unified `provider_credentials` registry as one encrypted, active, valid,
+owner-job-eligible row; no user-contribution rows exist. The current persisted
+translated-artifact counts are Kakuyomu 17/88, Novel18 29/31, and NCode 60/148
+while the bulk queue continues. The configured RPM/TPM/RPD values are local
+admission guards; upstream account/project limits must still be verified in
+Google AI Studio before production-volume work.
+
+The legacy `contributor_credentials` table is absent. The unified registry
+preserves owner and user identity on each row while independent eligibility
+flags prevent a user key from entering owner-only work and prevent an owner
+key from entering the contributor pool unless an owner explicitly shares it.
+
+Historical bulk-state boundary (2026-08-27): the queue and lease paragraphs
+above describe the authorized 2026-08-22 execution checkpoint. They are not a
+current worker or queue-status claim. The current checkpoint is the stopped or
+unadmitted worker/full-queue state recorded under Operator Acceptance below;
+queue/writer safety, provider readiness, and production admission remain open.
 
 ## Novel Detail Stage B Decision (2026-08-19)
 
@@ -39,17 +159,17 @@ exists and is recorded in `HISTORY.md`.
 
 | Order | ID | Work | Dependency | Done when |
 |---:|---|---|---|---|
-| 1 | OWN-001 | Assign launch, rollback, monitoring, security, recovery, accessibility, performance, SEO, legal owners | None | All nine gates owned by single operator (email on file in operator record, not committed); legal owner = operator for now; no backup contacts — accepted as waiver-eligible single-operator risk, expiry at GO-001; no unowned gate |
+| 1 | OWN-001 | Assign launch, rollback, monitoring, security, recovery, accessibility, performance, SEO, legal owners | None | All nine gates assigned to the operator (email on file in operator record, not committed); legal owner = operator for now; no backup contacts; a second reviewer or explicitly approved solo-operator waiver with expiry and mitigation is still required before GO-001; no unowned gate |
 | 2 | REL-001 | Freeze exact candidate | OWN-001 | Candidate commit/image tags, domains, environment, UTC time recorded |
 | 3 | GH-001 | Finish GitHub controls | REL-001 | `main` protected; exact CI, CodeQL, and GitGuardian checks required; no force push/deletion; sanitized secret-scan incident/false-positive exercise recorded |
 | 4 | DEBT-079A | Deploy always-on candidate | REL-001 | Migrations one-shot succeeds; immutable images run; production config validated (COMPLETED 2026-08-17) |
 | 5 | DEBT-079B | Hosted auth/security smoke | DEBT-079A | OAuth, cookies, CSRF, CORS, hosts, roles, disabled users, admin/reader boundaries pass (COMPLETED 2026-08-17) |
 | 6 | DEBT-075A | Verify hosted PostgreSQL/R2 workflow | DEBT-079A | Managed-services workflow passes against isolated targets (COMPLETED 2026-08-17) |
-| 7 | DEBT-075B | Current-head recovery drill | DEBT-075A | DB dump and object snapshot restored into isolated targets; schema, checksums, counts, content, catalog rebuild pass (COMPLETED 2026-08-17) |
-| 8 | DEBT-118 | Activate and verify SMTP | DEBT-079A | Domain/SPF/DKIM/DMARC, auth mail, bounce/error handling, redaction, limits, `noop` rollback proven |
+| 7 | DEBT-075B | Current-head recovery drill | DEBT-075A | Current disposable managed PostgreSQL backup/restore evidence recorded on 2026-08-28; recurring backup/alert, production smoke, and production recovery readiness remain separate gates |
+| 8 | DEBT-118 | Activate and verify SMTP, including signup verification and password-reset delivery | DEBT-079A | Domain/SPF/DKIM/DMARC, auth mail, bounce/error handling, redaction, limits, `noop` rollback proven |
 | 9 | DEBT-075C | Real operator alert | DEBT-118 | Stale/failure alert delivered; threshold, cooldown, redaction, escalation proven |
 | 10 | DEBT-079C | External monitoring | DEBT-079A, OWN-001 | Scheduled runs, dashboard, operator delivery, escalation ownership proven |
-| 11 | DEBT-FE-01A | FE-01 manual acceptance | DEBT-079A | Keyboard, screen reader, 200% zoom, reduced motion, focus, contrast verified on shipped tokens; operator physical acceptance complete (COMPLETED 2026-08-17) |
+| 11 | DEBT-FE-01A | FE-01 manual acceptance | DEBT-079A | Automated accessibility coverage passes; current-candidate manual keyboard, screen-reader, 200% zoom, reduced-motion, focus, contrast, forced-colors, and physical-device acceptance recorded |
 | 12 | DEBT-079D | Performance/SEO/legal acceptance | DEBT-079A | Minimal real staging fixtures populated across 3 source adapters; adult gating proven; payload size budgets met; hosted latency budget blocked on remote network topology / WAN latency to Supabase SG & R2 (FAIL / BLOCKED 2026-08-17) |
 | 13 | DEBT-079E | Rollback rehearsal | DEBT-075B, DEBT-079B | Worker/scheduler paused, reader disabled, cache purged, prior image compatibility checked, redeployed, smoke rerun |
 | 14 | GO-001 | Final launch decision | All above | Zero unwaived blockers; launch/rollback/monitoring owners named |
@@ -67,6 +187,12 @@ Recorded 2026-07-31T17:13:13Z; re-frozen 2026-07-31T17:52:47Z on merged
 | Environment | Production: always-on Docker Compose — Caddy, admin 8000, reader 8001, frontend 3000, PostgreSQL (Supabase), Redis, R2, SMTP (`DEPLOYMENT.md`) |
 | Domains | PENDING — operator records hosted domain; `PRODUCTION_BASE_URL` GitHub secret |
 | Candidate status | FROZEN (merged to `main`); `DEBT-079A` deploy blocked on domains |
+
+This is historical candidate-freeze evidence from 2026-07-31, not the current
+release candidate. As of 2026-08-27 the current freeze is **blocked**: the
+worktree is dirty, no current immutable image digest set or production domains
+were supplied, and `PRODUCTION_BASE_URL` is not configured in the local
+environment. No production-readiness claim may use the historical freeze.
 
 ## GitHub Controls Audit (GH-001)
 
@@ -127,6 +253,14 @@ ruleset rules preserved: `deletion`, `pull_request`
 merge intentionally deferred. Re-enable both flags when a second
 write-access reviewer exists.
 
+Current release-control status (2026-08-27): the local GitGuardian engine ran
+against five existing test/utility files with zero incidents and no API key was
+present locally. This is a sanitized negative-control scan, not a hosted
+incident or false-positive workflow exercise. The current incident/triage
+exercise remains blocked until an authorized sanitized test incident or
+equivalent review record is available; no ignore rule or repository secret was
+changed.
+
 ## Active Work
 
 ## Feature & Design Gaps / Deferred Work (Stitch Screen 1794eb02d11a407b9b6343d727670125)
@@ -151,7 +285,7 @@ evidence; nothing below is completion evidence by itself.
 
 Existing tooling: `.github/workflows/managed-services-verification.yml`,
 `backend/tests/integration/test_managed_postgres.py`,
-`backend/tests/integration/test_r2_snapshot_integration.py`.
+`backend/tests/integration/test_r2_backup_integration.py`.
 
 1. Configure isolated test DB, R2 source bucket/prefix, R2 backup target, and
    separate least-privilege credentials in provider secret storage.
@@ -165,7 +299,7 @@ Existing tooling: `.github/workflows/managed-services-verification.yml`,
 
 Existing tooling:
 `backend/src/novelai/services/scheduler_service.py::_run_database_restore_verification`,
-`backend/src/novelai/storage/backends/s3_snapshot.py`,
+`backend/src/novelai/storage/r2_backup.py`,
 `deploy/compose.yml` (`restore-db` service), `docs/OPERATIONS.md` restore
 procedure.
 
@@ -179,6 +313,15 @@ procedure.
 6. Rebuild catalog projections.
 7. Run production smoke against the isolated recovery target.
 8. Destroy disposable targets only after evidence is captured.
+
+Current checkpoint (2026-08-28): the confirmation-gated run
+[`33182847311`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33182847311)
+passed the encrypted database backup, manifest/checksum/freshness checks,
+isolated restore, representative queries, public isolation, dedicated R2
+cleanup, and temporary-role cleanup. It restored 37 public tables with 37 RLS
+tables and zero invalid constraints. This records one current non-production
+database recovery path; it does not establish recurring production freshness,
+operator alert delivery, production smoke, or production capacity.
 
 #### C. Alert closure
 
@@ -302,7 +445,7 @@ PR/change, each with exact tests:
 
 | ID | Slice | Dependency |
 |---|---|---|
-| FE-02 | FE-01 accessibility: persistent token regression test covers 34 checks across both modes at WCAG AA 4.5:1 + two-layer primary-button focus treatment shipped; manual browser checks (keyboard, screen reader, zoom, reduced motion) pending operator | FE-01 |
+| FE-02 | FE-01 automated accessibility: persistent token regression test covers 34 checks across both modes at WCAG AA 4.5:1 + two-layer primary-button focus treatment shipped; current-candidate manual browser checks (keyboard, screen reader, zoom, reduced motion) remain pending operator | FE-01 |
 | FE-03 | Desktop header inline nav, mobile bottom tab bar, Account/More hub, reader chrome suppression — shipped (typecheck, 766 tests, build pass) | FE-02 |
 | FE-04 | Shared search overlay, keyboard behavior, request cancellation, local recent searches — shipped (typecheck, 781 tests, build, backend 156 tests pass); original-title search added to catalog DB + storage fallback | FE-03 |
 | FE-05 | Browse/catalog layout, URL filter state, taxonomy/source canonical routes — shipped (typecheck, 790 tests, build, backend public-router 123 tests pass); authors route remains deferred pending stable identity/alias contract | FE-04 |
@@ -344,7 +487,11 @@ new community review list `/novels/[slug]?tab=reviews`,
 | 10 | Forced colors mode (Windows High Contrast): borders, focus rings, status badges, and input boundaries remain visible. | Windows High Contrast |
 | 11 | Real-device mobile testing: tab bar, bottom sheets, gesture-bar safe areas, and reader controls functional on actual iOS/Android browsers. | Physical phone / tablet |
 
-Status: COMPLETED 2026-08-17 (Automated AX & responsive suite passed; operator attested physical mobile and native screen-reader acceptance).
+Status: **Automated coverage passed** on the recorded implementation baseline.
+The 2026-08-17 physical-device/native-screen-reader attestation is historical
+and does not close current-candidate manual acceptance. Keyboard-only,
+screen-reader, 200% zoom, 320px/physical-device, reduced-motion, forced-colors,
+and current shipped-token checks remain pending a new operator record.
 
 Per-slice validation:
 
@@ -357,18 +504,67 @@ graphify update . --no-cluster
 
 ## Operator Acceptance
 
+Current follow-up checkpoint — 2026-08-29:
+`reader-capacity-and-recovery-follow-up` remains an active, blocked operational
+spec. Its local contracts and evidence postconditions are valid, and the
+confirmation-gated non-production workflow [33259176327](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33259176327)
+successfully bound the explicit fixture to the active test project
+`testingdatabase-dokushodo`, the `test-dokushodo` application bucket, and the
+isolated reader runtime. The safety baseline, ephemeral Cloudflare quick tunnel
+readiness check, 60-cell matrix, twenty cold-reset proofs, and cleanup all
+completed. The selected Cloudflare cells attempted 1,000 read-only requests
+with 850 valid samples, zero transport errors, 144 timeouts, nine passing cells,
+eight failed cells, and three unavailable cells. Caddy loopback diagnostics
+attempted another 1,000 requests with 800 valid samples and 189 timeouts. The
+Cloudflare gate remains blocked because the health/catalog/detail budgets were
+exceeded and chapter/search cells were incomplete. Therefore `reader_slo_status=blocked` and
+`path_profile_status=blocked`; `telemetry_status=unavailable`,
+`recovery_status=not_assessed`, and `production_capacity_claim=not_established`.
+The worker remained stopped, while original queue and other-writer state
+remained unknown. This is current non-production evidence, not production
+recovery readiness or reader capacity evidence. The Recovery row below retains
+the separate earlier one-run restore provenance and does not override this
+current checkpoint.
+
+The prior successful isolated recovery artifact records backup, manifest, checksum, freshness,
+restore, representative-query, public-isolation, R2-cleanup, and role-cleanup
+success. The isolated target contained 37 public tables, 37 RLS tables, and
+zero invalid constraints. The temporary confirmation variable was removed;
+`MANAGED_SERVICE_TESTS_ENABLED` remains `false`.
+The disposable test project's security advisor was rerun after the optional
+RLS-helper execution was revoked and reported no lints. Repository migration
+`f8a2c4e6b0d1` carries that conditional hardening for the next normal schema
+deployment; this does not establish production security or capacity readiness.
+The disposable test project's Alembic marker is now synchronized to that head,
+while its application fixture tables remain empty.
+
+Operator authorization and disposable execution - 2026-08-29:
+The project owner supplied a non-production read-only reader-capacity
+authorization and an explicit disposable fixture description. The fixture was
+seeded only in the managed test database and dedicated test R2 bucket, then
+removed by the guarded cleanup path. Independent post-run checks found zero
+fixture rows and zero objects under the exact fixture prefix. The active
+reader-capacity contract selects `cloudflare_tunnel` as its non-production SLO
+gate. The latest 20 Cloudflare cells recorded 1,000 attempts, 850 valid
+samples, zero transport errors, and 144 timeouts; the Caddy comparison recorded
+1,000 attempts, 800 valid samples, and 189 timeouts. The complete matrix records
+17 quantified blockers across over-budget and incomplete required cells. The
+report is a valid quantified blocker, not a capacity pass. Production capacity
+remains unestablished.
+
 | Gate | Status | Required evidence |
 |---|---|---|
+| Reader capacity and recovery follow-up (current) | Blocked | Owner authorization, the disposable fixture binding, twenty controlled cold-reset proofs, and cleanup verification are recorded by workflow run [33259176327](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33259176327); the 1,000 Cloudflare requests produced 850 valid samples, zero transport errors, 144 timeouts, and over-budget/incomplete required cells, queue/writer state remains unknown, and exact reader-window telemetry plus recurring recovery controls remain required. |
 | Hosted smoke and auth/security boundaries | Blocked | Candidate commit, domains, UTC time, commands/URLs, sanitized results. |
 | Secret scanning | Partial (hosted scans passed) | PR #12 proved successful GitGuardian push and same-repo PR checks. Still require protected required-check configuration and sanitized incident/false-positive triage evidence. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
 | Alerts and monitoring | Blocked (tooling complete) | Configure `PRODUCTION_BASE_URL`, prove scheduled external runs and real operator delivery, cooldown/redaction, dashboards, escalation, and ownership. |
-| Recovery | Needs current run (tooling complete) | Current-head database restore and object snapshot restore into isolated targets. Backup-stale alert threshold, restore-freshness max age, and runtime-role verifier implemented locally. |
+| Recovery | Partial (one-run non-production restore passed) | The isolated database backup/restore and representative public-isolation checks are recorded by the earlier test-only recovery artifact. Recurring backup freshness, stale/failure alert delivery, production smoke, and production recovery readiness remain required; the new direct rerun was unavailable because its workflow is not registered on the default branch. |
 | Accessibility | Pass (COMPLETED 2026-08-17) | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast verified via automated test suite and operator physical device attestation. |
-| Performance | Partial / Fail (AUDITED 2026-08-17) | Catalog API p95 on hosted staging exceeds hard budget (reader direct p95=1001.60ms, Tailscale HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + S3 metadata list latency). Novel detail and Chapter APIs NOT RUN on hosted staging (no published novel/chapter fixture in DB). First-load JS passes (169.8 KiB <= 250 KiB). |
+| Performance | Partial / Fail (AUDITED 2026-08-17; retired private transport) | Catalog API p95 on the retired hosted staging path exceeded the hard budget (reader direct p95=1001.60ms, private HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + object-store metadata-list latency in the pre-cutover measurement). The latest disposable run proves quick-tunnel readiness but remains blocked: Cloudflare health p95 was 85.434/1129.843ms, catalog 11008.173/11761.447ms, detail 13060.920/16360.286ms, chapter warm/cold were unavailable, and search warm was unavailable while cold was 16608.013ms. |
 | SEO | Staging Pass / Production Deferred (AUDITED 2026-08-17) | Staging robots.txt, sitemap.xml, Open Graph / Twitter metadata, canonical URLs verified on staging hostname; production domain SEO validation deferred until public domain cutover. |
 | Legal propagation | Pass (AUDITED 2026-08-17) | HTTP 451 legal takedown verified (Cache-Control: no-store, no private info leak); sitemap exclusion & 404 contracts verified; CDN purge deferred to public edge. |
 | Rollback | Blocked | Pause worker/scheduler, purge cache, disable reader, redeploy previous immutable version, rerun smoke. |
-| Ownership | Assigned | All nine gates owned by single operator; email on file in operator record (not committed). Legal owner: operator (temporary). No rollback/monitoring backup — waiver-eligible single-operator risk: risk = alert/rollback response may not reach a second person; reason = solo operation; mitigation = escalate via hosting provider support line on incident; owner = operator; approver = operator; expiry = GO-001. No unowned gate. |
+| Ownership | Assigned / waiver not approved | All gates are assigned to the operator, but no second reviewer or approved solo-operator waiver with expiry and mitigation record is present for the current release. No launch approval may rely on the historical waiver-eligible wording. |
 
 `GO` requires zero unwaived blockers. A waiver records risk, reason, mitigation,
 owner, approver, and expiry. Security bypass, private-content exposure, broken
@@ -376,9 +572,12 @@ takedown enforcement, unrecoverable loss, or missing rollback cannot be informal
 
 ## Active Specifications
 
-Only genuinely unfinished specs remain under `.agents/kiro/specs/`:
+Only genuinely unfinished specs remain under `.agents/specs/`:
 
 - `launch-readiness-checklist`: operator acceptance above.
+- `reader-capacity-and-recovery-follow-up`: blocked after a valid local
+  evidence-and-safety decision; do not mark operational readiness until its
+  handoff blockers are resolved.
 
 Task boxes are planning aids, not completion evidence. Architecture, current
 code/tests, this file, and operator evidence determine status.
@@ -392,6 +591,13 @@ names the current baseline, the gate, and the ordered steps.
 
 Nonblocking while `AUTH_EMAIL_DELIVERY_MODE=noop`. Existing baseline:
 `SMTPAuthEmailService`, `NoopAuthEmailService`, `backend/tests/test_email_service.py`.
+
+Current status (2026-08-27): **Deferred / not delivered**. A live password
+signup created an active `user` account, and sign-out/sign-in worked, but no
+verification email was sent because the runtime is intentionally using
+`noop` with no SMTP sender configured. The account remains unverified. Do not
+claim verification or password-reset delivery until the acceptance gate below
+is completed and recorded.
 
 1. Verify sending domain ownership plus SPF, DKIM, and DMARC.
 2. Store SMTP credentials only in provider secret storage.
@@ -502,22 +708,36 @@ Completion criteria:
 - ~~Remove or connect orphaned API wrappers and hooks~~ — verified-orphan wrappers removed; claimed orphans re-verified as consumed.
 - Remaining (not UI debt): 57 admin orchestration backend-only endpoints, 3 admin takedown moderation endpoints, 3 operator/monitoring endpoints, and 58 other backend/CLI/test endpoints have no frontend caller by design — they are invoked by workers, CLI, tests, or operator tooling.
 
-### Completed: contributor credentials (formerly DEBT-CONTRIB-01)
+### Completed: unified provider credentials (formerly DEBT-CONTRIB-01)
 
-The approved readiness gate is complete for v1. Contributor credentials use a
-separate encrypted domain and one Gemini credential per authenticated user.
-Consent/version checks, explicit-key validation, immediate activation on
-success, invalid-on-failure, ownership isolation, replacement, pause/resume,
-permanent deletion, owner emergency revoke, no-readback masking, provider
-isolation, per-credential RPM/TPM/RPD reservation, and sanitized usage ledger
-accounting are implemented. `credential_owner_user_id` and
-`requesting_user_id` remain separate throughout the translation pipeline.
+The approved readiness gate is complete for the credential lifecycle. Owner
+managed keys and user contributions use one encrypted `provider_credentials`
+registry, with one Gemini contribution per authenticated user in v1. Consent,
+explicit-key validation, immediate activation on success, invalid-on-failure,
+ownership isolation, replacement, pause/resume, permanent deletion, owner
+emergency revoke, no-readback masking, provider isolation, per-credential
+RPM/TPM/RPD reservation, and sanitized usage-ledger accounting are
+implemented. `credential_owner_user_id` and `requesting_user_id` remain
+separate throughout the translation pipeline.
 
-Evidence: migration `a8c4e2f7b901`, `ContributorCredentialService`, user and
-owner routers, translation-stage selection/ledger integration,
+The hardening follow-up adds row-locked deterministic pool selection,
+per-credential Redis concurrency enforcement, per-user validation rate limits,
+redacted validation feedback, replacement-race protection, explicit owner
+environment import, independent owner/pool eligibility, and per-call audit
+identity so concurrent chunks cannot cross-associate credential ownership or
+ids. The legacy contributor credential table and service/model shims were
+removed.
+
+Evidence: local Alembic revisions `d4e6f8a2b1c3` and `e7f1a9c3b5d2`, remote
+Supabase migrations `unify_provider_credential_registry` and
+`secure_unified_credentials`, canonical provider service/model, user and owner
+routers, translation-stage selection/ledger integration,
 `backend/tests/test_contributor_credentials.py`, focused backend suite, and
-live contribution hook/page tests. Production still requires the configured
-encryption key and the migration role to have schema DDL privileges.
+live contribution hook/page tests. The one-time owner environment import is
+stored encrypted and the live row is active/valid and owner-job eligible. No
+user-contribution rows exist; the owner-scoped bulk verification is executing
+through the same provider/ledger path and remains an evidence item until its
+terminal chapter counts are recorded.
 
 ### Completed: public performance Phase 4
 
@@ -584,10 +804,10 @@ Phase 6 remains open for review. Direct-mode owner enqueue produced two
 database-capacity `500` responses in an eight-request burst, while an isolated
 transaction-mode control returned five `202` and three configured
 translation-limit `429` responses with no database-capacity `500`s. A
-controlled 1.2-second S3-protocol delay made ten concurrent readiness requests
+controlled 1.2-second object-store protocol delay made ten concurrent readiness requests
 return `503` with `storage=unhealthy` (p50 `1,351.488 ms`, p95 `1,382.913 ms`).
 The protected base runtime remains `DB_CONNECTION_MODE=direct` and was not
-changed. Production-equivalent R2/S3 telemetry, PostgreSQL slowest-query/
+changed. Production-equivalent R2 telemetry, PostgreSQL slowest-query/
 query-count evidence, and representative worker/provider capacity remain
 unclaimed. Temporary Phase 6 fixture data, overlays, and isolated volumes are
 cleaned up after each run; the base Compose stack remains the runtime baseline.
@@ -596,7 +816,7 @@ The database-capacity error path is now classified locally: recognized
 SQLAlchemy pool/server-capacity failures return sanitized retryable
 `503 DATABASE_CAPACITY_EXHAUSTED` responses, while unrelated database errors
 remain generic `500`s. After rebuilding the admin and reader images, a direct
-filesystem control repeated the eight-request enqueue burst with five `202`
+direct-mode control repeated the eight-request enqueue burst with five `202`
 and three configured `429` responses and zero capacity `500`s. This resolves
 the unhandled application error path, but deployment-wide pooler budgeting and
 production storage/query/provider evidence remain open.
@@ -622,6 +842,35 @@ Focused catalog tests (`51 passed`), the public-router suite (`133 passed`),
 Ruff, Pyright, Graphify, and direct migration upgrade/downgrade smoke passed.
 The remaining open work is operator/production evidence, not this local
 fixture contract.
+
+## Non-production R2 data-plane evidence - 2026-08-28
+
+The isolated R2 test configuration was transferred to the repository's
+GitHub Actions secrets without recording any secret values. The source and
+target variables are `test-dokushodo` and `test-dokushodo-backup`; the target
+bucket is distinct from the source and from both canonical production bucket
+names.
+
+The local backup/restore integration checks passed (`2 passed in 15.60s`). The
+first hosted run at commit `8e2957d` reached the new managed database and
+reported `2 failed, 2 passed in 17.77s`: both R2 checks passed, while the two
+database checks exposed the expected empty-schema condition
+(`public.alembic_version` and `scheduled_job_leases` were absent).
+
+The confirmation-gated migration run
+[`33170998029`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33170998029)
+completed successfully at commit `3c1dcf6`. The independent hosted verification
+run
+[`33171154023`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33171154023)
+then passed all four managed PostgreSQL/R2 integration checks (`4 passed in
+18.93s`). `MANAGED_DATABASE_TEST_URL` was used only as a GitHub secret, and
+`MANAGED_SERVICE_TESTS_ENABLED` was returned to `false` after the run.
+
+This closes disposable non-production managed-service schema/R2 verification;
+it does not establish managed-PostgreSQL recovery, recurring backup freshness
+or alert delivery, reader SLO, provider/R2 billing telemetry, or production
+capacity. The reader worker/full queue remains subject to the existing
+fail-closed gate.
 
 ## Priority Recommendation
 

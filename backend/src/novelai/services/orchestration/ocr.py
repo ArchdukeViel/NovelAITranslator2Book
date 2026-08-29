@@ -116,4 +116,3 @@ async def ingest_ocr_candidates(
         summary["updated"] += 1
 
     return summary
-

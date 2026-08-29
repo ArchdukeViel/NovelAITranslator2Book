@@ -1,18 +1,14 @@
-"""Backup scheduling and status service (M2c, DEBT-010).
-
-Wraps BackupManager with scheduling integration, lock-based concurrency
-prevention, verified offsite snapshots, and status reporting.
-"""
+"""R2 backup scheduling, retention, and status service."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from novelai.config.settings import settings
-from novelai.services.backup_manager import BackupManager
 from novelai.storage.file_lock import InterProcessFileLock
 from novelai.storage.snapshots import SnapshotTarget
 
@@ -29,7 +25,7 @@ def _is_backup_stale(timestamp_str: str, max_age_hours: int) -> bool:
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=UTC)
         return (datetime.now(UTC) - ts) > timedelta(hours=max_age_hours)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return True
 
 
@@ -43,12 +39,11 @@ class BackupService:
 
     def __init__(
         self,
-        backup_manager: BackupManager,
+        runtime_dir: Path | None = None,
         snapshot_target: SnapshotTarget | None = None,
     ) -> None:
-        self._backup_manager = backup_manager
         self._snapshot_target = snapshot_target
-        self._lock_path = backup_manager.backups_dir / ".backup.lock"
+        self._lock_path = (runtime_dir or settings.RUNTIME_DIR) / "backup.lock"
 
     async def run_scheduled_backup(self, novel_id: str | None = None) -> dict[str, Any]:
         """Run a scheduled backup with lock-based concurrency prevention.
@@ -72,53 +67,20 @@ class BackupService:
 
         started_at = _utc_now_iso()
         try:
-            if settings.STORAGE_BACKEND.strip().lower() == "s3":
-                if self._snapshot_target is None:
-                    raise RuntimeError("Independent S3 snapshot target is not configured")
-                snapshot = await asyncio.to_thread(self._snapshot_target.create_snapshot)
-                return {
-                    "status": "succeeded",
-                    "backup_id": snapshot.snapshot_id,
-                    "timestamp": snapshot.created_at,
-                    "size_bytes": snapshot.size_bytes,
-                    "files_count": snapshot.files_count,
-                    "offsite": True,
-                    "verified": snapshot.verified,
-                    "started_at": started_at,
-                    "finished_at": _utc_now_iso(),
-                }
-
-            # Resolve source directory from storage base.
-            source_dir = self._backup_manager.base_dir / "novels"
-            if novel_id and novel_id != "all":
-                source_dir = source_dir / novel_id
-            backup_info = await self._backup_manager.create_full_backup(
-                novel_id or "all",
-                source_dir,
-            )
-            result = {
+            if self._snapshot_target is None:
+                raise RuntimeError("Independent R2 snapshot target is not configured")
+            snapshot = await asyncio.to_thread(self._snapshot_target.create_snapshot)
+            return {
                 "status": "succeeded",
-                "backup_id": backup_info.backup_id,
-                "timestamp": backup_info.timestamp,
-                "size_bytes": backup_info.size_bytes,
-                "files_count": backup_info.files_count,
+                "backup_id": snapshot.snapshot_id,
+                "timestamp": snapshot.created_at,
+                "size_bytes": snapshot.size_bytes,
+                "files_count": snapshot.files_count,
+                "offsite": True,
+                "verified": snapshot.verified,
                 "started_at": started_at,
                 "finished_at": _utc_now_iso(),
             }
-
-            # Run retention after successful backup.
-            try:
-                deleted = await self._backup_manager.apply_retention(
-                    keep_count=settings.BACKUP_RETENTION_COUNT,
-                    min_successful=settings.BACKUP_MIN_SUCCESSFUL_TO_KEEP,
-                    max_age_days=settings.BACKUP_MAX_AGE_DAYS,
-                )
-                result["retention_deleted"] = deleted
-            except Exception as exc:
-                logger.warning("Backup retention cleanup failed: %s", exc)
-                result["retention_error"] = str(exc)[:200]
-
-            return result
         except Exception as exc:
             logger.error("Scheduled backup failed: %s", exc)
             return {
@@ -127,6 +89,42 @@ class BackupService:
                 "started_at": started_at,
                 "finished_at": _utc_now_iso(),
             }
+        finally:
+            lock.release()
+
+    async def apply_retention(
+        self,
+        *,
+        keep_count: int | None = None,
+        min_successful: int | None = None,
+        max_age_days: int | None = None,
+        safety_grace_days: int | None = None,
+        dry_run: bool = False,
+    ) -> int:
+        """Apply reference-aware retention in the independent R2 bucket."""
+        if self._snapshot_target is None:
+            return 0
+
+        lock = InterProcessFileLock(self._lock_path, retry_count=3, retry_delay=0.5)
+        try:
+            lock.acquire()
+        except TimeoutError:
+            logger.info("R2 backup retention skipped: another backup operation is running.")
+            return 0
+
+        try:
+            return await asyncio.to_thread(
+                self._snapshot_target.apply_retention,
+                keep_count=(keep_count if keep_count is not None else settings.BACKUP_RETENTION_COUNT),
+                min_successful=(
+                    min_successful if min_successful is not None else settings.BACKUP_MIN_SUCCESSFUL_TO_KEEP
+                ),
+                max_age_days=(max_age_days if max_age_days is not None else settings.BACKUP_MAX_AGE_DAYS),
+                safety_grace_days=(
+                    safety_grace_days if safety_grace_days is not None else settings.BACKUP_SAFETY_GRACE_DAYS
+                ),
+                dry_run=dry_run,
+            )
         finally:
             lock.release()
 
@@ -158,62 +156,33 @@ class BackupService:
                 "message": "Backups are not enabled",
             }
 
-        if settings.STORAGE_BACKEND.strip().lower() == "s3":
-            if self._snapshot_target is None:
-                return {
-                    "status": "unhealthy",
-                    "message": "Independent S3 snapshot target is not configured",
-                }
-            try:
-                latest = self._snapshot_target.latest_snapshot()
-                if latest is None:
-                    return {
-                        "status": "unhealthy",
-                        "message": "No committed offsite snapshot exists",
-                    }
-                if _is_backup_stale(latest.created_at, settings.OPERATOR_ALERT_STALE_BACKUP_HOURS):
-                    return {
-                        "status": "unhealthy",
-                        "message": "Latest backup exceeds freshness threshold",
-                        "last_backup_at": latest.created_at,
-                        "backup_id": latest.snapshot_id,
-                    }
-                return {
-                    "status": "healthy" if latest.verified else "degraded",
-                    "message": "Verified offsite snapshot exists",
-                    "last_backup_at": latest.created_at,
-                    "backup_id": latest.snapshot_id,
-                }
-            except Exception:
-                return {
-                    "status": "degraded",
-                    "message": "Unable to determine offsite backup status",
-                }
-
+        if self._snapshot_target is None:
+            return {
+                "status": "unhealthy",
+                "message": "Independent R2 snapshot target is not configured",
+            }
         try:
-            backups = self._backup_manager.list_backups(None)
-            if not backups:
+            latest = self._snapshot_target.latest_snapshot()
+            if latest is None:
                 return {
                     "status": "unhealthy",
-                    "message": "No successful backup exists",
+                    "message": "No committed offsite snapshot exists",
                 }
-
-            newest = backups[0]
-            if _is_backup_stale(newest.timestamp, settings.OPERATOR_ALERT_STALE_BACKUP_HOURS):
+            if _is_backup_stale(latest.created_at, settings.OPERATOR_ALERT_STALE_BACKUP_HOURS):
                 return {
                     "status": "unhealthy",
                     "message": "Latest backup exceeds freshness threshold",
-                    "last_backup_at": newest.timestamp,
-                    "backup_id": newest.backup_id,
+                    "last_backup_at": latest.created_at,
+                    "backup_id": latest.snapshot_id,
                 }
             return {
-                "status": "healthy",
-                "message": "Recent backup exists",
-                "last_backup_at": newest.timestamp,
-                "backup_id": newest.backup_id,
+                "status": "healthy" if latest.verified else "degraded",
+                "message": "Verified offsite snapshot exists",
+                "last_backup_at": latest.created_at,
+                "backup_id": latest.snapshot_id,
             }
         except Exception:
             return {
                 "status": "degraded",
-                "message": "Unable to determine backup status",
+                "message": "Unable to determine offsite backup status",
             }

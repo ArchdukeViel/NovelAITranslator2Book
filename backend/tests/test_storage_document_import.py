@@ -25,19 +25,19 @@ def test_metadata_defaults_include_translation_profiles(storage: StorageService)
         "novel1",
         {
             "title": "Imported",
-            "origin_type": "file",
-            "origin_uri_or_path": "C:/books/imported.epub",
-            "document_type": "epub",
-            "input_adapter_key": "epub",
+            "origin_type": "url",
+            "origin_uri_or_path": "https://example.com/story",
+            "document_type": "web_novel",
+            "input_adapter_key": "web",
         },
     )
 
     loaded = storage.load_metadata("novel1")
 
     assert loaded is not None
-    assert loaded["origin_type"] == "file"
-    assert loaded["document_type"] == "epub"
-    assert loaded["input_adapter_key"] == "epub"
+    assert loaded["origin_type"] == "url"
+    assert loaded["document_type"] == "web_novel"
+    assert loaded["input_adapter_key"] == "web"
     assert set(loaded["translation_profiles"]) == {
         "glossary_extraction",
         "glossary_translation",
@@ -74,11 +74,11 @@ def test_save_and_load_chapter_round_trips_document_unit_fields(storage: Storage
         "1",
         "Imported text",
         title="Unit 1",
-        input_adapter_key="text",
-        origin_type="file",
-        origin_uri_or_path="C:/books/chapter1.txt",
-        document_type="text",
-        unit_type="section",
+        input_adapter_key="web",
+        origin_type="url",
+        origin_uri_or_path="https://example.com/story",
+        document_type="web_novel",
+        unit_type="chapter",
         import_order=1,
         context_group_id="book-a",
         region_metadata=[{"page": 1}],
@@ -88,10 +88,10 @@ def test_save_and_load_chapter_round_trips_document_unit_fields(storage: Storage
     loaded = storage.load_chapter("novel1", "1")
 
     assert loaded is not None
-    assert loaded["input_adapter_key"] == "text"
-    assert loaded["origin_type"] == "file"
-    assert loaded["document_type"] == "text"
-    assert loaded["unit_type"] == "section"
+    assert loaded["input_adapter_key"] == "web"
+    assert loaded["origin_type"] == "url"
+    assert loaded["document_type"] == "web_novel"
+    assert loaded["unit_type"] == "chapter"
     assert loaded["import_order"] == 1
     assert loaded["context_group_id"] == "book-a"
     assert loaded["region_metadata"] == [{"page": 1}]

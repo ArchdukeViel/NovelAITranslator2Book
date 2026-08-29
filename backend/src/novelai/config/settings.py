@@ -14,8 +14,8 @@ GEMINI_DEFAULT_MODEL = "gemini-3.5-flash-lite"
 GEMINI_FALLBACK_MODEL = GEMINI_DEFAULT_MODEL
 
 
-def _default_novel_library_dir() -> Path:
-    return PROJECT_ROOT / "storage" / "novel_library"
+def _default_runtime_dir() -> Path:
+    return PROJECT_ROOT / "data" / "runtime"
 
 
 def _resolve_project_path(path: Path) -> Path:
@@ -59,48 +59,39 @@ class AppSettings(BaseSettings):
     ENV: str = "development"
     LOG_LEVEL: str = "INFO"
 
-    # --- Storage
-    # Backend type: "filesystem" (default) or "s3"
-    STORAGE_BACKEND: str = Field(
-        default="filesystem",
-        description="Storage backend type. filesystem (default) or s3.",
+    # --- R2 content storage and disposable runtime
+    R2_BUCKET: str = Field(
+        default="dokushodo",
+        description="Canonical Cloudflare R2 application bucket.",
     )
-    S3_BUCKET: str | None = Field(
+    R2_REGION: str = Field(
+        default="auto",
+        description="Cloudflare R2 signing region.",
+    )
+    R2_ENDPOINT: str | None = Field(
         default=None,
-        description="S3 bucket name. Required when STORAGE_BACKEND=s3.",
+        description="Cloudflare R2 account endpoint.",
     )
-    S3_REGION: str = Field(
-        default="us-east-1",
-        description="S3 region. Default us-east-1.",
-    )
-    S3_KEY_PREFIX: str = Field(
-        default="storage/novel_library",
-        description="Key prefix for all S3 objects. Defaults to the canonical library namespace.",
-    )
-    S3_ENDPOINT: str | None = Field(
-        default=None,
-        description="Custom S3 endpoint URL (e.g. MinIO, Cloudflare R2).",
-    )
-    S3_ACCESS_KEY_ID: SecretStr | None = Field(
-        default=None,
-        description="S3/R2 access key ID. Required for R2 and other S3-compatible targets without IAM.",
-    )
-    S3_SECRET_ACCESS_KEY: SecretStr | None = Field(
-        default=None,
-        description="S3/R2 secret access key. Required for R2 and other S3-compatible targets without IAM.",
-    )
-    S3_STORAGE_LIMIT_GB: float = Field(
+    R2_ACCESS_KEY_ID: SecretStr | None = Field(default=None)
+    R2_SECRET_ACCESS_KEY: SecretStr | None = Field(default=None)
+    R2_STORAGE_LIMIT_GB: float = Field(
         default=9.5,
-        description="Storage usage soft limit in GB. Warning at 90%, critical at 95%. Default 9.5 GB (under R2 free tier 10 GB).",
+        description="R2 application bucket soft limit in GB.",
     )
-    # Main runtime library: metadata, chapters, exports, preferences, logs.
-    NOVEL_LIBRARY_DIR: Path = Field(
-        default_factory=_default_novel_library_dir,
+    R2_BACKUP_BUCKET: str = Field(
+        default="dokushodo-backup",
+        description="Independent Cloudflare R2 recovery bucket.",
     )
+    R2_BACKUP_ENDPOINT: str | None = Field(default=None)
+    R2_BACKUP_ACCESS_KEY_ID: SecretStr | None = Field(default=None)
+    R2_BACKUP_SECRET_ACCESS_KEY: SecretStr | None = Field(default=None)
+    R2_SOURCE_ACCESS_KEY_ID: SecretStr | None = Field(default=None)
+    R2_SOURCE_SECRET_ACCESS_KEY: SecretStr | None = Field(default=None)
+    RUNTIME_DIR: Path = Field(default_factory=_default_runtime_dir)
 
-    @field_validator("NOVEL_LIBRARY_DIR", mode="after")
+    @field_validator("RUNTIME_DIR", mode="after")
     @classmethod
-    def _resolve_novel_library_dir(cls, value: Path) -> Path:
+    def _resolve_runtime_dir(cls, value: Path) -> Path:
         return _resolve_project_path(value)
 
     # --- Web
@@ -115,6 +106,24 @@ class AppSettings(BaseSettings):
     )
     JOB_WORKER_ENABLED: bool = False
     JOB_WORKER_POLL_SECONDS: float = 2.0
+    RUNTIME_TELEMETRY_SAMPLE_INTERVAL_SECONDS: float = Field(
+        default=0.25,
+        ge=0.05,
+        le=60.0,
+        description="Interval for bounded event-loop/process telemetry sampling; keep at the default until measured.",
+    )
+    RUNTIME_TELEMETRY_MAX_OBSERVATIONS: int = Field(
+        default=256,
+        ge=32,
+        le=4096,
+        description="Maximum runtime observations retained in-process; lower to 32 as the rollback value.",
+    )
+    RUNTIME_EVENT_LOOP_LAG_THRESHOLD_MS: float = Field(
+        default=1000.0,
+        ge=1.0,
+        le=60_000.0,
+        description="Operator stop threshold for sampled event-loop lag; this does not auto-restart workloads.",
+    )
     ACTIVITY_HISTORY_MAX_ENTRIES: int = Field(
         default=10_000,
         ge=100,
@@ -248,7 +257,12 @@ class AppSettings(BaseSettings):
     )
 
     # --- Translation
-    TRANSLATION_CONCURRENCY: int = 4
+    TRANSLATION_CONCURRENCY: int = Field(
+        default=4,
+        ge=1,
+        le=256,
+        description="Maximum in-flight provider chunk calls per translation pipeline.",
+    )
     TRANSLATION_CHAPTER_CONCURRENCY: int = Field(
         default=1,
         ge=1,
@@ -258,6 +272,37 @@ class AppSettings(BaseSettings):
             "orchestrator run. 1 preserves the previous sequential behavior. "
             "Upper bound keeps in-flight chapter work within a single worker process."
         ),
+    )
+    TRANSLATION_PERSISTENCE_EXPANSION_ENABLED: bool = Field(
+        default=False,
+        description=(
+            "Enable the measured multi-worker persistence profile. False is the rollback value and uses one worker "
+            "with no queued persistence work."
+        ),
+    )
+    TRANSLATION_PERSISTENCE_WORKERS: int = Field(
+        default=2,
+        ge=1,
+        le=8,
+        description="Bounded persistence worker count used only when expansion is enabled.",
+    )
+    TRANSLATION_PERSISTENCE_QUEUE_SIZE: int = Field(
+        default=8,
+        ge=0,
+        le=64,
+        description="Bounded persistence queue size used only when expansion is enabled; zero is the rollback value.",
+    )
+    TRANSLATION_PERSISTENCE_OBSERVATION_LIMIT: int = Field(
+        default=256,
+        ge=32,
+        le=4096,
+        description="Maximum persistence observations retained in-process.",
+    )
+    TRANSLATION_PERSISTENCE_SHUTDOWN_TIMEOUT_SECONDS: float = Field(
+        default=30.0,
+        ge=1.0,
+        le=300.0,
+        description="Maximum persistence drain time during shutdown; one second is the bounded rollback value.",
     )
     TRANSLATION_TARGET_CHARS_PER_CHUNK: int = 4500
     TRANSLATION_HARD_MAX_CHARS_PER_CHUNK: int = 7000
@@ -323,6 +368,7 @@ class AppSettings(BaseSettings):
     # --- Database
     DATABASE_URL: str | None = None
     MIGRATION_DATABASE_URL: str | None = None
+    DATABASE_BACKUP_URL: SecretStr | None = None
     DB_CONNECTION_MODE: Literal["direct", "session", "transaction"] = "direct"
     DB_POOL_SIZE: int = Field(default=5, ge=1)
     DB_MAX_OVERFLOW: int = Field(default=5, ge=0)
@@ -480,7 +526,7 @@ class AppSettings(BaseSettings):
     # --- Backups (M2c)
     BACKUP_ENABLED: bool = Field(
         default=False,
-        description="Enable scheduled backups. S3 storage requires an independent offsite target.",
+        description="Enable scheduled R2 backups to the independent recovery bucket.",
     )
     BACKUP_SCHEDULE_CRON: str = Field(
         default="0 2 * * *",
@@ -502,49 +548,23 @@ class AppSettings(BaseSettings):
         default=30,
         description="Maximum age in days for successful backups. Older backups are eligible for deletion.",
     )
-    BACKUP_S3_ENABLED: bool = Field(
+    BACKUP_SAFETY_GRACE_DAYS: int = Field(
+        default=7,
+        ge=0,
+        description="Minimum age for unreferenced R2 backup objects before collection.",
+    )
+    R2_BACKUP_ENABLED: bool = Field(
         default=False,
-        description="Copy scheduled backups to an independent S3-compatible bucket.",
+        description="Copy scheduled backups to the independent R2 recovery bucket.",
     )
-    BACKUP_S3_ENDPOINT_URL: str | None = Field(
-        default=None,
-        description="S3-compatible endpoint for the independent backup target.",
-    )
-    BACKUP_S3_REGION: str = Field(
-        default="auto",
-        description="Region for the independent S3-compatible backup target.",
-    )
-    BACKUP_S3_BUCKET: str | None = Field(
-        default=None,
-        description="Independent bucket for scheduled offsite snapshots.",
-    )
-    BACKUP_S3_PREFIX: str = Field(
-        default="snapshots",
-        description="Key prefix for committed offsite snapshots.",
-    )
-    BACKUP_S3_ACCESS_KEY_ID: SecretStr | None = Field(
-        default=None,
-        description="Access key for the independent S3-compatible backup target.",
-    )
-    BACKUP_S3_SECRET_ACCESS_KEY: SecretStr | None = Field(
-        default=None,
-        description="Secret key for the independent S3-compatible backup target.",
-    )
-    SNAPSHOT_SOURCE_S3_ACCESS_KEY_ID: SecretStr | None = Field(
-        default=None,
-        description="Read-only access key used only to inventory and read snapshot source objects.",
-    )
-    SNAPSHOT_SOURCE_S3_SECRET_ACCESS_KEY: SecretStr | None = Field(
-        default=None,
-        description="Read-only secret used only to inventory and read snapshot source objects.",
-    )
+    R2_BACKUP_PREFIX: str = Field(default="snapshots")
     SCHEDULED_JOB_LEASE_SECONDS: int = Field(default=900, ge=60)
 
     # --- Logical database recovery
     DATABASE_BACKUP_ENABLED: bool = False
     DATABASE_BACKUP_SCHEDULE_CRON: str = "0 1 * * *"
     DATABASE_BACKUP_TIMEZONE: str = "UTC"
-    DATABASE_BACKUP_S3_PREFIX: str = "database"
+    DATABASE_BACKUP_PREFIX: str = "database"
     DATABASE_BACKUP_RETENTION_DAYS: int = Field(default=30, ge=1)
     DATABASE_BACKUP_MIN_SUCCESSFUL_TO_KEEP: int = Field(default=3, ge=1)
     DATABASE_BACKUP_ENCRYPTION_KEY: SecretStr | None = None

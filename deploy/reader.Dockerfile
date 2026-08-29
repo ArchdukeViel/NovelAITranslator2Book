@@ -1,7 +1,7 @@
 # =============================================================================
 # Stage 1: Builder — install deps into an isolated prefix
 # =============================================================================
-FROM python:3.14.7-slim@sha256:ce40764625a4ff50df3548277632e7f96c4e77fe75fa848aae9885476e7df5a4 AS builder
+FROM python:3.14.6-slim@sha256:7bec7ddcddeff7975d6ba9b4be7dd6f6b2f55e7491539145e2978f7f97ce9144 AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -18,7 +18,7 @@ RUN apt-get update \
 COPY pyproject.toml readme.md ./
 COPY backend/src ./backend/src
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install ".[documents,gemini,db,worker,auth,s3]"
+    pip install ".[gemini,db,worker,auth,s3]"
 
 # Copy remaining backend artifacts (alembic, sql) after deps are cached — src already present
 COPY backend/alembic.ini ./backend/alembic.ini
@@ -28,14 +28,14 @@ COPY backend/sql ./backend/sql
 # =============================================================================
 # Stage 2: Runtime — lean image, no build tools
 # =============================================================================
-FROM python:3.14.7-slim@sha256:ce40764625a4ff50df3548277632e7f96c4e77fe75fa848aae9885476e7df5a4 AS runtime
+FROM python:3.14.6-slim@sha256:7bec7ddcddeff7975d6ba9b4be7dd6f6b2f55e7491539145e2978f7f97ce9144 AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONFAULTHANDLER=1 \
     WEB_HOST=0.0.0.0 \
     WEB_PORT=8001 \
-    NOVEL_LIBRARY_DIR=/app/storage/novel_library
+    RUNTIME_DIR=/app/data/runtime
 
 WORKDIR /app
 
@@ -50,8 +50,8 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app/backend ./backend
 COPY pyproject.toml readme.md ./
 
-RUN mkdir -p /app/storage/novel_library \
-    && chown -R novelai:novelai /app/storage
+RUN mkdir -p /app/data/runtime \
+    && chown -R novelai:novelai /app/data
 
 USER novelai
 

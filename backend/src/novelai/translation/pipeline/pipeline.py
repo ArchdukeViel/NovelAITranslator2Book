@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
@@ -63,6 +64,85 @@ def _append_event(context: PipelineState, event: dict[str, Any]) -> None:
     context.metadata["pipeline_events"] = context.pipeline_events
 
 
+_PIPELINE_TIMING_UNAVAILABLE = {
+    "novel_metadata_load": "orchestration metadata timing is not attached to pipeline stage events",
+    "glossary_load": "orchestration glossary timing is not attached to pipeline stage events",
+    "provider_wait": "provider wait timing is available only in process-level provider metrics",
+    "postgres_commit": "database transaction timing is not correlated to pipeline stage events",
+    "activity_state_update": "activity state timing is exposed by the activity database metrics",
+    "r2_transfer": "R2 operation counters are not attached to this pipeline context",
+}
+
+
+def _text_bytes(value: str | None) -> int:
+    return len(value.encode("utf-8")) if isinstance(value, str) else 0
+
+
+def _safe_counter(value: Any) -> int:
+    return max(0, int(value)) if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _timing_snapshot(context: PipelineState) -> dict[str, int]:
+    timing = context.metadata.get("pipeline_timing")
+    timing_map = timing if isinstance(timing, dict) else {}
+    usage = timing_map.get("provider_usage")
+    usage_map = usage if isinstance(usage, dict) else {}
+    return {
+        "raw_bytes": _text_bytes(context.raw_text),
+        "normalized_bytes": _text_bytes(context.normalized_text),
+        "chunk_input_bytes": sum(_text_bytes(chunk.source_text) for chunk in context.translation_chunks),
+        "translated_bytes": sum(_text_bytes(text) for text in context.translations),
+        "final_bytes": _text_bytes(context.final_text),
+        "input_tokens": _safe_counter(usage_map.get("input_tokens")),
+        "output_tokens": _safe_counter(usage_map.get("output_tokens")),
+        "retry_count": _safe_counter(timing_map.get("provider_retry_count")),
+        "db_rows": _safe_counter(timing_map.get("db_rows")),
+        "r2_operation_count": _safe_counter(timing_map.get("r2_operation_count")),
+        "compressed_bytes": _safe_counter(timing_map.get("compressed_bytes")),
+        "concurrency": _safe_counter(timing_map.get("concurrency")),
+    }
+
+
+def _stage_io_bytes(stage_name: str, before: dict[str, int], after: dict[str, int]) -> tuple[int | None, int | None]:
+    mapping = {
+        "FetchStage": (None, after["raw_bytes"]),
+        "ParseStage": (before["raw_bytes"], after["normalized_bytes"]),
+        "SmartSegmentStage": (before["normalized_bytes"], after["chunk_input_bytes"]),
+        "TranslateStage": (before["chunk_input_bytes"], after["translated_bytes"]),
+        "TranslationQAStage": (before["translated_bytes"], after["translated_bytes"]),
+        "CacheFlushStage": (before["translated_bytes"], after["translated_bytes"]),
+        "PostProcessStage": (before["translated_bytes"], after["final_bytes"]),
+    }
+    return mapping.get(stage_name, (None, None))
+
+
+def _timing_fields(
+    context: PipelineState,
+    *,
+    stage_name: str,
+    before: dict[str, int],
+    duration_ms: float,
+) -> dict[str, Any]:
+    after = _timing_snapshot(context)
+    input_bytes, output_bytes = _stage_io_bytes(stage_name, before, after)
+    fields: dict[str, Any] = {
+        "operation": "pipeline_stage",
+        "duration_ms": duration_ms,
+        "input_bytes": input_bytes,
+        "output_bytes": output_bytes,
+        "compressed_bytes": after["compressed_bytes"] - before["compressed_bytes"] or None,
+        "input_tokens": after["input_tokens"] - before["input_tokens"] or None,
+        "output_tokens": after["output_tokens"] - before["output_tokens"] or None,
+        "retry_count": after["retry_count"] - before["retry_count"] or None,
+        "concurrency": after["concurrency"] or None,
+        "db_rows": after["db_rows"] - before["db_rows"] or None,
+        "r2_operation_count": after["r2_operation_count"] - before["r2_operation_count"] or None,
+    }
+    if stage_name not in {"FetchStage", "ParseStage", "SmartSegmentStage", "TranslateStage", "TranslationQAStage"}:
+        fields["unavailable_reason"] = "stage-specific external timing is not correlated"
+    return fields
+
+
 class TranslationPipeline:
     """Orchestrates a series of transformation stages."""
 
@@ -78,11 +158,15 @@ class TranslationPipeline:
         context = (
             initial_context if isinstance(initial_context, PipelineState) else PipelineState.from_dict(initial_context)
         )
+        context.metadata.setdefault("pipeline_timing_schema_version", 1)
+        context.metadata.setdefault("pipeline_timing_unavailable", dict(_PIPELINE_TIMING_UNAVAILABLE))
 
         for stage in self.stages:
             stage_name = stage.__class__.__name__
             status_before = context.current_stage
             context.current_stage = stage_name
+            timing_before = _timing_snapshot(context)
+            stage_started = time.perf_counter()
             _append_event(
                 context,
                 context.trace_event(
@@ -121,6 +205,12 @@ class TranslationPipeline:
                         status_after="failed",
                         error_code=str(error["error_code"]),
                         message=str(exc),
+                        **_timing_fields(
+                            context,
+                            stage_name=stage_name,
+                            before=timing_before,
+                            duration_ms=(time.perf_counter() - stage_started) * 1000,
+                        ),
                     ),
                 )
                 raise PipelineStageError(
@@ -137,6 +227,12 @@ class TranslationPipeline:
                     status_before="running",
                     status_after=_stage_status_after(stage_name),
                     message=f"{stage_name} completed.",
+                    **_timing_fields(
+                        context,
+                        stage_name=stage_name,
+                        before=timing_before,
+                        duration_ms=(time.perf_counter() - stage_started) * 1000,
+                    ),
                 ),
             )
 

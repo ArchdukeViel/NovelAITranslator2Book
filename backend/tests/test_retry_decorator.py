@@ -45,9 +45,7 @@ class TestBackoffCalculator:
         assert calc.calculate(3) == 5.0
 
     def test_max_delay_cap(self) -> None:
-        cfg = RetryConfig(
-            initial_delay=1.0, max_delay=10.0, strategy=RetryStrategy.EXPONENTIAL, jitter=False
-        )
+        cfg = RetryConfig(initial_delay=1.0, max_delay=10.0, strategy=RetryStrategy.EXPONENTIAL, jitter=False)
         calc = BackoffCalculator(cfg)
         assert calc.calculate(10) == 10.0  # capped
 

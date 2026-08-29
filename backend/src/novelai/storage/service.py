@@ -6,60 +6,16 @@ import json
 import logging
 import os
 import re
+import shutil
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState, ChapterStateTransition
 from novelai.core.platform import ChapterVersionKind
-from novelai.core.security import decode_physical_stem
-from novelai.storage.chapters import (
-    _chapter_dir,
-    _chapter_path,
-    _load_chapter_bundle,
-    _persist_chapter_bundle,
-    _translation_active_pointer_path,
-    _translation_overlay_dir,
-    _translation_overlay_path,
-    build_chapter_payload,
-    count_stored_chapters,
-    existing_chapter_hash,
-    get_chapter_progress,
-    get_chapters_by_state,
-    get_chapters_with_errors,
-    get_scraping_progress,
-    list_stored_chapters,
-    load_chapter,
-    query_chapters,
-    save_chapter,
-)
-from novelai.storage.generations import (
-    _copy_asset_to_generation,
-    _generation_dir,
-    _generations_dir,
-    activate_generation,
-    commit_generation,
-    commit_generation_recovery,
-    create_generation_stage,
-    get_active_generation,
-    list_generations,
-    load_generation_manifest,
-    record_refresh_failed_chapter,
-    record_staged_chapter,
-    record_unavailable_chapter,
-    resolve_active_generation_id,
-    rollback_generation,
-    seed_generation_from_active,
-    stage_generation_chapter,
-    stage_generation_chapter_index,
-    stage_generation_image,
-    stage_generation_metadata,
-    stage_generation_source_state,
-    validate_generation_activation,
-)
-from novelai.storage.glossary import load_glossary, save_glossary
+from novelai.core.security import validate_storage_identifier
 from novelai.storage.jobs import (
     _get_checkpoints_dir,
     _get_state_dir,
@@ -71,49 +27,104 @@ from novelai.storage.jobs import (
     save_chapter_state,
     update_chapter_state,
 )
-from novelai.storage.media import (
-    _asset_relative_path,
-    _chapter_image_dir,
-    _guess_asset_suffix,
-    _load_media_overlay,
-    _normalize_media_fields,
-    _save_media_overlay,
-    clear_chapter_image_assets,
-    load_chapter_media_state,
-    resolve_asset_path,
-    save_chapter_image_asset,
-    save_chapter_media_state,
+from novelai.storage.r2_catalog import (
+    activate_translated_chapter_version as _r2_activate_translated_chapter_version,
 )
-from novelai.storage.novels import (
-    _backup_metadata_file,
-    _compute_folder_name,
-    _ensure_novel_dir,
-    _folder_has_novel_data,
-    _folder_in_use_by_other_novel,
-    _folder_path,
-    _get_folder_name,
-    _index_path,
-    _load_index,
-    _load_latest_valid_metadata_backup,
-    _metadata_backup_dir,
-    _metadata_history_entry,
-    _normalize_library_novel_id,
-    _normalize_loaded_metadata,
-    _novel_dir,
-    _persist_index,
-    _recover_metadata_from_backup,
-    _validate_folder_name,
-    delete_novel,
-    list_metadata_history,
-    list_novels,
-    load_metadata,
-    load_metadata_for_crawl,
-    load_metadata_snapshot,
-    load_source_state,
-    resolve_onboarding_status,
-    save_metadata,
-    save_source_state,
-    update_onboarding_status,
+from novelai.storage.r2_catalog import (
+    clear_chapter_image_assets as _r2_clear_chapter_image_assets,
+)
+from novelai.storage.r2_catalog import (
+    count_stored_chapters as _r2_count_stored_chapters,
+)
+from novelai.storage.r2_catalog import (
+    count_translated_chapters as _r2_count_translated_chapters,
+)
+from novelai.storage.r2_catalog import (
+    delete_novel as _r2_delete_novel,
+)
+from novelai.storage.r2_catalog import (
+    get_novel_chapter_summary as _r2_get_novel_chapter_summary,
+)
+from novelai.storage.r2_catalog import (
+    list_metadata_history as _r2_list_metadata_history,
+)
+from novelai.storage.r2_catalog import (
+    list_novels as _r2_list_novels,
+)
+from novelai.storage.r2_catalog import (
+    list_stored_chapters as _r2_list_stored_chapters,
+)
+from novelai.storage.r2_catalog import (
+    list_translated_chapter_versions as _r2_list_translated_chapter_versions,
+)
+from novelai.storage.r2_catalog import (
+    list_translated_chapters as _r2_list_translated_chapters,
+)
+from novelai.storage.r2_catalog import (
+    load_chapter as _r2_load_chapter,
+)
+from novelai.storage.r2_catalog import (
+    load_chapter_media_state as _r2_load_chapter_media_state,
+)
+from novelai.storage.r2_catalog import (
+    load_glossary as _r2_load_glossary,
+)
+from novelai.storage.r2_catalog import (
+    load_metadata as _r2_load_metadata,
+)
+from novelai.storage.r2_catalog import (
+    load_metadata_snapshot as _r2_load_metadata_snapshot,
+)
+from novelai.storage.r2_catalog import (
+    load_source_state as _r2_load_source_state,
+)
+from novelai.storage.r2_catalog import (
+    load_translated_chapter as _r2_load_translated_chapter,
+)
+from novelai.storage.r2_catalog import (
+    load_translated_chapter_by_version_id as _r2_load_translated_chapter_by_version_id,
+)
+from novelai.storage.r2_catalog import (
+    load_translation_edit_history as _r2_load_translation_edit_history,
+)
+from novelai.storage.r2_catalog import (
+    resolve_active_generation_id as _r2_resolve_active_generation_id,
+)
+from novelai.storage.r2_catalog import (
+    resolve_asset_path as _r2_resolve_asset_path,
+)
+from novelai.storage.r2_catalog import (
+    resolve_onboarding_status as _r2_resolve_onboarding_status,
+)
+from novelai.storage.r2_catalog import (
+    resolve_storage_novel_id as _r2_resolve_storage_novel_id,
+)
+from novelai.storage.r2_catalog import (
+    save_chapter as _r2_save_chapter,
+)
+from novelai.storage.r2_catalog import (
+    save_chapter_image_asset as _r2_save_chapter_image_asset,
+)
+from novelai.storage.r2_catalog import (
+    save_chapter_media_state as _r2_save_chapter_media_state,
+)
+from novelai.storage.r2_catalog import (
+    save_edited_translation as _r2_save_edited_translation,
+)
+from novelai.storage.r2_catalog import (
+    save_glossary as _r2_save_glossary,
+)
+from novelai.storage.r2_catalog import (
+    save_metadata as _r2_save_metadata,
+)
+from novelai.storage.r2_catalog import (
+    save_source_state as _r2_save_source_state,
+)
+from novelai.storage.r2_catalog import (
+    save_translated_chapter as _r2_save_translated_chapter,
+)
+from novelai.storage.r2_catalog import (
+    update_onboarding_status as _r2_update_onboarding_status,
 )
 from novelai.storage.runtime_contracts import (
     _fetch_cache_dir,
@@ -126,6 +137,7 @@ from novelai.storage.runtime_contracts import (
     fetch_cache_conditional_headers,
     list_chunk_attempt_records,
     list_provider_request_records,
+    load_translation_run_manifest,
     read_fetch_cache_entry,
     read_translation_bundle,
     read_translation_chunks,
@@ -136,6 +148,7 @@ from novelai.storage.runtime_contracts import (
     save_translation_bundle,
     save_translation_chunks,
     save_translation_output,
+    save_translation_run_manifest,
     update_translation_chunk_status,
 )
 from novelai.storage.traceability import (
@@ -149,22 +162,7 @@ from novelai.storage.traceability import (
     load_scheduler_state,
     save_scheduler_state,
     upsert_chunk_state,
-)
-from novelai.storage.translations import (
-    _load_translation_overlay,
-    _persist_translation_overlay,
-    _translation_versions_from_payload_compat,
-    activate_translated_chapter_version,
-    count_translated_chapters,
-    list_translated_chapter_versions,
-    list_translated_chapters,
-    load_translated_chapter,
-    load_translated_chapter_by_version_id,
-    load_translation_edit_history,
-    load_translation_run_manifest,
-    save_edited_translation,
-    save_translated_chapter,
-    save_translation_run_manifest,
+    upsert_chunk_states,
 )
 
 logger = logging.getLogger(__name__)
@@ -189,24 +187,61 @@ def _fsync_directory(directory: Path) -> None:
 
 
 class StorageService:
-    """Filesystem-backed storage service.
+    _test_db_session: Any
 
-    The public API is exposed through this facade while domain implementations
-    live in smaller storage modules.
+    if TYPE_CHECKING:
+
+        def activate_translated_chapter_version(self, *args: Any, **kwargs: Any) -> Any: ...
+        def build_chapter_payload(self, *args: Any, **kwargs: Any) -> Any: ...
+        def clear_chapter_image_assets(self, *args: Any, **kwargs: Any) -> Any: ...
+        def count_stored_chapters(self, *args: Any, **kwargs: Any) -> Any: ...
+        def count_translated_chapters(self, *args: Any, **kwargs: Any) -> Any: ...
+        def delete_novel(self, *args: Any, **kwargs: Any) -> Any: ...
+        def existing_chapter_hash(self, *args: Any, **kwargs: Any) -> Any: ...
+        def get_chapters_by_state(self, *args: Any, **kwargs: Any) -> Any: ...
+        def get_chapter_progress(self, *args: Any, **kwargs: Any) -> Any: ...
+        def get_chapters_with_errors(self, *args: Any, **kwargs: Any) -> Any: ...
+        def get_novel_chapter_summary(self, *args: Any, **kwargs: Any) -> Any: ...
+        def get_scraping_progress(self, *args: Any, **kwargs: Any) -> Any: ...
+        def list_metadata_history(self, *args: Any, **kwargs: Any) -> Any: ...
+        def list_novels(self, *args: Any, **kwargs: Any) -> Any: ...
+        def list_stored_chapters(self, *args: Any, **kwargs: Any) -> Any: ...
+        def list_translated_chapter_versions(self, *args: Any, **kwargs: Any) -> Any: ...
+        def list_translated_chapters(self, *args: Any, **kwargs: Any) -> Any: ...
+        def load_chapter(self, *args: Any, **kwargs: Any) -> Any: ...
+        def load_chapter_media_state(self, *args: Any, **kwargs: Any) -> Any: ...
+        def load_glossary(self, *args: Any, **kwargs: Any) -> Any: ...
+        def load_metadata(self, *args: Any, **kwargs: Any) -> Any: ...
+        def load_metadata_for_crawl(self, *args: Any, **kwargs: Any) -> Any: ...
+        def load_metadata_snapshot(self, *args: Any, **kwargs: Any) -> Any: ...
+        def load_source_state(self, *args: Any, **kwargs: Any) -> Any: ...
+        def load_translated_chapter(self, *args: Any, **kwargs: Any) -> Any: ...
+        def load_translated_chapter_by_version_id(self, *args: Any, **kwargs: Any) -> Any: ...
+        def load_translation_edit_history(self, *args: Any, **kwargs: Any) -> Any: ...
+        def query_chapters(self, *args: Any, **kwargs: Any) -> Any: ...
+        def resolve_active_generation_id(self, *args: Any, **kwargs: Any) -> Any: ...
+        def resolve_asset_path(self, *args: Any, **kwargs: Any) -> Any: ...
+        def resolve_onboarding_status(self, *args: Any, **kwargs: Any) -> Any: ...
+        def save_chapter(self, *args: Any, **kwargs: Any) -> Any: ...
+        def save_chapter_image_asset(self, *args: Any, **kwargs: Any) -> Any: ...
+        def save_chapter_media_state(self, *args: Any, **kwargs: Any) -> Any: ...
+        def save_edited_translation(self, *args: Any, **kwargs: Any) -> Any: ...
+        def save_glossary(self, *args: Any, **kwargs: Any) -> Any: ...
+        def save_metadata(self, *args: Any, **kwargs: Any) -> Any: ...
+        def save_source_state(self, *args: Any, **kwargs: Any) -> Any: ...
+        def save_translated_chapter(self, *args: Any, **kwargs: Any) -> Any: ...
+        def update_onboarding_status(self, *args: Any, **kwargs: Any) -> Any: ...
+
+    """R2-backed content service with a stable domain-facing facade.
+
+    `Path` values used internally are logical object-key paths only. They are
+    never treated as local content paths when the production R2 backend is in
+    use. Runtime/cache/checkpoint services use `settings.RUNTIME_DIR` instead.
     """
 
-    INDEX_FILENAME = "index.json"
-    CHAPTERS_DIRNAME = "chapters"
     SCHEMA_VERSION = 2
     OCR_STATUSES = {"pending", "reviewed", "skipped", "failed"}
     REEMBED_STATUSES = {"pending", "completed", "failed", "skipped"}
-
-    @staticmethod
-    def _sanitize_folder_name(name: str) -> str:
-        """Create a filesystem-safe folder name from an arbitrary title."""
-        name = name.strip().replace(" ", "_")
-        name = re.sub(r"[^A-Za-z0-9_\-\.]+", "", name)
-        return name or "novel"
 
     @staticmethod
     def _hash_text(text: str) -> str:
@@ -276,83 +311,62 @@ class StorageService:
                 return stripped
         return default
 
-    @staticmethod
-    def logical_id_from_stem(stem: str) -> str:
-        """Convert a physical filename stem to a logical chapter ID.
-
-        ``0001`` (zero-padded) → ``1``, ``kakuyomu%3A123`` →
-        ``kakuyomu:123``, legacy ``abc`` → ``abc``.
-        """
-        try:
-            return str(int(stem))
-        except ValueError, TypeError:
-            return decode_physical_stem(stem)
-
-    def _content_root(self, novel_id: str) -> Path:
-        """Return the directory holding a novel's active content snapshot.
-
-        When an active generation exists:
-        - Raw reads (chapters, images) resolve through the active generation
-        - Committed generations are byte-immutable; they are never written to
-        - New raw writes must use staging (``generations/<gen-id>/``)
-        - Mutable translations/media use per-novel overlays
-          (``translations/``, ``media/``) which are composed over the active
-          generation at read time
-
-        When no active generation exists, the legacy novel-directory layout is
-        used for reads and writes.
-
-        Control artifacts (folder index, metadata backups, chapter state,
-        checkpoints, ``generations/`` itself) always stay in the novel
-        directory and are never generation-scoped.
-        """
-        active_gen_id = resolve_active_generation_id(self, novel_id)
-        if active_gen_id is not None:
-            return self._generations_dir(novel_id) / active_gen_id
-        return self._novel_dir(novel_id)
-
     def __init__(self, base_dir: Path | None = None, backend: Any | None = None) -> None:
         if backend is not None:
             self._backend = backend
         elif base_dir is not None:
-            from novelai.storage.backends.filesystem import FilesystemBackend
+            if settings.ENV != "test":
+                raise ValueError("StorageService requires an explicit R2 backend outside test isolation")
+            # Tests use the same R2 semantics as production, with an isolated
+            # in-memory object store. The path remains a logical test root for
+            # runtime helper services and is never used as canonical storage.
+            from novelai.storage.backends.r2 import InMemoryR2Storage
 
-            self._backend = FilesystemBackend(base_dir.resolve())
+            self._backend = InMemoryR2Storage()
+        elif settings.ENV == "test":
+            from novelai.storage.backends.r2 import InMemoryR2Storage
+
+            self._backend = InMemoryR2Storage()
         else:
-            from novelai.storage.backends import get_storage_backend
+            from novelai.storage.backends import get_r2_storage
 
-            self._backend = get_storage_backend()
+            self._backend = get_r2_storage()
 
-        self.base_dir = (base_dir or settings.NOVEL_LIBRARY_DIR).resolve()
-        self._backend.mkdirs(self.base_dir)
+        if getattr(self._backend, "_BACKING", None) != "r2":
+            raise TypeError("StorageService requires the Cloudflare R2 backend")
+        # This path is only the disposable runtime root used by checkpoints,
+        # traceability, and fetch/translation coordination. Canonical novel
+        # content is never rooted beneath it.
+        self.base_dir = (base_dir or settings.RUNTIME_DIR).resolve()
+        self._initial_runtime_dir = settings.RUNTIME_DIR.resolve()
 
-        self.novels_dir = self.base_dir / "novels"
-        self._backend.mkdirs(self.novels_dir)
-
-    # ── backend-abstracted I/O helpers ──────────────────────────────
+    # Runtime and R2 boundary helpers.
 
     def _rel(self, path: Path) -> str:
         """Convert absolute Path to backend-relative key."""
         return str(path.relative_to(self.base_dir))
 
     def _read_text_optional(self, path: Path) -> str | None:
-        """Read text content if object exists, avoiding HEAD+GET round trips."""
+        """Read an optional disposable runtime file."""
+        if not self._is_runtime_path(path):
+            raise RuntimeError("Canonical content must be read through PostgreSQL references and exact R2 keys")
         try:
-            return self._backend.load(self._rel(path)).decode("utf-8")
+            return path.read_text(encoding="utf-8")
         except FileNotFoundError:
             return None
-        except Exception as exc:
-            if type(exc).__name__ in {"NoSuchKey", "ClientError", "NotFound"}:
-                return None
-            raise
 
     def _read_text(self, path: Path) -> str:
-        """Read text content via storage backend."""
-        return self._backend.load(self._rel(path)).decode("utf-8")
+        """Read a disposable runtime file."""
+        if not self._is_runtime_path(path):
+            raise RuntimeError("Canonical content must be read through PostgreSQL references and exact R2 keys")
+        return path.read_text(encoding="utf-8")
 
     def _write_text(self, path: Path, content: str) -> None:
-        """Write text content via storage backend."""
-        self._backend.save(self._rel(path), content.encode("utf-8"))
+        """Write a disposable runtime file."""
+        if not self._is_runtime_path(path):
+            raise RuntimeError("Canonical content must be written as an immutable R2 artifact")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
 
     def _write_text_atomic(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
         """Write ``content`` to ``path`` atomically.
@@ -362,20 +376,18 @@ class StorageService:
         partial file. Best-effort fsyncs the parent directory and removes the
         temp file on failure before the rename.
 
-        For non-local backends (e.g. S3/R2), falls back to direct write since
-        atomic rename is not supported.
+        Canonical R2 content never uses this method; it is limited to
+        disposable local runtime files.
         """
-        backing = getattr(self._backend, "_BACKING", "filesystem")
-        if backing == "s3":
-            self._write_text(path, content)
-            return
+        if not self._is_runtime_path(path):
+            raise RuntimeError("Canonical content must not use filesystem atomic rename")
         from novelai.utils.filesystem import replace_with_retry
 
-        self._backend.mkdirs(self._rel(path.parent))
+        path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
         replaced = False
         try:
-            self._backend.save(self._rel(temp_path), content.encode(encoding))
+            temp_path.write_text(content, encoding=encoding)
             # Bounded retry for transient Windows WinError-5 file locks so an
             # antivirus/reader-held handle cannot flake the atomic rename.
             replace_with_retry(temp_path, path)
@@ -393,38 +405,35 @@ class StorageService:
         self._write_text_atomic(path, json.dumps(payload, ensure_ascii=False, indent=2), encoding=encoding)
 
     def _path_exists(self, path: Path) -> bool:
-        """Check existence of an exact object via storage backend."""
-        return self._backend.exists(self._rel(path))
+        """Check an exact disposable runtime file."""
+        if not self._is_runtime_path(path):
+            raise RuntimeError("Canonical content existence is represented by PostgreSQL references")
+        return path.exists()
 
     def _is_dir_present(self, path: Path) -> bool:
         """Return True when at least one descendant object exists under *path*.
 
-        Unlike ``_path_exists`` (exact-key check), this tests logical-directory
-        presence.  Works for S3/R2 where directories are virtual prefixes with
-        no marker object.
+        This helper is limited to disposable local runtime directories.
         """
-        prefix = str(self._rel(path))
-        if not prefix.endswith("/"):
-            prefix += "/"
-        return self._backend.has_keys(prefix)
+        if not self._is_runtime_path(path):
+            raise RuntimeError("Canonical content directories do not exist; use exact R2 keys")
+        return path.is_dir() and any(path.iterdir())
 
     def _unlink_path(self, path: Path) -> None:
-        """Delete file via storage backend."""
-        self._backend.delete(self._rel(path))
+        """Delete a disposable runtime file."""
+        if not self._is_runtime_path(path):
+            raise RuntimeError("Canonical R2 artifacts are immutable and are never unlinked here")
+        path.unlink(missing_ok=True)
 
     def _mkdirs(self, path: Path) -> None:
-        """Create directory via storage backend."""
-        self._backend.mkdirs(self._rel(path))
+        """Create a disposable runtime directory."""
+        if not self._is_runtime_path(path):
+            raise RuntimeError("Canonical R2 prefixes are virtual and do not use mkdir")
+        path.mkdir(parents=True, exist_ok=True)
 
     def probe(self) -> bool:
         """Verify configured backend write/read/delete behavior."""
-        probe_path = Path(".healthcheck") / f"{uuid.uuid4().hex}.json"
-        payload = b'{"status":"ok"}'
-        try:
-            self._backend.save(probe_path, payload)
-            return self._backend.load(probe_path) == payload
-        finally:
-            self._backend.delete(probe_path)
+        return self.probe_readiness()
 
     def probe_readiness(self) -> bool:
         """Check backend availability without mutating storage.
@@ -441,33 +450,28 @@ class StorageService:
 
     def _list_dir(self, path: Path) -> list[Path]:
         """List immediate children via storage backend."""
-        return sorted(self.base_dir / key for key in self._backend.list_keys(self._rel(path)))
+        if not self._is_runtime_path(path):
+            raise RuntimeError("Canonical R2 prefixes are not local directories")
+        return sorted(path.iterdir()) if path.is_dir() else []
 
     def _glob(self, path: Path, pattern: str) -> list[Path]:
         """List children matching glob pattern via storage backend."""
         import fnmatch
 
-        return sorted(
-            self.base_dir / key
-            for key in self._backend.list_keys(self._rel(path))
-            if fnmatch.fnmatch(Path(key).name, pattern)
-        )
+        if not self._is_runtime_path(path):
+            raise RuntimeError("Canonical R2 prefixes are not local directories")
+        return sorted(item for item in path.iterdir() if fnmatch.fnmatch(item.name, pattern)) if path.is_dir() else []
 
     def _rmtree(self, path: Path) -> None:
         """Remove directory tree via storage backend."""
-        prefix = self._rel(path)
-        for key in self._backend.list_keys(prefix, recursive=True):
-            self._backend.delete(key)
+        if not self._is_runtime_path(path):
+            raise RuntimeError("Canonical R2 artifacts are immutable and are never removed as a local tree")
+        if path.exists():
+            shutil.rmtree(path)
 
     def list_keys_under(self, prefix: str | Path, *, recursive: bool = True) -> list[str]:
-        """Public: list all keys under *prefix* (recursive by default).
+        """List R2 keys for diagnostics and backup tooling only."""
 
-        Returns backend-relative keys (e.g. ``novels/my-novel/chapters/0001.json``).
-
-        Accepts POSIX strings or :class:`pathlib.Path`. Windows-style
-        backslashes in ``Path`` arguments are normalized to forward slashes
-        so that R2/S3 backend keys never inherit host filesystem semantics.
-        """
         if isinstance(prefix, Path):
             prefix_str = prefix.as_posix()
         else:
@@ -477,11 +481,8 @@ class StorageService:
         return self._backend.list_keys(prefix_str, recursive=recursive)
 
     def read_payload(self, key: str) -> dict[str, Any] | None:
-        """Public: read and JSON-decode a single object.
+        """Read and decode one JSON object for diagnostics and backup tooling."""
 
-        Returns ``None`` when the object is missing, unreadable, or not a
-        JSON object.  Never raises.
-        """
         try:
             raw = self._backend.load(key)
         except FileNotFoundError, OSError:
@@ -492,18 +493,166 @@ class StorageService:
             return None
         return data if isinstance(data, dict) else None
 
-    def runtime_path(self, *parts: str) -> Path:
-        """Resolve path under runtime/ via storage base_dir.
+    def _r2_artifacts(self) -> Any:
+        from novelai.storage.artifacts import R2ArtifactRepository
+        from novelai.storage.backends.r2 import R2Storage
 
-        ponytail: returns absolute Path; direct OS ops bypass backend.
-        Add backend-abstracted runtime I/O when non-filesystem backends
-        are needed for runtime data.
+        if not isinstance(self._backend, R2Storage):
+            raise RuntimeError("Immutable artifact methods require the R2 backend")
+        return R2ArtifactRepository(self._backend)
+
+    def resolve_storage_novel_id(self, novel_id: str) -> str:
+        """Resolve a public/source slug to the immutable PostgreSQL ID for R2 keys."""
+
+        return _r2_resolve_storage_novel_id(self, novel_id)
+
+    @property
+    def r2_backend(self) -> Any:
+        """Return the canonical R2 backend for storage-domain services."""
+
+        from novelai.storage.backends.r2 import R2Storage
+
+        if not isinstance(self._backend, R2Storage):
+            raise RuntimeError("This operation requires the canonical R2 backend")
+        return self._backend
+
+    def save_raw_chapter_artifact(
+        self,
+        novel_id: str,
+        chapter_id: str,
+        text: str,
+        *,
+        title: str | None = None,
+        source_key: str | None = None,
+        source_url: str | None = None,
+        artifact_payload: dict[str, Any] | None = None,
+        storage_novel_id: str | None = None,
+    ) -> Any:
+        """Write one immutable R2 raw chapter artifact and return its reference."""
+
+        from novelai.storage.artifacts import StoredArtifact
+
+        payload = dict(artifact_payload) if isinstance(artifact_payload, dict) else {}
+        payload.setdefault("schema_version", self.SCHEMA_VERSION)
+        payload.setdefault("id", str(chapter_id))
+        payload.setdefault("title", title)
+        payload.setdefault("source_key", source_key)
+        payload.setdefault("source_url", source_url)
+        payload.setdefault(
+            "raw",
+            {
+                "text": text,
+                "paragraphs": self._text_paragraphs(text),
+            },
+        )
+        raw_payload = payload.get("raw")
+        if not isinstance(raw_payload, dict):
+            raw_payload = {"text": text, "paragraphs": self._text_paragraphs(text)}
+            payload["raw"] = raw_payload
+        raw_payload.setdefault("text", text)
+        raw_payload.setdefault("paragraphs", self._text_paragraphs(text))
+        stored = self._r2_artifacts().put_json(
+            storage_novel_id=storage_novel_id or self.resolve_storage_novel_id(novel_id),
+            kind="chapters",
+            identity=str(chapter_id),
+            payload=payload,
+        )
+        return StoredArtifact(
+            key=stored.key,
+            logical_sha256=stored.logical_sha256,
+            size_bytes=stored.size_bytes,
+            created=stored.created,
+        )
+
+    def _is_runtime_path(self, path: Path) -> bool:
+        """Return whether ``path`` is inside the disposable local runtime root."""
+
+        if getattr(self._backend, "_BACKING", "r2") != "r2":
+            return False
+        runtime_root = self._runtime_root()
+        try:
+            path.resolve().relative_to(runtime_root.resolve())
+        except ValueError:
+            return False
+        return True
+
+    def _runtime_root(self) -> Path:
+        """Return the current disposable runtime root for this facade.
+
+        Tests and isolated tools may temporarily redirect ``settings.RUNTIME_DIR``
+        after constructing a storage facade. Honor that redirect while keeping
+        explicit storage roots isolated beneath ``<base_dir>/runtime`` by
+        default.
         """
-        return self.base_dir / "runtime" / Path(*parts)
+
+        configured_root = settings.RUNTIME_DIR.resolve()
+        if configured_root != self._initial_runtime_dir:
+            return configured_root
+        if self.base_dir == configured_root:
+            return configured_root
+        return (self.base_dir / "runtime").resolve()
+
+    def save_translation_artifact(
+        self,
+        novel_id: str,
+        chapter_id: str,
+        text: str,
+        *,
+        provider_key: str | None = None,
+        provider_model: str | None = None,
+        source_hash: str | None = None,
+        translation_run_id: str | None = None,
+        raw_generation_id: str | None = None,
+        glossary_hash: str | None = None,
+        prompt_template_version: str | None = None,
+        artifact_payload: dict[str, Any] | None = None,
+        storage_novel_id: str | None = None,
+    ) -> Any:
+        """Write one immutable R2 translation artifact and return its reference."""
+
+        from novelai.storage.artifacts import StoredArtifact
+
+        payload = dict(artifact_payload) if isinstance(artifact_payload, dict) else {}
+        payload.update(
+            {
+                "schema_version": self.SCHEMA_VERSION,
+                "chapter_id": str(chapter_id),
+                "text": text,
+                "paragraphs": self._text_paragraphs(text),
+                "provider_key": provider_key,
+                "provider_model": provider_model,
+                "source_content_hash": source_hash,
+                "translation_run_id": translation_run_id,
+                "raw_generation_id": raw_generation_id,
+                "glossary_hash": glossary_hash,
+                "prompt_template_version": prompt_template_version,
+            }
+        )
+        stored = self._r2_artifacts().put_json(
+            storage_novel_id=storage_novel_id or self.resolve_storage_novel_id(novel_id),
+            kind="translations",
+            identity=str(chapter_id),
+            payload=payload,
+        )
+        return StoredArtifact(
+            key=stored.key,
+            logical_sha256=stored.logical_sha256,
+            size_bytes=stored.size_bytes,
+            created=stored.created,
+        )
+
+    def load_r2_json_artifact(self, key: str) -> dict[str, Any]:
+        """Load one exact immutable R2 JSON key; never enumerate a prefix."""
+
+        return self._r2_artifacts().load_json(key)
+
+    def runtime_path(self, *parts: str) -> Path:
+        """Resolve a disposable runtime path outside the R2 object namespace."""
+        return self._runtime_root() / Path(*parts)
 
     def backups_path(self, *parts: str) -> Path:
-        """Resolve path under backups/ via storage base_dir."""
-        return self.base_dir / "backups" / Path(*parts)
+        """Resolve a disposable local backup-work path."""
+        return self.runtime_path("backups", *parts)
 
     @staticmethod
     def _normalize_image_manifest(images: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
@@ -628,101 +777,8 @@ class StorageService:
             "retry_count": int(state_data.get("retry_count", 0) or 0),
         }
 
-    # Novel metadata and folder index
-    _index_path = _index_path
-    _load_index = _load_index
-    _persist_index = _persist_index
-    _validate_folder_name = _validate_folder_name
-    _normalize_library_novel_id = _normalize_library_novel_id
-    _compute_folder_name = _compute_folder_name
-    _folder_in_use_by_other_novel = _folder_in_use_by_other_novel
-    _get_folder_name = _get_folder_name
-    _folder_path = _folder_path
-    _novel_dir = _novel_dir
-    _ensure_novel_dir = _ensure_novel_dir
-    delete_novel = delete_novel
-    save_metadata = save_metadata
-    load_metadata = load_metadata
-    load_metadata_for_crawl = load_metadata_for_crawl
-    save_source_state = save_source_state
-    load_source_state = load_source_state
-    _generations_dir = _generations_dir
-    _generation_dir = _generation_dir
-    create_generation_stage = create_generation_stage
-    record_staged_chapter = record_staged_chapter
-    stage_generation_chapter = stage_generation_chapter
-    stage_generation_image = stage_generation_image
-    stage_generation_metadata = stage_generation_metadata
-    stage_generation_chapter_index = stage_generation_chapter_index
-    stage_generation_source_state = stage_generation_source_state
-    seed_generation_from_active = seed_generation_from_active
-    _copy_asset_to_generation = _copy_asset_to_generation
-    commit_generation = commit_generation
-    commit_generation_recovery = commit_generation_recovery
-    validate_generation_activation = validate_generation_activation
-    resolve_active_generation_id = resolve_active_generation_id
-    record_unavailable_chapter = record_unavailable_chapter
-    record_refresh_failed_chapter = record_refresh_failed_chapter
-    activate_generation = activate_generation
-    rollback_generation = rollback_generation
-    list_generations = list_generations
-    load_generation_manifest = load_generation_manifest
-    get_active_generation = get_active_generation
-    update_onboarding_status = update_onboarding_status
-    resolve_onboarding_status = resolve_onboarding_status
-    _load_latest_valid_metadata_backup = _load_latest_valid_metadata_backup
-    _normalize_loaded_metadata = _normalize_loaded_metadata
-    _recover_metadata_from_backup = _recover_metadata_from_backup
-    list_metadata_history = list_metadata_history
-    load_metadata_snapshot = load_metadata_snapshot
-    list_novels = list_novels
-    _backup_metadata_file = _backup_metadata_file
-    _metadata_history_entry = _metadata_history_entry
-    _metadata_backup_dir = _metadata_backup_dir
-    _folder_has_novel_data = _folder_has_novel_data
-    _chapter_dir = _chapter_dir
-    _chapter_path = _chapter_path
-    _load_chapter_bundle = _load_chapter_bundle
-    _persist_chapter_bundle = _persist_chapter_bundle
-    existing_chapter_hash = existing_chapter_hash
-    save_chapter = save_chapter
-    build_chapter_payload = build_chapter_payload
-    load_chapter = load_chapter
-    list_stored_chapters = list_stored_chapters
-    count_stored_chapters = count_stored_chapters
-    get_chapters_by_state = get_chapters_by_state
-    get_chapter_progress = get_chapter_progress
-    query_chapters = query_chapters
-    get_chapters_with_errors = get_chapters_with_errors
-    get_scraping_progress = get_scraping_progress
-    _load_translation_overlay = _load_translation_overlay
-    _persist_translation_overlay = _persist_translation_overlay
-    _translation_versions_from_payload_compat = _translation_versions_from_payload_compat
-    _translation_overlay_path = _translation_overlay_path
-    _translation_overlay_dir = _translation_overlay_dir
-    _translation_active_pointer_path = _translation_active_pointer_path
-    save_translated_chapter = save_translated_chapter
-    save_translation_run_manifest = save_translation_run_manifest
-    load_translation_run_manifest = load_translation_run_manifest
-    load_translated_chapter = load_translated_chapter
-    load_translated_chapter_by_version_id = load_translated_chapter_by_version_id
-    list_translated_chapter_versions = list_translated_chapter_versions
-    save_edited_translation = save_edited_translation
-    load_translation_edit_history = load_translation_edit_history
-    activate_translated_chapter_version = activate_translated_chapter_version
-    list_translated_chapters = list_translated_chapters
-    count_translated_chapters = count_translated_chapters
-    _chapter_image_dir = _chapter_image_dir
-    _asset_relative_path = _asset_relative_path
-    _guess_asset_suffix = _guess_asset_suffix
-    clear_chapter_image_assets = clear_chapter_image_assets
-    save_chapter_image_asset = save_chapter_image_asset
-    resolve_asset_path = resolve_asset_path
-    _normalize_media_fields = _normalize_media_fields
-    _load_media_overlay = _load_media_overlay
-    _save_media_overlay = _save_media_overlay
-    load_chapter_media_state = load_chapter_media_state
-    save_chapter_media_state = save_chapter_media_state
+    # Disposable runtime state only. Canonical novel content is assigned to
+    # the PostgreSQL/R2 functions below after the class definition.
     _get_state_dir = _get_state_dir
     save_chapter_state = save_chapter_state
     load_chapter_state = load_chapter_state
@@ -732,14 +788,13 @@ class StorageService:
     list_checkpoints = list_checkpoints
     restore_from_checkpoint = restore_from_checkpoint
     rollback_to_state = rollback_to_state
-    save_glossary = save_glossary
-    load_glossary = load_glossary
     _trace_dir = _trace_dir
     _read_json_file = _read_json_file
     append_pipeline_event = append_pipeline_event
     append_pipeline_events = append_pipeline_events
     list_pipeline_events = list_pipeline_events
     upsert_chunk_state = upsert_chunk_state
+    upsert_chunk_states = upsert_chunk_states
     load_chunk_states = load_chunk_states
     save_scheduler_state = save_scheduler_state
     load_scheduler_state = load_scheduler_state
@@ -765,3 +820,170 @@ class StorageService:
     save_fetch_cache_entry = save_fetch_cache_entry
     read_fetch_cache_entry = read_fetch_cache_entry
     fetch_cache_conditional_headers = fetch_cache_conditional_headers
+    save_translation_run_manifest = save_translation_run_manifest
+    load_translation_run_manifest = load_translation_run_manifest
+
+
+# R2 content operations are exposed through the PostgreSQL catalog and exact R2 references.
+# Generation publication is owned by R2GenerationActivationService.
+
+
+def _build_chapter_payload(
+    storage: StorageService,
+    novel_id: str,
+    chapter_id: str,
+    text: str,
+    title: str | None = None,
+    source_key: str | None = None,
+    source_url: str | None = None,
+    images: list[dict[str, Any]] | None = None,
+    source_blocks: list[dict[str, Any]] | None = None,
+    input_adapter_key: str | None = None,
+    origin_type: str | None = None,
+    origin_uri_or_path: str | None = None,
+    document_type: str | None = None,
+    unit_type: str | None = None,
+    import_order: int | None = None,
+    context_group_id: str | None = None,
+    region_metadata: list[dict[str, Any]] | None = None,
+    ocr_artifacts: list[dict[str, Any]] | None = None,
+    existing: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build the canonical raw chapter payload before immutable upload."""
+
+    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
+    existing_raw = existing.get("raw") if isinstance(existing, dict) else None
+    existing_raw = existing_raw if isinstance(existing_raw, dict) else None
+    payload: dict[str, Any] = {
+        "id": safe_chapter_id,
+        "title": title if title is not None else (existing.get("title") if isinstance(existing, dict) else None),
+        "source_key": source_key,
+        "source_url": source_url,
+    }
+    for key, value in (
+        ("input_adapter_key", input_adapter_key),
+        ("origin_type", origin_type),
+        ("origin_uri_or_path", origin_uri_or_path),
+        ("document_type", document_type),
+        ("unit_type", unit_type),
+        ("context_group_id", context_group_id),
+    ):
+        if value is not None:
+            payload[key] = value
+    if import_order is not None:
+        payload["import_order"] = int(import_order)
+    if region_metadata is not None:
+        payload["region_metadata"] = storage._normalize_named_dict_items(region_metadata)
+    if ocr_artifacts is not None:
+        payload["ocr_artifacts"] = storage._normalize_named_dict_items(ocr_artifacts)
+    resolved_images = (
+        existing_raw.get("images")
+        if images is None and existing_raw is not None and existing_raw.get("images") is not None
+        else storage._normalize_image_manifest(images)
+    )
+    raw: dict[str, Any] = {
+        "id": safe_chapter_id,
+        "scraped_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "text": text,
+        "paragraphs": storage._text_paragraphs(text),
+        "images": resolved_images,
+    }
+    if source_blocks is not None:
+        raw["source_blocks"] = storage._normalize_source_blocks(source_blocks)
+    elif existing_raw is not None and existing_raw.get("source_blocks") is not None:
+        raw["source_blocks"] = existing_raw.get("source_blocks")
+    payload["raw"] = raw
+    return payload
+
+
+def _existing_chapter_hash(storage: StorageService, novel_id: str, chapter_id: str) -> str | None:
+    chapter = storage.load_chapter(novel_id, chapter_id)
+    text = chapter.get("text") if isinstance(chapter, dict) else None
+    return storage._hash_text(text) if isinstance(text, str) else None
+
+
+def _query_chapters(storage: StorageService, novel_id: str) -> Any:
+    from novelai.services.query_builder import ChapterQueryBuilder
+
+    state_dir = storage._get_state_dir(novel_id)
+    return ChapterQueryBuilder(
+        state_dir,
+        path_exists=lambda: storage._is_dir_present(state_dir),
+        list_files=lambda: storage._glob(state_dir, "*.json"),
+        read_file=lambda path: storage._read_text(path),
+    )
+
+
+def _get_chapters_by_state(storage: StorageService, novel_id: str, state: ChapterState) -> list[str]:
+    return [result.chapter_id for result in _query_chapters(storage, novel_id).by_state(state).execute()]
+
+
+def _get_chapter_progress(storage: StorageService, novel_id: str) -> dict[str, int]:
+    from novelai.core.chapter_state import ChapterState
+
+    return {state.value: _query_chapters(storage, novel_id).by_state(state).count() for state in ChapterState}
+
+
+def _get_chapters_with_errors(storage: StorageService, novel_id: str, limit: int = 100) -> list[str]:
+    return [
+        result.chapter_id
+        for result in _query_chapters(storage, novel_id)
+        .has_errors()
+        .sort_by("errors", reverse=True)
+        .limit(limit)
+        .execute()
+    ]
+
+
+def _get_scraping_progress(storage: StorageService, novel_id: str) -> dict[str, Any]:
+    results = _query_chapters(storage, novel_id).execute()
+    error_count = sum(1 for result in results if result.error_count > 0)
+    total = len(results)
+    return {
+        "total": total,
+        "by_state": _get_chapter_progress(storage, novel_id),
+        "with_errors": error_count,
+        "success_rate": ((total - error_count) / total * 100) if total else 0.0,
+    }
+
+
+StorageService.build_chapter_payload = _build_chapter_payload  # type: ignore[method-assign]
+StorageService.existing_chapter_hash = _existing_chapter_hash  # type: ignore[method-assign]
+StorageService.get_chapters_by_state = _get_chapters_by_state  # type: ignore[method-assign]
+StorageService.get_chapter_progress = _get_chapter_progress  # type: ignore[method-assign]
+StorageService.query_chapters = _query_chapters  # type: ignore[method-assign]
+StorageService.get_chapters_with_errors = _get_chapters_with_errors  # type: ignore[method-assign]
+StorageService.get_scraping_progress = _get_scraping_progress  # type: ignore[method-assign]
+StorageService.delete_novel = _r2_delete_novel  # type: ignore[method-assign]
+StorageService.get_novel_chapter_summary = _r2_get_novel_chapter_summary  # type: ignore[method-assign]
+StorageService.list_metadata_history = _r2_list_metadata_history  # type: ignore[method-assign]
+StorageService.load_metadata_snapshot = _r2_load_metadata_snapshot  # type: ignore[method-assign]
+StorageService.save_metadata = _r2_save_metadata  # type: ignore[method-assign]
+StorageService.load_glossary = _r2_load_glossary  # type: ignore[method-assign]
+StorageService.save_glossary = _r2_save_glossary  # type: ignore[method-assign]
+StorageService.load_metadata = _r2_load_metadata  # type: ignore[method-assign]
+StorageService.load_metadata_for_crawl = _r2_load_metadata  # type: ignore[method-assign]
+StorageService.save_source_state = _r2_save_source_state  # type: ignore[method-assign]
+StorageService.load_source_state = _r2_load_source_state  # type: ignore[method-assign]
+StorageService.update_onboarding_status = _r2_update_onboarding_status  # type: ignore[method-assign]
+StorageService.resolve_onboarding_status = _r2_resolve_onboarding_status  # type: ignore[method-assign]
+StorageService.list_novels = _r2_list_novels  # type: ignore[method-assign]
+StorageService.resolve_active_generation_id = _r2_resolve_active_generation_id  # type: ignore[method-assign]
+StorageService.save_chapter = _r2_save_chapter  # type: ignore[method-assign]
+StorageService.load_chapter = _r2_load_chapter  # type: ignore[method-assign]
+StorageService.list_stored_chapters = _r2_list_stored_chapters  # type: ignore[method-assign]
+StorageService.count_stored_chapters = _r2_count_stored_chapters  # type: ignore[method-assign]
+StorageService.save_translated_chapter = _r2_save_translated_chapter  # type: ignore[method-assign]
+StorageService.load_translated_chapter = _r2_load_translated_chapter  # type: ignore[method-assign]
+StorageService.load_translated_chapter_by_version_id = _r2_load_translated_chapter_by_version_id  # type: ignore[method-assign]
+StorageService.list_translated_chapter_versions = _r2_list_translated_chapter_versions  # type: ignore[method-assign]
+StorageService.save_edited_translation = _r2_save_edited_translation  # type: ignore[method-assign]
+StorageService.load_translation_edit_history = _r2_load_translation_edit_history  # type: ignore[method-assign]
+StorageService.activate_translated_chapter_version = _r2_activate_translated_chapter_version  # type: ignore[method-assign]
+StorageService.list_translated_chapters = _r2_list_translated_chapters  # type: ignore[method-assign]
+StorageService.count_translated_chapters = _r2_count_translated_chapters  # type: ignore[method-assign]
+StorageService.load_chapter_media_state = _r2_load_chapter_media_state  # type: ignore[method-assign]
+StorageService.save_chapter_media_state = _r2_save_chapter_media_state  # type: ignore[method-assign]
+StorageService.save_chapter_image_asset = _r2_save_chapter_image_asset  # type: ignore[method-assign]
+StorageService.clear_chapter_image_assets = _r2_clear_chapter_image_assets  # type: ignore[method-assign]
+StorageService.resolve_asset_path = _r2_resolve_asset_path  # type: ignore[method-assign]

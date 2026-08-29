@@ -5,7 +5,7 @@ import json
 import math
 import threading
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -22,6 +22,7 @@ class QuotaReservation:
     estimated_input_tokens: int
     estimated_output_tokens: int
     reserved_at: str
+    linked_reservation_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,7 @@ class GeminiQuotaController:
         rpd_limit: int | None = None,
         concurrency_limit: int | None = None,
     ) -> None:
-        resolved_base = (base_dir or settings.NOVEL_LIBRARY_DIR).resolve()
+        resolved_base = (base_dir or settings.RUNTIME_DIR).resolve()
         self.state_path = resolved_base / "gemini_quota_state.json"
         self.lock_path = self.state_path.with_suffix(".lock")
         self._clock = clock or (lambda: datetime.now(UTC))
@@ -152,7 +153,7 @@ class GeminiQuotaController:
             return 60
         return max(1, math.ceil((min(candidates) + timedelta(seconds=60) - now).total_seconds()))
 
-    def _with_file_lock(self) -> InterProcessFileLock:
+    def _with_file_lock(self) -> Any:
         return InterProcessFileLock(self.lock_path)
 
     def reserve(
@@ -294,15 +295,183 @@ class GeminiQuotaController:
             }
 
 
-_CONTROLLERS: dict[Path, GeminiQuotaController] = {}
+class CompositeGeminiQuotaController(GeminiQuotaController):
+    """Apply a shared project cap and a per-credential cap atomically enough.
+
+    A contributor key does not create a new provider quota domain merely by
+    existing.  The shared controller reserves project capacity first, then
+    the credential controller reserves the per-key allowance.  A failed
+    second reservation reconciles the first one immediately; provider
+    success/failure/timeout reconciliation fans out to both reservations.
+    """
+
+    def __init__(self, controllers: tuple[GeminiQuotaController, ...]) -> None:
+        if len(controllers) < 2:
+            raise ValueError("composite quota control requires project and credential controllers")
+        self._controllers = controllers
+
+    def reserve(
+        self,
+        *,
+        purpose: str,
+        model: str,
+        estimated_input_tokens: int,
+        estimated_output_tokens: int,
+    ) -> QuotaReservation | QuotaRejection:
+        reservations: list[QuotaReservation] = []
+        for controller in self._controllers:
+            decision = controller.reserve(
+                purpose=purpose,
+                model=model,
+                estimated_input_tokens=estimated_input_tokens,
+                estimated_output_tokens=estimated_output_tokens,
+            )
+            if isinstance(decision, QuotaRejection):
+                for reservation, reserved_controller in zip(reservations, self._controllers, strict=False):
+                    reserved_controller.reconcile(
+                        reservation,
+                        input_tokens=None,
+                        output_tokens=None,
+                        total_tokens=None,
+                        success=False,
+                    )
+                return decision
+            reservations.append(decision)
+
+        return QuotaReservation(
+            reservation_id=uuid.uuid4().hex,
+            estimated_input_tokens=max(1, int(estimated_input_tokens)),
+            estimated_output_tokens=max(1, int(estimated_output_tokens)),
+            reserved_at=reservations[0].reserved_at,
+            linked_reservation_ids=tuple(reservation.reservation_id for reservation in reservations),
+        )
+
+    def reconcile(
+        self,
+        reservation: QuotaReservation,
+        *,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        total_tokens: int | None = None,
+        success: bool,
+    ) -> None:
+        linked_ids = reservation.linked_reservation_ids
+        if len(linked_ids) != len(self._controllers):
+            return
+        for controller, linked_id in zip(self._controllers, linked_ids, strict=True):
+            controller.reconcile(
+                QuotaReservation(
+                    reservation_id=linked_id,
+                    estimated_input_tokens=reservation.estimated_input_tokens,
+                    estimated_output_tokens=reservation.estimated_output_tokens,
+                    reserved_at=reservation.reserved_at,
+                ),
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+                success=success,
+            )
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "project": self._controllers[0].snapshot(),
+            "credential": self._controllers[1].snapshot(),
+        }
+
+
+class RedisGeminiQuotaController(GeminiQuotaController):
+    """Distributed quota controller for production and split deployments."""
+
+    def __init__(
+        self,
+        *,
+        namespace: str,
+        clock: Callable[[], datetime] | None = None,
+        rpm_limit: int | None = None,
+        tpm_limit: int | None = None,
+        rpd_limit: int | None = None,
+        concurrency_limit: int | None = None,
+    ) -> None:
+        super().__init__(
+            Path("."),
+            clock=clock,
+            rpm_limit=rpm_limit,
+            tpm_limit=tpm_limit,
+            rpd_limit=rpd_limit,
+            concurrency_limit=concurrency_limit,
+        )
+        if not settings.REDIS_URL:
+            raise RuntimeError("REDIS_URL is required for production Gemini quota coordination")
+        try:
+            import redis
+        except ImportError as exc:
+            raise RuntimeError("The redis package is required for production Gemini quota coordination") from exc
+        self._redis = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        safe_namespace = "".join(char if char.isalnum() or char in "-_.:" else "_" for char in namespace)
+        self._events_key = f"novelai:gemini:quota:{safe_namespace}:events"
+        self._lock_key = f"novelai:gemini:quota:{safe_namespace}:lock"
+
+    def _load_events(self) -> list[dict[str, Any]]:
+        raw_events = self._redis.lrange(self._events_key, 0, -1)
+        events: list[dict[str, Any]] = []
+        for raw in raw_events:
+            try:
+                value = json.loads(raw)
+            except TypeError, ValueError:
+                continue
+            if isinstance(value, dict):
+                events.append(value)
+        return events
+
+    def _write_events(self, events: list[dict[str, Any]]) -> None:
+        pipeline = self._redis.pipeline(transaction=True)
+        pipeline.delete(self._events_key)
+        if events:
+            pipeline.rpush(
+                self._events_key, *(json.dumps(event, ensure_ascii=False, separators=(",", ":")) for event in events)
+            )
+            pipeline.expire(self._events_key, 86_400)
+        pipeline.execute()
+
+    @contextlib.contextmanager
+    def _with_file_lock(self) -> Iterator[None]:
+        lock = self._redis.lock(self._lock_key, timeout=15, blocking_timeout=15)
+        acquired = False
+        try:
+            acquired = bool(lock.acquire())
+            if not acquired:
+                raise TimeoutError("Redis quota lock could not be acquired")
+            yield
+        finally:
+            if acquired:
+                with contextlib.suppress(Exception):
+                    lock.release()
+
+
+_CONTROLLERS: dict[str, GeminiQuotaController] = {}
 _CONTROLLERS_LOCK = threading.Lock()
 
 
 def get_gemini_quota_controller() -> GeminiQuotaController:
-    path = (settings.NOVEL_LIBRARY_DIR / "gemini_quota_state.json").resolve()
+    if settings.ENV != "test":
+        key = f"redis:{settings.REDIS_URL}:owner"
+        with _CONTROLLERS_LOCK:
+            controller = _CONTROLLERS.get(key)
+            if controller is None:
+                controller = RedisGeminiQuotaController(
+                    namespace="owner",
+                    concurrency_limit=settings.GEMINI_CONCURRENCY_LIMIT,
+                )
+                _CONTROLLERS[key] = controller
+            return controller
+
+    key = str((settings.RUNTIME_DIR / "gemini_quota_state.json").resolve())
     with _CONTROLLERS_LOCK:
-        controller = _CONTROLLERS.get(path.parent)
+        controller = _CONTROLLERS.get(key)
         if controller is None:
-            controller = GeminiQuotaController(path.parent, concurrency_limit=settings.GEMINI_CONCURRENCY_LIMIT)
-            _CONTROLLERS[path.parent] = controller
+            controller = GeminiQuotaController(
+                settings.RUNTIME_DIR,
+                concurrency_limit=settings.GEMINI_CONCURRENCY_LIMIT,
+            )
+            _CONTROLLERS[key] = controller
         return controller

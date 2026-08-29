@@ -19,6 +19,11 @@ from novelai.services.scheduled_job_lease_service import ScheduledJobLeaseServic
 
 pytestmark = pytest.mark.slow
 
+# This is the migration head committed with the candidate checkout. Keeping
+# it explicit makes a stale managed database fail closed instead of silently
+# turning an older schema into a successful deployment gate.
+EXPECTED_ALEMBIC_HEAD = "f8a2c4e6b0d1"
+
 
 @pytest.fixture(scope="module")
 def managed_engine() -> Any:
@@ -47,7 +52,7 @@ def test_managed_postgres_operational_contracts(managed_engine: Any) -> None:
             .mappings()
             .one()
         )
-        assert row["alembic_head"] == "9c2e4a6b8d0f"
+        assert row["alembic_head"] == EXPECTED_ALEMBIC_HEAD
         assert row["statement_timeout"]
         assert row["lock_timeout"]
         assert row["idle_timeout"]

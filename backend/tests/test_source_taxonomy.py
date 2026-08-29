@@ -22,6 +22,7 @@ from novelai.sources.taxonomy import (
 # Taxonomy mapping unit tests
 # ---------------------------------------------------------------------------
 
+
 class TestTaxonomyMapping:
     def test_map_genre_known_syosetu(self) -> None:
         assert map_genre("ファンタジー", SYOSETU_GENRE_MAP) == "fantasy"
@@ -72,6 +73,7 @@ class TestTaxonomyMapping:
 # ---------------------------------------------------------------------------
 # Syosetu genre extraction
 # ---------------------------------------------------------------------------
+
 
 class TestSyosetuGenreExtraction:
     def test_extract_genre_from_modern_selector(self) -> None:
@@ -151,6 +153,7 @@ class TestSyosetuGenreExtraction:
 # Syosetu keyword extraction
 # ---------------------------------------------------------------------------
 
+
 class TestSyosetuKeywordExtraction:
     def test_extract_keywords_from_modern_selector(self) -> None:
         source = SyosetuNcodeSource()
@@ -215,6 +218,7 @@ class TestSyosetuKeywordExtraction:
 # Syosetu existing tests still pass with new fields
 # ---------------------------------------------------------------------------
 
+
 class TestSyosetuMetadataContract:
     def test_existing_metadata_fields_preserved(self) -> None:
         source = SyosetuNcodeSource()
@@ -239,6 +243,7 @@ class TestSyosetuMetadataContract:
 # ---------------------------------------------------------------------------
 # Novel18 adapter
 # ---------------------------------------------------------------------------
+
 
 class TestNovel18GenreExtraction:
     def test_uses_adult_genre_map(self) -> None:
@@ -289,6 +294,7 @@ class TestNovel18GenreExtraction:
 # ---------------------------------------------------------------------------
 # Kakuyomu genre/tag extraction
 # ---------------------------------------------------------------------------
+
 
 class TestKakuyomuGenreExtraction:
     def test_extract_genre_from_widget_selector(self) -> None:
@@ -398,6 +404,7 @@ class TestKakuyomuTagExtraction:
 # Generic adapter
 # ---------------------------------------------------------------------------
 
+
 class TestGenericTaxonomyFields:
     def test_generic_returns_empty_taxonomy_fields(self) -> None:
         """Generic adapter must not guess genre/tags from prose."""
@@ -423,6 +430,7 @@ class TestGenericTaxonomyFields:
 # ---------------------------------------------------------------------------
 # Data honesty: no fake assignments
 # ---------------------------------------------------------------------------
+
 
 class TestDataHonesty:
     def test_no_novel_genre_assignment_in_metadata(self) -> None:

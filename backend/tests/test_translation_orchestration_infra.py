@@ -18,6 +18,7 @@ _TMP = Path(__file__).resolve().parent / ".tmp" / "orchestration_infra"
 # Lock tests  (Task 6)
 # ---------------------------------------------------------------------------
 
+
 class TestDuplicateRunLock:
     """Tests for per-chapter translation lock."""
 
@@ -76,12 +77,14 @@ class TestDuplicateRunLock:
 # translation_run_id tests  (Task 7)
 # ---------------------------------------------------------------------------
 
+
 class TestTranslationRunId:
     """Tests for translation_run_id semantics."""
 
     def test_translation_run_id_always_set(self) -> None:
         """translation_run_id should always be a non-empty string."""
         from uuid import uuid4
+
         # Simulate the production logic:
         job_id = None
         activity_id = None
@@ -90,6 +93,7 @@ class TestTranslationRunId:
 
     def test_two_runs_produce_different_run_ids(self) -> None:
         from uuid import uuid4
+
         run_id_1 = f"translation_run_{uuid4().hex}"
         run_id_2 = f"translation_run_{uuid4().hex}"
         assert run_id_1 != run_id_2

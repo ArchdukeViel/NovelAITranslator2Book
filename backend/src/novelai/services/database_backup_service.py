@@ -92,6 +92,20 @@ def _pg_environment(database_url: str, *, ssl_mode: str) -> dict[str, str]:
     return environment
 
 
+def _database_backup_uri() -> str:
+    configured = settings.DATABASE_BACKUP_URL
+    if configured is None or not configured.get_secret_value():
+        raise RuntimeError("DATABASE_BACKUP_URL is not configured")
+
+    backup_uri = configured.get_secret_value().replace("postgresql+psycopg://", "postgresql://", 1)
+    source_uri = (settings.DATABASE_URL or "").replace("postgresql+psycopg://", "postgresql://", 1)
+    if source_uri and make_url(backup_uri).render_as_string(hide_password=False) == make_url(
+        source_uri
+    ).render_as_string(hide_password=False):
+        raise RuntimeError("DATABASE_BACKUP_URL must identify a dedicated backup-capable database role")
+    return backup_uri
+
+
 def _is_backup_stale(modified: datetime | None, max_age_hours: int) -> bool:
     if modified is None:
         return True
@@ -104,7 +118,7 @@ class DatabaseBackupService:
     def __init__(self, client: Any, bucket: str) -> None:
         self._client = client
         self._bucket = bucket
-        self._prefix = settings.DATABASE_BACKUP_S3_PREFIX.strip("/")
+        self._prefix = settings.DATABASE_BACKUP_PREFIX.strip("/")
 
     def create_backup(self) -> dict[str, Any]:
         if not settings.DATABASE_URL:
@@ -112,8 +126,8 @@ class DatabaseBackupService:
         backup_id = f"database-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(4)}"
         object_key = f"{self._prefix}/{backup_id}/dump.custom.aesgcm"
         manifest_key = f"{self._prefix}/{backup_id}/manifest.json"
-        database_uri = settings.DATABASE_URL.replace("postgresql+psycopg://", "postgresql://", 1)
-        environment = _pg_environment(settings.DATABASE_URL, ssl_mode=settings.DB_SSL_MODE)
+        database_uri = _database_backup_uri()
+        environment = _pg_environment(database_uri, ssl_mode=settings.DB_SSL_MODE)
         encrypted_path: Path | None = None
         try:
             with tempfile.NamedTemporaryFile(prefix="novelai-db-", suffix=".aesgcm", delete=False) as encrypted:
@@ -313,7 +327,7 @@ class DatabaseBackupService:
         engine = create_engine(sqlalchemy_uri, pool_pre_ping=True, isolation_level="AUTOCOMMIT")
         try:
             with engine.connect() as connection:
-                for role_name in ("anon", "authenticated", "service_role"):
+                for role_name in ("anon", "authenticated", "service_role", "novelai_app"):
                     exists = connection.execute(
                         text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :role_name)"),
                         {"role_name": role_name},

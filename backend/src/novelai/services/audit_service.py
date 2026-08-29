@@ -184,7 +184,7 @@ def _parse_metadata(metadata_json: str | None) -> dict[str, Any]:
         return {}
     try:
         loaded = json.loads(metadata_json)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return {}
     if not isinstance(loaded, dict):
         return {}

@@ -68,21 +68,18 @@ describe("crawler error UX", () => {
       render(
         <ImportNowPanel
           novelId="test-novel"
-          adapterKey="web"
-          source="https://example.com"
+          sourceUrl="https://example.com"
           maxUnits="10"
-          adapters={["web"]}
           pending={false}
-          error={new Error("Adapter not found")}
+          error={new Error("Source URL rejected")}
           onNovelIdChange={() => {}}
-          onAdapterKeyChange={() => {}}
-          onSourceChange={() => {}}
+          onSourceUrlChange={() => {}}
           onMaxUnitsChange={() => {}}
           onSubmit={() => {}}
         />
       );
 
-      expect(screen.getByText(/adapter not found/i)).toBeInTheDocument();
+      expect(screen.getByText(/source url rejected/i)).toBeInTheDocument();
     });
   });
 
@@ -343,8 +340,6 @@ describe("crawler error UX", () => {
         if (url.includes("/api/requests")) return Promise.resolve(jsonResponse({ requests: [] }));
         if (url.includes("/api/worker")) return Promise.resolve(jsonResponse({ running: false }));
         if (url.includes("/api/sources/health")) return Promise.resolve(jsonResponse({ sources: [] }));
-        if (url.includes("/admin/input-adapters")) return Promise.resolve(jsonResponse(["web"]));
-
         if (url.includes("/preliminary-crawl") && init?.method === "POST") {
           return Promise.reject(new ApiError({
             status: 504,

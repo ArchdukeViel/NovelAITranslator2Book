@@ -29,6 +29,7 @@ class ParseStage(PipelineStage):
     def _decode_html_entities(text: str) -> str:
         """Decode HTML entities like &nbsp; &lt; etc."""
         import html
+
         return html.unescape(text)
 
     @staticmethod

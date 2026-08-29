@@ -38,5 +38,4 @@ class TranslationProvider(ABC):
 class ProviderFactory(Protocol):
     """Factory signature for provider registrations."""
 
-    def __call__(self, settings: Any) -> TranslationProvider:
-        ...
+    def __call__(self, settings: Any) -> TranslationProvider: ...

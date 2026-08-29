@@ -65,6 +65,7 @@ class SchedulerRuntimeStateService:
         if self._session_scope_factory is not None:
             return self._session_scope_factory()
         from novelai.db.engine import session_scope
+
         return session_scope()
 
     def upsert_state(
@@ -392,18 +393,20 @@ class SchedulerRuntimeStateService:
             elif state_val == STATE_EXHAUSTED:
                 exhausted_scopes += 1
 
-            runtime_states.append({
-                "scheduler_key": s.get("scheduler_key"),
-                "scope_type": s.get("scope_type"),
-                "scope_key": s.get("scope_key"),
-                "state": state_val,
-                "reason": s.get("reason"),
-                "error_category": s.get("error_category"),
-                "next_eligible_at": _iso(s.get("next_eligible_at")),
-                "consecutive_failures": s.get("consecutive_failures", 0),
-                "last_attempt_at": _iso(s.get("last_attempt_at")),
-                "heartbeat_at": _iso(s.get("heartbeat_at")),
-            })
+            runtime_states.append(
+                {
+                    "scheduler_key": s.get("scheduler_key"),
+                    "scope_type": s.get("scope_type"),
+                    "scope_key": s.get("scope_key"),
+                    "state": state_val,
+                    "reason": s.get("reason"),
+                    "error_category": s.get("error_category"),
+                    "next_eligible_at": _iso(s.get("next_eligible_at")),
+                    "consecutive_failures": s.get("consecutive_failures", 0),
+                    "last_attempt_at": _iso(s.get("last_attempt_at")),
+                    "heartbeat_at": _iso(s.get("heartbeat_at")),
+                }
+            )
 
         if not states:
             overall = "unknown"
@@ -445,7 +448,9 @@ class SchedulerRuntimeStateService:
                 logger.info("Cleanup: deleted %d expired scheduler runtime states (ttl=%dd).", count, ttl)
             return count
 
-    def _find(self, session: Session, scheduler_key: str, scope_type: str, scope_key: str) -> SchedulerRuntimeState | None:
+    def _find(
+        self, session: Session, scheduler_key: str, scope_type: str, scope_key: str
+    ) -> SchedulerRuntimeState | None:
         stmt = select(SchedulerRuntimeState).where(
             SchedulerRuntimeState.scheduler_key == scheduler_key,
             SchedulerRuntimeState.scope_type == scope_type,

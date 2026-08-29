@@ -59,11 +59,7 @@ def _candidate_import_response(
     for candidate in result.candidates:
         action = _candidate_import_action(mode, candidate.action)
         chapter_numbers = sorted(
-            {
-                occurrence.chapter_number
-                for occurrence in candidate.occurrences
-                if occurrence.chapter_number is not None
-            }
+            {occurrence.chapter_number for occurrence in candidate.occurrences if occurrence.chapter_number is not None}
         )
         chapter_refs = sorted({occurrence.chapter_storage_id for occurrence in candidate.occurrences})
         candidates.append(

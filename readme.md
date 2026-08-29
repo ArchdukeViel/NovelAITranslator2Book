@@ -2,7 +2,8 @@
 
 Web-first Japanese novel ingestion, translation, editing, and public reader.
 FastAPI owns APIs and jobs; Next.js owns public/admin UI; PostgreSQL owns
-relational state; filesystem or S3/R2 owns chapter content.
+relational state and exact artifact references; Cloudflare R2 owns immutable
+novel content and independent recovery objects.
 
 ## Project Status
 
@@ -16,7 +17,7 @@ acceptance evidence.
 ## Features
 
 - Crawl Syosetu, Novel18, Kakuyomu, and generic HTML sources.
-- Import text, EPUB, PDF, image folders, and CBZ source documents.
+- Import novels from supported source URLs.
 - Queue and monitor crawl/translation jobs.
 - Translate through Gemini with durable scheduler state and bounded concurrency.
 - Review, edit, activate, and roll back chapter translation versions.
@@ -25,8 +26,8 @@ acceptance evidence.
 - Serve guest catalog/reader plus authenticated library, progress, history,
   reviews, and requests.
 
-Translated-novel file downloads are not part of product scope. EPUB/PDF imports
-and recovery backups remain supported.
+Translated-novel file downloads and local document imports are not part of
+product scope. Recovery backups remain supported.
 
 ## Requirements
 
@@ -40,7 +41,7 @@ and recovery backups remain supported.
 
 ```powershell
 uv venv .venv --python 3.14.6
-uv sync --locked --extra documents --extra gemini --extra dev --extra db --extra worker --extra s3 --extra auth
+uv sync --locked --extra gemini --extra dev --extra db --extra worker --extra s3 --extra auth
 npm install --prefix frontend
 Copy-Item ".env.example" ".env"
 ```
@@ -120,7 +121,7 @@ Topology and release procedure: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 ## Main Workflow
 
 1. Configure provider credentials in admin settings.
-2. Crawl a source or import a source document.
+2. Crawl a source URL or import a novel from a source URL.
 3. Review source health and chapter ingestion.
 4. Queue translation and monitor activity.
 5. Review/edit versions and publish content.
@@ -162,9 +163,9 @@ known unrelated cost; do not substitute broad checks for focused evidence.
 backend/       FastAPI package, migrations, and tests
 frontend/      Next.js public/admin package
 deploy/        Compose, Caddy, Dockerfiles, scripts, env examples
-storage/       Local runtime data; ignored by Git
+data/          Disposable local runtime data; `data/runtime/` is ignored by Git
 docs/          Nine canonical project documents
-.agents/kiro/  Active approved specifications only
+.agents/specs/ Active approved specifications only
 ```
 
 ## Documentation

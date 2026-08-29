@@ -243,6 +243,18 @@ class LibraryService:
     def _db_novel_summary(self, novel: Novel) -> dict[str, Any]:
         publication_status = normalize_publication_status(novel.publication_status)
         meta = self.storage.load_metadata(novel.slug) or {}
+        if self.db_session is not None:
+            chapter_query = self.db_session.query(ChapterModel).filter(ChapterModel.novel_id == novel.id)
+        else:
+            chapter_query = None
+        if chapter_query is not None and chapter_query.count() > 0:
+            scraped_count = chapter_query.filter(ChapterModel.raw_storage_key.is_not(None)).count()
+            translated_count = chapter_query.filter(ChapterModel.translated_storage_key.is_not(None)).count()
+        else:
+            # DB-only legacy/projection rows may predate chapter references;
+            # retain their denormalized counts without touching R2.
+            scraped_count = novel.chapter_count
+            translated_count = novel.translated_count
         return {
             "novel_id": novel.slug,
             "title": _optional_string(novel.title) or novel.slug,
@@ -252,8 +264,8 @@ class LibraryService:
             "source_url": _optional_string(novel.source_url),
             "publication_status": publication_status,
             "chapter_count": novel.chapter_count,
-            "scraped_count": novel.chapter_count,
-            "translated_count": novel.translated_count,
+            "scraped_count": scraped_count,
+            "translated_count": translated_count,
             "is_published": novel.is_published,
             "latest_chapter_id": novel.latest_chapter_id,
             "latest_chapter_number": novel.latest_chapter_number,
@@ -422,9 +434,4 @@ class LibraryService:
         if self.storage.load_metadata(novel_id) is None:
             raise KeyError(f"Novel {novel_id} not found")
         self.storage.delete_novel(novel_id)
-        if self.db_session is not None:
-            novel = self.db_session.query(Novel).filter_by(slug=novel_id).one_or_none()
-            if novel is not None:
-                self.db_session.delete(novel)
-                self.db_session.flush()
         invalidate_library_summary_cache()

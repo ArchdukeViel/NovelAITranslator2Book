@@ -22,9 +22,19 @@ migrations inside long-running backend containers.
 Use `MIGRATION_DATABASE_URL` for a dedicated schema-owner/migrator role and
 `DATABASE_URL` for the least-privilege long-running application role.
 Migration `c7d9e1f3a5b2` maintains `novelai_app`, a stable NOLOGIN privilege
-role with explicit application DML and RLS policies. Provision the separate
-`novelai_runtime` LOGIN member with `backend/sql/provision_novelai_runtime.sql`;
-rotate that member password without changing schema ownership or grants.
+role with explicit application DML and RLS policies. Migration
+`b6c8d0e2f4a6` extends that contract to the later `activity_records` and
+provider credential/usage tables while revoking Supabase Data API roles.
+The unified registry migration also removes the legacy contributor table.
+Provision the
+separate `novelai_runtime` LOGIN member with
+`backend/sql/provision_novelai_runtime.sql`; rotate that member password
+without changing schema ownership or grants.
+
+Compose mounts only disposable runtime state at `/app/data/runtime`. For local
+Windows development, set `RUNTIME_HOST_DIR=../data/runtime` in `deploy/.env`;
+production must use a separately provisioned writable host directory such as
+`/opt/novelai/shared/data/runtime`. The mount is never a novel-content source.
 
 ## Routing
 
@@ -41,22 +51,22 @@ everything else -> frontend:3000
 reader entry points and requires shared Redis for distributed behavior. In the
 canonical Compose topology, both web services keep `JOB_WORKER_ENABLED=false`
 and the `worker` service runs `novelaibook worker` against the shared database.
+Optional comma-separated list settings such as `WEB_CORS_ORIGINS` are passed
+as blank Compose defaults, not JSON `[]`; configure their explicit values in
+the target environment when they are required.
 
-### Tailscale staging access
+### Cloudflare staging access
 
-Staging is reachable only on the private Tailscale network. Set `SITE_DOMAIN` to
-the host's stable Tailscale DNS name (not a changing Tailnet IP), keep
-`PUBLIC_BIND_ADDRESS=127.0.0.1`, and configure Tailscale Serve on the Windows
-host to terminate HTTPS and forward the private hostname to the WSL loopback
-listener on `127.0.0.1:8080`. Browse only to `https://<tailscale-hostname>/`.
-The checked-in Caddyfile is the internal HTTP hop; it must not be exposed
-directly to the Tailnet. Set `PUBLIC_FRONTEND_URL`, `WEB_CORS_ORIGINS`,
-`CSRF_TRUSTED_ORIGINS`, and `ALLOWED_HOSTS` to the HTTPS hostname and keep
-`SESSION_COOKIE_SECURE=true`. Backend, reader, Redis, and PostgreSQL have no
-host-published ports. Only `SITE_DOMAIN` is passed to Caddy; backend and reader
-healthchecks send the same configured host header. Never inject the shared
-`.env` into the proxy container because it contains unrelated database and
-runtime secrets.
+Staging is reachable through the approved Cloudflare HTTPS hostname. Set
+`SITE_DOMAIN` and the public origin settings to that hostname, keep
+`PUBLIC_BIND_ADDRESS=127.0.0.1`, and run the remotely managed Cloudflare Tunnel
+to the WSL/Docker Caddy listener on `127.0.0.1:8080`. Browse only to the
+approved Cloudflare hostname. The checked-in Caddyfile remains the internal
+HTTP hop; it must not be exposed directly. Backend, reader, Redis, and
+PostgreSQL have no host-published ports. Only `SITE_DOMAIN` is passed to Caddy;
+backend and reader healthchecks send the same configured host header. Never
+inject the shared `.env` into the proxy container because it contains
+unrelated database and runtime secrets.
 
 ## Profiles
 
@@ -65,19 +75,26 @@ runtime secrets.
 Only zero-cost profile expected to run worker, scheduler, maintenance, backups,
 restore verification, and SMTP acceptance reliably.
 
-### Local and Tailscale staging
+The development overlay mounts backend source for inspection but uses the
+canonical non-reload backend command. Uvicorn's Python 3.14 reload subprocess
+is not stable without a TTY in Docker Desktop; recreate the backend/reader/
+worker services after source or environment changes.
 
-Use the same Docker Compose services for local acceptance and private staging.
-Local checks use the host's loopback entry point; staging uses the WSL/Docker host
-through Tailscale and exposes only Caddy. Run the one-shot migration and the
-container health/readiness checks before browser acceptance. This path keeps the
-frontend, admin API, reader API, Redis, and their configuration together.
+### Local and Cloudflare staging
+
+Use the same Docker Compose services for local acceptance and Cloudflare
+staging. Local checks use the host's loopback entry point; staging uses the
+Cloudflare Tunnel to expose only Caddy. Run the one-shot migration and the
+container health/readiness checks before browser acceptance. This path keeps
+the frontend, admin API, reader API, Redis, and their configuration together.
 
 ### Production
 
-Tailscale-hosted WSL/Docker Compose frontend and split backend, Supabase/managed
-PostgreSQL, R2 application and independent backup buckets, managed Redis, tested
-SMTP, and external monitoring. Must satisfy `WORK.md` operator gates.
+Cloudflare-protected WSL/Docker Compose frontend and split backend,
+Supabase/managed PostgreSQL, R2 application and independent backup buckets,
+managed Redis, tested SMTP, and external monitoring. Must satisfy `WORK.md`
+operator gates; the current development tunnel does not by itself establish
+the production route.
 
 ## Production Validation
 
@@ -87,14 +104,16 @@ Startup fails closed for fatal production defects. Validate:
 - HTTPS public URL and OAuth callback;
 - explicit CORS, CSRF origins, and allowed hosts;
 - Redis backend/URL for multi-instance deployment;
-- supported storage backend and complete S3/R2 credential sets;
-- independent backup bucket/prefix and split least-privilege credentials;
+- R2-only application bucket `dokushodo`, exact `R2_*` credentials, and no
+  local content volume;
+- independent `dokushodo-backup` bucket and split least-privilege source/read
+  and backup/write credentials;
 - TLS DB connection and reviewed per-process connection budget;
 - backup encryption, SMTP/recipient when alerts enabled;
 - worker/scheduler settings consistent with topology.
-- the `worker` service is running the same admin image revision as `backend`,
-  has no published port, and claims the `activity_records` queue after the
-  migration has succeeded;
+- when the `worker` service is admitted, it must run the same admin image
+  revision as `backend`, have no published port, and claim the
+  `activity_records` queue only after the migration has succeeded;
 
 Validator output remains redacted.
 
@@ -152,8 +171,10 @@ Hardening contract:
   invalid.
 - **Migration-head parity.** Before SSH, the workflow compares the checked-out
   migration head with the exact admin image digest and requires
-  `d7e4f9a1c2b3`, the current release head. The role migration
-  `c7d9e1f3a5b2` is an earlier migration in that chain, not the final head;
+  `f8a2c4e6b0d1`, the current release head. The optional Supabase RLS-helper
+  hardening migration is conditional and a no-op when the helper is absent;
+  it still remains part of the source/image parity contract.
+  The role migration `c7d9e1f3a5b2` is an earlier migration in that chain, not the final head;
   a staging database at that earlier head is advanced by the one-shot
   migration profile before readiness is accepted.
 - **Immutable Release Directory.** Deployment files under `deploy/` are copied
@@ -233,10 +254,12 @@ Owner-operated settings should match tracked workflow expectations:
   Node/ESLint/TypeScript checks. `dependency-review` uses read-only Trivy
   lockfile and misconfiguration scanning because GitHub Dependency Review and
   CodeQL are unavailable without GitHub Code Security on this private repo.
-  No approving-review requirement: this is a single-operator repository and GitHub
-  forbids PR authors from approving their own pull request, so a review gate would
-  block every merge. Re-enable review requirements if a second write-access
-  reviewer is added.
+  No approving-review requirement is currently configured because this is a
+  single-operator repository and GitHub forbids PR authors from approving their
+  own pull request. Re-enable review requirements if a second write-access
+  reviewer is added. This repository setting does not approve a release: the
+  current launch control still requires a second reviewer or an explicitly
+  approved solo-operator waiver with expiry and mitigation.
 - Keep default `GITHUB_TOKEN` read-only; grant write only per job.
 - Python CI dependencies are installed from `uv.lock` via `uv sync --locked --extra ...` and executed via `uv run --locked <cmd>`. `--locked` fails CI if `uv.lock` is stale relative to `pyproject.toml`.
 - Local, CI, and Docker Node is pinned to 26.7.x in `frontend/.nvmrc`, `frontend/package.json`, the CI setup, and production `frontend.Dockerfile`.
@@ -247,7 +270,7 @@ Owner-operated settings should match tracked workflow expectations:
   add CodeQL only through a separate protected change; it is not assumed by
   this private-repository release.
 - Keep deployment secrets in GitHub environments/provider secret stores, never files.
-- Run `.github/workflows/gitguardian.yaml` (ggshield v1.52.2 pinned) on push and
+- Run `.github/workflows/gitguardian.yaml` (ggshield v1.53.0 pinned) on push and
   same-repository PR; `GITGUARDIAN_API_KEY` repo secret, read-only token, no
   `pull_request_target`. Fork PRs are skipped — secrets are not exposed to
   untrusted fork code. Fork owners should enable GitGuardian's native public-repo
@@ -268,19 +291,27 @@ Required deployment configuration:
 - Managed-service verification variables and credentials use the scopes
   documented by `managed-services-verification.yml`.
 
+`DEPLOY_HOST` is a stable host or public DNS name reachable by the GitHub
+runner over the configured SSH port. It must not be a private-mesh-only
+address.
+Cloudflare Tunnel is the browser-facing application edge; it does not provide
+the SSH transport used by this workflow.
+
 ## Provider Boundaries
 
 - Caddy is the only host-published entry point; it routes the frontend and API
   services while backend, reader, Redis, and PostgreSQL remain private.
 - Register exact HTTPS Google callback for each deployed environment.
-- R2 application and backup scopes remain private and separate.
+- R2 application and backup scopes remain private and separate. The application
+  uses exact PostgreSQL-referenced keys; only inventory, backup, migration, and
+  GC jobs list R2 prefixes.
 - Supabase remains PostgreSQL behind SQLAlchemy/Alembic; dashboard changes do
   not replace repository migrations.
 
 ## Staging Host Limits and Scaling
 
 This release is a single WSL/Docker host, not HA. Frontend and reader processes
-are stateless and can be replicated later while Supabase and S3 remain external.
+are stateless and can be replicated later while Supabase and R2 remain external.
 Redis and Caddy remain single-host components. Backend replicas must respect the
 database connection budget and the worker/scheduler lease model; do not scale
 backend replicas without reviewing `DB_CONNECTION_BUDGET`, Redis coordination,
@@ -290,8 +321,9 @@ and scheduler lease ownership.
 
 The following sanitized record captures the first successful private staging
 cutover for PR #88 before the HTTPS session-cookie hardening in this review. It
-is historical evidence for this WSL/Docker host, not the current staging access
-contract, and does not change the production `NO-GO` decision above.
+is retired historical evidence for this WSL/Docker host, not the current
+staging access contract, and does not change the production `NO-GO` decision
+above.
 
 - **UTC deployment window:** `2026-08-15 13:46:20Z` through `2026-08-15 13:47:50Z`
   (Deploy run `31888063044`).
@@ -307,10 +339,11 @@ contract, and does not change the production `NO-GO` decision above.
   read-only verification reported Alembic head `c7a8b9d0e1f2`, with
   `novelai_app` present as `NOLOGIN` and `novelai_runtime` present as the
   application `LOGIN` role.
-- **Private URL:** `http://100.93.40.30/` through Tailscale. Windows forwards
-  Tailnet port 80 to WSL loopback port 8080; only Caddy is host-published.
+- **Private URL:** `http://100.93.40.30/` through the retired private-network
+  transport. Windows forwarded port 80 to WSL loopback port 8080; only Caddy
+  was host-published.
   Backend, reader, Redis, and PostgreSQL have no host-published ports.
-- **Routing evidence:** Through the Tailnet address, `/`, `/health/live`,
+- **Routing evidence:** Through the historical private address, `/`, `/health/live`,
   `/health/ready`, `/api/auth/me`, and `/api/public/catalog?page_size=1`
   returned `200`; `/api/admin/health` returned the expected unauthenticated
   `401`.
@@ -320,9 +353,9 @@ contract, and does not change the production `NO-GO` decision above.
   because earlier failed attempts never advanced `/opt/novelai/current`. The
   old `sha-071f6829f572b431f9583ff0988560cd795c9b56` image remains an
   identifiable schema-incompatible rollback candidate and was not executed.
-- **Limitations:** This is one WSL/Docker host, not HA; the laptop, Docker
-  Desktop, Ubuntu/WSL, network, and Tailscale must remain available. Access is
-  private HTTP only; TLS, production hosted monitoring, recovery acceptance,
+- **Limitations:** This was one WSL/Docker host, not HA; the laptop, Docker
+  Desktop, Ubuntu/WSL, and network had to remain available. The private
+  transport is retired. Production hosted monitoring, recovery acceptance,
   and the full end-user flow remain outstanding. This documentation-only
   follow-up is not redeployed.
 
@@ -349,3 +382,89 @@ operation. Production approval still requires:
 Provider configuration must be verified against tracked topology. Account or
 payment blocks remain blocks; screenshots or free previews are not production
 reliability evidence.
+
+### Historical versus current release evidence — 2026-08-27
+
+The historical 2026-07-31 candidate freeze and the 2026-08-15 staging cutover
+are retained as dated evidence only. They do not identify the current release
+candidate. The current worktree is dirty, current immutable image digests,
+production domains, and `PRODUCTION_BASE_URL` are not supplied, and the current
+production decision remains **NO-GO**.
+
+The historical worker/bulk-queue paragraphs in `WORK.md` are superseded by the
+2026-08-27 operational checkpoint: the dedicated worker is not admitted, the
+original full queue remains paused, and queue/writer safety is not independently
+observed. Local Compose health is not production readiness. The current
+release-control ledger is
+`artifacts/operations/release-controls-2026-08-27.md`.
+
+### Earlier Cloudflare control-plane check - 2026-08-28
+
+Before the development edge was established, an authenticated fresh Codex
+subprocess used the Cloudflare MCP for read-only verification. The
+`dokushodo.online` zone was active and its DNS listing contained only the
+apex `A` record and `www.dokushodo.online` `CNAME` record. No
+`dev.dokushodo.online` record was present. The same read-only session listed
+the four R2 buckets `dokushodo`, `dokushodo-backup`, `test-dokushodo`, and
+`test-dokushodo-backup`, with no bucket or DNS mutation performed at that
+checkpoint.
+
+That earlier checkpoint proved read/list access only. It was superseded for
+the explicitly authorized development hostname by the current deployment
+record below; it still does not establish application R2 credential validity
+or production readiness.
+
+## Current development edge deployment - 2026-08-28
+
+The authenticated Cloudflare MCP created one remotely managed development
+tunnel named `dokushodo-dev` and configured exactly two ingress rules: the
+`dev.dokushodo.online` hostname to `http://caddy:80` with the development host
+header, followed by an HTTP 404 catch-all. The zone now has one proxied,
+automatic-TTL CNAME for `dev.dokushodo.online` targeting that tunnel. The
+apex and `www` records were not changed.
+
+The local Compose stack uses the digest-pinned `cloudflared:2026.8.0` image,
+the ignored `deploy/.cloudflared/dokushodo-dev.token` secret file, and the
+existing `novelai-net` network. The 2026-08-28 deployment check reported the
+tunnel as `healthy`, with matching ingress/DNS checks and one active connector;
+Compose configuration validation exited 0. A fresh read-only MCP check on
+2026-08-29 found the named durable tunnel `down` with zero connectors. No DNS,
+Tunnel, or deployment configuration was changed; the disposable capacity
+workflow uses its own ephemeral quick Tunnel.
+
+External smoke evidence from the development URL returned HTTP 200 for
+`/health/live`, `/health/ready`, `/`, and
+`/api/public/catalog?page_size=1`. This is current development-origin
+evidence only. It does not close the worker/queue, provider, R2 write,
+recovery, alerting, monitoring, capacity, or production-domain gates.
+
+When restarting this temporary stack, target `cloudflared` explicitly so the
+worker is not started accidentally:
+
+```powershell
+docker compose --env-file deploy/.env -f deploy/compose.yml up -d --no-build cloudflared
+```
+
+The worker was stopped after an earlier broad Compose start and remains
+paused by policy.
+
+## Active reader access decision - 2026-08-29
+
+Cloudflare is the active external edge for the non-production reader path.
+The approved reader-capacity follow-up selects `cloudflare_tunnel` and uses
+the development hostname routed by `dokushodo-dev` to Caddy. The retired
+private-network transport is not part of the current reader or deployment
+configuration. Older private-network records remain dated historical evidence
+and are not current access instructions.
+
+The named development tunnel is not repurposed for disposable capacity runs.
+The confirmation-gated
+`.github/workflows/reader-capacity-nonproduction.yml` workflow builds an
+isolated Compose project against the managed test database and the dedicated
+`test-dokushodo` R2 application bucket, then uses an ephemeral Cloudflare quick
+tunnel to reach that project's Caddy listener. Before profiling, the workflow
+waits for the tunnel to return HTTP 200 from the isolated `/health/live` route;
+it also samples the same Caddy listener through loopback as diagnostic
+comparison evidence. It always removes the synthetic fixture, test runtime,
+and quick tunnel. See [`OPERATIONS.md`](OPERATIONS.md) for the evidence and
+cold-cache reset contract.

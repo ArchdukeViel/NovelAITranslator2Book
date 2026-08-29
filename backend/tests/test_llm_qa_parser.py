@@ -19,12 +19,12 @@ class TestLLMQAOutputParser:
     def test_valid_structured_output_parsed(self) -> None:
         """Valid JSON with translated_text and paragraph_map parses correctly."""
         chunk_text = "[CHAPTER ch1]\n[P p1]\nSource text."
-        translated = json.dumps({
-            "translated_text": "Translated text.",
-            "paragraph_map": [
-                {"chapter_id": "ch1", "paragraph_id": "p1", "translated_text": "Translated text."}
-            ]
-        })
+        translated = json.dumps(
+            {
+                "translated_text": "Translated text.",
+                "paragraph_map": [{"chapter_id": "ch1", "paragraph_id": "p1", "translated_text": "Translated text."}],
+            }
+        )
         result = evaluate_translation_quality(
             source_text=chunk_text,
             translated_text=translated,
@@ -95,11 +95,14 @@ class TestLLMQAOutputParser:
     def test_paragraph_map_mismatch_rejected(self) -> None:
         """Paragraph map chapter/paragraph IDs must match source."""
         from novelai.translation.pipeline.context import TranslationChunk
+
         chunk_text = "[CHAPTER ch1]\n[P p1]\nSource text."
-        translated = json.dumps({
-            "translated_text": "Translated.",
-            "paragraph_map": [{"chapter_id": "ch2", "paragraph_id": "p1", "translated_text": "Translated."}]
-        })
+        translated = json.dumps(
+            {
+                "translated_text": "Translated.",
+                "paragraph_map": [{"chapter_id": "ch2", "paragraph_id": "p1", "translated_text": "Translated."}],
+            }
+        )
         chunk = TranslationChunk(
             chunk_id="c1",
             novel_id="n1",
@@ -131,10 +134,12 @@ class TestLLMQAOutputParser:
 
     def test_normalized_text_extraction(self) -> None:
         """normalized_translation_text extracts plain text from structured output."""
-        structured = json.dumps({
-            "translated_text": "Plain text.",
-            "paragraph_map": [{"chapter_id": "ch1", "paragraph_id": "p1", "translated_text": "Plain text."}]
-        })
+        structured = json.dumps(
+            {
+                "translated_text": "Plain text.",
+                "paragraph_map": [{"chapter_id": "ch1", "paragraph_id": "p1", "translated_text": "Plain text."}],
+            }
+        )
         normalized = normalized_translation_text(structured)
         assert normalized == "Plain text."
 

@@ -8,6 +8,7 @@ Extracted from translate_result_assembly.py. These functions handle:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from novelai.core.errors import ProviderError, ProviderErrorCode
@@ -83,6 +84,7 @@ def provider_request_record(
     success: bool,
     metadata: Any = None,
     error: ProviderError | None = None,
+    credential_identity: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the full audit/replay record for a single provider request.
 
@@ -90,6 +92,7 @@ def provider_request_record(
     the attempt details for debugging, replay, and cost tracking.
     """
     prompt_text = request.user_prompt if request is not None else chunk_text
+    identity = credential_identity if credential_identity is not None else context.metadata
     payload: dict[str, Any] = {
         "job_id": context.job_id,
         "activity_id": context.activity_id,
@@ -113,11 +116,11 @@ def provider_request_record(
         "attempt_number": attempt_number,
         "purpose": request_purpose,
         "cache_status": cache_status,
-        "credential_id": context.metadata.get("credential_id"),
-        "credential_owner_user_id": context.metadata.get("credential_owner_user_id"),
-        "requesting_user_id": context.metadata.get("requesting_user_id"),
-        "credential_scope": context.metadata.get("credential_scope"),
-        "contribution_mode": context.metadata.get("contribution_mode"),
+        "credential_id": identity.get("credential_id"),
+        "credential_owner_user_id": identity.get("credential_owner_user_id"),
+        "requesting_user_id": identity.get("requesting_user_id"),
+        "credential_scope": identity.get("credential_scope"),
+        "contribution_mode": identity.get("contribution_mode"),
         "request_started_at": started_at,
         "request_finished_at": finished_at,
         "status": "success" if success else "failed",

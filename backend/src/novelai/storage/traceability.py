@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Any
 
@@ -7,7 +8,7 @@ from novelai.storage.common import _utc_now_iso
 
 
 def _trace_dir(self: Any):
-    path = self.base_dir / "runtime" / "traceability"
+    path = self.runtime_path("traceability")
     self._mkdirs(path)
     return path
 
@@ -17,7 +18,7 @@ def _read_json_file(self: Any, path, default: Any) -> Any:
         return default
     try:
         data = json.loads(self._read_text(path))
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError, OSError:
         return default
     return data
 
@@ -66,24 +67,48 @@ def _run_scope(payload: dict[str, Any]) -> str:
     return "run_manual"
 
 
-def append_pipeline_event(self: Any, event: dict[str, Any] | Any) -> dict[str, Any]:
-    payload = _as_dict(event)
-    payload["timestamp"] = str(payload.get("timestamp") or _utc_now_iso())
+def _pipeline_event_id(payload: dict[str, Any]) -> str:
+    supplied = _scope_part(payload.get("event_id"))
+    if supplied is not None:
+        return supplied
+    identity_payload = {key: value for key, value in payload.items() if key not in {"event_id", "timestamp"}}
+    serialized = json.dumps(identity_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return f"event_{hashlib.sha256(serialized.encode('utf-8')).hexdigest()[:32]}"
+
+
+def _append_pipeline_events(self: Any, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     path = self._trace_dir() / "pipeline_events.json"
-    events = self._read_json_file(path, [])
-    if not isinstance(events, list):
-        events = []
-    events.append(payload)
-    self._write_text_atomic(path, json.dumps(events, ensure_ascii=False, indent=2))
-    return dict(payload)
+    existing = self._read_json_file(path, [])
+    stored_events = [dict(event) for event in existing if isinstance(event, dict)] if isinstance(existing, list) else []
+    existing_by_id = {_pipeline_event_id(event): event for event in stored_events}
+    stored: list[dict[str, Any]] = []
+    changed = False
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        payload = _as_dict(event)
+        payload["event_id"] = _pipeline_event_id(payload)
+        payload["timestamp"] = str(payload.get("timestamp") or _utc_now_iso())
+        previous = existing_by_id.get(payload["event_id"])
+        if previous is not None:
+            stored.append(dict(previous))
+            continue
+        stored_events.append(payload)
+        existing_by_id[payload["event_id"]] = payload
+        stored.append(dict(payload))
+        changed = True
+    if changed:
+        self._write_text_atomic(path, json.dumps(stored_events, ensure_ascii=False, indent=2))
+    return stored
+
+
+def append_pipeline_event(self: Any, event: dict[str, Any] | Any) -> dict[str, Any]:
+    stored = _append_pipeline_events(self, [_as_dict(event)])
+    return stored[0] if stored else {}
 
 
 def append_pipeline_events(self: Any, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    stored: list[dict[str, Any]] = []
-    for event in events:
-        if isinstance(event, dict):
-            stored.append(self.append_pipeline_event(event))
-    return stored
+    return _append_pipeline_events(self, events)
 
 
 def list_pipeline_events(
@@ -110,7 +135,7 @@ def list_pipeline_events(
     return filtered
 
 
-def upsert_chunk_state(self: Any, state: dict[str, Any] | Any) -> dict[str, Any]:
+def _merge_chunk_state(states: dict[str, Any], state: dict[str, Any] | Any, now: str) -> dict[str, Any]:
     payload = _as_dict(state)
     chunk_id = payload.get("chunk_id")
     novel_id = payload.get("novel_id")
@@ -119,13 +144,8 @@ def upsert_chunk_state(self: Any, state: dict[str, Any] | Any) -> dict[str, Any]
     if not isinstance(novel_id, str) or not novel_id.strip():
         raise ValueError("novel_id is required.")
 
-    now = _utc_now_iso()
     payload["created_at"] = str(payload.get("created_at") or now)
     payload["updated_at"] = now
-    path = self._trace_dir() / "chunk_states.json"
-    states = self._read_json_file(path, {})
-    if not isinstance(states, dict):
-        states = {}
     run_scope = _run_scope(payload)
     chapter_scope = _chapter_scope(payload)
     payload["translation_run_id"] = run_scope
@@ -134,8 +154,31 @@ def upsert_chunk_state(self: Any, state: dict[str, Any] | Any) -> dict[str, Any]
     existing = states.get(key)
     merged = {**existing, **payload} if isinstance(existing, dict) else payload
     states[key] = merged
-    self._write_text(path, json.dumps(states, ensure_ascii=False, indent=2))
     return dict(merged)
+
+
+def upsert_chunk_state(self: Any, state: dict[str, Any] | Any) -> dict[str, Any]:
+    path = self._trace_dir() / "chunk_states.json"
+    states = self._read_json_file(path, {})
+    if not isinstance(states, dict):
+        states = {}
+    merged = _merge_chunk_state(states, state, _utc_now_iso())
+    self._write_text(path, json.dumps(states, ensure_ascii=False, indent=2))
+    return merged
+
+
+def upsert_chunk_states(self: Any, states_to_merge: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Coalesce safe progress-state writes into one read/modify/write cycle."""
+
+    path = self._trace_dir() / "chunk_states.json"
+    states = self._read_json_file(path, {})
+    if not isinstance(states, dict):
+        states = {}
+    now = _utc_now_iso()
+    stored = [_merge_chunk_state(states, state, now) for state in states_to_merge if isinstance(state, dict)]
+    if stored:
+        self._write_text(path, json.dumps(states, ensure_ascii=False, indent=2))
+    return stored
 
 
 def load_chunk_states(

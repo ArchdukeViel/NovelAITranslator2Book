@@ -48,11 +48,6 @@ def storage(tmp_path: Path) -> FakeStorage:
     return FakeStorage(tmp_path)
 
 
-@pytest.fixture(autouse=True)
-def filesystem_storage_backend(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "STORAGE_BACKEND", "filesystem")
-
-
 @pytest.fixture()
 def service(storage: FakeStorage) -> HealthService:
     return HealthService(storage=storage, activity_runner=FakeRunner())
@@ -173,9 +168,8 @@ class TestStorageUsage:
         backend = MagicMock()
         backend.total_size_bytes.return_value = 512
         with (
-            patch("novelai.config.settings.settings.STORAGE_BACKEND", "s3"),
-            patch("novelai.config.settings.settings.S3_STORAGE_LIMIT_GB", 1),
-            patch("novelai.storage.backends.get_storage_backend", return_value=backend),
+            patch("novelai.config.settings.settings.R2_STORAGE_LIMIT_GB", 1),
+            patch("novelai.storage.backends.get_r2_storage", return_value=backend),
         ):
             result = await HealthService(storage=storage)._probe_storage_usage()
 

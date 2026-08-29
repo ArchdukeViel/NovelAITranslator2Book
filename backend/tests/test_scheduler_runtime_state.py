@@ -292,6 +292,7 @@ class TestCleanup:
         # Manually set updated_at to the past via direct DB access.
         with session_scope_factory() as session:
             from novelai.db.models.scheduler_runtime_state import SchedulerRuntimeState
+
             record = session.query(SchedulerRuntimeState).first()
             if record:
                 record.updated_at = datetime.now(UTC) - timedelta(days=30)

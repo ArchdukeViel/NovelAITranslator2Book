@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_worker_service() -> Any:
     """Bootstrap and return the ActivityWorkerService.
 
@@ -52,6 +53,7 @@ def _get_worker_service() -> Any:
 # ---------------------------------------------------------------------------
 # RQ task functions
 # ---------------------------------------------------------------------------
+
 
 def run_crawl_activity(activity_id: str) -> dict[str, Any]:
     """RQ task: execute a single crawl activity by ID.
@@ -106,6 +108,7 @@ def run_translation_activity(activity_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Enqueue helpers (called by API/services)
 # ---------------------------------------------------------------------------
+
 
 def enqueue_crawl_job(activity_id: str, *, redis_url: str | None = None) -> str:
     """Enqueue a crawl activity onto the RQ crawl queue.

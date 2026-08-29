@@ -262,7 +262,9 @@ class GlossaryApplyPreviewService:
                     )
                 )
         if not specs:
-            warnings.append("Approved entries were found, but none had rejected, banned, or deprecated aliases to scan.")
+            warnings.append(
+                "Approved entries were found, but none had rejected, banned, or deprecated aliases to scan."
+            )
         return specs
 
     def _eligible_entries(
@@ -306,7 +308,9 @@ class GlossaryApplyPreviewService:
         metadata = self._chapter_metadata(novel_id)
         selected_ids = self._select_chapter_ids(storage_ids, metadata, request)
         if len(selected_ids) > max_chapters:
-            warnings.append(f"Preview scanned {max_chapters} of {len(selected_ids)} translated chapters due to the safety cap.")
+            warnings.append(
+                f"Preview scanned {max_chapters} of {len(selected_ids)} translated chapters due to the safety cap."
+            )
             selected_ids = selected_ids[:max_chapters]
 
         chapters: list[_ChapterContext] = []
@@ -376,7 +380,13 @@ class GlossaryApplyPreviewService:
             if end is not None and (number is None or number > end):
                 continue
             selected.append(storage_id)
-        selected.sort(key=lambda item: (metadata.get(item, (None, _int_or_none(item)))[1] is None, metadata.get(item, (None, _int_or_none(item)))[1] or 0, item))
+        selected.sort(
+            key=lambda item: (
+                metadata.get(item, (None, _int_or_none(item)))[1] is None,
+                metadata.get(item, (None, _int_or_none(item)))[1] or 0,
+                item,
+            )
+        )
         return selected
 
     def _preview_match(
@@ -440,7 +450,7 @@ def _normal_key(value: str) -> str:
 def _int_or_none(value: str) -> int | None:
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 

@@ -69,8 +69,8 @@ class ChapterQueryBuilder:
         """Initialize query builder with state directory.
 
         Optional ``list_files``/``read_file``/``path_exists`` callables
-        override direct filesystem I/O — used by storage layer to route
-        through ``StorageService`` backend helpers.
+        override direct local-state I/O — used by storage-layer helpers to
+        route reads through the configured storage boundary.
         """
         self.state_dir = state_dir
         self._list_files = list_files
@@ -84,17 +84,13 @@ class ChapterQueryBuilder:
 
     def by_state(self, state: ChapterState) -> ChapterQueryBuilder:
         """Filter by chapter state."""
-        self._filters.append(
-            lambda data: ChapterState(data.get("current_state")) == state
-        )
+        self._filters.append(lambda data: ChapterState(data.get("current_state")) == state)
         return self
 
     def by_states(self, states: list[ChapterState]) -> ChapterQueryBuilder:
         """Filter by multiple states (OR condition)."""
         state_values = {s.value for s in states}
-        self._filters.append(
-            lambda data: data.get("current_state") in state_values
-        )
+        self._filters.append(lambda data: data.get("current_state") in state_values)
         return self
 
     def has_errors(self) -> ChapterQueryBuilder:
@@ -124,17 +120,21 @@ class ChapterQueryBuilder:
 
     def updated_after(self, timestamp: datetime) -> ChapterQueryBuilder:
         """Filter chapters updated after timestamp."""
+
         def filter_fn(data: dict[str, Any]) -> bool:
             last_updated = _parse_datetime(data.get("last_updated"))
             return last_updated is not None and last_updated >= timestamp
+
         self._filters.append(filter_fn)
         return self
 
     def updated_before(self, timestamp: datetime) -> ChapterQueryBuilder:
         """Filter chapters updated before timestamp."""
+
         def filter_fn(data: dict[str, Any]) -> bool:
             last_updated = _parse_datetime(data.get("last_updated"))
             return last_updated is not None and last_updated <= timestamp
+
         self._filters.append(filter_fn)
         return self
 

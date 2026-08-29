@@ -231,3 +231,42 @@ def test_runtime_role_migration_is_least_privilege() -> None:
     assert "CREATE POLICY novelai_app_runtime_all" in source
     assert "GRANT ALL" not in source
     assert "DROP ROLE" not in source
+
+
+def test_post_runtime_tables_have_backend_rls_contract() -> None:
+    source = (MIGRATIONS_DIR / "2026-08-22_b6c8d0e2f4a6_secure_post_runtime_tables.py").read_text(encoding="utf-8")
+
+    assert '"activity_records"' in source
+    assert '"contributor_credentials"' in source
+    assert '"contributor_usage_ledger"' in source
+    assert "ENABLE ROW LEVEL SECURITY" in source
+    assert "CREATE POLICY novelai_app_runtime_all" in source
+    assert "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE" in source
+    assert "REVOKE ALL PRIVILEGES ON TABLE %s FROM %s" in source
+    assert "REVOKE ALL PRIVILEGES ON SEQUENCE %s FROM %s" in source
+    assert "WHERE rolname IN ('anon', 'authenticated')" in source
+    assert "information_schema.columns" in source
+
+
+def test_post_runtime_tables_downgrade_does_not_reopen_data_api_access() -> None:
+    source = (MIGRATIONS_DIR / "2026-08-22_b6c8d0e2f4a6_secure_post_runtime_tables.py").read_text(encoding="utf-8")
+
+    downgrade_source = source.split("def downgrade", maxsplit=1)[1]
+    assert "GRANT " not in downgrade_source
+    assert "_revoke_data_api_roles" in downgrade_source
+
+
+def test_optional_supabase_rls_helper_migration_is_conditional_and_fail_closed() -> None:
+    filename = "2026-08-29_f8a2c4e6b0d1_revoke_public_rls_helper_execute.py"
+    migration = _load_migration(filename, "optional_rls_helper")
+    source = (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+
+    assert migration.revision == "f8a2c4e6b0d1"
+    assert migration.down_revision == "e7f1a9c3b5d2"
+    assert "to_regprocedure('public.rls_auto_enable()') IS NOT NULL" in source
+    assert "REVOKE ALL ON FUNCTION public.rls_auto_enable() FROM PUBLIC" in source
+    assert "REVOKE ALL ON FUNCTION public.rls_auto_enable() FROM anon" in source
+    assert "REVOKE ALL ON FUNCTION public.rls_auto_enable() FROM authenticated" in source
+
+    downgrade_source = source.split("def downgrade", maxsplit=1)[1]
+    assert "GRANT " not in downgrade_source

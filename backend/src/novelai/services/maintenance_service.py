@@ -60,7 +60,7 @@ class MaintenanceService:
         self,
         storage: Any,
         activity_log: Any | None = None,
-        backup_manager: Any | None = None,
+        backup_service: Any | None = None,
         scheduler_runtime_state_service: Any | None = None,
         analytics_service: Any | None = None,
         notification_cleanup: Any | None = None,
@@ -68,7 +68,7 @@ class MaintenanceService:
     ) -> None:
         self._storage = storage
         self._activity_log = activity_log
-        self._backup_manager = backup_manager
+        self._backup_service = backup_service
         self._scheduler_state_service = scheduler_runtime_state_service
         self._analytics_service = analytics_service
         self._notification_cleanup = notification_cleanup
@@ -257,11 +257,11 @@ class MaintenanceService:
 
     def _cleanup_backup_retention(self, *, dry_run: bool) -> dict[str, Any]:
         """Delegate to backup manager retention. Never deletes newest successful backup."""
-        if self._backup_manager is None:
+        if self._backup_service is None:
             return {
                 "task_key": TASK_BACKUP_RETENTION,
                 "status": "skipped",
-                "message": "Backup manager not available",
+                "message": "R2 backup service not available",
             }
         if dry_run:
             return {
@@ -282,10 +282,11 @@ class MaintenanceService:
                 "message": "Cannot run async backup retention from sync context",
             }
         count = loop.run_until_complete(
-            self._backup_manager.apply_retention(
+            self._backup_service.apply_retention(
                 keep_count=settings.BACKUP_RETENTION_COUNT,
                 min_successful=settings.BACKUP_MIN_SUCCESSFUL_TO_KEEP,
                 max_age_days=settings.BACKUP_MAX_AGE_DAYS,
+                safety_grace_days=settings.BACKUP_SAFETY_GRACE_DAYS,
             )
         )
         return {
@@ -323,7 +324,7 @@ class MaintenanceService:
 
             try:
                 self._mark_task_started(task_key)
-                if task_key == TASK_BACKUP_RETENTION and self._backup_manager is not None:
+                if task_key == TASK_BACKUP_RETENTION and self._backup_service is not None:
                     result = await self._cleanup_backup_retention_async(dry_run=is_dry_run)
                 else:
                     result = self._run_task(task_key, dry_run=is_dry_run)
@@ -453,11 +454,11 @@ class MaintenanceService:
 
     async def _cleanup_backup_retention_async(self, *, dry_run: bool) -> dict[str, Any]:
         """Async backup retention cleanup."""
-        if self._backup_manager is None:
+        if self._backup_service is None:
             return {
                 "task_key": TASK_BACKUP_RETENTION,
                 "status": "skipped",
-                "message": "Backup manager not available",
+                "message": "R2 backup service not available",
             }
         if dry_run:
             return {
@@ -466,10 +467,11 @@ class MaintenanceService:
                 "dry_run": True,
                 "message": "Would apply backup retention policy",
             }
-        count = await self._backup_manager.apply_retention(
+        count = await self._backup_service.apply_retention(
             keep_count=settings.BACKUP_RETENTION_COUNT,
             min_successful=settings.BACKUP_MIN_SUCCESSFUL_TO_KEEP,
             max_age_days=settings.BACKUP_MAX_AGE_DAYS,
+            safety_grace_days=settings.BACKUP_SAFETY_GRACE_DAYS,
         )
         return {
             "task_key": TASK_BACKUP_RETENTION,

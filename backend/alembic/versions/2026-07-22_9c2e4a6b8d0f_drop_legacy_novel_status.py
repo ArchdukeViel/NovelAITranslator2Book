@@ -24,7 +24,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     with op.batch_alter_table("novels") as batch_op:
-        batch_op.add_column(
-            sa.Column("status", sa.String(length=64), nullable=False, server_default="unknown")
-        )
+        batch_op.add_column(sa.Column("status", sa.String(length=64), nullable=False, server_default="unknown"))
     op.execute("UPDATE novels SET status = publication_status")

@@ -99,6 +99,12 @@ def _check_chapter_resume_state(
             honorific_policy=honorific_policy,
         )
         if valid:
+            # A prior worker may have persisted the artifact successfully and
+            # then lost its activity lease before the database state transition
+            # was recorded. Reconcile that durable artifact before returning a
+            # skip so a retry cannot leave a valid translation permanently
+            # reported as failed (and so stale translation_error is cleared).
+            _update_db_translation_state(novel_id, chapter_id, TranslationState.COMPLETE)
             logger.info(
                 "Skipping already-translated chapter %s/%s (lineage valid)",
                 novel_id,

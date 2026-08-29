@@ -15,5 +15,5 @@ def verify_password(password: str, password_hash: str) -> bool:
     """Verify a plaintext password against a stored Argon2id hash."""
     try:
         return _PASSWORD_HASHER.verify(password_hash, password)
-    except (VerifyMismatchError, VerificationError, ValueError, TypeError):
+    except VerifyMismatchError, VerificationError, ValueError, TypeError:
         return False

@@ -3,9 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
+from novelai.api.auth.session import SessionUser
 from novelai.api.routers.admin_schemas import (
     MaintenanceStatusResponse,
     ProviderApiKeyRequest,
@@ -19,11 +21,13 @@ from novelai.api.routers.admin_schemas import (
 from novelai.api.routers.dependencies import (
     get_admin_db_service,
     get_admin_service,
+    get_db_session,
     get_maintenance_status_service,
     get_scheduler_runtime_state_service,
 )
 from novelai.services.admin_service import AdminService
 from novelai.services.maintenance_status_service import MaintenanceStatusService
+from novelai.services.provider_credentials import ProviderCredentialService
 from novelai.services.scheduler_runtime_state_service import SchedulerRuntimeStateService
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
@@ -91,6 +95,27 @@ async def list_provider_credentials(
     return service.list_provider_credentials()
 
 
+@router.post("/admin/providers/credentials/import-environment")
+async def import_environment_provider_credential(
+    owner: SessionUser = Depends(require_role("owner")),
+    db: Session = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Explicitly import and validate the configured owner Gemini key once."""
+    if owner.user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    service = ProviderCredentialService(db)
+    try:
+        credential, api_key = service.import_environment_credential(owner_user_id=owner.user_id)
+        ok, message = await service.validate_and_activate(credential, api_key)
+    except ValueError as exc:
+        _raise_admin_error(exc)
+        raise AssertionError("unreachable") from None
+    response = ProviderCredentialService.safe_response(credential)
+    response["validation_ok"] = ok
+    response["validation_message"] = response.get("validation_message") or message
+    return response
+
+
 @router.post("/admin/providers/credentials")
 async def create_provider_credential(
     body: ProviderCredentialCreateRequest,
@@ -126,6 +151,8 @@ async def update_provider_credential(
             model=body.provider_model,
             is_active=body.is_active,
             notes=body.notes,
+            owner_job_eligible=body.owner_job_eligible,
+            contributor_pool_eligible=body.contributor_pool_eligible,
         )
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)

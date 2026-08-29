@@ -4,6 +4,22 @@ on:
   schedule:
     - cron: "17 2 * * 1"
   workflow_dispatch:
+    inputs:
+      migrate_test_database:
+        description: "Apply candidate migrations to the disposable test database only"
+        required: true
+        type: boolean
+        default: false
+      confirm_test_database:
+        description: "Confirm this targets the disposable testdatabase=dokushodo Supabase project"
+        required: true
+        type: boolean
+        default: false
+      confirm_test_recovery:
+        description: "Confirm disposable database recovery and test R2 buckets only"
+        required: true
+        type: boolean
+        default: false
   workflow_call:
     # When called as a pre-deployment gate (required=true) the job runs
     # unconditionally so a production deploy cannot silently skip hosted
@@ -13,13 +29,51 @@ on:
         description: "Run unconditionally (pre-deployment gate)"
         type: boolean
         default: false
+      migrate_test_database:
+        description: "Apply candidate migrations to the disposable test database only"
+        type: boolean
+        default: false
+      confirm_test_database:
+        description: "Confirm this targets the disposable testdatabase=dokushodo Supabase project"
+        type: boolean
+        default: false
+      confirm_test_recovery:
+        description: "Confirm disposable database recovery and test R2 buckets only"
+        type: boolean
+        default: false
+    secrets:
+      MANAGED_DATABASE_TEST_URL:
+        required: false
 
 permissions:
   contents: read
 
 jobs:
+  migrate-test-database:
+    if: ${{ inputs.migrate_test_database == true && inputs.confirm_test_database == true }}
+    uses: ./.github/workflows/managed-services-test-migrate.yml
+    with:
+      confirm_test_database: ${{ inputs.confirm_test_database }}
+    secrets:
+      MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
+
+  isolated-managed-recovery:
+    # The repository variable is a temporary branch-local dispatch fallback:
+    # GitHub validates workflow_dispatch inputs against the default-branch copy
+    # until this branch is merged. It is intentionally ignored by schedules
+    # and the production reusable-workflow call.
+    if: ${{ inputs.confirm_test_recovery == true || (github.event_name == 'workflow_dispatch' && vars.MANAGED_SERVICE_RECOVERY_ENABLED == 'true') }}
+    uses: ./.github/workflows/managed-services-recovery-verification.yml
+    with:
+      confirm_test_recovery: true
+    secrets:
+      MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
+      TEST_R2_ENDPOINT: ${{ secrets.TEST_R2_ENDPOINT }}
+      TEST_R2_BACKUP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_BACKUP_ACCESS_KEY_ID }}
+      TEST_R2_BACKUP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_BACKUP_SECRET_ACCESS_KEY }}
+
   hosted-postgres-and-r2:
-    if: ${{ inputs.required || vars.MANAGED_SERVICE_TESTS_ENABLED == 'true' }}
+    if: ${{ inputs.migrate_test_database != true && (inputs.required || vars.MANAGED_SERVICE_TESTS_ENABLED == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -27,12 +81,12 @@ jobs:
       TEST_R2_ENDPOINT: ${{ secrets.TEST_R2_ENDPOINT }}
       TEST_R2_SOURCE_BUCKET: ${{ vars.TEST_R2_SOURCE_BUCKET }}
       TEST_R2_TARGET_BUCKET: ${{ vars.TEST_R2_TARGET_BUCKET }}
-      TEST_R2_APP_ACCESS_KEY: ${{ secrets.TEST_R2_APP_ACCESS_KEY }}
-      TEST_R2_APP_SECRET_KEY: ${{ secrets.TEST_R2_APP_SECRET_KEY }}
-      TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY: ${{ secrets.TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY }}
-      TEST_R2_SNAPSHOT_SOURCE_SECRET_KEY: ${{ secrets.TEST_R2_SNAPSHOT_SOURCE_SECRET_KEY }}
-      TEST_R2_BACKUP_ACCESS_KEY: ${{ secrets.TEST_R2_BACKUP_ACCESS_KEY }}
-      TEST_R2_BACKUP_SECRET_KEY: ${{ secrets.TEST_R2_BACKUP_SECRET_KEY }}
+      TEST_R2_APP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_APP_ACCESS_KEY_ID }}
+      TEST_R2_APP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_APP_SECRET_ACCESS_KEY }}
+      TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY_ID: ${{ secrets.TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY_ID }}
+      TEST_R2_SNAPSHOT_SOURCE_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_SNAPSHOT_SOURCE_SECRET_ACCESS_KEY }}
+      TEST_R2_BACKUP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_BACKUP_ACCESS_KEY_ID }}
+      TEST_R2_BACKUP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_BACKUP_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,4 +101,5 @@ jobs:
         run: >
           uv run --locked pytest -q -m integration
           backend/tests/integration/test_managed_postgres.py
-          backend/tests/integration/test_r2_snapshot_integration.py
+          backend/tests/integration/test_r2_backup_integration.py
+          backend/tests/integration/test_r2_restore_integration.py

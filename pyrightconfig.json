@@ -19,6 +19,7 @@
     "docs",
     "artifacts",
     ".tmp",
+    "**/.tmp/**",
     ".tmp.driveupload"
   ],
   "extraPaths": [

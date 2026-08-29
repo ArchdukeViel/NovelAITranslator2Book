@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import io
 
+import pytest
 from pydantic import SecretStr
 
 from novelai.config.settings import settings
-from novelai.services.database_backup_service import _encrypt_stream, _pg_environment, decrypt_backup
+from novelai.services.database_backup_service import (
+    _database_backup_uri,
+    _encrypt_stream,
+    _pg_environment,
+    decrypt_backup,
+)
 
 
 def test_database_backup_encryption_round_trip(monkeypatch) -> None:
@@ -33,3 +39,23 @@ def test_pg_environment_uses_discrete_libpq_values(monkeypatch) -> None:
     assert environment["PGUSER"] == "user"
     assert environment["PGPASSWORD"] == "p@ss"
     assert environment["PGSSLMODE"] == "require"
+
+
+def test_database_backup_uri_requires_a_dedicated_role(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "DATABASE_URL", "postgresql+psycopg://runtime:secret@db/novelai")
+    monkeypatch.setattr(
+        settings,
+        "DATABASE_BACKUP_URL",
+        SecretStr("postgresql+psycopg://backup:secret@db/novelai"),
+    )
+
+    assert _database_backup_uri() == "postgresql://backup:secret@db/novelai"
+
+
+def test_database_backup_uri_rejects_runtime_role(monkeypatch) -> None:
+    source = "postgresql+psycopg://runtime:secret@db/novelai"
+    monkeypatch.setattr(settings, "DATABASE_URL", source)
+    monkeypatch.setattr(settings, "DATABASE_BACKUP_URL", SecretStr(source))
+
+    with pytest.raises(RuntimeError, match="dedicated backup-capable"):
+        _database_backup_uri()

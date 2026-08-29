@@ -24,9 +24,7 @@ class FetchStage(PipelineStage):
 
         source_adapter = context.metadata.get("_source_adapter")
         if not source_adapter:
-            raise PipelineStageError(
-                "FetchStage requires source_adapter in context.metadata['_source_adapter']"
-            )
+            raise PipelineStageError("FetchStage requires source_adapter in context.metadata['_source_adapter']")
 
         logger.info(f"Fetching chapter from {context.chapter_url}")
         try:

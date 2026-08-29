@@ -1,0 +1,160 @@
+{
+  "authenticated_public_session": false,
+  "base_url": "https://laptop-akmalpellu.tail0b4e3e.ts.net",
+  "concurrency": 4,
+  "fixture_slug": "my-father-is-a-hero-my-mother-is-a-spirit-and-i-their-daughter-am-a-reincarnator",
+  "metrics": {
+    "response_bytes": 15600,
+    "status": "404"
+  },
+  "provider_or_storage_fault_injection": "not injected by this client workload",
+  "routes": {
+    "catalog": {
+      "average_response_bytes": 2924,
+      "errors": {},
+      "max_ms": 622.35,
+      "min_ms": 252.725,
+      "p50_ms": 513.118,
+      "p95_ms": 622.35,
+      "p99_ms": 622.35,
+      "samples": 10,
+      "statuses": {
+        "200": 10
+      },
+      "timeouts": 0
+    },
+    "chapter": {
+      "average_response_bytes": 6443,
+      "errors": {},
+      "max_ms": 8035.323,
+      "min_ms": 1622.066,
+      "p50_ms": 6340.785,
+      "p95_ms": 8035.323,
+      "p99_ms": 8035.323,
+      "samples": 10,
+      "statuses": {
+        "200": 10
+      },
+      "timeouts": 0
+    },
+    "detail": {
+      "average_response_bytes": 1395,
+      "errors": {},
+      "max_ms": 1776.879,
+      "min_ms": 1255.292,
+      "p50_ms": 1327.408,
+      "p95_ms": 1776.879,
+      "p99_ms": 1776.879,
+      "samples": 10,
+      "statuses": {
+        "200": 10
+      },
+      "timeouts": 0
+    },
+    "health_live": {
+      "average_response_bytes": 77,
+      "errors": {},
+      "max_ms": 56.355,
+      "min_ms": 7.028,
+      "p50_ms": 16.607,
+      "p95_ms": 56.355,
+      "p99_ms": 56.355,
+      "samples": 10,
+      "statuses": {
+        "200": 10
+      },
+      "timeouts": 0
+    },
+    "health_ready": {
+      "average_response_bytes": 219,
+      "errors": {},
+      "max_ms": 17.031,
+      "min_ms": 6.178,
+      "p50_ms": 12.939,
+      "p95_ms": 17.031,
+      "p99_ms": 17.031,
+      "samples": 10,
+      "statuses": {
+        "503": 10
+      },
+      "timeouts": 0
+    },
+    "home": {
+      "average_response_bytes": 65823,
+      "errors": {},
+      "max_ms": 90.01,
+      "min_ms": 41.967,
+      "p50_ms": 77.501,
+      "p95_ms": 90.01,
+      "p99_ms": 90.01,
+      "samples": 10,
+      "statuses": {
+        "200": 10
+      },
+      "timeouts": 0
+    },
+    "ranking_daily": {
+      "average_response_bytes": 173,
+      "errors": {},
+      "max_ms": 20.703,
+      "min_ms": 10.032,
+      "p50_ms": 16.795,
+      "p95_ms": 20.703,
+      "p99_ms": 20.703,
+      "samples": 10,
+      "statuses": {
+        "200": 10
+      },
+      "timeouts": 0
+    },
+    "ranking_monthly": {
+      "average_response_bytes": 175,
+      "errors": {},
+      "max_ms": 22.974,
+      "min_ms": 11.417,
+      "p50_ms": 19.899,
+      "p95_ms": 22.974,
+      "p99_ms": 22.974,
+      "samples": 10,
+      "statuses": {
+        "200": 10
+      },
+      "timeouts": 0
+    },
+    "ranking_weekly": {
+      "average_response_bytes": 174,
+      "errors": {},
+      "max_ms": 21.327,
+      "min_ms": 11.263,
+      "p50_ms": 16.578,
+      "p95_ms": 21.327,
+      "p99_ms": 21.327,
+      "samples": 10,
+      "statuses": {
+        "200": 10
+      },
+      "timeouts": 0
+    },
+    "search": {
+      "average_response_bytes": 64,
+      "errors": {},
+      "max_ms": 672.786,
+      "min_ms": 299.979,
+      "p50_ms": 498.94,
+      "p95_ms": 672.786,
+      "p99_ms": 672.786,
+      "samples": 10,
+      "statuses": {
+        "200": 10
+      },
+      "timeouts": 0
+    }
+  },
+  "run_id": "40750c69901f",
+  "samples_per_route": 10,
+  "started_at_utc": "2026-08-24T05:18:59.528668+00:00",
+  "translation_enqueue": {
+    "reason": "session cookie and CSRF token environment variables were not both supplied",
+    "skipped": true
+  }
+}

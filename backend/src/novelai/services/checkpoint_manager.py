@@ -132,9 +132,7 @@ class CheckpointManager:
 
         return success
 
-    def get_checkpoint_history(
-        self, novel_id: str, chapter_id: str
-    ) -> list[CheckpointMetadata]:
+    def get_checkpoint_history(self, novel_id: str, chapter_id: str) -> list[CheckpointMetadata]:
         """Get checkpoint history for a chapter.
 
         Args:
@@ -172,9 +170,7 @@ class CheckpointManager:
         history.sort(key=lambda x: x.timestamp)
         return history
 
-    async def cleanup_old_checkpoints(
-        self, novel_id: str, chapter_id: str, keep_count: int = 5
-    ) -> int:
+    async def cleanup_old_checkpoints(self, novel_id: str, chapter_id: str, keep_count: int = 5) -> int:
         """Remove old checkpoints, keeping only recent ones.
 
         Args:
@@ -247,9 +243,7 @@ class AutoCheckpointHandler:
         self._active_chapters: dict[str, ChapterState] = {}
         self._running = False
 
-    async def track_chapter(
-        self, novel_id: str, chapter_id: str, state: ChapterState
-    ) -> None:
+    async def track_chapter(self, novel_id: str, chapter_id: str, state: ChapterState) -> None:
         """Start tracking a chapter for auto-checkpointing.
 
         Args:
@@ -279,9 +273,7 @@ class AutoCheckpointHandler:
         self._active_chapters[key] = state
 
         # Create checkpoint
-        await self.checkpoint_manager.create_checkpoint(
-            novel_id, chapter_id, state, error=error
-        )
+        await self.checkpoint_manager.create_checkpoint(novel_id, chapter_id, state, error=error)
 
     async def start_periodic_checkpointing(self) -> None:
         """Start periodic checkpointing for all active chapters."""
@@ -299,9 +291,7 @@ class AutoCheckpointHandler:
                 for key, state in list(self._active_chapters.items()):
                     try:
                         novel_id, chapter_id = key.split("_", 1)
-                        await self.checkpoint_manager.create_checkpoint(
-                            novel_id, chapter_id, state
-                        )
+                        await self.checkpoint_manager.create_checkpoint(novel_id, chapter_id, state)
                     except Exception as e:
                         logger.error(f"Failed to checkpoint {key}: {e}")
 
@@ -323,9 +313,7 @@ class AutoCheckpointHandler:
         for key in self._active_chapters:
             try:
                 novel_id, chapter_id = key.split("_", 1)
-                deleted = await self.checkpoint_manager.cleanup_old_checkpoints(
-                    novel_id, chapter_id, keep_count=5
-                )
+                deleted = await self.checkpoint_manager.cleanup_old_checkpoints(novel_id, chapter_id, keep_count=5)
                 total_deleted += deleted
             except Exception as e:
                 logger.error(f"Failed to cleanup {key}: {e}")

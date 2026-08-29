@@ -25,7 +25,15 @@ def _make_prod_settings(**overrides: Any) -> AppSettings:
         CSRF_TRUSTED_ORIGINS=["https://example.com"],
         TRUSTED_PROXY_CIDRS=["10.0.0.0/8"],
         HSTS_MAX_AGE_SECONDS=0,
-        STORAGE_BACKEND="filesystem",
+        R2_ENDPOINT="https://account.r2.cloudflarestorage.com",
+        R2_ACCESS_KEY_ID="application-key",
+        R2_SECRET_ACCESS_KEY="application-secret",
+        R2_BACKUP_ENABLED=True,
+        R2_BACKUP_ENDPOINT="https://account.r2.cloudflarestorage.com",
+        R2_BACKUP_ACCESS_KEY_ID="backup-key",
+        R2_BACKUP_SECRET_ACCESS_KEY="backup-secret",
+        R2_SOURCE_ACCESS_KEY_ID="source-read-key",
+        R2_SOURCE_SECRET_ACCESS_KEY="source-read-secret",
         DATABASE_URL="postgresql+psycopg://example.invalid/postgres",
         DB_POOL_PROCESS_COUNT=3,
         DB_CONNECTION_RESERVE=2,
@@ -34,7 +42,7 @@ def _make_prod_settings(**overrides: Any) -> AppSettings:
         DATABASE_RESTORE_VERIFICATION_ENABLED=False,
     )
     defaults.update(overrides)
-    return AppSettings(**defaults)
+    return AppSettings(_env_file=None, **defaults)  # type: ignore[call-arg]
 
 
 class TestProductionConfigValidator:
@@ -126,85 +134,59 @@ class TestProductionConfigValidator:
         assert result.has_fatal
         assert any("REDIS_URL" in i.message for i in result.fatals)
 
-    def test_missing_s3_bucket_fatal(self):
-        result = validate_production_config(_make_prod_settings(STORAGE_BACKEND="s3", S3_BUCKET=None))
+    def test_missing_r2_endpoint_fatal(self):
+        result = validate_production_config(_make_prod_settings(R2_ENDPOINT=None))
         assert result.has_fatal
-        assert any("S3_BUCKET" in i.message for i in result.fatals)
+        assert any("R2_ENDPOINT" in i.message for i in result.fatals)
 
-    @pytest.mark.parametrize("prefix", ["", "/", ".", "novels", "runtime", "local"])
-    def test_s3_production_rejects_unsafe_prefix(self, prefix: str):
+    def test_r2_production_rejects_noncanonical_bucket(self):
         result = validate_production_config(
             _make_prod_settings(
-                STORAGE_BACKEND="s3",
-                S3_BUCKET="production",
-                S3_KEY_PREFIX=prefix,
-                S3_ENDPOINT="https://example.invalid",
-                S3_ACCESS_KEY_ID="source-key",
-                S3_SECRET_ACCESS_KEY="source-secret",
+                R2_BUCKET="production",
             )
         )
-        assert any("S3_KEY_PREFIX" in issue.message for issue in result.fatals)
+        assert any("R2_BUCKET" in issue.message for issue in result.fatals)
 
-    def test_unknown_storage_backend_fatal(self):
-        result = validate_production_config(_make_prod_settings(STORAGE_BACKEND="invalid"))
+    def test_r2_region_must_be_auto(self):
+        result = validate_production_config(_make_prod_settings(R2_REGION="us-east-1"))
         assert result.has_fatal
-        assert any("STORAGE_BACKEND" in i.message.upper() or "Unknown" in i.message for i in result.fatals)
+        assert any("R2_REGION" in i.message for i in result.fatals)
 
-    def test_s3_production_requires_independent_backup_target(self):
+    def test_r2_production_requires_independent_backup_target(self):
         result = validate_production_config(
             _make_prod_settings(
-                STORAGE_BACKEND="s3",
-                S3_BUCKET="production",
-                S3_ENDPOINT="https://example.invalid",
-                S3_ACCESS_KEY_ID="source-key",
-                S3_SECRET_ACCESS_KEY="source-secret",
-                BACKUP_S3_ENABLED=True,
-                BACKUP_S3_BUCKET="production",
-                BACKUP_S3_ENDPOINT_URL="https://example.invalid",
-                BACKUP_S3_ACCESS_KEY_ID="backup-key",
-                BACKUP_S3_SECRET_ACCESS_KEY="backup-secret",
-                SNAPSHOT_SOURCE_S3_ACCESS_KEY_ID="snapshot-read-key",
-                SNAPSHOT_SOURCE_S3_SECRET_ACCESS_KEY="snapshot-read-secret",
+                R2_BACKUP_BUCKET="dokushodo",
             )
         )
-        assert any("must be different" in issue.message for issue in result.fatals)
+        assert any("must differ" in issue.message for issue in result.fatals)
 
-    def test_s3_production_requires_backup_credentials(self):
+    def test_r2_production_requires_backup_credentials(self):
         result = validate_production_config(
             _make_prod_settings(
-                STORAGE_BACKEND="s3",
-                S3_BUCKET="production",
-                S3_ENDPOINT="https://example.invalid",
-                S3_ACCESS_KEY_ID="source-key",
-                S3_SECRET_ACCESS_KEY="source-secret",
-                BACKUP_S3_ENABLED=True,
-                BACKUP_S3_BUCKET="backup",
-                BACKUP_S3_ENDPOINT_URL="https://example.invalid",
-                BACKUP_S3_ACCESS_KEY_ID=None,
-                BACKUP_S3_SECRET_ACCESS_KEY=None,
+                R2_BACKUP_ACCESS_KEY_ID=None,
+                R2_BACKUP_SECRET_ACCESS_KEY=None,
             )
         )
-        assert any("BACKUP_S3_ACCESS_KEY_ID" in issue.message for issue in result.fatals)
+        assert any("backup-write" in issue.message for issue in result.fatals)
 
-    def test_valid_s3_production_backup_configuration_passes(self):
+    def test_valid_r2_production_backup_configuration_passes(self):
         result = validate_production_config(
             _make_prod_settings(
-                STORAGE_BACKEND="s3",
-                S3_BUCKET="production",
-                S3_ENDPOINT="https://example.invalid",
-                S3_ACCESS_KEY_ID="source-key",
-                S3_SECRET_ACCESS_KEY="source-secret",
-                BACKUP_S3_ENABLED=True,
-                BACKUP_S3_BUCKET="backup",
-                BACKUP_S3_PREFIX="snapshots",
-                BACKUP_S3_ENDPOINT_URL="https://example.invalid",
-                BACKUP_S3_ACCESS_KEY_ID="backup-key",
-                BACKUP_S3_SECRET_ACCESS_KEY="backup-secret",
-                SNAPSHOT_SOURCE_S3_ACCESS_KEY_ID="snapshot-read-key",
-                SNAPSHOT_SOURCE_S3_SECRET_ACCESS_KEY="snapshot-read-secret",
+                R2_BACKUP_BUCKET="dokushodo-backup",
             )
         )
         assert not result.has_fatal
+
+    def test_database_backup_rejects_runtime_target_with_driver_alias(self):
+        result = validate_production_config(
+            _make_prod_settings(
+                DATABASE_BACKUP_ENABLED=True,
+                DATABASE_BACKUP_URL="postgresql://example.invalid/postgres",
+                DATABASE_URL="postgresql+psycopg://example.invalid/postgres",
+                DATABASE_BACKUP_ENCRYPTION_KEY="x" * 64,
+            )
+        )
+        assert any("dedicated backup-capable" in issue.message for issue in result.fatals)
 
     def test_restore_verification_rejects_production_target(self):
         result = validate_production_config(

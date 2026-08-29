@@ -39,6 +39,7 @@ updates:
       interval: "weekly"
     labels:
       - "dependencies"
+      - "docker"
     commit-message:
       prefix: "chore(deps)"
     ignore:

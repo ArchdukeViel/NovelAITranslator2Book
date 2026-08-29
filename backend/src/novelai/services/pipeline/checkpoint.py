@@ -77,7 +77,7 @@ class Checkpoint:
 class CheckpointManager:
     """Manages segment-level checkpoint files on disk.
 
-    Checkpoints live under ``storage/novel_library/{slug}/checkpoints/``,
+    Checkpoints live under the disposable ``RUNTIME_DIR/checkpoints/{slug}/``,
     one JSON file per chapter.  Writes are atomic (write-to-temp then
     rename).  Stale checkpoints older than ``CHECKPOINT_MAX_AGE_DAYS``
     are silently invalidated.

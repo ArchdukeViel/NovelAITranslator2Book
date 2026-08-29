@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -286,6 +288,83 @@ async def test_update_db_translation_state() -> None:
     # In test env without DB, this should log warning and return gracefully
     _update_db_translation_state("test_novel", "1", TranslationState.FETCHING)
     # No exception = pass
+
+
+def test_update_db_translation_state_clears_stale_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A new state transition must remove an error from the prior attempt."""
+    import novelai.services.orchestration.translation as translation_module
+
+    row = SimpleNamespace(translation_state=TranslationState.FAILED.value, translation_error="stale error")
+
+    class FakeQuery:
+        def options(self, *_options: object) -> FakeQuery:
+            return self
+
+        def filter_by(self, **_kwargs: object) -> FakeQuery:
+            return self
+
+        def one_or_none(self) -> object:
+            return SimpleNamespace(id=1)
+
+    class FakeSession:
+        def query(self, _model: object) -> FakeQuery:
+            return FakeQuery()
+
+        def commit(self) -> None:
+            return None
+
+    @contextmanager
+    def fake_session_scope():
+        yield FakeSession()
+
+    monkeypatch.setattr(translation_module, "session_scope", fake_session_scope)
+    monkeypatch.setattr(translation_module, "_lookup_chapter_row", lambda *_args: row)
+
+    translation_module._update_db_translation_state("test_novel", "1", TranslationState.COMPLETE)
+
+    assert row.translation_state == TranslationState.COMPLETE.value
+    assert row.translation_error is None
+
+
+def test_valid_existing_translation_repairs_failed_db_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A durable valid artifact repairs a stale failed chapter state on retry."""
+    from novelai.config.settings import settings
+    from novelai.services.orchestration import translation_resume
+
+    updates: list[tuple[str, str, str | None]] = []
+    storage = SimpleNamespace(load_translated_chapter=lambda _novel_id, _chapter_id: {"text": "translated"})
+    subject = SimpleNamespace(storage=storage)
+    monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
+
+    monkeypatch.setattr(
+        translation_resume,
+        "_load_db_translation_state",
+        lambda _novel_id, _chapter_id: TranslationState.FAILED.value,
+    )
+    monkeypatch.setattr(
+        translation_resume,
+        "_update_db_translation_state",
+        lambda novel_id, chapter_id, state, error=None: updates.append((novel_id, state.value, error)),
+    )
+    monkeypatch.setattr(translation_resume, "is_translation_valid", lambda **_kwargs: True)
+
+    result = translation_resume._check_chapter_resume_state(
+        subject,
+        novel_id="n1",
+        chapter_id="1",
+        force=False,
+        source_text_hash="source",
+        effective_glossary_hash="glossary",
+        prompt_template_version="v1",
+        provider_key="gemini",
+        provider_model="gemini-3.5-flash-lite",
+    )
+
+    assert result == {"chapter_id": "1", "status": "skipped", "reason": "already_translated"}
+    assert updates == [
+        ("n1", TranslationState.PENDING.value, None),
+        ("n1", TranslationState.COMPLETE.value, None),
+    ]
 
 
 @pytest.mark.asyncio

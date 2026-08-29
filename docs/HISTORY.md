@@ -1,4 +1,473 @@
+## 2026-08-29 NON-PRODUCTION CLOUDFLARE READER FOLLOW-UP RERUN
+
+The confirmation-gated non-production reader workflow [run
+33259176327](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33259176327)
+completed successfully in 36m55s at candidate commit
+`f2cfedde7912a29c691768d2b6cacc3016fbfdb9`. It resolved the exact active test
+Supabase project `testingdatabase-dokushodo` and used only `test-dokushodo` for
+the application fixture. The recovery bucket remained
+`test-dokushodo-backup`. The workflow seeded the explicit fixture, waited for
+the isolated Cloudflare quick Tunnel to return HTTP 200 from `/health/live`,
+ran the bounded 1k matrix, and completed guarded cleanup. The sanitized artifact
+is `reader-capacity-nonproduction-33259176327`.
+
+The five artifact validators passed. The 20 Cloudflare SLO-gate cells attempted
+1,000 read-only requests with 850 valid samples, zero transport errors, 144
+timeouts, nine passing cells, eight failed cells, and three unavailable cells.
+The 20 Caddy diagnostic cells attempted 1,000 requests with 800 valid samples,
+zero transport errors, 189 timeouts, ten passing cells, six failed cells, and
+four unavailable cells. The required Cloudflare cells had one passing cell, six
+over-budget cells, and three unavailable cells; twenty independent cold-reset
+proofs were recorded. The resulting disposition is
+`reader_slo_status=blocked`, `path_profile_status=blocked`,
+`telemetry_status=unavailable`, `recovery_status=not_assessed`, and
+`production_capacity_claim=not_established`. No remediation was applied because
+non-overlapping layer timings remained unavailable.
+
+Supabase MCP security/performance advisor calls and read-only SQL checks returned
+without exposing findings or rows. The sanitized database snapshot recorded zero
+fixture rows, one migration-marker row, 11 aggregate sessions (one active and
+three idle), and 26,147 cumulative statement calls with 133,608 cumulative rows;
+cumulative execution time was unavailable. Cloudflare MCP confirmed the exact
+test buckets and post-run zero-object cleanup. The named durable development
+tunnel was down with zero connectors at the check, while its DNS record remained
+proxied; the workflow's disposable quick Tunnel is separate. Zone analytics was
+unavailable and the R2 metrics endpoint was not bucket/window scoped, so no edge,
+tunnel, R2-operation, or billing metric was inferred.
+
+The direct recovery workflow dispatch was attempted but GitHub reported that the
+workflow file is absent from the default branch. No recovery write was performed
+in this run. The earlier successful isolated recovery record remains separate
+one-run evidence and does not establish recurring backup freshness, alert
+delivery, reader capacity, or production readiness.
+
+## 2026-08-29 NON-PRODUCTION CLOUDFLARE READER RERUN AFTER TUNNEL READINESS FIX
+
+The confirmation-gated non-production reader workflow [run
+33251479814](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33251479814)
+completed successfully at candidate commit
+`3642ed2230ed9fbee5cc77fb18de5ecfafb0980e`. It built the isolated reader
+runtime, seeded the explicit published fixture into the disposable managed
+test database and dedicated `test-dokushodo` R2 bucket, and waited for the
+ephemeral Cloudflare quick tunnel to return HTTP 200 from the isolated
+`/health/live` route before profiling. It also collected Caddy loopback cells
+with an explicit `localhost` Host binding for diagnostic comparison.
+
+All four semantic artifact validators passed. The 60-cell matrix contains 20
+Caddy diagnostic cells and 20 Cloudflare SLO-gate cells, each with 1,000
+attempted read-only requests. Cloudflare produced 850 valid samples, eight
+passing cells, nine over-budget cells, and three unavailable cells with 144
+timeouts and zero transport errors. Caddy produced 750 valid samples, nine
+passing cells, six over-budget cells, and five unavailable cells with 180
+timeouts. Cloudflare health p95 was 118.841 ms warm and 166.230 ms cold;
+catalog and detail p95 values remained approximately 9.7-10.5 seconds and
+10.8-11.8 seconds, while chapter and warm search cells were incomplete from
+timeouts. The route sampler recorded only coarse sanitized timeout classes;
+no raw errors, URLs, headers, or credentials were retained.
+
+The independent dispositions remain `reader_slo_status=blocked`,
+`path_profile_status=blocked`, `telemetry_status=unavailable`,
+`recovery_status=not_assessed`, and `production_capacity_claim=not_established`.
+The baseline kept the worker stopped and queue/writer state unknown. Twenty
+controlled cold-reset proofs were recorded, cleanup completed, and independent
+post-run checks found zero fixture rows and zero objects under the exact
+`novels/123/` prefix. This is valid non-production evidence that isolates the
+remaining application/origin latency and timeout blockers; it is not a
+production-capacity or recovery approval.
+
+## 2026-08-29 NON-PRODUCTION CLOUDFLARE READER EVIDENCE
+
+The confirmation-gated non-production reader workflow [run
+33246036636](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33246036636)
+completed successfully at candidate commit `6eb3d699334925f28f3ba113d5369f9400c4c690`.
+It applied the current migration head, seeded the explicit published fixture
+`reader-fixture-test-v1` (novel `123`, chapters `456` and `457`) into the
+disposable managed test database and dedicated `test-dokushodo` R2 bucket,
+started an isolated Compose reader runtime, captured the safety baseline, and
+opened an ephemeral Cloudflare quick tunnel. The worker remained stopped; the
+original queue and other-writer states remained explicitly unknown.
+
+The sanitized report validators accepted a 60-cell matrix. The 20
+`cloudflare_tunnel` cells attempted 1,000 read-only requests (50 warm and 50
+cold samples for each required and diagnostic route); all were recorded as
+transport errors, so there were zero valid latency samples and no Cloudflare
+p95 result. Ten disposable Redis-flush/reader-restart proofs were recorded.
+The independent dispositions are `reader_slo_status=blocked`,
+`path_profile_status=blocked`, `telemetry_status=unavailable`,
+`recovery_status=not_assessed`, and `production_capacity_claim=not_established`.
+The workflow still succeeded because a quantified blocked report is valid
+evidence; it is not a capacity pass.
+
+The workflow cleanup completed, and post-run checks found zero fixture rows in
+the test database and zero objects under the exact `novels/123/` prefix in
+`test-dokushodo`. No canonical database, R2 bucket, named development tunnel,
+provider traffic, worker, or translation queue was changed.
+
+## 2026-08-29 INITIAL CLOUDFLARE-ONLY READER FOLLOW-UP AND TAILSCALE RETIREMENT
+
+The active development reader path is now Cloudflare-only. The configured
+Cloudflare MCP can inspect the `dokushodo.online` zone, the healthy
+`dokushodo-dev` tunnel, DNS routing, and R2 buckets without exposing
+credentials. The development hostname returned HTTP 200 for liveness and the
+public catalog smoke request. No production hostname, database, bucket, or
+canonical object was changed.
+
+The active deployment workflow and Codex MCP configuration no longer use
+Tailscale. Web traffic remains on the Cloudflare Tunnel; deployment SSH stays
+on the existing directly reachable environment-scoped host. Historical
+private-network evidence is retained below for provenance and is not an
+active acceptance path.
+
+The initial named-development-host read-only Cloudflare 1k profile collected
+50 warm samples per required route. Liveness, catalog, and search exceeded
+their configured budgets; the requested detail/chapter fixture returned 404;
+and all controlled-cold cells were unavailable. That probe predates the
+disposable fixture workflow recorded above and remains historical evidence,
+not the current fixture-bound run. It was a quantified blocker, not a
+capacity pass.
+The worker and original full queue remain stopped or paused, and
+`production_capacity_claim` remains `not_established`.
+
+The disposable Supabase security advisor was also rerun after applying the
+candidate RLS-helper hardening DDL and reported no lints. The repository now
+contains conditional Alembic migration `f8a2c4e6b0d1`; it revokes broad
+execution on the optional `public.rls_auto_enable()` helper when present and
+does not claim production schema or capacity readiness.
+
+The disposable test project's Alembic marker was synchronized to
+`f8a2c4e6b0d1` after that idempotent hardening check; its application fixture
+tables remain empty. This is isolated non-production schema evidence only and
+does not imply that a reader fixture exists at the Cloudflare development
+origin.
+
+## 2026-08-28 READER CAPACITY AND RECOVERY CURRENT RECHECK
+
+The follow-up package was refreshed against campaign
+`camp-20260828T042235Z`. The current stage report
+`reader-stage-1000/reader-stage-1000-20260828T042533Z.json` contains 60
+required route/cache cells and 30 quantified blockers with no live samples.
+The selected `private_network` gate remains blocked because the approved
+fixture/target, queue/writer observation, and controlled cold-cache method are
+not available. The worker/full queue remain stopped or paused.
+
+Pre-remediation and stage-1000 telemetry are joinable across 38 snapshot
+records, but required operational values remain explicitly unavailable.
+Recovery freshness, alert delivery, hosted restore, provider/R2 telemetry,
+and production capacity remain unestablished. Local quality checks and
+Graphify passed; they do not substitute for hosted evidence.
+
+## 2026-08-28 CLOUDFLARE MCP ACCESS VERIFICATION
+
+Codex OAuth authentication for the configured `cloudflare-api` MCP server was
+completed in a fresh subprocess. Read-only zone lookup, DNS-record listing,
+and R2 bucket listing all returned HTTP 200: one zone (`dokushodo.online`),
+two DNS records (targets omitted), and four buckets (`dokushodo`,
+`dokushodo-backup`, `test-dokushodo`, and `test-dokushodo-backup`). No
+Cloudflare resource, credential, DNS record, or R2 object was changed.
+
+This establishes authenticated read/list access through the Cloudflare MCP;
+it does not claim write permission, provider billing/quota telemetry, or
+application R2 credential validity. Any future domain or bucket mutation must
+name an explicit target and action first.
+
+## 2026-08-28 DEVELOPMENT CLOUDFLARE TUNNEL DEPLOYMENT
+
+The explicitly authorized development edge was established without changing
+the production apex or `www` DNS records. The remotely managed
+`dokushodo-dev` tunnel now routes `dev.dokushodo.online` to the internal
+Caddy service, with the exact host header and a 404 catch-all. Cloudflare
+reported the tunnel healthy, the intended DNS/configuration checks matched,
+and one connector was active.
+
+Compose now carries a digest-pinned `cloudflared:2026.8.0` service on the
+existing application network. Its connector token is mounted only from the
+ignored local `deploy/.cloudflared/dokushodo-dev.token` secret file; no token
+value is recorded in the repository. External development smoke checks
+returned HTTP 200 for liveness, readiness, the frontend root, and the public
+catalog. The worker/full queue, provider work, recovery, and production
+acceptance gates remain unchanged and unestablished.
+
+## 2026-08-27 RELEASE CONTROLS AND DOCUMENTATION RECONCILIATION
+
+The current release-control audit was recorded in
+`artifacts/operations/release-controls-2026-08-27.md`. This is a sanitized
+documentation and local-validation record, not a production approval.
+
+- The local GitGuardian engine scanned five existing test/utility files with
+  `--all-secrets --exit-zero` and reported zero incidents/occurrences. This is
+  a negative control; no real secret, hosted incident, ignore rule, or
+  credential mutation was involved. The hosted incident/false-positive
+  exercise remains blocked pending an authorized sanitized incident or review
+  record.
+- Workflow, takedown, production-config, ranking/cache, analytics-writer, SEO,
+  and frontend accessibility tests passed locally. Frontend typecheck, lint,
+  and build also passed. These results do not close current production SEO,
+  browser/network, CDN/takedown, reviewer, or candidate-freeze gates.
+- FE-02 is reconciled: automated accessibility coverage is a local pass, while
+  current-candidate manual keyboard, screen-reader, zoom, reduced-motion,
+  forced-colors, and physical-device acceptance remains pending. The earlier
+  attestation is historical evidence only.
+- Historical candidate, worker, queue, and production-readiness wording is
+  explicitly separated from the current dirty, unfrozen, NO-GO state. Release
+  configuration parity, cross-source acceptance, provider/bulk readiness,
+  populated ranking, pool behavior, analytics writer behavior, shared-cache
+  behavior, credential rotation, and dedicated-host availability are each
+  recorded as blocked or locally partial with an owner and retry condition.
+
+## 2026-08-27 READER CAPACITY AND RECOVERY CURRENT RECHECK
+
+The follow-up evidence package was refreshed against campaign
+`camp-20260827T130658Z` after Docker Desktop recovery. Local backend, reader,
+Caddy, frontend, Redis, and restore-db services were healthy, and Caddy
+`/health/live` plus `/health/ready` returned HTTP 200 with empty bodies. The
+dedicated worker remained absent.
+
+The bounded 1k profile was invoked with the approved read-only contract but no
+fixture or target was supplied, so it generated 60 explicit unavailable
+route/cache cells and no live samples. Queue/writer state and controlled cold
+cache remain unavailable; the selected private-network reader gate remains
+blocked. Current telemetry contains joinable pre-remediation and stage-1000
+records with explicit unavailable provenance. Recovery freshness, alert
+delivery, hosted restore, release configuration parity, provider/bulk
+readiness, production CDN propagation, actual credential rotation, and a
+dedicated always-on host remain open gates.
+
+The current quality-gate orchestrator passed: spec validation, Pyright (0
+errors), affected Ruff, focused profile/recovery/restore tests, router and
+workflow-path checks, evidence validators, and Graphify. These local results
+do not establish reader SLO, hosted telemetry, recovery success, or production
+capacity; `production_capacity_claim` remains `not_established`.
+
+## 2026-08-25 READER CAPACITY AND RECOVERY OPERATIONAL FOLLOW-UP
+
+The execution package for `.agents/specs/reader-capacity-and-recovery-follow-up/`
+was reconciled with fail-closed evidence. The task actions and safety decisions
+were recorded, but the operational outcome remains blocked; this entry does
+not claim that the five live follow-ups passed:
+- Structured schema and semantic postcondition validator implemented (`tools/capacity/validate_reader_follow_up.ps1`).
+- Sanitized preflight safety baseline generated (`artifacts/operations/reader-capacity-follow-up/baseline.json`).
+- Route profile and latency attribution contracts were tested, but the generated route matrix contains unavailable cells and all layer timings are unavailable.
+- Hosted telemetry contains joinable explicit-unavailable snapshots; no provider, R2 billing, or quota value was inferred.
+- Remediation is a safe no-op pending non-overlapping layer evidence; no hosted R2 bottleneck was claimed.
+- The 1k artifact records `reader_slo_status=blocked`, `path_profile_status=blocked`, `recovery_status=not_assessed`, and `production_capacity_claim=not_established`; no live 1k samples were collected in this run.
+- Recovery control tests passed locally, while current backup freshness, alert delivery, and isolated hosted restore remain unavailable or blocked.
+- The recovery-owner and rotation procedure is recorded; actual credential rotation remains deferred.
+- Quality-gate results and the stale workflow test-path blocker are recorded in `artifacts/operations/reader-capacity-follow-up/validation.md`.
+- The final handoff remains blocked (`artifacts/operations/reader-capacity-follow-up/handoff.md`); worker/full-queue state was not broadened or resumed.
+
+## 2026-08-28 NON-PRODUCTION R2 DATA-PLANE VERIFICATION
+
+The existing isolated R2 test settings were used without rotating the test
+credentials or recording their values. The repository now has the required
+R2 Actions secrets and the non-secret source/target variables point to
+`test-dokushodo` and `test-dokushodo-backup`. No canonical production bucket,
+object, or deployment secret was changed.
+
+The local backup and restore integration checks passed (`2 passed in 15.60s`).
+The first hosted managed-services workflow at commit `8e2957d` reached the
+new test database and reported `2 failed, 2 passed in 17.77s`: both R2 checks
+passed, while the two database checks found that `public.alembic_version` and
+`scheduled_job_leases` were absent. This confirmed database reachability and
+identified the empty test-project schema without exposing the secret value.
+
+The confirmation-gated migration run
+[`33170998029`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33170998029)
+successfully applied the candidate Alembic migrations at commit `3c1dcf6`.
+The independent hosted verification run
+[`33171154023`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33171154023)
+then passed all four managed PostgreSQL/R2 integration checks (`4 passed in
+18.93s`). The temporary `MANAGED_SERVICE_TESTS_ENABLED` flag was returned to
+`false`; no production database, bucket, or deployment secret was changed.
+
+This closes disposable non-production managed-service schema/R2 verification at
+that earlier checkpoint. It did not by itself close managed PostgreSQL
+recovery, recurring backup/alert, reader-capacity, hosted telemetry, or
+production-readiness gates.
+
+## 2026-08-28 NON-PRODUCTION MANAGED DATABASE RECOVERY VERIFICATION
+
+The confirmation-gated recovery workflow ran against the disposable managed
+test database and dedicated non-production R2 target at candidate commit
+`30fe82c`:
+[`33182847311`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33182847311).
+The sanitized record is stored at
+`artifacts/operations/reader-capacity-follow-up/remote-recovery-33182847311/managed-database-recovery-evidence.json`.
+
+The run passed encrypted database backup creation, manifest/checksum
+verification, freshness, isolated local restore, Alembic-head verification,
+representative queries, public isolation, R2-prefix cleanup, temporary-role
+cleanup, and overall cleanup. The restored target contained 37 public tables,
+37 RLS tables, and zero invalid constraints. No production mutation occurred;
+the temporary confirmation variable was deleted and
+`MANAGED_SERVICE_TESTS_ENABLED` remained `false`.
+
+This closes the current one-run non-production managed database recovery drill.
+It does not establish recurring production backup freshness, operator alert
+delivery, production smoke, reader capacity, hosted telemetry, or production
+recovery readiness. The worker and original full queue remain stopped/paused.
+
+## 2026-08-24 PIPELINE ASYNC EXECUTION AND CAPACITY COMPLETION CONTINUATION
+
+The authorized completion slice for `pipeline-async-execution-and-capacity`
+and `pipeline-resource-efficiency-audit` is complete. Both task ledgers and
+acceptance matrices record complete task and gate decisions, with historical
+measurements preserved under their original checkpoints.
+
+The continuation completed the bounded provider/R2 canary, exact raw and
+translated artifact readback, the encrypted database backup and isolated
+restore, the independent R2 snapshot readback, and the private 1k reader stage
+with a quantified SLO and telemetry stop. The 10k/100k stages have a complete
+dependency-safety decision and were not admitted after the 1k stop. The worker
+remains stopped and the original full queue remains paused; no unsupported
+production billing, quota, or capacity claim was added.
+
+The current plan handoffs are recorded in `docs/PERFORMANCE_ACTION_PLAN.md`
+and `docs/R2-Only Content Storage Rearchitecture-plan.md`, with supporting
+evidence under `artifacts/capacity/`. The earlier checkpoint below remains a
+historical record of the state before this continuation.
+
+## 2026-08-24 PIPELINE ASYNC EXECUTION AND CAPACITY AUDIT CHECKPOINT
+
+The approved `pipeline-async-execution-and-capacity` work completed its local
+implementation and evidence slices for the bounded persistence boundary,
+ownership/replay/cancellation controls, fixed-label runtime telemetry,
+conservative configuration rollback, contributor-pool quota accounting,
+fixture-only reader capacity, public correctness, checkpoint footprint, and
+hosted-versus-modeled cost reporting. Focused tests, Ruff, Pyright, Compose
+validation where applicable, and Graphify refreshes passed; exact commands and
+sanitized results are recorded under `artifacts/capacity/`.
+
+The isolated R2 benchmark was unavailable because `TEST_R2_ENDPOINT` was not
+configured, so no R2 operation or cleanup was attempted. The source canary and
+1k/10k/100k reader stages were deferred because their separate operator
+approval, traffic/SLO inputs, stop thresholds, rollback owner, hosted target,
+and trustworthy telemetry are absent. Local fixtures and modeled projections
+are not production capacity, billing, egress, provider-quota, or SLO claims.
+
+The audit did not resume the original queues or worker, activate a contributor
+credential, call a provider, mutate canonical PostgreSQL/R2 content, or perform
+remote Git/deployment actions. Local independent review, task-state
+normalization, and handoff are recorded in
+`artifacts/capacity/pac-8a109a5ad1cd-task-state-audit.md`. External/live gates
+remain open; future live work must preserve the documented rollback and
+reader/provider rate-domain boundaries.
+
+## 2026-08-22 PR113 TRANSLATION DEPENDENCY CHECKPOINT
+
+The repeated live preflight still reports zero contributor credentials and zero
+active validated credentials. Bulk translation cannot safely start until an
+authenticated user submits and validates a Gemini key through the contribution
+flow. No owner key or environment value was repurposed to invent contributor
+ownership, and no provider request was made.
+
+## 2026-08-22 PR113 CONTROL-PLANE RECHECK
+
+The live Cloudflare control plane reports exactly `dokushodo` and
+`dokushodo-backup`. The authorized Supabase project reports zero contributor
+credential rows, no security-advisor findings, and only informational
+unused-index performance observations. Contributor-backed bulk translation
+remains pending activation of a user-contributed, validated Gemini credential;
+no owner key was substituted and no provider request was made.
+
+## 2026-08-22 PR113 CONTRIBUTOR TRANSLATION AUTHORIZATION CHECKPOINT
+
+The operator authorized the contributor-backed bulk translation run. A live
+database audit found zero active, validated contributor Gemini credentials, so
+no provider request or translation activity was started and the owner-global
+Gemini key was not substituted. The worker remains configured to select only
+active validated contributor credentials. Repository RPM/TPM/RPD values are
+local safety ceilings; upstream Gemini limits remain account/project-specific
+and must be verified before production-volume execution.
+
+## 2026-08-22 PR113 COMPOSE LIST-DEFAULT CHECKPOINT
+
+The canonical Compose file now uses a blank default for optional
+`WEB_CORS_ORIGINS` instead of JSON-array syntax. This matches the Pydantic
+`NoDecode` comma-separated list contract used by the environment templates and
+prevents an absent production value from becoming the literal origin `[]`.
+
+## 2026-08-22 PR113 TRANSLATION WORKLOAD CHECKPOINT
+
+A read-only workload audit found no active translation activities. Of the 267
+imported chapters, 266 remain pending: NCode has 147, Kakuyomu has 88, and
+Novel18 has 31. The current segmentation settings estimate 267 provider
+chunks across 901,921 pending raw-text characters. A rough planning estimate
+of 498,889 total tokens (character-count approximation plus the configured
+1,024 output tokens per chunk) is approximately `$0.9978` at the repository's
+configured accounting rate; actual provider billing, retries, and tokenization
+may differ. The Gemini key is configured, but no provider request or activity
+was started pending explicit operator approval for the external translation
+run and its budget.
+
+## 2026-08-22 PR113 EXPLICIT R2 STORAGE BOUNDARY CHECKPOINT
+
+The runtime storage boundary was tightened to match the locked R2-only
+architecture: `R2StorageBackend`, `R2Storage`, and `get_r2_storage` are now the
+only storage client vocabulary, and the generic backend factory/reset names
+were removed without compatibility aliases. Direct storage and health callers,
+tests, and the isolated R2 integration double were updated. Ruff, Pyright, and
+the focused R2/health/integration shard passed; the full backend suite passed
+2,880 tests with 16 skips after the rename.
+
+## 2026-08-22 PR113 R2 CREDENTIAL ENVIRONMENT CHECKPOINT
+
+The operator supplied separate R2 source-read and backup-write credentials and
+rotated the application R2 credentials in `deploy/.env`. The ignored root
+`.env` was synchronized with the deployment environment for all six active
+application/source/backup credential assignments; an in-process comparison
+verified equality and no duplicate R2 keys without exposing secret values.
+Example templates and frontend environment files remain secret-free. Backup
+and recovery remain disabled by operator decision, so no snapshot or restore
+evidence is claimed by this synchronization.
+
+## 2026-08-22 PR113 R2 CREDENTIAL READ-SCOPE CHECKPOINT
+
+The repository's read-only R2 inventory path successfully listed 538 objects in
+`dokushodo` with the application credential and zero objects in
+`dokushodo-backup` with the independent backup-target credential. An isolated
+source-read client independently listed all 538 application objects. No object
+was written or deleted; backup-target write permission, snapshot creation, and
+restore remain unverified while recovery is disabled.
+
+## 2026-08-22 PR113 POST-ROTATION READER ACCEPTANCE CHECKPOINT
+
+After application credentials were rotated, the backend, reader, and worker
+were recreated. The refreshed reader returned 200 for the published translated
+NCode chapter and 404 for an untranslated chapter, unpublished Novel18, and
+the singular legacy route; catalog, rankings, and published detail routes also
+passed. The deployment list settings were normalized to the repository's
+comma-separated `NoDecode` format, and the development overlay now avoids the
+unstable Python 3.14 Docker reload subprocess. Backend, reader, and worker are
+running; local readiness remains 503 because disk is unhealthy and the worker
+probe is degraded. No production readiness or recovery evidence is claimed.
+
+## 2026-08-22 PR113 R2 CONTROL-PLANE AND DATABASE PERFORMANCE CHECKPOINT
+
+Applied and verified Alembic migration `c9d1e3f5a7b9` on the authorized
+Supabase PostgreSQL project. It adds the missing `novel_requests.chapter_id`
+foreign-key index identified by the live performance advisor. A follow-up
+advisor run reported no unindexed foreign-key finding; remaining unused-index
+observations are retained for workload review rather than removed speculatively.
+
+The Cloudflare control-plane audit independently confirmed exactly two R2
+buckets: `dokushodo` and `dokushodo-backup`. Both are APAC/Standard/default-
+jurisdiction. Application and backup lifecycle rules are enabled, and neither
+private bucket has a custom domain or CORS policy. No object or backup data was
+modified during this audit; backup/recovery remains operator-deferred.
+
+The read-only application-bucket verifier measured 538 objects, 1,323,657
+stored bytes, 5,586,652 logical uncompressed bytes, and 4,262,995 compression-
+saved bytes (76.31%). It performed one paginated LIST, 538 HEAD requests, and
+538 GET requests; all logical SHA-256 metadata checks passed. Repeated live
+recrawl and backup-reuse counters remain unmeasured.
+
 ## 2026-08-17 DEBT-079D MINIMAL STAGING FIXTURES, ADAPTER HEALTH & PERFORMANCE ACCEPTANCE EVIDENCE
+
+The evidence in this section predates the R2-only content rearchitecture. Its
+`storage/novel_library` prefix and active-pointer files describe the historical
+pre-cutover layout; they are not the current storage contract. Current
+requirements and implementation evidence live in [`STORAGE.md`](STORAGE.md)
+and [`R2-ONLY-CONFORMANCE.md`](R2-ONLY-CONFORMANCE.md).
 
 Executed minimal real staging fixture ingestion from 3 operator-supplied URLs, validated source adapter parsing, verified adult content isolation, and ran hosted performance benchmarking on candidate commit `8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23` on private staging instance (`https://laptop-akmalpellu.tail0b4e3e.ts.net`).
 
@@ -582,3 +1051,90 @@ Projection-first reads preserve the existing per-novel unavailable policy via
 `Novel.public_reader_unavailable_policy` and migration `e5f7a9c1d3b2`, without
 restoring request-time object-storage fallback. Catalog, public-router, Ruff,
 Pyright, Graphify, migration smoke, and local Caddy route checks passed.
+
+## 2026-08-22 UNIFIED PROVIDER CREDENTIAL REGISTRY CHECKPOINT
+
+Owner-managed Gemini credentials and user contributions now share the encrypted
+`provider_credentials` registry in Supabase/PostgreSQL. Each row is tied to its
+authenticated owner when applicable and carries explicit source,
+`owner_job_eligible`, and `contributor_pool_eligible` flags. The legacy
+`contributor_credentials` table and internal compatibility shims were removed;
+the sanitized `contributor_usage_ledger` remains the accounting table for both
+owner and contributor modes.
+
+Local Alembic revisions `d4e6f8a2b1c3` and `e7f1a9c3b5d2`, plus remote
+Supabase migrations `unify_provider_credential_registry` and
+`secure_unified_credentials`, were applied and verified with RLS/security
+checks. The explicit owner environment import stored the configured key
+encrypted, but provider validation returned a truthful invalid state. No raw
+key was returned or logged, and owner bulk translation was not started.
+## 2026-08-22 PR113 OWNER TRANSLATION EXECUTION CHECKPOINT
+
+The replacement backend Gemini key was synchronized between the root and
+deployment runtime files without copying it into examples or frontend env
+files. Live provider validation now reports one encrypted owner row as
+`active`/`valid` and owner-job eligible. A durable worker probe translated
+NCode chapter 2, passed deterministic QA, and persisted the artifact to R2.
+
+The authorized three-novel bulk queue was then created with owner contribution
+mode, explicit glossary-gate bypass, and cross-provider fallback disabled. The
+stale Kakuyomu activity was cancelled after its heartbeat stopped; Novel18 is
+running and NCode is queued. The current persisted artifact counts are
+Kakuyomu 17/88, Novel18 6/31, and NCode 2/148. Bulk translation therefore
+remains partial; no completion claim is made. Backup creation and recovery
+remain disabled and unverified by operator decision.
+## 2026-08-24 RECOVERY AND R2 REVALIDATION CONTINUATION
+
+The synchronized root and deployment environments each passed 7 isolated R2
+integration tests. The rebuilt backend created an encrypted PostgreSQL backup
+in the independent R2 target and restored it into the isolated `restore-db`
+database; verification reported 37 public tables, 0 invalid constraints, and
+matching Alembic metadata. The latest independent R2 object snapshot was read
+back and checksum-verified for 980 objects totaling 4,022,175 bytes.
+
+The real environment files now contain exactly one synchronized
+`DATABASE_BACKUP_URL` entry each. The persisted configuration created and
+restored the encrypted backup without a process override.
+The hosted reader stages, provider canary, full queue, checkpoint-compaction
+decision, and production-readiness gates remain open and are not represented
+as completed by this recovery evidence.
+
+## 2026-08-24 WORKSPACE AND QUALITY HARDENING COMPLETION
+
+The approved `workspace-and-quality-hardening` specification is complete:
+all 20 tasks have passing verification evidence and the task ledger is
+validated. Root hygiene, `.gitignore`/VS Code tracking, searchable
+specifications, and the local `.opencode/` boundary were reconciled without
+removing canonical configuration.
+
+The three canonical PowerShell wrappers now normalize Windows path arguments
+and fail closed with exit code 2 when `.venv\Scripts\python.exe` is absent;
+the capacity load harness uses the same missing-interpreter contract. VS Code
+now has backend watch and focused-test tasks, a frontend build task, and
+explicit Ruff/Prettier bindings for Python, TypeScript, JSON, and JSONC.
+Graphify now narrowly excludes editor/tool configuration and generated
+capacity JSON that cannot produce source-symbol nodes; source JSON remains
+eligible for indexing.
+
+Validation evidence:
+
+- `npm --prefix frontend run test`: 78 test files and 857 tests passed.
+- `npm --prefix frontend run build`: Next.js 16.3.1 completed and generated
+  48 static pages.
+- `npm --prefix frontend run typecheck` and `npm --prefix frontend run lint`:
+  both exited 0.
+- Pyright on the four `2026-08-22_*.py` migrations and global Pyright:
+  0 errors, 0 warnings, 0 informations.
+- Ruff migration check: all checks passed; the broad backend formatter check
+  exited 0 with 524 files already formatted after the 80-file baseline drift
+  was normalized.
+- `graphify update . --no-cluster`: the final refresh exited 0 with the
+  current graph at 14,327 nodes and 39,306 edges, with no zero-node warning
+  after the scoped `.graphifyignore` update.
+- The spec validator, `git diff --check`, JSON/parser checks, and enabled
+  pre-commit hooks passed. No database migration, provider/R2 mutation,
+  secret-file change, push, or remote repository action was performed.
+
+The follow-up risk audit normalized the 80 pre-existing backend formatter-drift
+files as an exact path set. The broad Ruff check is clean, and the existing
+dirty worktree—including the user-owned backend edit—was preserved.

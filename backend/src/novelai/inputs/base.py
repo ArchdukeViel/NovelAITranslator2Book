@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from pathlib import Path
 
 from novelai.inputs.models import ImportedAsset, ImportedDocument, ImportedUnit
 
@@ -13,13 +12,13 @@ class DocumentAdapter(ABC):
         """Unique adapter key."""
 
     @abstractmethod
-    def probe(self, source: str | Path) -> bool:
+    def probe(self, source: str) -> bool:
         """Return True when this adapter can import *source*."""
 
     @abstractmethod
     async def import_document(
         self,
-        source: str | Path,
+        source: str,
         *,
         max_units: int | None = None,
     ) -> ImportedDocument:

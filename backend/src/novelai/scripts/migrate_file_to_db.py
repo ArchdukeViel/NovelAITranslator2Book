@@ -274,7 +274,8 @@ def run_migration(
 
     # Get list of novels to migrate
     if novel_ids is None:
-        novel_ids = storage.list_novels()
+        available_novel_ids = storage.list_novels()
+        novel_ids = [str(item) for item in available_novel_ids] if isinstance(available_novel_ids, list) else []
 
     logger.info(
         "Starting migration (dry_run=%s) for %d novels",
@@ -351,7 +352,7 @@ def main() -> int:
 
     setup_logging(verbose=args.verbose)
 
-    # Initialize storage (uses settings.NOVEL_LIBRARY_DIR by default)
+    # Initialize the configured R2 storage service; local disk is runtime-only.
     storage = StorageService()
 
     # Get database session

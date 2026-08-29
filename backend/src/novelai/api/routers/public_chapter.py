@@ -447,18 +447,18 @@ async def get_chapter(
     is_active_version = True
 
     if effective_version_id is not None:
-        translated = service.storage.load_translated_chapter_by_version_id(
+        translated = service.load_public_translation(
             novel_id,
             chapter_id,
-            effective_version_id,
+            version_id=effective_version_id,
         )
         if translated is None:
             raise HTTPException(status_code=404, detail="Version not found.")
-        active = service.storage.load_translated_chapter(novel_id, chapter_id)
+        active = service.load_public_translation(novel_id, chapter_id)
         active_version_id = active.get("version_id") if isinstance(active, dict) else None
         is_active_version = active_version_id == effective_version_id
     else:
-        translated = service.storage.load_translated_chapter(novel_id, chapter_id)
+        translated = service.load_public_translation(novel_id, chapter_id)
         is_active_version = True
 
     # Best-effort analytics: record public_chapter.view
@@ -505,7 +505,7 @@ async def get_chapter(
     paragraph_map = translated.get("paragraph_map")
     raw_chapter: dict[str, Any] = {}
     if not paragraph_map or not isinstance(paragraph_map, list) or not paragraph_map:
-        raw_chapter = service.storage.load_chapter(novel_id, chapter_id) or {}
+        raw_chapter = service.load_public_raw_chapter(novel_id, chapter_id) or {}
 
     index = chapter_ids.index(chapter_id)
     chapter = chapters[index]

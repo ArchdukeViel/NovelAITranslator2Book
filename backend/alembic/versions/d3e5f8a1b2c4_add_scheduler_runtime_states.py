@@ -7,6 +7,7 @@ Create Date: 2026-07-14 00:00:00.000000
 Durable scheduler runtime state for cooldown, failure, exhausted, heartbeat,
 and next-eligible tracking (DEBT-036). State survives process restarts.
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa

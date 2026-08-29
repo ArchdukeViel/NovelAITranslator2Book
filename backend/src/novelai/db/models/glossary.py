@@ -38,9 +38,7 @@ class NovelGlossaryEntry(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     scope: Mapped[str] = mapped_column(String(32), nullable=False, default=SCOPE_NOVEL)
-    novel_id: Mapped[int | None] = mapped_column(
-        ForeignKey("novels.id", ondelete="CASCADE"), nullable=True, index=True
-    )
+    novel_id: Mapped[int | None] = mapped_column(ForeignKey("novels.id", ondelete="CASCADE"), nullable=True, index=True)
     canonical_term: Mapped[str] = mapped_column(String(255), nullable=False)
     term_type: Mapped[str] = mapped_column(String(64), nullable=False)
     approved_translation: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -61,12 +59,8 @@ class NovelGlossaryEntry(Base):
         ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True
     )
     last_seen_chapter_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    created_by_user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    updated_by_user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow
     )
@@ -84,9 +78,7 @@ class NovelGlossaryEntry(Base):
     decision_events: Mapped[list[NovelGlossaryDecisionEvent]] = relationship(
         "NovelGlossaryDecisionEvent", back_populates="entry"
     )
-    qa_findings: Mapped[list[NovelGlossaryQAFinding]] = relationship(
-        "NovelGlossaryQAFinding", back_populates="entry"
-    )
+    qa_findings: Mapped[list[NovelGlossaryQAFinding]] = relationship("NovelGlossaryQAFinding", back_populates="entry")
     display_overrides: Mapped[list[UserGlossaryDisplayOverride]] = relationship(
         "UserGlossaryDisplayOverride", back_populates="entry", cascade="all, delete-orphan"
     )
@@ -108,9 +100,7 @@ class NovelGlossaryAlias(Base):
     glossary_entry_id: Mapped[int] = mapped_column(
         ForeignKey("novel_glossary_entries.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    novel_id: Mapped[int] = mapped_column(
-        ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    novel_id: Mapped[int] = mapped_column(ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True)
     alias_text: Mapped[str] = mapped_column(String(255), nullable=False)
     alias_type: Mapped[str] = mapped_column(String(32), nullable=False, default="observed")
     language: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -144,9 +134,7 @@ class NovelGlossarySourceProvenance(Base):
     glossary_entry_id: Mapped[int | None] = mapped_column(
         ForeignKey("novel_glossary_entries.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    novel_id: Mapped[int] = mapped_column(
-        ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    novel_id: Mapped[int] = mapped_column(ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True)
     source_site: Mapped[str] = mapped_column(String(64), nullable=False)
     source_adapter: Mapped[str] = mapped_column(String(64), nullable=False)
     source_novel_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -171,9 +159,7 @@ class NovelGlossarySourceProvenance(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow, onupdate=_utcnow
     )
 
-    entry: Mapped[NovelGlossaryEntry | None] = relationship(
-        "NovelGlossaryEntry", back_populates="provenance_records"
-    )
+    entry: Mapped[NovelGlossaryEntry | None] = relationship("NovelGlossaryEntry", back_populates="provenance_records")
 
     def __repr__(self) -> str:
         return f"<NovelGlossarySourceProvenance id={self.id} source={self.source_site!r}>"
@@ -189,9 +175,7 @@ class NovelGlossaryDecisionEvent(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    novel_id: Mapped[int] = mapped_column(
-        ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    novel_id: Mapped[int] = mapped_column(ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True)
     glossary_entry_id: Mapped[int | None] = mapped_column(
         ForeignKey("novel_glossary_entries.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -210,9 +194,7 @@ class NovelGlossaryDecisionEvent(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow
     )
 
-    entry: Mapped[NovelGlossaryEntry | None] = relationship(
-        "NovelGlossaryEntry", back_populates="decision_events"
-    )
+    entry: Mapped[NovelGlossaryEntry | None] = relationship("NovelGlossaryEntry", back_populates="decision_events")
 
     def __repr__(self) -> str:
         return f"<NovelGlossaryDecisionEvent id={self.id} type={self.event_type!r}>"
@@ -227,13 +209,17 @@ class NovelGlossaryQAFinding(Base):
         Index("ix_novel_glossary_qa_findings_chapter_status", "chapter_id", "status"),
         Index("ix_novel_glossary_qa_findings_entry_status", "glossary_entry_id", "status"),
         Index("ix_novel_glossary_qa_findings_type_severity", "finding_type", "severity"),
-        Index("ix_novel_glossary_qa_findings_novel_chapter_status_severity", "novel_id", "chapter_id", "status", "severity"),
+        Index(
+            "ix_novel_glossary_qa_findings_novel_chapter_status_severity",
+            "novel_id",
+            "chapter_id",
+            "status",
+            "severity",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    novel_id: Mapped[int] = mapped_column(
-        ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    novel_id: Mapped[int] = mapped_column(ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True)
     chapter_id: Mapped[int | None] = mapped_column(
         ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -246,9 +232,7 @@ class NovelGlossaryQAFinding(Base):
     suggested_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
     context_ref: Mapped[str | None] = mapped_column(String(512), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
-    reviewer_user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
+    reviewer_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     reviewer_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow
@@ -280,12 +264,8 @@ class UserGlossaryDisplayOverride(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    novel_id: Mapped[int] = mapped_column(
-        ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    novel_id: Mapped[int] = mapped_column(ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True)
     glossary_entry_id: Mapped[int] = mapped_column(
         ForeignKey("novel_glossary_entries.id", ondelete="CASCADE"), nullable=False, index=True
     )

@@ -25,6 +25,8 @@ from novelai.services.glossary_apply_preview import (
 
 
 class GlossaryApplyStorage(Protocol):
+    def runtime_path(self, *parts: str) -> Path: ...
+
     def load_translated_chapter(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None: ...
 
     def save_translated_chapter(
@@ -382,8 +384,7 @@ class GlossaryApplyService:
         return text if isinstance(text, str) else None
 
     def _event_dir(self, storage_novel_id: str) -> Path:
-        novel_dir = getattr(self.storage, "_novel_dir")(storage_novel_id)  # noqa: B009
-        path = novel_dir / "glossary_apply_events"
+        path = self.storage.runtime_path("glossary-apply", storage_novel_id, "events")
         getattr(self.storage, "_mkdirs")(path)  # noqa: B009
         return path
 
@@ -403,7 +404,7 @@ class GlossaryApplyService:
     def _read_event_path(self, path: Path) -> dict[str, Any] | None:
         try:
             payload = json.loads(getattr(self.storage, "_read_text")(path))  # noqa: B009
-        except (OSError, json.JSONDecodeError):
+        except OSError, json.JSONDecodeError:
             return None
         return payload if isinstance(payload, dict) else None
 

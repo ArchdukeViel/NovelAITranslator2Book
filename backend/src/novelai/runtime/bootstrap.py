@@ -52,21 +52,11 @@ def bootstrap_sources() -> None:
 
 
 def bootstrap_input_adapters() -> None:
-    """Register all known document/input adapters."""
-    from novelai.inputs.cbz import CBZDocumentAdapter
-    from novelai.inputs.epub import EPUBDocumentAdapter
-    from novelai.inputs.image_folder import ImageFolderDocumentAdapter
-    from novelai.inputs.pdf import PDFDocumentAdapter
+    """Register the URL-based novel importer."""
     from novelai.inputs.registry import register_input_adapter
-    from novelai.inputs.text import TextDocumentAdapter
     from novelai.inputs.web import WebDocumentAdapter
 
     register_input_adapter("web", lambda: WebDocumentAdapter())
-    register_input_adapter("text", lambda: TextDocumentAdapter())
-    register_input_adapter("epub", lambda: EPUBDocumentAdapter())
-    register_input_adapter("pdf", lambda: PDFDocumentAdapter())
-    register_input_adapter("image_folder", lambda: ImageFolderDocumentAdapter())
-    register_input_adapter("cbz", lambda: CBZDocumentAdapter())
 
 
 def bootstrap_provider_credentials() -> list[dict[str, object]]:

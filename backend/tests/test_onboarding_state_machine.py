@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from novelai.storage.novels import VALID_ONBOARDING_STATUSES
+from novelai.storage.r2_catalog import VALID_ONBOARDING_STATUSES
 from novelai.storage.service import StorageService
 from tests.conftest import TESTS_TMP_ROOT
 
@@ -104,18 +104,24 @@ class TestUpdateOnboardingStatus:
 
 class TestResolveOnboardingStatus:
     def test_explicit_status_returned(self, storage):
-        storage.save_metadata("n1", {
-            "title": "Test",
-            "chapters": [{"id": "1"}],
-            "onboarding_status": "chapters_pending",
-        })
+        storage.save_metadata(
+            "n1",
+            {
+                "title": "Test",
+                "chapters": [{"id": "1"}],
+                "onboarding_status": "chapters_pending",
+            },
+        )
         assert storage.resolve_onboarding_status("n1") == "chapters_pending"
 
     def test_unknown_explicit_status_falls_back(self, storage):
-        storage.save_metadata("n1", {
-            "title": "Test",
-            "onboarding_status": "invalid_state",
-        })
+        storage.save_metadata(
+            "n1",
+            {
+                "title": "Test",
+                "onboarding_status": "invalid_state",
+            },
+        )
         status = storage.resolve_onboarding_status("n1")
         assert status in VALID_ONBOARDING_STATUSES
 
@@ -124,17 +130,23 @@ class TestResolveOnboardingStatus:
         assert storage.resolve_onboarding_status("n1") == "metadata_discovered"
 
     def test_infers_chapters_pending_when_chapters_exist_but_no_raw(self, storage):
-        storage.save_metadata("n1", {
-            "title": "Test",
-            "chapters": [{"id": "1"}, {"id": "2"}],
-        })
+        storage.save_metadata(
+            "n1",
+            {
+                "title": "Test",
+                "chapters": [{"id": "1"}, {"id": "2"}],
+            },
+        )
         assert storage.resolve_onboarding_status("n1") == "chapters_pending"
 
     def test_infers_ready_for_translation_when_raw_chapters_exist(self, storage):
-        storage.save_metadata("n1", {
-            "title": "Test",
-            "chapters": [{"id": "1"}],
-        })
+        storage.save_metadata(
+            "n1",
+            {
+                "title": "Test",
+                "chapters": [{"id": "1"}],
+            },
+        )
         storage.save_chapter("n1", "1", "Raw chapter content", title="Chapter 1")
         assert storage.resolve_onboarding_status("n1") == "ready_for_translation"
 
@@ -146,10 +158,13 @@ class TestResolveOnboardingStatus:
         assert storage.resolve_onboarding_status("n1") == "metadata_discovered"
 
     def test_ready_takes_precedence_over_chapters_pending(self, storage):
-        storage.save_metadata("n1", {
-            "title": "Test",
-            "chapters": [{"id": "1"}, {"id": "2"}],
-        })
+        storage.save_metadata(
+            "n1",
+            {
+                "title": "Test",
+                "chapters": [{"id": "1"}, {"id": "2"}],
+            },
+        )
         storage.save_chapter("n1", "1", "Raw content 1", title="Ch1")
         storage.save_chapter("n1", "2", "Raw content 2", title="Ch2")
         assert storage.resolve_onboarding_status("n1") == "ready_for_translation"
@@ -168,4 +183,8 @@ class TestOnboardingStatusPersistence:
         storage.save_metadata("n1", {"title": "Test", "chapters": [{"id": "1"}]})
         storage.update_onboarding_status("n1", "chapters_pending")
         meta = storage.load_metadata("n1")
-        assert "body_scrape_required" not in meta or meta.get("body_scrape_required") is None or meta.get("body_scrape_required") is True
+        assert (
+            "body_scrape_required" not in meta
+            or meta.get("body_scrape_required") is None
+            or meta.get("body_scrape_required") is True
+        )

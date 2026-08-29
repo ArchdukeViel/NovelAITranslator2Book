@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import ValidationError
 
-from novelai.api.routers.operations import RetranslateStaleRequest, TranslateRequest
+from novelai.api.routers.operations import ImportRequest, RetranslateStaleRequest, TranslateRequest
 from novelai.services.orchestration.operations import OperationError, OperationsService
 
 
@@ -25,6 +25,21 @@ def test_translate_request_round_trips_skip_glossary_gate_true() -> None:
 def test_retranslate_stale_request_rejects_removed_options() -> None:
     with pytest.raises(ValidationError):
         RetranslateStaleRequest.model_validate({"include_legacy_unknown": True, "activate": True})
+
+
+def test_import_request_accepts_only_source_urls() -> None:
+    request = ImportRequest.model_validate({"source_url": "https://example.com/story", "max_units": 3})
+
+    assert str(request.source_url) == "https://example.com/story"
+    assert request.max_units == 3
+
+    for payload in (
+        {"source_url": "C:/books/story.txt"},
+        {"source_url": "story.epub"},
+        {"adapter_key": "web", "source_key": "https://example.com/story"},
+    ):
+        with pytest.raises(ValidationError):
+            ImportRequest.model_validate(payload)
 
 
 def _operations_service(

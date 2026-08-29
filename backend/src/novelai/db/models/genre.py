@@ -67,6 +67,7 @@ novel_genres = Table(
 # Genre model
 # ---------------------------------------------------------------------------
 
+
 class Genre(Base):
     """A curated genre classification for Japanese web novels."""
 

@@ -2,11 +2,22 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": ".*",
         "hooks": [
           {
             "type": "command",
-            "command": "C:\\Users\\AKMALSAFARIPELLU\\.local\\bin\\graphify.EXE hook-check"
+            "command": "powershell -NoProfile -Command \"if (Test-Path 'graphify-out\\graph.json') { Write-Host '[graphify] Knowledge graph exists at graphify-out/graph.json. Query before broad grepping.' }\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -Command \"graphify update . --no-cluster\""
           }
         ]
       }

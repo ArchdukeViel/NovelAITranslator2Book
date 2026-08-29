@@ -162,7 +162,6 @@ def e2e_test_client(
 
     # Step 5: Propagate the isolated safely_refresh wrapper to every other
     # module that imports it (crawler and translation are reasserted here).
-    import novelai.services.backup_manager as _backup
     import novelai.services.checkpoint_manager as _checkpoint
     import novelai.services.editor_service as _editor_service
     import novelai.services.orchestration.importer as _importer
@@ -172,7 +171,6 @@ def e2e_test_client(
         _glossary_svc,
         _translation_svc,
         _editor_service,
-        _backup,
         _checkpoint,
         _importer,
     ):

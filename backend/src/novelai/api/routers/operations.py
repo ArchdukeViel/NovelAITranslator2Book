@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from pydantic import BaseModel, ConfigDict
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict
 
 from novelai.activity.queue import ActivityQueueService
 from novelai.api.auth.roles import require_role
@@ -51,8 +51,7 @@ class RetranslateStaleRequest(BaseModel):
 
 
 class ImportRequest(BaseModel):
-    adapter_key: str
-    source_key: str
+    source_url: AnyHttpUrl
     max_units: int | None = None
 
 
@@ -129,8 +128,7 @@ async def import_document(
     try:
         return await service.import_document(
             novel_id=novel_id,
-            adapter_key=body.adapter_key,
-            source=body.source_key,
+            source_url=str(body.source_url),
             max_units=body.max_units,
         )
     except OperationError as exc:

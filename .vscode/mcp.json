@@ -1,0 +1,22 @@
+{
+  "servers": {
+    "codegraph": {
+      "command": "codegraph.cmd",
+      "args": ["serve", "--mcp", "--path", "${workspaceFolder}"],
+      "type": "stdio"
+    },
+    "graphify": {
+      "command": "graphify-mcp",
+      "args": [
+        "${workspaceFolder}\\graphify-out\\graph.json",
+        "--transport",
+        "stdio"
+      ],
+      "type": "stdio"
+    },
+    "cloudflare-api": {
+      "type": "http",
+      "url": "https://mcp.cloudflare.com/mcp"
+    }
+  }
+}

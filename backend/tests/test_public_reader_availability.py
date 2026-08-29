@@ -14,7 +14,6 @@ No real HTTP. All storage is in a temp directory.
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -158,27 +157,19 @@ def _seed_translated(
         db_session.commit()
 
 
-def _overlay_first_version_id(path: Path) -> str:
-    """Return the first version_id from a ``translations/<stem>.json`` overlay file.
-
-    The overlay file is the path ``save_translated_chapter`` returned; the
-    ``translation_versions`` array stores versions in insertion order, so
-    ``translation_versions[0]['version_id']`` is the auto-generated id of
-    the first save (not "v1").
-    """
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    versions = payload.get("translation_versions", [])
+def _overlay_first_version_id(storage: StorageService) -> str:
+    """Return the first persisted R2 translation version id."""
+    versions = storage.list_translated_chapter_versions("novel-001", "ch001")
     if not versions:
-        raise AssertionError(f"No translation versions recorded in {path}")
+        raise AssertionError("No translation versions recorded")
     return str(versions[0]["version_id"])
 
 
-def _overlay_second_version_id(path: Path) -> str:
-    """Return the second version_id from an overlay file."""
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    versions = payload.get("translation_versions", [])
+def _overlay_second_version_id(storage: StorageService) -> str:
+    """Return the second persisted R2 translation version id."""
+    versions = storage.list_translated_chapter_versions("novel-001", "ch001")
     if len(versions) < 2:
-        raise AssertionError(f"Expected two translation versions in {path}")
+        raise AssertionError("Expected two translation versions")
     return str(versions[1]["version_id"])
 
 
@@ -257,12 +248,12 @@ class TestLatestVersionPolicy:
         monkeypatch.setattr(settings, "PUBLIC_READER_UNAVAILABLE_POLICY", "latest_version")
         _seed_novel(storage, "novel-001")
         # Save two versions; the second becomes active by default.
-        first_path = storage.save_translated_chapter("novel-001", "ch001", "First version.", auto_activate=False)
-        second_path = storage.save_translated_chapter("novel-001", "ch001", "Second version.", auto_activate=False)
+        storage.save_translated_chapter("novel-001", "ch001", "First version.", auto_activate=False)
+        storage.save_translated_chapter("novel-001", "ch001", "Second version.", auto_activate=False)
         # Re-activate the FIRST version so the active translation is the
         # older one -- public reader still serves the active version under
         # ``latest_version``.
-        first_version_id = _overlay_first_version_id(first_path)
+        first_version_id = _overlay_first_version_id(storage)
         storage.activate_translated_chapter_version("novel-001", "ch001", first_version_id)
 
         resp = client.get("/api/public/novels/novel-001/chapters/ch001")
@@ -273,8 +264,6 @@ class TestLatestVersionPolicy:
         assert data["is_active_version"] is True
         assert data["version_id"] == first_version_id
         assert "First version." in data["text"]
-
-        _ = second_path  # silence unused-binding lint
 
     def test_latest_version_falls_back_to_shell_when_no_versions(
         self, client: TestClient, storage: StorageService, monkeypatch: pytest.MonkeyPatch
@@ -357,10 +346,10 @@ class TestInvalidPolicyFallback:
 class TestOwnerVersionPreview:
     def test_owner_can_load_specific_version(self, owner_client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001")
-        first_path = storage.save_translated_chapter("novel-001", "ch001", "First version.", auto_activate=False)
-        second_path = storage.save_translated_chapter("novel-001", "ch001", "Second version.", auto_activate=False)
-        first_id = _overlay_first_version_id(first_path)
-        second_id = _overlay_second_version_id(second_path)
+        storage.save_translated_chapter("novel-001", "ch001", "First version.", auto_activate=False)
+        storage.save_translated_chapter("novel-001", "ch001", "Second version.", auto_activate=False)
+        first_id = _overlay_first_version_id(storage)
+        second_id = _overlay_second_version_id(storage)
         assert storage.activate_translated_chapter_version("novel-001", "ch001", second_id)
         resp = owner_client.get(f"/api/public/novels/novel-001/chapters/ch001?version_id={first_id}")
         assert resp.status_code == 200
@@ -371,10 +360,9 @@ class TestOwnerVersionPreview:
 
     def test_owner_preview_of_active_version(self, owner_client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001")
-        first_path = storage.save_translated_chapter("novel-001", "ch001", "First version.", auto_activate=False)
-        second_path = storage.save_translated_chapter("novel-001", "ch001", "Second version.", auto_activate=False)
-        _ = first_path  # shape parity with the prior test; we only exercise the active version here
-        second_id = _overlay_second_version_id(second_path)
+        storage.save_translated_chapter("novel-001", "ch001", "First version.", auto_activate=False)
+        storage.save_translated_chapter("novel-001", "ch001", "Second version.", auto_activate=False)
+        second_id = _overlay_second_version_id(storage)
         assert storage.activate_translated_chapter_version("novel-001", "ch001", second_id)
         resp = owner_client.get(f"/api/public/novels/novel-001/chapters/ch001?version_id={second_id}")
         assert resp.status_code == 200

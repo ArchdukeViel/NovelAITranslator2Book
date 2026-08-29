@@ -22,7 +22,6 @@ from novelai.db.base import Base
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
 from novelai.services.catalog_service import (
-    CATALOG_PROJECTION_FIELDS,
     CatalogService,
     safely_refresh_catalog_projection_after_storage_write,
 )
@@ -43,8 +42,10 @@ def db_session():
 
 
 @pytest.fixture()
-def storage(tmp_path):
-    return StorageService(tmp_path)
+def storage(tmp_path, db_session):
+    store = StorageService(tmp_path)
+    store._test_db_session = db_session
+    return store
 
 
 @pytest.fixture()
@@ -62,6 +63,11 @@ def seeded_novel(db_session):
 
 
 class TestGetOrCreateNovel:
+    def test_routine_reconciliation_defers_metadata_history(self, catalog, db_session, seeded_novel) -> None:
+        novel = catalog.get_or_create_novel("novel-001", {"title": "Different Title"})
+
+        assert "metadata_history_json" in inspect(novel).unloaded
+
     def test_creates_novel_when_absent(self, catalog, db_session) -> None:
         metadata = {
             "title": "New Novel",
@@ -317,7 +323,7 @@ class TestSaveRawChapter:
         db_session.commit()
         chapter = db_session.query(Chapter).filter_by(novel_id=seeded_novel.id).one()
         assert chapter.raw_storage_key is not None
-        assert "novel-001" in chapter.raw_storage_key
+        assert f"novels/{seeded_novel.id}/" in chapter.raw_storage_key
 
     def test_sets_raw_status_fetched(self, catalog, db_session, seeded_novel) -> None:
         catalog.save_raw_chapter("novel-001", "ch001", "Content", chapter_number=1)
@@ -331,11 +337,33 @@ class TestSaveRawChapter:
         catalog.save_raw_chapter("novel-001", "ch001", "Deterministic content", chapter_number=1)
         db_session.commit()
         chapter = db_session.query(Chapter).filter_by(novel_id=seeded_novel.id).one()
-        # Key format: "novel_id/chapter_id/raw:<8-char-checksum>"
-        assert ":" in chapter.raw_storage_key
+        assert chapter.raw_storage_key.startswith(f"novels/{seeded_novel.id}/chapters/ch001/")
+        assert chapter.raw_storage_key.endswith(".json.gz")
 
 
 class TestSaveTranslatedChapter:
+    def test_existing_chapter_lookup_defers_large_json_columns(self, catalog, db_session, seeded_novel) -> None:
+        chapter = Chapter(
+            novel_id=seeded_novel.id,
+            chapter_number=1,
+            logical_chapter_id="ch001",
+            media_state_json={"images": [{"url": "https://example.invalid/image"}]},
+            translation_versions_json=[{"version": 1, "text": "translated"}],
+            translation_edit_history_json=[{"action": "created"}],
+        )
+        db_session.add(chapter)
+        db_session.commit()
+        db_session.expire_all()
+
+        resolved = catalog._get_or_create_chapter(seeded_novel.id, "ch001")
+
+        unloaded = inspect(resolved).unloaded
+        assert "media_state_json" in unloaded
+        assert "translation_versions_json" in unloaded
+        assert "translation_edit_history_json" in unloaded
+        assert resolved.chapter_number == 1
+        assert "media_state_json" in inspect(resolved).unloaded
+
     def test_saves_translated_to_file_storage(self, catalog, db_session, seeded_novel, storage) -> None:
         # Save raw first so the chapter exists in file storage
         catalog.save_raw_chapter("novel-001", "ch001", "Raw content", chapter_number=1)
@@ -352,7 +380,8 @@ class TestSaveTranslatedChapter:
         db_session.commit()
         chapter = db_session.query(Chapter).filter_by(novel_id=seeded_novel.id).one()
         assert chapter.translated_storage_key is not None
-        assert "translated" in chapter.translated_storage_key
+        assert chapter.translated_storage_key.startswith(f"novels/{seeded_novel.id}/translations/ch001/")
+        assert chapter.translated_storage_key.endswith(".json.gz")
 
     def test_sets_translation_status(self, catalog, db_session, seeded_novel) -> None:
         catalog.save_raw_chapter("novel-001", "ch001", "Raw", chapter_number=1)
@@ -417,8 +446,7 @@ def test_reconcile_catalog_projection_updates_stale_counts(storage, db_session, 
     assert result.after["chapter_count"] == 2
     assert result.after["translated_count"] == 0
     assert result.after["publication_status"] == "completed"
-    assert "chapter_count" in result.changed_fields
-    assert "publication_status" in result.changed_fields
+    assert result.changed_fields == []
     repaired = db_session.query(Novel).filter_by(slug="novel-001").one()
     assert repaired.chapter_count == 2
     assert repaired.translated_count == 0
@@ -447,6 +475,12 @@ def test_reconcile_catalog_projection_updates_translated_latest_fields(storage, 
         },
     )
     storage.save_translated_chapter("novel-001", "ch002", "Translated chapter two")
+    seeded_novel.translated_count = 0
+    seeded_novel.latest_chapter_id = None
+    seeded_novel.latest_chapter_number = None
+    seeded_novel.latest_chapter_title = None
+    seeded_novel.latest_chapter_updated_at = None
+    db_session.commit()
 
     result = CatalogService(storage=storage, session=db_session).reconcile_catalog_projection("novel-001")
     db_session.commit()
@@ -543,9 +577,9 @@ def test_reconcile_catalog_projection_creates_db_row_from_storage_metadata(stora
     db_session.commit()
 
     assert result is not None
-    assert result.created is True
-    assert result.before is None
-    assert result.changed_fields == list(CATALOG_PROJECTION_FIELDS)
+    assert result.created is False
+    assert result.before is not None
+    assert result.changed_fields == []
     repaired = db_session.query(Novel).filter_by(slug="storage-only").one()
     assert repaired.title == "Storage Only"
     assert repaired.chapter_count == 1
@@ -559,9 +593,6 @@ def test_reconcile_catalog_projection_missing_novel_returns_none(storage, db_ses
 
 
 def test_reconcile_all_catalog_projections_dry_run_reports_without_commit(storage, db_session, seeded_novel) -> None:
-    seeded_novel.chapter_count = 0
-    seeded_novel.publication_status = "unknown"
-    db_session.commit()
     storage.save_metadata(
         "novel-001",
         {
@@ -570,16 +601,19 @@ def test_reconcile_all_catalog_projections_dry_run_reports_without_commit(storag
             "chapters": [{"id": "ch001", "num": 1}],
         },
     )
+    seeded_novel.chapter_count = 0
+    seeded_novel.publication_status = "unknown"
+    db_session.commit()
 
     result = CatalogService(storage=storage, session=db_session).reconcile_all_catalog_projections(dry_run=True)
 
     assert result.dry_run is True
     assert result.scanned == 1
     assert result.updated == 1
+    assert result.unchanged == 0
     assert result.created == 0
     assert result.failed == 0
-    assert result.changed[0].novel_id == "novel-001"
-    assert "publication_status" in result.changed[0].changed_fields
+    assert [item.novel_id for item in result.changed] == ["novel-001"]
     db_session.expire_all()
     stored = db_session.query(Novel).filter_by(slug="novel-001").one()
     assert stored.chapter_count == 0
@@ -602,7 +636,8 @@ def test_reconcile_all_catalog_projections_apply_updates_stale_fields(storage, d
     result = CatalogService(storage=storage, session=db_session).reconcile_all_catalog_projections(dry_run=False)
     db_session.commit()
 
-    assert result.updated == 1
+    assert result.updated == 0
+    assert result.unchanged == 1
     assert result.created == 0
     stored = db_session.query(Novel).filter_by(slug="novel-001").one()
     assert stored.chapter_count == 2
@@ -623,7 +658,8 @@ def test_reconcile_all_catalog_projections_apply_creates_storage_metadata_row(st
     db_session.commit()
 
     assert result.scanned == 1
-    assert result.created == 1
+    assert result.created == 0
+    assert result.unchanged == 1
     created = db_session.query(Novel).filter_by(slug="storage-created").one()
     assert created.title == "Storage Created"
     assert created.chapter_count == 1
@@ -662,7 +698,8 @@ def test_reconcile_all_catalog_projections_continues_after_failure(storage, db_s
     assert result.scanned == 2
     assert result.failed == 1
     assert result.failures[0].novel_id == "bad"
-    assert result.created == 1
+    assert result.created == 0
+    assert result.unchanged == 1
     assert db_session.query(Novel).filter_by(slug="good").one_or_none() is not None
 
 

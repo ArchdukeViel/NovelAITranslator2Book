@@ -103,6 +103,10 @@ async function getCsrfToken(): Promise<string> {
   return csrfTokenPromise;
 }
 
+function resetCsrfTokenCache() {
+  csrfTokenPromise = null;
+}
+
 export class ApiError extends Error {
   status: number;
   code: string;
@@ -290,7 +294,6 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  inputAdapters: () => apiFetch<string[]>("/admin/input-adapters"),
   novels: () => apiFetch<NovelSummary[]>("/admin/novels"),
   novel: (novelId: string) => apiFetch<NovelMetadata>(`/admin/novels/${encodeURIComponent(novelId)}`),
   deleteNovel: (novelId: string) =>
@@ -452,8 +455,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
-  importNow: (novelId: string, payload: { adapter_key: string; source: string; max_units?: number | null }) =>
-    apiFetch<{ novel_id: string; adapter_key: string; chapters: number; document_type?: string | null }>(
+  importNow: (novelId: string, payload: { source_url: string; max_units?: number | null }) =>
+    apiFetch<{ novel_id: string; source_url: string; chapters: number; document_type?: string | null }>(
       `/admin/novels/${encodeURIComponent(novelId)}/import`,
       {
         method: "POST",
@@ -491,12 +494,38 @@ export const api = {
 // ===========================================
 export const adminAuth = {
   me: () => request<import("./api-types").AuthUser>("/auth/me"),
-  ownerBootstrapLogin: (secret: string) =>
-    request<import("./api-types").AuthUser>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ secret })
-    }),
-  logout: () => request<{ status: string }>("/auth/logout", { method: "POST" })
+  ownerBootstrapLogin: async (secret: string) => {
+    // A new login can follow a stale session cookie or a prior logout. Fetch
+    // a CSRF token for the current session rather than reusing that token.
+    resetCsrfTokenCache();
+    try {
+      return await request<import("./api-types").AuthUser>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ secret })
+      });
+    } finally {
+      // The login response may replace the signed session cookie.
+      resetCsrfTokenCache();
+    }
+  },
+  logout: async () => {
+    resetCsrfTokenCache();
+    try {
+      return await request<{ status: string }>("/auth/logout", { method: "POST" });
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 403) {
+        throw error;
+      }
+
+      // Recover once from a stale CSRF token/session pair without weakening
+      // the backend CSRF requirement.
+      resetCsrfTokenCache();
+      return await request<{ status: string }>("/auth/logout", { method: "POST" });
+    } finally {
+      // Logout clears the server-side session payload, including CSRF state.
+      resetCsrfTokenCache();
+    }
+  }
 };
 
 function appendQuery(path: string, search: URLSearchParams): string {

@@ -42,9 +42,6 @@ test = [
   "hypothesis>=6.165.9",
   "moto[s3]>=5.2.2",
 ]
-documents = [
-  "pypdf>=6.16.1",
-]
 db = [
   "sqlalchemy>=2.0.52",
   "alembic>=1.19.1",

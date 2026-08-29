@@ -76,6 +76,7 @@ class TestRedisRateLimiterCrossInstance:
         import fakeredis
 
         broken_redis = fakeredis.FakeStrictRedis()
+
         def broken_incr(*args: object, **kwargs: object) -> object:
             raise ConnectionError("Connection refused")
 

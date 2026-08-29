@@ -39,6 +39,7 @@ def patch_redis_connection(monkeypatch: pytest.MonkeyPatch, fake_redis):
 def clear_database_url(monkeypatch: pytest.MonkeyPatch):
     """Prevent bootstrap from trying to connect to a real database."""
     from novelai.config.settings import settings
+
     monkeypatch.setattr(settings, "DATABASE_URL", "")
 
 
@@ -119,11 +120,29 @@ class TestTaskFunctionsAreCallable:
     def test_run_translation_activity_is_importable(self) -> None:
         assert callable(run_translation_activity)
 
-    def test_run_crawl_activity_returns_empty_for_unknown_id(self) -> None:
+    def test_run_crawl_activity_returns_empty_for_unknown_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """run_crawl_activity returns {} for an activity_id not in the queue."""
+
+        class EmptyWorker:
+            async def run_activity(self, _activity_id: str):
+                return None
+
+        monkeypatch.setattr(
+            "novelai.worker.tasks._get_worker_service",
+            lambda: type("Runner", (), {"worker": EmptyWorker()})(),
+        )
         result = run_crawl_activity("nonexistent_crawl_id")
         assert result == {}
 
-    def test_run_translation_activity_returns_empty_for_unknown_id(self) -> None:
+    def test_run_translation_activity_returns_empty_for_unknown_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """run_translation_activity returns {} for an activity_id not in the queue."""
+
+        class EmptyWorker:
+            async def run_activity(self, _activity_id: str):
+                return None
+
+        monkeypatch.setattr(
+            "novelai.worker.tasks._get_worker_service",
+            lambda: type("Runner", (), {"worker": EmptyWorker()})(),
+        )
         _result = run_translation_activity("nonexistent_translation_id")

@@ -134,7 +134,7 @@ class InterProcessFileLock:
                     self.lock_path.unlink(missing_ok=True)
                 logger.warning("Reclaimed stale file lock from dead PID %s at %s", pid, self.lock_path)
                 return True
-        except (json.JSONDecodeError, OSError, ValueError):
+        except json.JSONDecodeError, OSError, ValueError:
             pass
         return False
 

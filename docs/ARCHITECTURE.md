@@ -10,10 +10,10 @@ Canonical project architecture. This file wins when project documents conflict.
 - **Novel18 as a first-class novel**: `novel18_syosetu` keeps source-specific host, cookie, API, and adult taxonomy provenance, but uses the same crawl, storage, translation, glossary, publication, catalog, detail, availability, and reader lifecycle as every other novel. Adult/R18 classification does not suppress an explicitly published novel from the default catalog; `include_adult` controls optional taxonomy exposure and filtering only.
 - **Kakuyomu Stable Chapter Identity**: Every chapter carries three identifiers: `chapter_id` (the stable logical key used everywhere downstream, e.g. `kakuyomu:<episode_id>`), `source_episode_id` (the source-native identifier exposed by adapters), and `sequence_number` (mutable display position). Selections like `"all"`, `"1-3;8"`, `"2"`, or the raw stable id all resolve through `resolve_chapter_selection` so Kakuyomu's percent-encoded ids and Syosetu numeric ids share one pipeline. `int(chapter["id"])` and `chapter_id.isdigit()` checks were removed from the request flow.
 - **Optional Cross-Source Section Hierarchy**: Source metadata may associate an existing reading unit with an optional structural section without changing chapter identity. The normalized optional fields are `section_title` (source display text), `section_source_id` (the real Kakuyomu `Chapter.id`, or `null` for Syosetu/Novel18 where no stable source id is observed), `section_ordinal` (source-order occurrence), and `section_level` when Kakuyomu supplies it. Syosetu and Novel18 derive sections only from structural TOC headings and carry the active heading across pagination; episode-title text never creates a section. Kakuyomu prefers `__NEXT_DATA__/__APOLLO_STATE__/Work/tableOfContentsV2` and its ordered `episodeUnions`, with a bounded DOM fallback that fails closed on unenumerated lazy/UI-paginated indexes. A Syosetu-style root-body short work is marked `work_structure="direct_body"`; ordinary episode indexes remain `work_structure="episodes"` so a direct short, a one-episode serial, and a one-episode Kakuyomu work stay distinct.
-- **Staged Raw Generations**: Crawl runs write to staged generation directories (`generations/<gen_id>/`) with manifest-last atomic pointer activation (`active_generation.json`). Full crawls never call destructive deletion on active data. Generation activation uses a cross-process compare-and-swap on `active_generation.json`: the filesystem backend wraps the read-compare-write in an `InterProcessFileLock`; the S3 backend uses a conditional `PUT` with `If-Match`/`If-None-Match` so concurrent activations cannot silently overwrite each other (loser receives `GenerationConflictError`).
+- **Content-Addressed Raw Generations**: Crawl runs upload immutable chapter and asset objects to R2, then upload a small manifest at `novels/<novel_id>/generations/<generation_id>.json.gz`. PostgreSQL activates the verified manifest and exact chapter references in one optimistic-concurrency transaction. There is no R2 active-pointer object and no local content directory. A failed activation leaves the previous PostgreSQL generation reference unchanged.
 - **Durable Long-Running Crawl Operations**: `POST /api/admin/{novel_id}/scrape` returns `202 Accepted` after creating a durable `scrape` activity. The activity worker performs metadata reconciliation and chapter acquisition under the normal heartbeat, lease, cancellation, staging, validation, compare-and-swap activation, and rollback contracts. `GET /api/admin/activity/{activity_id}` is the status source; `POST /api/admin/activity/{activity_id}/run` is the explicit operator-run path when a background worker is not enabled. Onboarding resume queues the same durable chapter activity instead of holding an HTTP request open. Network and provider timeouts bound individual calls; they do not bound the total activity lifetime.
-- **Pre-Activation Validation**: `commit_generation` runs `validate_generation_activation` before swapping the pointer. Checks cover manifest status, metadata identity, chapter-index presence, every-index-entry-resolved (bundle or explicit unavailable/refresh-failed-retained record), image-asset resolution inside the stage, manifest hash reconciliation, and physical stem / chapter-id consistency. Index entry ids are normalized to logical ids (integer ids become strings) before reconciliation, and reconciliation is against physical bundles, not index entries alone; `source_state.json` must exist and manifest hashes must be non-empty and match staged bytes exactly. Every current-index chapter ends with exactly one canonical disposition: `fetched_new`, `fetched_replaced`, `reused_planner`, `carried_unselected`, `unchanged_selected`, `refresh_failed_retained`, or `unavailable`. Aggregate counts (`saved_chapters`, `reused_chapters`, `failed_chapters`, `carried_unselected_count`, `unchanged_selected_count`, `refresh_failed_retained_count`, `unavailable_count`, `failed_refresh_count`, `removed_count`) are derived from the disposition map and must reconcile with the physical staged state. The disposition map itself is mandatory on the normal commit path; missing or empty `chapter_dispositions` fails closed. There is no normal bypass flag. Removed episode IDs come from `crawl_plan.removed_episode_ids`; `commit_generation` persists the canonical removal set and derives `removed_count` from that set. Activation validation reconciles the count before pointer activation. No separate normal-path removal acknowledgment key is required. Failures roll the stage back and keep the prior active pointer. Explicit operator recovery uses `commit_generation_recovery(reason=..., evidence=...)` for recovery paths.
-- **Immutable Raw Generations + Translation Overlays**: A committed raw generation's `chapters/*.json` and `assets/images/**` are byte-immutable. All translation writes (machine translation, manual edit, rollback activation, edit history) land in `novels/<novel_id>/translations/<encoded_chapter_stem>.json` plus an `active/` pointer. Mutable OCR/re-embedding state lands in a novel-root media overlay (`media/<encoded-chapter-stem>.json`, schema `media_overlay_v1`) composed over the bundle at read time. Readers compose the raw bundle with the per-chapter overlay at read time so machine translation never rewrites raw bytes; while a generation is active, raw bundle writes are refused outright (persist, imports, checkpoint raw restores, rollback bundle-pop) instead of being silently rewritten. Carrying a chapter forward from generation A to generation B uses `seed_generation_from_active` which copies both the bundle and image assets.
+- **Pre-Activation Validation**: `R2GenerationActivationService` validates the candidate manifest before PostgreSQL activation. Every chapter reference must use the requested novel's exact `novels/<novel_id>/chapters|translations|media/<chapter_id>/...json.gz` namespace, have a matching logical SHA-256 in R2 metadata, and resolve by exact HEAD; the manifest identity and expected active-generation value must also match. The service uploads the immutable generation manifest, locks the PostgreSQL novel row, updates the active generation and chapter references in one transaction, and fails closed on a missing object, checksum mismatch, unknown chapter, or stale writer. There is no R2 active pointer, local atomic rename, staged `metadata.json`, or filesystem recovery bypass. Uploaded objects that are not committed because validation or activation fails remain harmless and are handled by the reference-aware grace-period GC workflow.
+- **Immutable Content-Addressed Artifacts**: Raw chapters, translations, media state, and assets are immutable R2 objects. Their keys are `novels/<novel_id>/chapters/<chapter_id>/<source_hash>.json.gz`, `translations/<chapter_id>/<translation_hash>.json.gz`, `media/<chapter_id>/<media_hash>.json.gz`, and `assets/<sha256>.<ext>`. PostgreSQL stores the exact active references; edits create new objects and change references. Carrying unchanged content into a generation reuses existing hashes instead of copying a directory tree.
 - **Episode Order & Convergence**: `update_source_state` persists `ordered_episode_ids` matching the complete current index plus per-episode `source_availability` / `first_seen_at` / `last_seen_at` / `missing_since`. Episodes absent from the index become `missing_from_current_index` (raw + translated history retained). A subsequent crawl with the same order produces an empty `reordered_episode_ids` / `removed_episode_ids` delta. `create_crawl_plan` uses the persisted `ordered_episode_ids` as the previous order (never `episode_map` insertion order); `removed_episode_ids` emits only newly missing episodes; episodes already marked `missing_from_current_index` are not re-emitted as new removals; a second identical crawl yields an empty delta.
 - **Cache Acceptance on Attempt Identity**: `CacheEntry` carries `attempt_number`, `translation_run_id`, `output_hash`, and `cache_key`. `CacheFlushStage` drops rejected chunks (`needs_retry` / `needs_review` / `qa_failed`) and writes **only the pending entry matching the exact QA-accepted attempt tuple** (`accepted_attempt_number`, `accepted_provider_key`, `accepted_provider_model`, `accepted_cache_key`, `accepted_output_hash`). Chunk status + cache-key dedup is no longer the acceptance rule; a cross-model retry (model A rejected, model B accepted) can never cache the rejected attempt's output under its own key.
 - **HTTP Origin & Redirect Hardening**: `_origin` is `(scheme, hostname, effective_port)`; same scheme + same hostname but different effective port is cross-origin. The redirect loop strips Authorization / Proxy-Authorization / Cookie / Host / If-None-Match / If-Modified-Since / If-Match / If-Unmodified-Since / If-Range on cross-origin hops, drops `Referer`, and **only genuine domain/path-aware cookie containers (`httpx.Cookies`) survive a cross-origin hop** — plain `dict` cookies (which expose `.get()`) are hostless request cookies and never cross an origin boundary. `throttle.before_request` and `throttle.after_response` run for **every hop** (redirect, 304, 429, 4xx, 5xx, success) **before** `raise_for_status` can raise, so per-host adaptive penalties track the host that actually returned each status code; a redirected error is never charged to the original requested URL, and retried statuses account per attempt.
@@ -29,13 +29,13 @@ public-reading system.
 | Owner | Crawling, imports, translation, editing, providers, users, requests, takedowns, and operations. |
 | Guest | Public catalog, novel detail, chapter list, and reader. |
 | User | Google OAuth or email/password session; private library, progress, history, reviews, and requests. |
-| Enabled | User-owned contributor credentials and public rankings. |
+| Enabled | Unified provider credentials with user contribution pooling, and public rankings. |
 | Deferred | Community features, billing, organizations, and multiple admins. |
 
 Generated translated-novel downloads are outside scope. Do not add PDF, EPUB,
 HTML, Markdown, manifests, freshness, or downloads without an approved spec.
-EPUB/PDF source-document input and recovery backups remain supported. Preserve
-historical generated files.
+Novel ingestion accepts source URLs only; local EPUB, PDF, text, image-folder,
+and archive imports are not supported. Preserve historical generated files.
 
 ## Runtime Topology
 
@@ -46,11 +46,22 @@ historical generated files.
   it claims durable database activities and is not exposed through Caddy.
 - `DEPLOY_MODE=monolith|split` selects topology.
 - Next.js serves admin and public pages on port 3000.
-- PostgreSQL owns relational state; filesystem or S3/R2 owns chapter content.
+- PostgreSQL owns relational state and exact artifact references; R2 owns
+  immutable novel content. Local disk is disposable runtime state only.
 - Redis provides distributed queueing, rate limiting, and coordination.
 - Scheduler loops, long translation jobs, and restore verification need
   always-on compute; provider-backed activities run in the dedicated worker
   service so web processes do not consume their event loops for translation.
+- Worker database hot paths use narrow projections: activity claims are atomic
+  `UPDATE ... RETURNING` operations, heartbeats update only lease timestamps,
+  and expired-lease recovery loads only the fields it needs. The background
+  runner backs off from 5 to 30 seconds while the queue is empty. Routine
+  catalog reconciliation defers the large novel metadata-history JSON and
+  loads it only when an actual metadata change needs an audit append. The
+  worker reuses the row returned by the atomic claim rather than immediately
+  reloading it. A broader per-job metadata/glossary/raw-bundle cache remains a
+  measured follow-up, not a current contract; no stale-cache behavior may be
+  inferred from this boundary.
 
 ## Deployment Topologies
 
@@ -62,17 +73,40 @@ The production topology is the target.
 - Backend: split admin and reader containers on ports 8000 and 8001.
 - Frontend: Next.js container on port 3000, proxied through Caddy.
 - Database: external PostgreSQL; Compose does not provision the primary DB.
-- Storage: local filesystem at ``NOVEL_LIBRARY_DIR`` or configured S3/R2.
+- Storage: Cloudflare R2 application bucket ``dokushodo``; only disposable
+  runtime data is mounted locally at ``RUNTIME_DIR``.
 - Redis: Compose service for split-mode rate limiting and coordination.
 - Migrations: one-shot Compose ``migrate`` service must succeed before APIs.
 - Purpose: production-like local acceptance and smoke testing.
 
-### Tailscale-hosted production (WSL/Docker + split containers + managed PostgreSQL + R2)
+### Current development origin (Windows Docker + Cloudflare Tunnel)
+
+- The temporary development URL is ``https://dev.dokushodo.online``. It is
+  separate from the production apex and ``www`` hostnames; neither production
+  DNS record is repointed by this topology.
+- A remotely managed Cloudflare Tunnel named ``dokushodo-dev`` routes only
+  ``dev.dokushodo.online`` to the internal Caddy service at
+  ``http://caddy:80``. Caddy receives the same development host header and
+  remains the only HTTP router for frontend, admin, reader, and health paths.
+- The Compose ``cloudflared`` service uses the digest-pinned Cloudflare image
+  and an ignored local token file under ``deploy/.cloudflared/``. The token is
+  never checked into the repository or passed through tracked configuration.
+- This is an externally reachable development smoke path over the current
+  Windows Docker host. It is not a production topology and does not establish
+  production capacity, recovery, monitoring, or launch readiness. The
+  worker/full queue remains stopped unless a separate gate explicitly
+  authorizes it.
+- Cloudflare is the active external edge for the development reader path. The
+  reader-capacity follow-up does not require a private-peer network check;
+  earlier private-network records are historical evidence only.
+
+### Cloudflare-protected production target (WSL/Docker + split containers + managed PostgreSQL + R2)
 
 - **Frontend**: pinned Node.js 26.7.x Next.js container behind Caddy on the
   WSL/Docker host, with explicit
   ``WEB_CORS_ORIGINS``, ``CSRF_TRUSTED_ORIGINS``, ``ALLOWED_HOSTS``, CSP,
-  and HSTS. Operators reach the private site through Tailscale.
+  and HSTS. Operators reach the public site through the selected Cloudflare
+  edge/proxy, with origin access restricted to the deployment boundary.
 - **Backend**: always-on split deployment:
   - **Admin process** (``admin.Dockerfile``, port 8000) — owner/user
     control plane, session-authenticated endpoints, CSRF-protected
@@ -97,6 +131,12 @@ The production topology is the target.
   - ``anon`` and ``authenticated`` roles exist only if Data API is
     enabled; their privileges are explicitly revoked on backend-internal
     tables and sequences.
+  - If a managed Supabase project contains the optional
+    ``public.rls_auto_enable()`` ``SECURITY DEFINER`` event-trigger helper,
+    migration ``f8a2c4e6b0d1`` conditionally revokes ``PUBLIC``, ``anon``, and
+    ``authenticated`` execution. The helper is not application schema and is
+    never Data API-callable by those roles; deployments without it are a
+    no-op.
 - **Storage**: two separate R2 buckets with least-privilege credentials:
   - **App bucket**: chapter content, novel assets, catalog projections.
   - **Backup bucket**: encrypted dumps and snapshots. Backup-target
@@ -109,22 +149,34 @@ The production topology is the target.
   mutations, explicit allowed hosts, ``X-Forwarded-Proto`` enforcement.
 - **Observability**: health endpoints (``/health/live``, ``/health/ready``,
   ``/api/admin/health``), structured logging, runtime error monitoring.
-- **Email**: SMTP delivery configured through ``AUTH_EMAIL_DELIVERY_MODE``
-  and canonical SMTP settings.
-- **Backup and restore**: independently restorable copies with verified
-  restore procedure; encrypted database dumps and R2 snapshots. Retention
-  uses ``BackupManager.apply_retention()`` and ``InterProcessFileLock``.
+- **Email**: Auth mail is capability-gated through
+  ``AUTH_EMAIL_DELIVERY_MODE`` and the canonical SMTP settings. The safe
+  ``noop`` profile remains the current baseline: password signup may create an
+  unverified ``user`` and establish a session, but verification and password
+  reset messages are not delivered until the ``DEBT-118`` SMTP acceptance
+  gate passes.
+  - **Backup and restore**: independently restorable copies with verified
+    restore procedure; encrypted database dumps and incremental R2 snapshots.
+    ``R2IncrementalBackupTarget.apply_retention()`` keeps manifests and shared
+    objects reference-aware, while ``InterProcessFileLock`` protects scheduled
+    backup and retention runs. The local runtime contains only the lock and
+    other disposable state; it is never a backup archive.
+  - **R2 transfer boundary**: ``R2Storage.put_immutable()`` handles
+    content-addressed JSON writes, while ``R2Storage.save_stream()`` uses
+    bounded multipart transfer, provider SHA-256 checksums, and committed
+    length verification for larger binary artifacts.
 - **Scheduled maintenance**: PostgreSQL-side cron for internal cleanup
   (``private.cleanup_expired_scheduler_states()``); application-side
   scheduler loop checks ``scheduled_cron_log`` for pending backup and
   maintenance work.
 - **Image immutability**: containers built by SHA-pinned Docker images,
   not mutable tags.
-- **Windows file-lock resilience**: `os.replace` (atomic rename) on Windows
+- **Windows runtime-file-lock resilience**: `os.replace` (atomic rename) on Windows
   can transiently fail with `WinError 5` (`Access is denied`) when the
   destination is briefly held open (antivirus scan, reader handle, directory
-  watcher). The shared filesystem primitive `novelai.utils.filesystem.replace_with_retry`
-  wraps the replace in a bounded retry loop (defaults to 8 attempts, requires
+  watcher). The shared runtime-only filesystem primitive
+  `novelai.utils.filesystem.replace_with_retry` wraps the replace in a bounded
+  retry loop (defaults to 8 attempts, requires
   `attempts >= 1`, retries only `PermissionError`, uses bounded increasing backoff
   of 0.02 s × retry number). Persistent `PermissionError` is re-raised after the
   bounded retry budget. Failed atomic replacements do not delete the committed destination,
@@ -180,14 +232,30 @@ chapter storage -> paragraph IDs -> chunks/bundles -> prompt + glossary
 
 ## Storage and Database Ownership
 
-- Storage owns canonical novel metadata, raw chapters, translated versions,
-  edit history, and assets.
-- Storage also owns the immutable raw generation tree
-  (`generations/<gen-id>/`), the per-chapter translation overlay
-  (`translations/<encoded-chapter-stem>.json`), and the novel-root media
-  overlay (`media/<encoded-chapter-stem>.json`, schema `media_overlay_v1`);
-  raw bundles are byte-immutable once a generation is active and
-  translation/media writes never touch them.
+- PostgreSQL owns novel identity, public/source URLs, publication state,
+  chapter identity/order, active generation, exact R2 artifact references,
+  users, sessions, identities, glossary, requests, reviews, credentials,
+  audit, jobs, and usage.
+- R2 bucket `dokushodo` owns only immutable novel artifacts. The exact active
+  layout is documented in [`STORAGE.md`](STORAGE.md); there are no folder
+  metadata files, active-pointer objects, mutable overlays, or runtime data in
+  the bucket.
+- R2 bucket `dokushodo-backup` owns incremental object manifests and encrypted
+  database recovery material. Backup credentials are independent from
+  application credentials.
+- Redis/Valkey owns transient queues, locks, leases, rate limits, and quota
+  reservations. The local runtime directory owns only disposable caches,
+  checkpoints, logs, and worker scratch data. On the host this boundary is
+  `data/runtime/`; Compose maps it to the container's `/app/data/runtime`.
+- Chapter state is stored as one service-managed JSON record per stable chapter
+  identity under `chapter-state/<novel-id>/`; checkpoint filenames use the same
+  encoded physical chapter stem. Current checkpoints include temporary raw,
+  translated, and state copies to support application-level recovery. They are
+  private disposable recovery material, not a canonical content source; exact
+  PostgreSQL references and immutable R2 objects remain authoritative. Larger
+  catalogs will need checkpoint retention/compaction and a reference-based or
+  R2-backed payload strategy to avoid unnecessary duplicate content and local
+  filesystem metadata pressure.
 - PostgreSQL owns users, sessions, identities, glossary, requests, reviews,
   credentials, audit, jobs, and catalog projections.
 - The `chapters` table carries stable-identity columns
@@ -213,15 +281,18 @@ chapter storage -> paragraph IDs -> chunks/bundles -> prompt + glossary
   `CatalogService` resolves chapter rows by `novel_id + logical_chapter_id`,
   never by title; reorder updates `sequence_number` in place without creating
   new rows; same-title chapters remain distinct rows.
-- SQL chapter counts are projections; canonical counts come from storage.
+- SQL chapter counts are projections of PostgreSQL-owned references; public
+  readers do not enumerate R2 to rebuild a response.
 - `Novel.public_reader_unavailable_policy` is an optional projection of the
   per-novel availability policy from canonical metadata. Migration
   `e5f7a9c1d3b2` persists it so projection-first public chapter reads retain
   policy behavior without a request-time metadata fallback or object-storage
   enumeration.
-- S3/R2 directories are virtual prefixes; no host-filesystem assumptions.
-- Preserve raw scraped chapters and historical generated files.
-- `storage/novel_library` is private and never served directly.
+- R2 directories are virtual prefixes; no host-filesystem assumptions and no
+  local content fallback.
+- Preserve immutable scraped artifacts and historical generated references.
+- The configured runtime directory is private, disposable, and never served
+  directly.
 - APIs never expose raw paths, internal keys, secrets, or full credentials.
 
 See [`STORAGE.md`](STORAGE.md).
@@ -248,9 +319,9 @@ fields, fallback readers, compatibility routes, or import shims.
 - `/api/auth/*`: owner and public authentication.
 - `/api/user/*`: session-authenticated user data through admin process.
 - `/api/public/*`: guest-safe reader and rankings through reader process.
-- `/api/user/contributions`: authenticated user-owned contributor credentials
-  through the admin process; identity is session-derived and unsafe methods are
-  CSRF-protected.
+- `/api/user/contributions`: authenticated user contribution views over the
+  unified provider credential registry through the admin process; identity is
+  session-derived and unsafe methods are CSRF-protected.
 - `/health/*`: liveness/readiness through admin process.
 - `/novels/*`: frontend pages, not backend aliases.
 
@@ -289,29 +360,61 @@ Roles are `guest`, `user`, and exactly one `owner`.
 - Takedowns use exact decoded paths, safe HTTP 451, `no-store`, sitemap
   exclusion, and no complainant/private details.
 
-### Contributor credential contract
+### Unified provider credential contract
 
-Contributor credentials are enabled behind `CONTRIBUTOR_CREDENTIALS_ENABLED`.
-V1 permits one Gemini credential per authenticated user. The submitted key is
-encrypted at rest with `PROVIDER_CREDENTIAL_ENCRYPTION_KEY`; responses expose
-only the credential id, provider/model, last four characters, fingerprint,
-status, consent version, validation state, timestamps, and failure count.
-Raw keys, prompts, authorization headers, and provider responses are never
-stored in the usage ledger, logs, or API responses.
+Provider credentials are enabled behind `CONTRIBUTOR_CREDENTIALS_ENABLED` and
+stored once in `provider_credentials`. The same table holds owner-managed
+credentials and user contributions; there is no separate contributor
+credential table. V1 permits one Gemini contribution per authenticated user.
+Each row carries its authenticated owner, source, `owner_job_eligible`, and
+`contributor_pool_eligible` flags so privilege and pool participation are
+independent decisions.
 
-Registration requires the current `CONTRIBUTOR_CONSENT_VERSION`. Validation uses
-the explicit submitted key without hydrating owner preferences. A successful
-validation activates the credential immediately; a failed validation persists
-an invalid state and the key cannot enter the contributor pool. Users may
-replace, pause, resume, and permanently delete their own credential. Owners
-have separate pause, resume, and revoke emergency controls.
+Every submitted key is encrypted at rest with
+`PROVIDER_CREDENTIAL_ENCRYPTION_KEY`; responses expose only the credential id,
+provider/model, last four characters, fingerprint, source, eligibility,
+status, consent version, validation state, timestamps, and failure count. Raw
+keys, prompts, authorization headers, and provider responses are never stored
+in the usage ledger, logs, or API responses. The configured
+`PROVIDER_GEMINI_API_KEY` is not imported at startup; an owner must explicitly
+invoke the owner-only import/validation operation, which creates an owner-job
+credential and never makes it contributor-pool eligible.
 
-Contributor translation selects only active, valid Gemini credentials and uses
-per-credential RPM, TPM, RPD, and in-flight concurrency reservations. The usage ledger records only
-credential/owner/requesting-user identity, provider/model, request/job/activity
-ids, contribution mode, sanitized status, token accounting, estimated cost,
-timing fields, and timestamps. `credential_owner_user_id` and `requesting_user_id` remain
-distinct. Owner-only jobs never consume contributor credentials.
+User registration requires the current `CONTRIBUTOR_CONSENT_VERSION`.
+Validation uses the explicit submitted key without hydrating owner preferences.
+A successful validation activates a user contribution immediately; a failed
+validation persists an invalid state and the key cannot enter the contributor
+pool. Users may replace, pause, resume, and permanently delete their own
+contribution. Owners may pause, resume, revoke, or share/unshare pool
+eligibility for emergency and abuse-remediation control. Revoked credentials
+cannot be resumed by users.
+
+Contributor translation selects only active, valid Gemini rows with
+`contributor_pool_eligible=true` and uses per-credential RPM, TPM, RPD, and
+in-flight concurrency reservations. Pool selection is deterministic and
+row-locked for the short lease transaction so concurrent workers do not
+repeatedly select the same credential. Owner-only jobs select only
+`owner_job_eligible` rows and never consume contributor-pool credentials. The
+single `contributor_usage_ledger` records both modes using credential owner,
+requesting-user, provider/model, request/job/activity ids, contribution mode,
+sanitized status, token accounting, estimated cost, timing fields, and
+timestamps. `credential_owner_user_id` and `requesting_user_id` remain
+distinct.
+
+Credential validation is rate-limited per authenticated user, provider feedback
+is bounded and redacted against the submitted key, and a validation result is
+discarded if the credential was replaced while the provider request was in
+flight. Production quota controllers enforce configured per-credential
+concurrency through shared Redis state. Provider-request audit identity is
+passed per call rather than stored in shared pipeline metadata, so parallel
+chunks cannot cross-associate credential ownership or ids.
+
+The configured RPM/TPM/RPD and in-flight values are local admission guards.
+They do not establish independent upstream capacity per API key: Gemini limits
+vary by model and usage tier and are generally applied at the provider project
+level. Production-volume work requires an operator check of the active project
+limits in Google AI Studio; the worker fails closed when no active validated
+contributor credential is available.
 
 ### Durable translation activity contract
 
@@ -381,15 +484,17 @@ unchanged.
   deployment-wide pooler-budget verification.
 - `/api/admin/health`: owner-only detailed but redacted diagnostics.
 - Probe states: `healthy`, `degraded`, `unhealthy`.
-- Public readiness does not run full storage write/read/delete or S3 usage
+- Public readiness does not run full storage write/read/delete or R2 usage
   scans. Those remain owner-only or scheduled diagnostics so reverse-proxy
   health checks do not amplify object-storage latency.
 - Scheduled backup, maintenance, and database dumps use renewable PostgreSQL
-  leases plus local file locks where needed.
+  leases plus Redis/Valkey coordination where needed.
 - Each registered maintenance task writes start/success/failure transitions to
   `SchedulerRuntimeState`; `GET /api/admin/maintenance/status` projects schedule,
   safe result, and next eligibility for owner UI. Missing state means `never_run`.
-- R2 CRUD, snapshot reads, and backup writes use separate credentials.
+- R2 CRUD, snapshot reads, and backup writes use separate least-privilege
+  credentials. R2 listing is limited to inventory, backup, migration, and GC
+  workflows; normal readers use exact references.
 - Backups are independently restorable copies, not lifecycle rules.
 - HTTP origin is `(scheme, hostname, effective_port)`; default ports are
   80 for http and 443 for https, so different effective ports are
@@ -410,23 +515,24 @@ unchanged.
   finalized counts (`expected_count`, `completed_count`, `skipped_count`,
   `review_count`, `failed_count`) and the in-source-order `chapter_ids`.
 - Long-running scrape and resume operations are activity records, not request
-  lifetimes. The activity lease is renewed by the worker heartbeat and the
-  durable status is polled through the activity API. A failed activity must
+  lifetimes. The activity lease is renewed by an independent worker heartbeat
+  thread so synchronous orchestration cannot starve lease renewal, and durable
+  status is polled through the activity API. A failed activity must
   leave the previous active generation visible; a staged generation is only
   reader-visible after complete-snapshot validation and pointer activation.
 - Translation activities use the database queue rather than full-file JSON
   rewrites. `ACTIVITY_HISTORY_MAX_ENTRIES`, metadata-size, and retry-history
   limits bound durable state; queue metrics expose pending age and claim,
   heartbeat, list, and update timings.
-- Gemini admission reserves request/token/day quota plus a global in-flight
-  limit. `TRANSLATION_PROVIDER_DEADLINE_SECONDS` and bounded retry backoff
-  limit provider work. Provider runtime metrics and the sanitized usage ledger
-  record wait, execution, retry, quota-reservation, and usage-write duration
-  without prompts, keys, authorization headers, or response secrets.
-- Translation cache entries remain file-backed but metadata is indexed in a
-  SQLite WAL sidecar. Invalidation, statistics, and LRU eviction use indexed
-  rows; the recursive directory scan is limited to one migration/backfill and
-  never runs on the request path.
+- Gemini admission reserves requests-per-minute, tokens-per-minute,
+  requests-per-day, and global in-flight capacity. `TRANSLATION_PROVIDER_DEADLINE_SECONDS`
+  and bounded retry backoff limit provider work. Provider runtime metrics and
+  the sanitized usage ledger record wait, execution, retry, quota-reservation,
+  and usage-write duration without prompts, keys, authorization headers, or
+  response secrets.
+- Translation cache entries are disposable runtime data and are never used as
+  canonical content. Durable translation lineage and active artifact
+  references remain in PostgreSQL and R2.
 
 ## Reader Contracts
 
@@ -452,3 +558,32 @@ unchanged.
   without architecture change.
 
 Current unfinished work lives only in [`WORK.md`](WORK.md).
+
+## Pipeline async execution and capacity checkpoint - 2026-08-24
+
+Translation persistence now crosses an explicit bounded
+`TranslationPersistencePort`. The port owns per-operation storage/session
+work, rejects live ORM/session values at the boundary, returns detached plain
+data, records bounded queue-wait/duration observations, and batches coalescible
+progress writes. Terminal lineage and active-reference writes remain critical
+and ordered. The persistence expansion profile is disabled by default and is
+reversible through `TRANSLATION_PERSISTENCE_EXPANSION_ENABLED=false`.
+
+Runtime telemetry is a bounded fixed-label observation buffer with explicit
+event-loop/process-resource availability states. It must never contain prompt,
+response, source-text, credential, authorization-header, or arbitrary
+exception data. Process CPU/memory and event-loop gauges are supporting
+application evidence, not hosted billing or egress attribution.
+
+Contributor admission applies one conservative shared project quota controller
+and one per-credential controller. Distinct keys do not multiply project quota
+without verified independent domains. Contributor selection remains separate
+from owner-job selection, and translation-provider RPS remains separate from
+public reader HTTP RPS. A credential reservation has a bounded reconciliation
+or expiry outcome and sanitized ledger attribution.
+
+The fixture-only capacity harness and checkpoint footprint measurement are
+local evidence. The isolated R2 operation benchmark, source canary, and 1k,
+10k, and 100k reader stages remain unavailable or operator-deferred until
+their endpoint, traffic model, stop thresholds, rollback owner, and hosted
+telemetry gates are supplied.

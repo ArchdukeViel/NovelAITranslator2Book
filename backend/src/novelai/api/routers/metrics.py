@@ -14,6 +14,7 @@ from novelai.services.health_service import HealthCacheStats
 from novelai.services.provider_metrics import provider_runtime_stats
 from novelai.services.public_projection_cache import public_projection_cache_stats
 from novelai.services.public_ranking_cache import public_ranking_cache_stats
+from novelai.services.runtime_telemetry import TelemetryOperation, TelemetryStage, runtime_telemetry
 
 router = APIRouter()
 
@@ -135,6 +136,12 @@ def get_metrics() -> Response:
     analytics_writer = analytics_writer_stats()
     activity_queue = _activity_queue_stats()
     provider_runtime = provider_runtime_stats()
+    process_sample = runtime_telemetry.sample_process_resources()
+    event_loop_sample = runtime_telemetry.latest(
+        stage=TelemetryStage.PROCESS,
+        operation=TelemetryOperation.EVENT_LOOP_LAG,
+    )
+    event_loop_lag_ms = event_loop_sample.event_loop_lag_ms if event_loop_sample is not None else 0.0
     health_service = _load_container_health_service()
     health_cache = (
         health_service.health_cache_stats()
@@ -170,6 +177,27 @@ def get_metrics() -> Response:
         "# HELP novelai_gc_collection_2_count GC generation 2 collection count",
         "# TYPE novelai_gc_collection_2_count gauge",
         f"novelai_gc_collection_2_count {gc_counts[2]}",
+        "# HELP novelai_event_loop_lag_ms Latest sampled event-loop lag",
+        "# TYPE novelai_event_loop_lag_ms gauge",
+        f"novelai_event_loop_lag_ms {event_loop_lag_ms or 0.0:.3f}",
+        "# HELP novelai_process_cpu_time_ms Process CPU time used",
+        "# TYPE novelai_process_cpu_time_ms gauge",
+        f"novelai_process_cpu_time_ms {process_sample.cpu_ms or 0.0:.3f}",
+        "# HELP novelai_process_memory_bytes Process memory high-water mark, when available",
+        "# TYPE novelai_process_memory_bytes gauge",
+        f"novelai_process_memory_bytes {process_sample.memory_bytes or 0}",
+        "# HELP novelai_process_memory_available Whether process memory sampling is available",
+        "# TYPE novelai_process_memory_available gauge",
+        f"novelai_process_memory_available {1 if process_sample.memory_bytes is not None else 0}",
+        "# HELP novelai_network_bytes_available Whether network byte attribution is available",
+        "# TYPE novelai_network_bytes_available gauge",
+        "novelai_network_bytes_available 0",
+        "# HELP novelai_runtime_observations_buffered Current bounded runtime observation count",
+        "# TYPE novelai_runtime_observations_buffered gauge",
+        f"novelai_runtime_observations_buffered {len(runtime_telemetry.snapshot())}",
+        "# HELP novelai_runtime_unavailable_samples_total Buffered observations with named unavailable fields",
+        "# TYPE novelai_runtime_unavailable_samples_total gauge",
+        f"novelai_runtime_unavailable_samples_total {runtime_telemetry.unavailable_count()}",
         "# HELP novelai_activity_pending_count Activities in pending state",
         "# TYPE novelai_activity_pending_count gauge",
         f"novelai_activity_pending_count {pending}",

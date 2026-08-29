@@ -1,0 +1,372 @@
+﻿{
+    "schema_version":  1,
+    "run_id":  "20260824T053317Z",
+    "started_at_utc":  "2026-08-24T05:33:17.1265168Z",
+    "finished_at_utc":  "2026-08-24T05:33:47.8888816Z",
+    "provenance":  "private_staging_http_sample",
+    "profile":  {
+                    "dau":  1000,
+                    "daily_requests":  8000,
+                    "peak_rps":  0.444444,
+                    "peak_window_seconds":  1800
+                },
+    "traffic":  {
+                    "samples_per_route":  1,
+                    "concurrency":  1,
+                    "timeout_seconds":  15,
+                    "warmup_per_route":  true,
+                    "route_mix":  {
+                                      "catalog":  0.25,
+                                      "detail":  0.25,
+                                      "chapter":  0.25,
+                                      "supporting_routes":  0.25
+                                  },
+                    "target_host_identity":  "redacted",
+                    "novel_identity":  "redacted"
+                },
+    "workload_exit_code":  0,
+    "routes":  {
+                   "catalog":  {
+                                   "samples":  1,
+                                   "p50_ms":  124.451,
+                                   "p95_ms":  124.451,
+                                   "p99_ms":  124.451,
+                                   "statuses":  {
+                                                    "200":  1
+                                                },
+                                   "timeouts":  0,
+                                   "errors":  {
+
+                                              },
+                                   "average_response_bytes":  2924,
+                                   "body_nonempty":  true,
+                                   "slo_budget_ms":  500,
+                                   "slo_pass":  true,
+                                   "expected_degraded":  false
+                               },
+                   "chapter":  {
+                                   "samples":  1,
+                                   "p50_ms":  1679.238,
+                                   "p95_ms":  1679.238,
+                                   "p99_ms":  1679.238,
+                                   "statuses":  {
+                                                    "200":  1
+                                                },
+                                   "timeouts":  0,
+                                   "errors":  {
+
+                                              },
+                                   "average_response_bytes":  6443,
+                                   "body_nonempty":  true,
+                                   "slo_budget_ms":  750,
+                                   "slo_pass":  false,
+                                   "expected_degraded":  false
+                               },
+                   "detail":  {
+                                  "samples":  1,
+                                  "p50_ms":  465.279,
+                                  "p95_ms":  465.279,
+                                  "p99_ms":  465.279,
+                                  "statuses":  {
+                                                   "200":  1
+                                               },
+                                  "timeouts":  0,
+                                  "errors":  {
+
+                                             },
+                                  "average_response_bytes":  1395,
+                                  "body_nonempty":  true,
+                                  "slo_budget_ms":  300,
+                                  "slo_pass":  false,
+                                  "expected_degraded":  false
+                              },
+                   "health_live":  {
+                                       "samples":  1,
+                                       "p50_ms":  6.7,
+                                       "p95_ms":  6.7,
+                                       "p99_ms":  6.7,
+                                       "statuses":  {
+                                                        "200":  1
+                                                    },
+                                       "timeouts":  0,
+                                       "errors":  {
+
+                                                  },
+                                       "average_response_bytes":  77,
+                                       "body_nonempty":  true,
+                                       "slo_budget_ms":  100,
+                                       "slo_pass":  true,
+                                       "expected_degraded":  false
+                                   },
+                   "health_ready":  {
+                                        "samples":  1,
+                                        "p50_ms":  6.558,
+                                        "p95_ms":  6.558,
+                                        "p99_ms":  6.558,
+                                        "statuses":  {
+                                                         "503":  1
+                                                     },
+                                        "timeouts":  0,
+                                        "errors":  {
+
+                                                   },
+                                        "average_response_bytes":  219,
+                                        "body_nonempty":  false,
+                                        "slo_budget_ms":  null,
+                                        "slo_pass":  true,
+                                        "expected_degraded":  true
+                                    },
+                   "home":  {
+                                "samples":  1,
+                                "p50_ms":  25.069,
+                                "p95_ms":  25.069,
+                                "p99_ms":  25.069,
+                                "statuses":  {
+                                                 "200":  1
+                                             },
+                                "timeouts":  0,
+                                "errors":  {
+
+                                           },
+                                "average_response_bytes":  65823,
+                                "body_nonempty":  true,
+                                "slo_budget_ms":  1500,
+                                "slo_pass":  true,
+                                "expected_degraded":  false
+                            },
+                   "ranking_daily":  {
+                                         "samples":  1,
+                                         "p50_ms":  8.375,
+                                         "p95_ms":  8.375,
+                                         "p99_ms":  8.375,
+                                         "statuses":  {
+                                                          "200":  1
+                                                      },
+                                         "timeouts":  0,
+                                         "errors":  {
+
+                                                    },
+                                         "average_response_bytes":  173,
+                                         "body_nonempty":  true,
+                                         "slo_budget_ms":  500,
+                                         "slo_pass":  true,
+                                         "expected_degraded":  false
+                                     },
+                   "ranking_monthly":  {
+                                           "samples":  1,
+                                           "p50_ms":  7.987,
+                                           "p95_ms":  7.987,
+                                           "p99_ms":  7.987,
+                                           "statuses":  {
+                                                            "200":  1
+                                                        },
+                                           "timeouts":  0,
+                                           "errors":  {
+
+                                                      },
+                                           "average_response_bytes":  175,
+                                           "body_nonempty":  true,
+                                           "slo_budget_ms":  500,
+                                           "slo_pass":  true,
+                                           "expected_degraded":  false
+                                       },
+                   "ranking_weekly":  {
+                                          "samples":  1,
+                                          "p50_ms":  8.189,
+                                          "p95_ms":  8.189,
+                                          "p99_ms":  8.189,
+                                          "statuses":  {
+                                                           "200":  1
+                                                       },
+                                          "timeouts":  0,
+                                          "errors":  {
+
+                                                     },
+                                          "average_response_bytes":  174,
+                                          "body_nonempty":  true,
+                                          "slo_budget_ms":  500,
+                                          "slo_pass":  true,
+                                          "expected_degraded":  false
+                                      },
+                   "search":  {
+                                  "samples":  1,
+                                  "p50_ms":  177.171,
+                                  "p95_ms":  177.171,
+                                  "p99_ms":  177.171,
+                                  "statuses":  {
+                                                   "200":  1
+                                               },
+                                  "timeouts":  0,
+                                  "errors":  {
+
+                                             },
+                                  "average_response_bytes":  64,
+                                  "body_nonempty":  true,
+                                  "slo_budget_ms":  500,
+                                  "slo_pass":  true,
+                                  "expected_degraded":  false
+                              }
+               },
+    "readiness":  {
+                      "worker_expected_state":  "stopped",
+                      "public_readiness_expected_status":  503,
+                      "public_liveness_expected_status":  200
+                  },
+    "resource_snapshots":  {
+                               "before":  {
+                                              "status":  "ok",
+                                              "samples":  [
+                                                              {
+                                                                  "name":  "novel-ai-caddy-1",
+                                                                  "cpu":  "0.00%",
+                                                                  "memory":  "15.15MiB / 7.421GiB",
+                                                                  "network":  "785kB / 677kB",
+                                                                  "block_io":  "229kB / 4.1kB"
+                                                              },
+                                                              {
+                                                                  "name":  "novel-ai-reader-1",
+                                                                  "cpu":  "0.37%",
+                                                                  "memory":  "420.4MiB / 7.421GiB",
+                                                                  "network":  "222MB / 6.62MB",
+                                                                  "block_io":  "246kB / 0B"
+                                                              },
+                                                              {
+                                                                  "name":  "novel-ai-backend-1",
+                                                                  "cpu":  "0.56%",
+                                                                  "memory":  "377.1MiB / 7.421GiB",
+                                                                  "network":  "13.2MB / 2.89MB",
+                                                                  "block_io":  "426kB / 0B"
+                                                              }
+                                                          ]
+                                          },
+                               "after":  {
+                                             "status":  "ok",
+                                             "samples":  [
+                                                             {
+                                                                 "name":  "novel-ai-caddy-1",
+                                                                 "cpu":  "0.00%",
+                                                                 "memory":  "15.17MiB / 7.421GiB",
+                                                                 "network":  "868kB / 749kB",
+                                                                 "block_io":  "229kB / 4.1kB"
+                                                             },
+                                                             {
+                                                                 "name":  "novel-ai-reader-1",
+                                                                 "cpu":  "0.36%",
+                                                                 "memory":  "420.4MiB / 7.421GiB",
+                                                                 "network":  "250MB / 7.39MB",
+                                                                 "block_io":  "246kB / 0B"
+                                                             },
+                                                             {
+                                                                 "name":  "novel-ai-backend-1",
+                                                                 "cpu":  "0.54%",
+                                                                 "memory":  "377.1MiB / 7.421GiB",
+                                                                 "network":  "13.3MB / 2.9MB",
+                                                                 "block_io":  "426kB / 0B"
+                                                             }
+                                                         ]
+                                         },
+                               "database_before":  {
+                                                       "status":  "unavailable",
+                                                       "reason":  "database_snapshot_failed"
+                                                   },
+                               "database_after":  {
+                                                      "status":  "unavailable",
+                                                      "reason":  "database_snapshot_failed"
+                                                  },
+                               "internal_metrics_before":  {
+                                                               "status":  "ok",
+                                                               "selected":  {
+                                                                                "novelai_activity_cancelled_count":  1.0,
+                                                                                "novelai_activity_completed_count":  4.0,
+                                                                                "novelai_activity_failed_count":  11.0,
+                                                                                "novelai_activity_pending_count":  0.0,
+                                                                                "novelai_activity_queue_age_seconds":  0.0,
+                                                                                "novelai_activity_queue_operation_total_ms":  1472.654,
+                                                                                "novelai_activity_queued_count":  0.0,
+                                                                                "novelai_activity_running_count":  0.0,
+                                                                                "novelai_provider_calls_total":  0.0,
+                                                                                "novelai_provider_execution_ms_total":  0.0,
+                                                                                "novelai_provider_failures_total":  0.0,
+                                                                                "novelai_provider_quota_reservation_ms_total":  0.0,
+                                                                                "novelai_provider_retries_total":  0.0,
+                                                                                "novelai_provider_usage_write_ms_total":  0.0,
+                                                                                "novelai_provider_wait_ms_total":  0.0,
+                                                                                "novelai_public_projection_cache_entries":  0.0,
+                                                                                "novelai_public_projection_cache_hits_total":  0.0,
+                                                                                "novelai_public_projection_cache_invalidations_total":  0.0,
+                                                                                "novelai_public_projection_cache_misses_total":  0.0,
+                                                                                "novelai_public_ranking_cache_entries":  0.0,
+                                                                                "novelai_public_ranking_cache_hits_total":  0.0,
+                                                                                "novelai_public_ranking_cache_misses_total":  0.0,
+                                                                                "novelai_readiness_cache_age_seconds":  2.04,
+                                                                                "novelai_readiness_cache_entries":  1.0,
+                                                                                "novelai_readiness_cache_hits_total":  16.0,
+                                                                                "novelai_readiness_cache_misses_total":  43.0,
+                                                                                "novelai_runtime_observations_buffered":  256.0,
+                                                                                "novelai_runtime_unavailable_samples_total":  1.0
+                                                                            }
+                                                           },
+                               "internal_metrics_after":  {
+                                                              "status":  "ok",
+                                                              "selected":  {
+                                                                               "novelai_activity_cancelled_count":  1.0,
+                                                                               "novelai_activity_completed_count":  4.0,
+                                                                               "novelai_activity_failed_count":  11.0,
+                                                                               "novelai_activity_pending_count":  0.0,
+                                                                               "novelai_activity_queue_age_seconds":  0.0,
+                                                                               "novelai_activity_queue_operation_total_ms":  1770.309,
+                                                                               "novelai_activity_queued_count":  0.0,
+                                                                               "novelai_activity_running_count":  0.0,
+                                                                               "novelai_provider_calls_total":  0.0,
+                                                                               "novelai_provider_execution_ms_total":  0.0,
+                                                                               "novelai_provider_failures_total":  0.0,
+                                                                               "novelai_provider_quota_reservation_ms_total":  0.0,
+                                                                               "novelai_provider_retries_total":  0.0,
+                                                                               "novelai_provider_usage_write_ms_total":  0.0,
+                                                                               "novelai_provider_wait_ms_total":  0.0,
+                                                                               "novelai_public_projection_cache_entries":  0.0,
+                                                                               "novelai_public_projection_cache_hits_total":  0.0,
+                                                                               "novelai_public_projection_cache_invalidations_total":  0.0,
+                                                                               "novelai_public_projection_cache_misses_total":  0.0,
+                                                                               "novelai_public_ranking_cache_entries":  0.0,
+                                                                               "novelai_public_ranking_cache_hits_total":  0.0,
+                                                                               "novelai_public_ranking_cache_misses_total":  0.0,
+                                                                               "novelai_readiness_cache_age_seconds":  23.99,
+                                                                               "novelai_readiness_cache_entries":  1.0,
+                                                                               "novelai_readiness_cache_hits_total":  18.0,
+                                                                               "novelai_readiness_cache_misses_total":  43.0,
+                                                                               "novelai_runtime_observations_buffered":  256.0,
+                                                                               "novelai_runtime_unavailable_samples_total":  2.0
+                                                                           }
+                                                          }
+                           },
+    "correctness":  {
+                        "public_success_bodies_nonempty":  true,
+                        "canonical_write_mode":  "reader_only",
+                        "provider_calls":  0,
+                        "fixture_seeded":  false
+                    },
+    "result":  "stopped_with_quantified_blockers",
+    "blockers":  [
+                     {
+                         "type":  "slo",
+                         "route":  "chapter",
+                         "p95_ms":  1679.238,
+                         "budget_ms":  750
+                     },
+                     {
+                         "type":  "slo",
+                         "route":  "detail",
+                         "p95_ms":  465.279,
+                         "budget_ms":  300
+                     },
+                     {
+                         "type":  "r2_telemetry",
+                         "reason":  "provider_operation_and_billed_byte_counters_not_exposed_to_this_stage_runner"
+                     },
+                     {
+                         "type":  "hosted_billing",
+                         "reason":  "provider_billing_window_not captured by local runner"
+                     }
+                 ]
+}

@@ -59,10 +59,7 @@ def estimate_tokens(
     )
 
     total_input_tokens = (
-        source_input_tokens
-        + prompt_overhead_tokens
-        + glossary_overhead_tokens
-        + json_input_overhead_tokens
+        source_input_tokens + prompt_overhead_tokens + glossary_overhead_tokens + json_input_overhead_tokens
     )
     total_output_tokens = translation_output_tokens + json_output_overhead_tokens
 

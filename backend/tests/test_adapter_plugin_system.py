@@ -22,9 +22,7 @@ def _register_builtins() -> None:
 
 
 def test_builtin_adapters_are_registered() -> None:
-    assert {"generic", "kakuyomu", "novel18_syosetu", "syosetu_ncode"} <= set(
-        get_registry().list_adapters()
-    )
+    assert {"generic", "kakuyomu", "novel18_syosetu", "syosetu_ncode"} <= set(get_registry().list_adapters())
 
 
 def test_fresh_registry_discovers_builtin_adapters() -> None:

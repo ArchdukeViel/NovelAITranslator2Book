@@ -69,7 +69,7 @@ jobs:
           enable-cache: true
 
       - run: >-
-          uv sync --locked --extra documents --extra gemini --extra dev
+          uv sync --locked --extra gemini --extra dev
           --extra test --extra s3 --extra auth
       - run: uv run --locked ruff check .
       - run: uv run --locked pyright
@@ -114,7 +114,7 @@ jobs:
           enable-cache: true
 
       - run: >-
-          uv sync --locked --extra documents --extra gemini --extra dev
+          uv sync --locked --extra gemini --extra dev
           --extra test --extra s3 --extra auth
 
       - name: Run unit tests
@@ -125,12 +125,9 @@ jobs:
           --ignore=backend/tests/test_checkpoint_resume.py
           --ignore=backend/tests/test_document_import_orchestration.py
           --ignore=backend/tests/test_glossary_prompt_injection.py
-          --ignore=backend/tests/test_glossary_sync_bridge.py
           --ignore=backend/tests/test_integration.py
-          --ignore=backend/tests/test_malformed_artifact_recovery.py
           --ignore=backend/tests/test_maintenance_status_service.py
           --ignore=backend/tests/test_novel_lifecycle_integration.py
-          --ignore=backend/tests/test_novel_orchestration_contracts.py
           --ignore=backend/tests/test_novel_orchestration_service.py
           --ignore=backend/tests/test_notification_event_bus.py
           --ignore=backend/tests/test_notification_persistence_service.py
@@ -186,7 +183,7 @@ jobs:
           enable-cache: true
 
       - run: >-
-          uv sync --locked --extra documents --extra gemini --extra dev
+          uv sync --locked --extra gemini --extra dev
           --extra test --extra s3 --extra auth
 
       - name: Bootstrap Supabase auth signature on vanilla PostgreSQL
@@ -228,7 +225,6 @@ jobs:
           - shard: orchestration-and-pipeline
             test_files: >-
               backend/tests/test_novel_orchestration_service.py
-              backend/tests/test_novel_orchestration_contracts.py
               backend/tests/test_pipeline_stages.py
           - shard: web-api-and-auth
             test_files: >-
@@ -240,13 +236,11 @@ jobs:
           - shard: components-and-lifecycle
             test_files: >-
               backend/tests/test_glossary_prompt_injection.py
-              backend/tests/test_glossary_sync_bridge.py
               backend/tests/test_provider_registry.py
               backend/tests/test_translation_qa.py
               backend/tests/test_notification_event_bus.py
               backend/tests/test_notification_persistence_service.py
               backend/tests/test_maintenance_status_service.py
-              backend/tests/test_malformed_artifact_recovery.py
               backend/tests/test_project_layout.py
               backend/tests/test_novel_lifecycle_integration.py
               backend/tests/test_checkpoint_resume.py
@@ -267,7 +261,7 @@ jobs:
           enable-cache: true
 
       - run: >-
-          uv sync --locked --extra documents --extra gemini --extra dev
+          uv sync --locked --extra gemini --extra dev
           --extra test --extra s3 --extra auth
       - run: >-
           uv run --locked pytest -n 2 --dist loadfile --basetemp=backend/tests/.tmp/pytest-${{ matrix.shard }}
@@ -399,7 +393,7 @@ jobs:
 
       - if: steps.filter.outputs.relevant == 'true'
         run: >-
-          uv sync --locked --extra documents --extra gemini --extra dev
+          uv sync --locked --extra gemini --extra dev
           --extra test --extra s3 --extra auth
 
       - if: steps.filter.outputs.relevant == 'true'

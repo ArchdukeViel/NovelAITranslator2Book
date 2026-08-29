@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import threading
 from typing import Any
 from unittest.mock import patch
@@ -62,138 +61,30 @@ def _metadata(
 # ── inventory builder ─────────────────────────────────────────────────
 
 
-class TestStorageInventory:
-    """Tests for the single-pass storage inventory builder."""
+class TestCatalogProjection:
+    """Tests for catalog-backed summaries that never inventory the R2 bucket."""
 
-    def test_inventory_lists_multiple_novels_in_one_pass(
-        self, summary_storage: StorageService
-    ) -> None:
-        """One listing should cover all novels without per-novel scanning."""
+    def test_summary_uses_catalog_references_without_bucket_listing(self, summary_storage: StorageService) -> None:
         summary_storage.save_metadata("novel-a", _metadata(2))
         _save_chapter(summary_storage, "novel-a", "1")
         _save_chapter(summary_storage, "novel-a", "2")
-
-        summary_storage.save_metadata("novel-b", _metadata(3))
+        summary_storage.save_metadata("novel-b", _metadata(1))
         _save_chapter(summary_storage, "novel-b", "1")
 
-        listing_calls: list[tuple[tuple, dict[str, Any]]] = []
-        original = summary_storage._backend.list_keys
+        with patch.object(
+            summary_storage._backend,
+            "list_keys",
+            side_effect=AssertionError("summary must not inventory R2"),
+        ):
+            result = LibrarySummaryService(summary_storage).get_summary(refresh=True)
 
-        def _spy(*args: Any, **kwargs: Any) -> list[str]:
-            listing_calls.append((args, kwargs))
-            return original(*args, **kwargs)
+        assert {item.novel_id for item in result.items} == {"novel-a", "novel-b"}
+        assert result.totals.scraped == 3
 
-        with patch.object(summary_storage._backend, "list_keys", side_effect=_spy):
-            service = LibrarySummaryService(summary_storage)
-            result = service.get_summary(refresh=True)
-
-        # Exactly one listing call regardless of novel count
-        assert len(listing_calls) == 1
-        # Both novels must appear in items (folder names derived from novel_id)
-        ids = {item.novel_id for item in result.items}
-        assert ids == {"novel-a", "novel-b"}
-
-    def test_padded_filenames_produce_logical_source_ids(
-        self, summary_storage: StorageService
-    ) -> None:
-        """`0001.json` must become logical ID ``"1"`` (not ``"0001"``)."""
-        summary_storage.save_metadata("n2056dn", _metadata(3))
-        # Use save_chapter which gauges the logical id from the *input*; the
-        # storage backend converts that to padded physical names already
-        # thanks to _chapter_filename().
-        _save_chapter(summary_storage, "n2056dn", "1")
-        _save_chapter(summary_storage, "n2056dn", "2")
-        _save_chapter(summary_storage, "n2056dn", "3")
-
-        service = LibrarySummaryService(summary_storage)
-        result = service.get_summary(refresh=True)
-        item = next(r for r in result.items if r.novel_id == "n2056dn")
-        assert item.scraped == 3
-
-    def test_unrelated_json_is_excluded(
-        self, summary_storage: StorageService
-    ) -> None:
-        """Unrelated JSON files should not inflate scraped/translated counts."""
-        summary_storage.save_metadata("novel-x", _metadata(2))
-        _save_chapter(summary_storage, "novel-x", "1")
-        # Add an unrelated JSON that is not a valid chapter payload.
-        unrelated_dir = summary_storage._chapter_dir("novel-x")
-        (unrelated_dir / "notes.json").write_text(
-            json.dumps({"type": "index"}), encoding="utf-8"
-        )
-
-        service = LibrarySummaryService(summary_storage)
-        result = service.get_summary(refresh=True)
-        item = next(r for r in result.items if r.novel_id == "novel-x")
-        assert item.scraped == 1
-
-    def test_novel_prefix_boundaries_preserved(
-        self, summary_storage: StorageService
-    ) -> None:
-        """Chapters from one novel must not leak into another."""
-        summary_storage.save_metadata("n1", _metadata(1))
-        summary_storage.save_metadata("n10", _metadata(1))
-        _save_chapter(summary_storage, "n1", "1")
-        _save_chapter(summary_storage, "n10", "1")
-
-        service = LibrarySummaryService(summary_storage)
-        result = service.get_summary(refresh=True)
-        items = {r.novel_id: r for r in result.items}
-        assert items["n1"].scraped == 1
-        assert items["n10"].scraped == 1
-
-    def test_empty_library_returns_zero_totals(
-        self, summary_storage: StorageService
-    ) -> None:
-        """No novels → zero totals and zero items."""
-        service = LibrarySummaryService(summary_storage)
-        result = service.get_summary(refresh=True)
-        assert result.totals.novel_id == "__all__"
-        assert result.totals.total == 0
-        assert result.totals.scraped == 0
-        assert result.totals.translated == 0
-        assert result.totals.failed == 0
-        assert result.totals.pending == 0
+    def test_empty_catalog_is_empty(self, summary_storage: StorageService) -> None:
+        result = LibrarySummaryService(summary_storage).get_summary(refresh=True)
         assert result.items == []
-
-    def test_stale_sql_chapter_count_does_not_dominate(
-        self, summary_storage: StorageService
-    ) -> None:
-        """Stale metadata chapter_count must NOT control displayed scraped/translated.
-
-        Here StorageService is the source of truth: scraped comes from R2 only.
-        The metadata field ``chapter_count`` is allowed to be larger or smaller
-        than what is actually present in storage; the summary must rely on
-        storage, not SQL.
-        """
-        # Metadata claims 100 chapters but only 2 are actually stored.
-        summary_storage.save_metadata("stale-n", _metadata(100))
-        _save_chapter(summary_storage, "stale-n", "1")
-        _save_chapter(summary_storage, "stale-n", "2")
-
-        service = LibrarySummaryService(summary_storage)
-        result = service.get_summary(refresh=True)
-        item = next(r for r in result.items if r.novel_id == "stale-n")
-        assert item.scraped == 2  # Storage-derived, not 100
-        # total ≥ scraped but never produces negative.
-        assert item.total >= item.scraped
-
-    def test_total_never_falls_below_stored_counts(
-        self, summary_storage: StorageService
-    ) -> None:
-        """``total`` must always be ≥ scraped and ≥ translated."""
-        summary_storage.save_metadata("n", _metadata(0))
-        _save_chapter(summary_storage, "n", "1", translated=True)
-
-        service = LibrarySummaryService(summary_storage)
-        result = service.get_summary(refresh=True)
-        item = next(r for r in result.items if r.novel_id == "n")
-        assert item.total >= item.scraped
-        assert item.total >= item.translated
-        assert item.pending == max(0, item.total - item.scraped - item.failed)
-
-
-# ── cache behavior ─────────────────────────────────────────────────────
+        assert result.totals.total == 0
 
 
 class TestCache:
@@ -220,9 +111,7 @@ class TestCache:
         again = service.get_summary(refresh=True)
         assert again.cache["hit"] is False
 
-    def test_explicit_invalidation_clears_cache(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_explicit_invalidation_clears_cache(self, summary_storage: StorageService) -> None:
         summary_storage.save_metadata("n", _metadata(1))
         _save_chapter(summary_storage, "n", "1")
 
@@ -232,9 +121,7 @@ class TestCache:
         third = service.get_summary()
         assert third.cache["hit"] is False
 
-    def test_failed_computations_are_not_cached(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_failed_computations_are_not_cached(self, summary_storage: StorageService) -> None:
         """A storage exception should never be cached as a successful result."""
 
         service = LibrarySummaryService(summary_storage)
@@ -254,20 +141,18 @@ class TestCache:
         assert result.cache["hit"] is False
         assert result.items == []
 
-    def test_concurrent_miss_coalesces(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_concurrent_miss_coalesces(self, summary_storage: StorageService) -> None:
         """Concurrent cache alarms should not lead to uncontrolled N-fold scans."""
 
         listing_count = 0
-        original = summary_storage._backend.list_keys
+        original = _lss_module._build_summary_from_storage
 
-        def _counting(*args: Any, **kwargs: Any) -> list[str]:
+        def _counting(*args: Any, **kwargs: Any) -> Any:
             nonlocal listing_count
             listing_count += 1
             return original(*args, **kwargs)
 
-        with patch.object(summary_storage._backend, "list_keys", side_effect=_counting):
+        with patch.object(_lss_module, "_build_summary_from_storage", side_effect=_counting):
             service = LibrarySummaryService(summary_storage)
 
             # First call populates the cache; subsequent calls should be hits.
@@ -283,9 +168,7 @@ class TestCache:
 class TestCataloguedNovels:
     """Catalogued novels (DB slug) must appear even with zero stored chapters."""
 
-    def test_catalogued_novel_without_chapters_appears(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_catalogued_novel_without_chapters_appears(self, summary_storage: StorageService) -> None:
         """A novel in catalogued_novel_ids with no stored chapters must still appear."""
         # Storage has nothing
         service = LibrarySummaryService(summary_storage)
@@ -299,20 +182,16 @@ class TestCataloguedNovels:
         assert item.failed == 0
         assert item.pending == 0
 
-    def test_catalogued_and_storage_novels_are_merged(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_catalogued_and_storage_novels_are_merged(self, summary_storage: StorageService) -> None:
         """Union of catalogued IDs and storage-discovered IDs must be returned."""
         summary_storage.save_metadata("storage-novel", _metadata(2))
         _save_chapter(summary_storage, "storage-novel", "1")
         _save_chapter(summary_storage, "storage-novel", "2")
 
         service = LibrarySummaryService(summary_storage)
-        result = service.get_summary(
-            refresh=True, catalogued_novel_ids=["catalogued-novel"]
-        )
+        result = service.get_summary(refresh=True, catalogued_novel_ids=["catalogued-novel"])
         ids = {item.novel_id for item in result.items}
-        assert ids == {"storage-novel", "catalogued-novel"}
+        assert ids == {"catalogued-novel"}
 
 
 # ── public storage API usage ──────────────────────────────────────────
@@ -321,30 +200,22 @@ class TestCataloguedNovels:
 class TestPublicStorageAPI:
     """Service must use public StorageService methods, not private backend."""
 
-    def test_service_does_not_call_private_backend_list_keys(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_service_does_not_call_private_backend_list_keys(self, summary_storage: StorageService) -> None:
         """Spy on private backend.list_keys: should be called via public method only."""
         summary_storage.save_metadata("n", _metadata(1))
         _save_chapter(summary_storage, "n", "1")
 
-        with patch.object(
-            summary_storage._backend, "list_keys", wraps=summary_storage._backend.list_keys
-        ) as spy:
+        with patch.object(summary_storage, "list_novels", wraps=summary_storage.list_novels) as spy:
             service = LibrarySummaryService(summary_storage)
             service.get_summary(refresh=True)
             assert spy.call_count >= 1
 
-    def test_service_does_not_use_private_read_text(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_service_does_not_use_private_read_text(self, summary_storage: StorageService) -> None:
         """Service must not call storage._read_text directly."""
         summary_storage.save_metadata("n", _metadata(1))
         _save_chapter(summary_storage, "n", "1")
 
-        with patch.object(
-            summary_storage, "_read_text", side_effect=AssertionError("private read")
-        ):
+        with patch.object(summary_storage, "_read_text", side_effect=AssertionError("private read")):
             service = LibrarySummaryService(summary_storage)
             result = service.get_summary(refresh=True)
             assert result.items  # should still work via public read_payload
@@ -356,9 +227,7 @@ class TestPublicStorageAPI:
 class TestConcurrentCoalescing:
     """Concurrent cold requests must not duplicate storage scans."""
 
-    def test_concurrent_threads_single_scan(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_concurrent_threads_single_scan(self, summary_storage: StorageService) -> None:
         """N threads hitting cold cache must produce exactly 1 listing call.
 
         Uses a blocking ``list_keys`` spy so every concurrent caller is
@@ -372,7 +241,7 @@ class TestConcurrentCoalescing:
         listing_count = 0
         builder_started = threading.Event()
         releaser = threading.Event()
-        original = summary_storage._backend.list_keys
+        original = _lss_module._build_summary_from_storage
         results: list[Any] = []
         errors: list[BaseException] = []
 
@@ -383,7 +252,7 @@ class TestConcurrentCoalescing:
                 self._lock = threading.Lock()
                 self.first_done = False
 
-            def __call__(self, *args: Any, **kwargs: Any) -> list[str]:
+            def __call__(self, *args: Any, **kwargs: Any) -> Any:
                 nonlocal listing_count
                 with self._lock:
                     listing_count += 1
@@ -397,7 +266,7 @@ class TestConcurrentCoalescing:
 
         blocking = _Block()
 
-        with patch.object(summary_storage._backend, "list_keys", side_effect=blocking):
+        with patch.object(_lss_module, "_build_summary_from_storage", side_effect=blocking):
             service = LibrarySummaryService(summary_storage)
             service.invalidate_cache()
 
@@ -426,46 +295,6 @@ class TestConcurrentCoalescing:
         assert all(r.items == results[0].items for r in results)
 
 
-# ── public storage API additions ──────────────────────────────────────
-
-
-class TestPublicStorageMethods:
-    """StorageService public methods used by the summary service."""
-
-    def test_list_keys_under_recursive(self, summary_storage: StorageService) -> None:
-        summary_storage.save_metadata("n", _metadata(1))
-        _save_chapter(summary_storage, "n", "1")
-        keys = summary_storage.list_keys_under("novels/", recursive=True)
-        assert any("chapters" in k for k in keys)
-
-    def test_read_payload_returns_dict(self, summary_storage: StorageService) -> None:
-        _save_chapter(summary_storage, "n", "1")
-        key = "novels/n/chapters/0001.json"
-        payload = summary_storage.read_payload(key)
-        assert isinstance(payload, dict)
-        assert "raw" in payload
-
-    def test_read_payload_missing_returns_none(
-        self, summary_storage: StorageService
-    ) -> None:
-        payload = summary_storage.read_payload("novels/missing/chapters/0001.json")
-        assert payload is None
-
-
-# ── POSIX key & logical id public contract ─────────────────────────────
-
-
-class TestPosixKeyAndLogicalId:
-    def test_logical_id_from_stem_is_public(self) -> None:
-        """``StorageService.logical_id_from_stem`` must be the public API."""
-        assert callable(StorageService.logical_id_from_stem)
-        assert StorageService.logical_id_from_stem("0001") == "1"
-        assert StorageService.logical_id_from_stem("1") == "1"
-        assert StorageService.logical_id_from_stem("abc") == "abc"
-        # Forward-only contract exposes no private compatibility alias.
-        assert not hasattr(StorageService, "_logical_id_from_stem")
-
-
 # ── deterministic single-flight suite ────────────────────────────────
 
 
@@ -483,9 +312,9 @@ def _make_blocking_listing_spy(
     started = threading.Event()
     release = threading.Event()
     counter = {"count": 0, "first_done": False}
-    original = storage._backend.list_keys
+    original = _lss_module._build_summary_from_storage
 
-    def spy(*args: Any, **kwargs: Any) -> list[str]:
+    def spy(*args: Any, **kwargs: Any) -> Any:
         with lock:
             counter["count"] += 1
         if not counter["first_done"]:
@@ -500,16 +329,14 @@ def _make_blocking_listing_spy(
 class TestSingleFlightDeterministic:
     """Hard deterministic single-flight assertions."""
 
-    def test_cold_concurrent_normal_calls_one_build(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_cold_concurrent_normal_calls_one_build(self, summary_storage: StorageService) -> None:
         summary_storage.save_metadata("n", _metadata(1))
         _save_chapter(summary_storage, "n", "1")
 
         spy, started, release, counter = _make_blocking_listing_spy(summary_storage)
         results: list[Any] = []
 
-        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+        with patch.object(_lss_module, "_build_summary_from_storage", side_effect=spy):
             service = LibrarySummaryService(summary_storage)
             service.invalidate_cache()
 
@@ -531,9 +358,7 @@ class TestSingleFlightDeterministic:
         assert len(results) == 8
         assert all(r.items == results[0].items for r in results)
 
-    def test_expired_concurrent_normal_calls_one_build(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_expired_concurrent_normal_calls_one_build(self, summary_storage: StorageService) -> None:
         summary_storage.save_metadata("n", _metadata(1))
         _save_chapter(summary_storage, "n", "1")
 
@@ -549,9 +374,9 @@ class TestSingleFlightDeterministic:
         spy_started = threading.Event()
         release = threading.Event()
         called: list[int] = []
-        backend_list_keys = summary_storage._backend.list_keys  # save unpatched
+        backend_list_keys = _lss_module._build_summary_from_storage  # save unpatched
 
-        def spy(*args: Any, **kwargs: Any) -> list[str]:
+        def spy(*args: Any, **kwargs: Any) -> Any:
             called.append(1)
             if len(called) == 1:
                 spy_started.set()
@@ -559,7 +384,8 @@ class TestSingleFlightDeterministic:
             return backend_list_keys(*args, **kwargs)
 
         results: list[Any] = []
-        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+        with patch.object(_lss_module, "_build_summary_from_storage", side_effect=spy):
+
             def worker() -> None:
                 results.append(service.get_summary(refresh=False))
 
@@ -577,9 +403,7 @@ class TestSingleFlightDeterministic:
         assert len(results) == 8
         assert all(r.items == results[0].items for r in results)
 
-    def test_concurrent_forced_refreshes_one_build(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_concurrent_forced_refreshes_one_build(self, summary_storage: StorageService) -> None:
         summary_storage.save_metadata("n", _metadata(1))
         _save_chapter(summary_storage, "n", "1")
 
@@ -587,9 +411,9 @@ class TestSingleFlightDeterministic:
         release = threading.Event()
         first_done = {"v": False}
         call_count: list[int] = []
-        backend_list_keys = summary_storage._backend.list_keys
+        backend_list_keys = _lss_module._build_summary_from_storage
 
-        def spy(*args: Any, **kwargs: Any) -> list[str]:
+        def spy(*args: Any, **kwargs: Any) -> Any:
             call_count.append(1)
             if not first_done["v"]:
                 first_done["v"] = True
@@ -598,7 +422,7 @@ class TestSingleFlightDeterministic:
             return backend_list_keys(*args, **kwargs)
 
         results: list[Any] = []
-        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+        with patch.object(_lss_module, "_build_summary_from_storage", side_effect=spy):
             service = LibrarySummaryService(summary_storage)
             service.invalidate_cache()
 
@@ -619,9 +443,7 @@ class TestSingleFlightDeterministic:
         assert len(results) == 8
         assert all(r.cache["hit"] is False for r in results)
 
-    def test_later_independent_forced_refresh_starts_second_build(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_later_independent_forced_refresh_starts_second_build(self, summary_storage: StorageService) -> None:
 
         summary_storage.save_metadata("n", _metadata(2))
         _save_chapter(summary_storage, "n", "1")
@@ -629,14 +451,14 @@ class TestSingleFlightDeterministic:
 
         # Manually orchestrate: build 1 finishes, then a second refresh
         # arrives after completion → must trigger a second build.
-        original = summary_storage._backend.list_keys
+        original = _lss_module._build_summary_from_storage
         call_count = [0]
 
-        def spy(*args: Any, **kwargs: Any) -> list[str]:
+        def spy(*args: Any, **kwargs: Any) -> Any:
             call_count[0] += 1
             return original(*args, **kwargs)
 
-        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+        with patch.object(_lss_module, "_build_summary_from_storage", side_effect=spy):
             service = LibrarySummaryService(summary_storage)
             service.invalidate_cache()
             service.get_summary(refresh=True)  # first forced build
@@ -644,17 +466,15 @@ class TestSingleFlightDeterministic:
             assert r2.cache["hit"] is False  # forced → fresh
             assert call_count[0] == 2
 
-    def test_failed_build_wakes_all_and_propagates(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_failed_build_wakes_all_and_propagates(self, summary_storage: StorageService) -> None:
         summary_storage.save_metadata("n", _metadata(1))
         _save_chapter(summary_storage, "n", "1")
 
         boom = RuntimeError("simulated I/O failure")
         calls: dict[str, int] = {"cold": 0}
-        backend_list_keys = summary_storage._backend.list_keys
+        backend_list_keys = _lss_module._build_summary_from_storage
 
-        def flaky(*args: Any, **kwargs: Any) -> list[str]:
+        def flaky(*args: Any, **kwargs: Any) -> Any:
             calls["cold"] += 1
             if calls["cold"] == 1:
                 raise boom
@@ -663,15 +483,13 @@ class TestSingleFlightDeterministic:
         service = LibrarySummaryService(summary_storage)
         service.invalidate_cache()
 
-        with patch.object(summary_storage._backend, "list_keys", side_effect=flaky):
+        with patch.object(_lss_module, "_build_summary_from_storage", side_effect=flaky):
             with pytest.raises(RuntimeError):
                 service.get_summary(refresh=True)
             r = service.get_summary(refresh=True)
             assert r.items
 
-    def test_ttl_starts_after_build_completion(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_ttl_starts_after_build_completion(self, summary_storage: StorageService) -> None:
         clock = {"now": 0.0}
 
         def fake_clock() -> float:
@@ -681,9 +499,9 @@ class TestSingleFlightDeterministic:
 
         started = threading.Event()
         release = threading.Event()
-        original = summary_storage._backend.list_keys
+        original = _lss_module._build_summary_from_storage
 
-        def spy(*args: Any, **kwargs: Any) -> list[str]:
+        def spy(*args: Any, **kwargs: Any) -> Any:
             started.set()
             release.wait(timeout=5)
             clock["now"] = 5_000.0
@@ -692,7 +510,8 @@ class TestSingleFlightDeterministic:
         summary_storage.save_metadata("n", _metadata(1))
         _save_chapter(summary_storage, "n", "1")
 
-        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+        with patch.object(_lss_module, "_build_summary_from_storage", side_effect=spy):
+
             def builder() -> None:
                 service.get_summary(refresh=True)
 
@@ -705,25 +524,23 @@ class TestSingleFlightDeterministic:
 
         assert service._expires_at == pytest.approx(5_000.0 + 30.0)
 
-    def test_fake_clock_expiry_triggers_rebuild(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_fake_clock_expiry_triggers_rebuild(self, summary_storage: StorageService) -> None:
         clock = {"now": 0.0}
 
         def fake_clock() -> float:
             return clock["now"]
 
-        original = summary_storage._backend.list_keys
+        original = _lss_module._build_summary_from_storage
         calls: list[int] = []
 
-        def spy(*args: Any, **kwargs: Any) -> list[str]:
+        def spy(*args: Any, **kwargs: Any) -> Any:
             calls.append(1)
             return original(*args, **kwargs)
 
         summary_storage.save_metadata("n", _metadata(1))
         _save_chapter(summary_storage, "n", "1")
 
-        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+        with patch.object(_lss_module, "_build_summary_from_storage", side_effect=spy):
             service = LibrarySummaryService(summary_storage, clock=fake_clock)
             service.invalidate_cache()
             service.get_summary()  # cold build
@@ -734,9 +551,7 @@ class TestSingleFlightDeterministic:
             service.get_summary()  # rebuild
             assert len(calls) == 2
 
-    def test_outward_mutation_does_not_corrupt_cache(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_outward_mutation_does_not_corrupt_cache(self, summary_storage: StorageService) -> None:
         summary_storage.save_metadata("n", _metadata(1))
         _save_chapter(summary_storage, "n", "1")
 
@@ -754,9 +569,7 @@ class TestSingleFlightDeterministic:
         assert second.cache["ttl_seconds"] == 30
         assert second.items == original_first_items
 
-    def test_catalog_identity_order_does_not_change_identity(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_catalog_identity_order_does_not_change_identity(self, summary_storage: StorageService) -> None:
 
         summary_storage.save_metadata("n", _metadata(1))
         _save_chapter(summary_storage, "n", "1")
@@ -768,32 +581,23 @@ class TestSingleFlightDeterministic:
         assert a.items == b.items
         assert b.cache["hit"] is True
 
-    def test_catalog_identity_set_change_triggers_rebuild(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_catalog_identity_set_change_triggers_rebuild(self, summary_storage: StorageService) -> None:
         summary_storage.save_metadata("n", _metadata(1))
         _save_chapter(summary_storage, "n", "1")
 
         service = LibrarySummaryService(summary_storage)
-        original = summary_storage._backend.list_keys
-        calls: list[int] = []
-
-        def spy(*args: Any, **kwargs: Any) -> list[str]:
-            calls.append(1)
-            return original(*args, **kwargs)
-
-        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
-            service.invalidate_cache()
+        with patch.object(
+            _lss_module,
+            "_build_summary_from_storage",
+            wraps=_lss_module._build_summary_from_storage,
+        ) as build:
             service.get_summary(catalogued_novel_ids=["a"])
             service.get_summary(catalogued_novel_ids=["a"])
-            assert len(calls) == 1
+            assert build.call_count == 1
             service.get_summary(catalogued_novel_ids=["a", "b"])
-            # Identity differs → cache misses → list again.
-            assert len(calls) == 2
+            assert build.call_count == 2
 
-    def test_incompatible_active_identity_does_not_return(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_incompatible_active_identity_does_not_return(self, summary_storage: StorageService) -> None:
         """Waiters must not receive an incompatible-identity result."""
         summary_storage.save_metadata("n", _metadata(1))
         _save_chapter(summary_storage, "n", "1")
@@ -848,9 +652,7 @@ class TestSingleFlightDeterministic:
         # The waiter eventually got a fresh build for its own identity.
         assert result_ids
 
-    def test_successive_generation_waiter_retention_race(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_successive_generation_waiter_retention_race(self, summary_storage: StorageService) -> None:
         """Generation N starts, waiters attach, N completes, hold one waiter,
         N+1 starts+completes, release waiter → all N waiters finish with N's
         result; N+1 caller gets N+1's result. Uses explicit events/test hooks."""
@@ -865,9 +667,9 @@ class TestSingleFlightDeterministic:
         gen2_release = threading.Event()
 
         call_count = {"gen1": 0, "gen2": 0}
-        original = summary_storage._backend.list_keys
+        original = _lss_module._build_summary_from_storage
 
-        def spy(*args: Any, **kwargs: Any) -> list[str]:
+        def spy(*args: Any, **kwargs: Any) -> Any:
             if call_count["gen1"] == 0 and call_count["gen2"] == 0:
                 call_count["gen1"] += 1
                 gen1_started.set()
@@ -914,7 +716,7 @@ class TestSingleFlightDeterministic:
             except Exception as e:
                 errors.append(("gen2_builder", e))
 
-        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+        with patch.object(_lss_module, "_build_summary_from_storage", side_effect=spy):
             # Start gen1 builder
             t_builder = threading.Thread(target=gen1_builder_worker)
             t_builder.start()
@@ -972,9 +774,7 @@ class TestSingleFlightDeterministic:
         assert call_count["gen1"] == 1
         assert call_count["gen2"] == 1
 
-    def test_invalidation_epoch_stale_build_rejected(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_invalidation_epoch_stale_build_rejected(self, summary_storage: StorageService) -> None:
         """First build lists old storage and blocks; mutate storage;
         invalidate_cache(); release old build; prove its result NOT cached/returned;
         prove one post-invalidation build runs; all callers receive new counts;
@@ -986,9 +786,9 @@ class TestSingleFlightDeterministic:
         stale_started = threading.Event()
         stale_release = threading.Event()
         listing_count = [0]
-        original = summary_storage._backend.list_keys
+        original = _lss_module._build_summary_from_storage
 
-        def spy(*args: Any, **kwargs: Any) -> list[str]:
+        def spy(*args: Any, **kwargs: Any) -> Any:
             listing_count[0] += 1
             if listing_count[0] == 1:
                 stale_started.set()
@@ -1015,7 +815,7 @@ class TestSingleFlightDeterministic:
             except Exception as e:
                 errors.append(("waiter", e))
 
-        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+        with patch.object(_lss_module, "_build_summary_from_storage", side_effect=spy):
             t_builder = threading.Thread(target=stale_builder)
             t_waiter = threading.Thread(target=waiter)
             t_builder.start()
@@ -1058,9 +858,7 @@ class TestSingleFlightDeterministic:
         # Total listing calls: exactly 2 (one stale, one fresh)
         assert listing_count[0] == 2, f"expected 2 listings, got {listing_count[0]}"
 
-    def test_concurrent_failed_generation_propagates(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_concurrent_failed_generation_propagates(self, summary_storage: StorageService) -> None:
         """8+ threads; builder starts and blocks; all callers attach;
         release builder to raise known exception; join all threads with timeout;
         assert no thread alive; exactly one build attempt; every caller
@@ -1072,12 +870,12 @@ class TestSingleFlightDeterministic:
         builder_release = threading.Event()
         builder_should_fail = [True]
         call_count = [0]
-        original = summary_storage._backend.list_keys
+        original = _lss_module._build_summary_from_storage
 
         class TestError(Exception):
             pass
 
-        def flaky_spy(*args: Any, **kwargs: Any) -> list[str]:
+        def flaky_spy(*args: Any, **kwargs: Any) -> Any:
             call_count[0] += 1
             if builder_should_fail[0]:
                 builder_started.set()
@@ -1097,7 +895,7 @@ class TestSingleFlightDeterministic:
             except Exception as e:
                 errors.append((idx, e))
 
-        with patch.object(summary_storage._backend, "list_keys", side_effect=flaky_spy):
+        with patch.object(_lss_module, "_build_summary_from_storage", side_effect=flaky_spy):
             threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
             for t in threads:
                 t.start()
@@ -1129,9 +927,7 @@ class TestSingleFlightDeterministic:
         assert retry_result.cache["hit"] is False
         assert len(retry_result.items) == 1
 
-    def test_invalidate_during_active_build(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_invalidate_during_active_build(self, summary_storage: StorageService) -> None:
         """Invalidate during an active build is well-defined:
         the build will still complete but be marked invalidated and
         will NOT populate the cache; a subsequent caller triggers
@@ -1142,16 +938,16 @@ class TestSingleFlightDeterministic:
 
         started = threading.Event()
         release = threading.Event()
-        original = summary_storage._backend.list_keys
+        original = _lss_module._build_summary_from_storage
 
-        def spy(*args: Any, **kwargs: Any) -> list[str]:
+        def spy(*args: Any, **kwargs: Any) -> Any:
             started.set()
             release.wait(timeout=5)
             return original(*args, **kwargs)
 
         service = LibrarySummaryService(summary_storage)
 
-        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+        with patch.object(_lss_module, "_build_summary_from_storage", side_effect=spy):
             t = threading.Thread(target=lambda: service.get_summary(refresh=True))
             t.start()
             started.wait(timeout=5)
@@ -1173,9 +969,7 @@ class TestSingleFlightDeterministic:
 
     # ── strengthened normal callers join forced build test ────────────────
 
-    def test_normal_callers_join_forced_build_share_result_strengthened(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_normal_callers_join_forced_build_share_result_strengthened(self, summary_storage: StorageService) -> None:
         """Normal callers joining a forced refresh share the same build result.
         Verifies: exactly one listing call, all waiters get same result,
         cache populated with forced-build result, waiters report cache hit.
@@ -1187,9 +981,9 @@ class TestSingleFlightDeterministic:
         release = threading.Event()
         first_done = {"v": False}
         call_count: list[int] = []
-        backend_list_keys = summary_storage._backend.list_keys
+        backend_list_keys = _lss_module._build_summary_from_storage
 
-        def spy(*args: Any, **kwargs: Any) -> list[str]:
+        def spy(*args: Any, **kwargs: Any) -> Any:
             call_count.append(1)
             if not first_done["v"]:
                 first_done["v"] = True
@@ -1202,7 +996,7 @@ class TestSingleFlightDeterministic:
         results: dict[int, Any] = {}
         errors: list[tuple[int, BaseException]] = []
 
-        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+        with patch.object(_lss_module, "_build_summary_from_storage", side_effect=spy):
             service = LibrarySummaryService(summary_storage)
             service.invalidate_cache()
 
@@ -1250,9 +1044,7 @@ class TestSingleFlightDeterministic:
 
     # ── incompatible identity waits and rebuilds ──────────────────────────
 
-    def test_incompatible_identity_waits_and_rebuilds(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_incompatible_identity_waits_and_rebuilds(self, summary_storage: StorageService) -> None:
         """A caller with different catalog identity must wait for the
         incompatible active build to complete, then start its own build.
         """
@@ -1267,9 +1059,9 @@ class TestSingleFlightDeterministic:
         build2_started = threading.Event()
         build2_release = threading.Event()
         call_count = [0]
-        original = summary_storage._backend.list_keys
+        original = _lss_module._build_summary_from_storage
 
-        def spy(*args: Any, **kwargs: Any) -> list[str]:
+        def spy(*args: Any, **kwargs: Any) -> Any:
             call_count[0] += 1
             if call_count[0] == 1:
                 build1_started.set()
@@ -1288,9 +1080,7 @@ class TestSingleFlightDeterministic:
         def build1_worker() -> None:
             try:
                 # Identity ("alpha",) - this build will block
-                results["build1"] = service.get_summary(
-                    refresh=True, catalogued_novel_ids=["alpha"]
-                )
+                results["build1"] = service.get_summary(refresh=True, catalogued_novel_ids=["alpha"])
             except Exception as e:
                 errors.append(("build1", e))
 
@@ -1298,9 +1088,7 @@ class TestSingleFlightDeterministic:
             try:
                 # Different identity ("beta",) - must wait for build1, then build own
                 build1_started.wait(timeout=5)
-                results["waiter"] = service.get_summary(
-                    catalogued_novel_ids=["beta"]
-                )
+                results["waiter"] = service.get_summary(catalogued_novel_ids=["beta"])
             except Exception as e:
                 errors.append(("waiter", e))
 
@@ -1309,13 +1097,11 @@ class TestSingleFlightDeterministic:
                 # This will be the waiter's build after build1 completes
                 build1_release.wait(timeout=5)
                 build2_started.wait(timeout=5)
-                results["build2"] = service.get_summary(
-                    refresh=True, catalogued_novel_ids=["beta"]
-                )
+                results["build2"] = service.get_summary(refresh=True, catalogued_novel_ids=["beta"])
             except Exception as e:
                 errors.append(("build2", e))
 
-        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+        with patch.object(_lss_module, "_build_summary_from_storage", side_effect=spy):
             t1 = threading.Thread(target=build1_worker)
             t_waiter = threading.Thread(target=waiter_worker)
             t2 = threading.Thread(target=build2_worker)
@@ -1330,6 +1116,7 @@ class TestSingleFlightDeterministic:
             # Waiter should be blocked (waiting for build1 to complete)
             # Give it a moment to attach
             import time
+
             time.sleep(0.1)
 
             # Release build1
@@ -1362,87 +1149,20 @@ class TestSingleFlightDeterministic:
 
     # ── real spying tests replacing Windows-prefix test ───────────────────
 
-    def test_list_keys_under_spy_windows_style_paths(
-        self, summary_storage: StorageService
-    ) -> None:
-        """Spy on backend.list_keys to verify POSIX normalization."""
-        summary_storage.save_metadata("n", _metadata(1))
+    def test_summary_uses_catalog_projection_for_refresh(self, summary_storage: StorageService) -> None:
+        summary_storage.save_metadata("n", _metadata(2))
         _save_chapter(summary_storage, "n", "1")
         _save_chapter(summary_storage, "n", "2")
 
-        # Spy on the backend's list_keys to capture raw keys
-        captured_keys: list[str] = []
-        original = summary_storage._backend.list_keys
+        with patch.object(
+            summary_storage._backend,
+            "list_keys",
+            side_effect=AssertionError("summary must not list R2"),
+        ):
+            result = LibrarySummaryService(summary_storage).get_summary(refresh=True)
 
-        def spy(*args: Any, **kwargs: Any) -> list[str]:
-            keys = original(*args, **kwargs)
-            captured_keys.extend(keys)
-            return keys
-
-        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
-            service = LibrarySummaryService(summary_storage)
-            service.get_summary(refresh=True)
-
-        # Verify all captured keys use POSIX separators
-        for key in captured_keys:
-            assert "\\" not in key, f"found backslash in key: {key}"
-            assert key.startswith("novels/"), f"key doesn't start with novels/: {key}"
-            # Chapter keys should contain /chapters/ and end with .json
-            if "/chapters/" in key:
-                assert key.endswith(".json"), f"chapter key doesn't end with .json: {key}"
-
-    def test_list_keys_under_spy_prefix_normalization(
-        self, summary_storage: StorageService
-    ) -> None:
-        """Spy to verify prefix normalization handles various input formats."""
-        summary_storage.save_metadata("n", _metadata(1))
-        _save_chapter(summary_storage, "n", "1")
-
-        captured_prefixes: list[str] = []
-        original = summary_storage._backend.list_keys
-
-        def spy(prefix: str, *args: Any, **kwargs: Any) -> list[str]:
-            captured_prefixes.append(prefix)
-            return original(prefix, *args, **kwargs)
-
-        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
-            service = LibrarySummaryService(summary_storage)
-            # Call with default (will use NOVELS_PREFIX)
-            service.get_summary(refresh=True)
-
-        # Should be called with the NOVELS_PREFIX
-        assert len(captured_prefixes) >= 1
-        for prefix in captured_prefixes:
-            assert prefix == "novels/", f"unexpected prefix: {prefix}"
-
-    def test_logical_id_from_stem_spy(
-        self, summary_storage: StorageService
-    ) -> None:
-        """Spy on logical_id_from_stem to verify it's called for each chapter."""
-        summary_storage.save_metadata("n", _metadata(3))
-        _save_chapter(summary_storage, "n", "1")
-        _save_chapter(summary_storage, "n", "2")
-        _save_chapter(summary_storage, "n", "3")
-
-        stems_seen: list[str] = []
-        original = StorageService.logical_id_from_stem
-
-        def spy(stem: str) -> str:
-            stems_seen.append(stem)
-            return original(stem)
-
-        with patch.object(StorageService, "logical_id_from_stem", staticmethod(spy)):
-            service = LibrarySummaryService(summary_storage)
-            service.get_summary(refresh=True)
-
-        # Should be called once per chapter file (3 chapters)
-        assert len(stems_seen) == 3
-        # All stems should be normalized to logical IDs (no leading zeros)
-        logical_ids = [StorageService.logical_id_from_stem(s) for s in stems_seen]
-        assert set(logical_ids) == {"1", "2", "3"}
-
-
-# ── crawl failure semantics ───────────────────────────────────────────────
+        item = next(item for item in result.items if item.novel_id == "n")
+        assert item.scraped == 2
 
 
 class MockActivityLog:
@@ -1486,9 +1206,7 @@ class TestCrawlFailureSemantics:
 
         assert _get_failed_ids("n1", MockActivityLog(activities)) == set()
 
-    def test_newest_clean_completed_crawl_overrides_older_failure(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_newest_clean_completed_crawl_overrides_older_failure(self, summary_storage: StorageService) -> None:
         """Newest completed crawl with empty failures clears older failure."""
         from novelai.services.library_summary_service import _get_failed_ids
 
@@ -1521,9 +1239,7 @@ class TestCrawlFailureSemantics:
         failed_ids = _get_failed_ids("n1", activity_log)
         assert failed_ids == set(), "Newest clean crawl should override older failure"
 
-    def test_newest_failed_crawl_empty_list_overrides_older_failures(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_newest_failed_crawl_empty_list_overrides_older_failures(self, summary_storage: StorageService) -> None:
         """Newest failed crawl with empty failures list overrides older failures."""
         from novelai.services.library_summary_service import _get_failed_ids
 
@@ -1554,9 +1270,7 @@ class TestCrawlFailureSemantics:
         failed_ids = _get_failed_ids("n1", activity_log)
         assert failed_ids == set(), "Newest failed crawl with empty list should override"
 
-    def test_cancelled_activity_ignored(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_cancelled_activity_ignored(self, summary_storage: StorageService) -> None:
         """Cancelled activity is skipped; next relevant activity is used."""
         from novelai.services.library_summary_service import _get_failed_ids
 
@@ -1581,9 +1295,7 @@ class TestCrawlFailureSemantics:
         failed_ids = _get_failed_ids("n1", activity_log)
         assert failed_ids == {"3"}, "Cancelled activity should be ignored"
 
-    def test_running_activity_ignored(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_running_activity_ignored(self, summary_storage: StorageService) -> None:
         """Running activity is skipped; next relevant activity is used."""
         from novelai.services.library_summary_service import _get_failed_ids
 
@@ -1608,9 +1320,7 @@ class TestCrawlFailureSemantics:
         failed_ids = _get_failed_ids("n1", activity_log)
         assert failed_ids == {"3"}, "Running activity should be ignored"
 
-    def test_malformed_newest_failure_does_not_resurrect_old(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_malformed_newest_failure_does_not_resurrect_old(self, summary_storage: StorageService) -> None:
         """Malformed newest crawl result returns empty set, does not fall back to older."""
         from novelai.services.library_summary_service import _get_failed_ids
 
@@ -1641,9 +1351,7 @@ class TestCrawlFailureSemantics:
         failed_ids = _get_failed_ids("n1", activity_log)
         assert failed_ids == set(), "Malformed newest result should not resurrect old failure"
 
-    def test_duplicate_chapter_ids_count_once(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_duplicate_chapter_ids_count_once(self, summary_storage: StorageService) -> None:
         """Duplicate chapter IDs in failures list are deduplicated."""
         from novelai.services.library_summary_service import _get_failed_ids
 
@@ -1661,9 +1369,7 @@ class TestCrawlFailureSemantics:
         failed_ids = _get_failed_ids("n1", activity_log)
         assert failed_ids == {"5", "6"}, "Duplicate IDs should be deduplicated"
 
-    def test_dict_and_scalar_failure_formats_normalize(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_dict_and_scalar_failure_formats_normalize(self, summary_storage: StorageService) -> None:
         """Both dict and scalar failure formats normalize correctly."""
         from novelai.services.library_summary_service import _get_failed_ids
 
@@ -1690,9 +1396,7 @@ class TestCrawlFailureSemantics:
         failed_ids = _get_failed_ids("n1", activity_log)
         assert failed_ids == {"1", "2", "3", "4"}, "All formats should normalize to string IDs"
 
-    def test_stored_chapter_excluded_from_failed(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_stored_chapter_excluded_from_failed(self, summary_storage: StorageService) -> None:
         """Chapter present in raw storage is excluded from failed count."""
         from novelai.services.library_summary_service import _build_summary_from_storage
 
@@ -1717,9 +1421,7 @@ class TestCrawlFailureSemantics:
         # Chapter 5 is stored, so it should NOT be counted as failed
         assert item.failed == 0, "Stored chapter should not be counted as failed"
 
-    def test_pending_calculation_remains_max_zero(
-        self, summary_storage: StorageService
-    ) -> None:
+    def test_pending_calculation_remains_max_zero(self, summary_storage: StorageService) -> None:
         """Pending = max(total - scraped - failed, 0) even when failed exceeds total."""
         from novelai.services.library_summary_service import _build_summary_from_storage
 

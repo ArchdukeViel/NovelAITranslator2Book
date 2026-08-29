@@ -1,7 +1,7 @@
 """Public reader service — serves guest-accessible endpoints only.
 
 Port 8001.  No auth, no session middleware, no CSRF.
-Reads from the same DB and filesystem as the admin service.
+Reads from PostgreSQL and the R2 application bucket; local disk is runtime-only.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from novelai.api.routers.public_rankings import router as public_rankings_router
 from novelai.config.production_validator import assert_production_config
 from novelai.config.settings import settings
 from novelai.runtime.bootstrap import bootstrap
+from novelai.services.runtime_telemetry import runtime_telemetry
 
 if settings.ENV == "production":
     assert_production_config(settings)
@@ -36,6 +37,11 @@ bootstrap()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    runtime_telemetry.configure(
+        max_observations=settings.RUNTIME_TELEMETRY_MAX_OBSERVATIONS,
+        sample_interval_seconds=settings.RUNTIME_TELEMETRY_SAMPLE_INTERVAL_SECONDS,
+    )
+    await runtime_telemetry.start()
     try:
         yield
     finally:
@@ -48,6 +54,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         from novelai.db.engine import dispose_engines
 
         dispose_engines()
+        await runtime_telemetry.stop()
 
 
 app = FastAPI(title="NovelAI Reader", version="1.0.0", lifespan=lifespan)

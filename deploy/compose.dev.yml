@@ -7,7 +7,10 @@ services:
       dockerfile: deploy/admin.Dockerfile
     volumes:
       - ../backend/src:/app/backend/src
-    command: ["novelai", "web", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+    # Uvicorn's Python 3.14 reload subprocess is not stable without a TTY in
+    # Docker Desktop; use the canonical single-process command for acceptance.
+    # Recreate this service after source changes.
+    command: ["novelai", "web", "--host", "0.0.0.0", "--port", "8000"]
 
   migrate:
     build:

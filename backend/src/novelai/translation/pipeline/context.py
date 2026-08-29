@@ -301,7 +301,25 @@ class PipelineState:
         warning_code: str | None = None,
         error_code: str | None = None,
         message: str | None = None,
+        operation: str | None = None,
+        duration_ms: float | None = None,
+        input_bytes: int | None = None,
+        output_bytes: int | None = None,
+        compressed_bytes: int | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        retry_count: int | None = None,
+        concurrency: int | None = None,
+        db_rows: int | None = None,
+        r2_operation_count: int | None = None,
+        unavailable_reason: str | None = None,
     ) -> dict[str, Any]:
+        def _nonnegative_int(value: int | None) -> int | None:
+            return max(0, value) if isinstance(value, int) and not isinstance(value, bool) else None
+
+        def _nonnegative_float(value: float | None) -> float | None:
+            return max(0.0, float(value)) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
         event = PipelineEvent(
             job_id=self.job_id,
             activity_id=self.activity_id,
@@ -330,6 +348,18 @@ class PipelineState:
             warning_code=warning_code,
             error_code=error_code,
             message=message,
+            operation=operation,
+            duration_ms=_nonnegative_float(duration_ms),
+            input_bytes=_nonnegative_int(input_bytes),
+            output_bytes=_nonnegative_int(output_bytes),
+            compressed_bytes=_nonnegative_int(compressed_bytes),
+            input_tokens=_nonnegative_int(input_tokens),
+            output_tokens=_nonnegative_int(output_tokens),
+            retry_count=_nonnegative_int(retry_count),
+            concurrency=_nonnegative_int(concurrency),
+            db_rows=_nonnegative_int(db_rows),
+            r2_operation_count=_nonnegative_int(r2_operation_count),
+            unavailable_reason=unavailable_reason,
         ).to_dict()
         return event
 

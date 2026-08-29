@@ -200,44 +200,41 @@ class Container:
     @property
     def backup_service(self) -> BackupService:
         if self._backup_service is None:
-            from novelai.services.backup_manager import BackupManager
-            from novelai.storage.backends.s3_snapshot import S3SnapshotTarget
+            from novelai.storage.r2_backup import R2IncrementalBackupTarget
 
-            backup_manager = BackupManager(base_dir=settings.NOVEL_LIBRARY_DIR)
             snapshot_target = None
-            if settings.BACKUP_S3_ENABLED:
-                if not settings.S3_BUCKET or not settings.BACKUP_S3_BUCKET:
-                    raise RuntimeError("Source and backup S3 buckets must be configured")
-                snapshot_target = S3SnapshotTarget(
-                    source_bucket=settings.S3_BUCKET,
-                    source_prefix=settings.S3_KEY_PREFIX,
-                    target_bucket=settings.BACKUP_S3_BUCKET,
-                    target_prefix=settings.BACKUP_S3_PREFIX,
-                    endpoint_url=settings.BACKUP_S3_ENDPOINT_URL,
-                    region=settings.BACKUP_S3_REGION,
+            if settings.R2_BACKUP_ENABLED:
+                if not settings.R2_BUCKET or not settings.R2_BACKUP_BUCKET:
+                    raise RuntimeError("Application and backup R2 buckets must be configured")
+                snapshot_target = R2IncrementalBackupTarget(
+                    source_bucket=settings.R2_BUCKET,
+                    target_bucket=settings.R2_BACKUP_BUCKET,
+                    target_prefix=settings.R2_BACKUP_PREFIX,
+                    endpoint_url=settings.R2_BACKUP_ENDPOINT or settings.R2_ENDPOINT,
+                    region=settings.R2_REGION,
                     source_access_key_id=(
-                        settings.SNAPSHOT_SOURCE_S3_ACCESS_KEY_ID.get_secret_value()
-                        if settings.SNAPSHOT_SOURCE_S3_ACCESS_KEY_ID
+                        settings.R2_SOURCE_ACCESS_KEY_ID.get_secret_value()
+                        if settings.R2_SOURCE_ACCESS_KEY_ID
                         else None
                     ),
                     source_secret_access_key=(
-                        settings.SNAPSHOT_SOURCE_S3_SECRET_ACCESS_KEY.get_secret_value()
-                        if settings.SNAPSHOT_SOURCE_S3_SECRET_ACCESS_KEY
+                        settings.R2_SOURCE_SECRET_ACCESS_KEY.get_secret_value()
+                        if settings.R2_SOURCE_SECRET_ACCESS_KEY
                         else None
                     ),
                     target_access_key_id=(
-                        settings.BACKUP_S3_ACCESS_KEY_ID.get_secret_value()
-                        if settings.BACKUP_S3_ACCESS_KEY_ID
+                        settings.R2_BACKUP_ACCESS_KEY_ID.get_secret_value()
+                        if settings.R2_BACKUP_ACCESS_KEY_ID
                         else None
                     ),
                     target_secret_access_key=(
-                        settings.BACKUP_S3_SECRET_ACCESS_KEY.get_secret_value()
-                        if settings.BACKUP_S3_SECRET_ACCESS_KEY
+                        settings.R2_BACKUP_SECRET_ACCESS_KEY.get_secret_value()
+                        if settings.R2_BACKUP_SECRET_ACCESS_KEY
                         else None
                     ),
                 )
             self._backup_service = BackupService(
-                backup_manager=backup_manager,
+                runtime_dir=settings.RUNTIME_DIR,
                 snapshot_target=snapshot_target,
             )
         return self._backup_service
@@ -248,6 +245,7 @@ class Container:
             self._maintenance_service = MaintenanceService(
                 storage=self.storage,
                 activity_log=self.activity_log,
+                backup_service=self.backup_service,
                 scheduler_runtime_state_service=self.scheduler_runtime_state,
                 analytics_service=AnalyticsService(),
                 notification_cleanup=self._cleanup_notifications,
@@ -275,10 +273,10 @@ class Container:
     @staticmethod
     def _cleanup_contributor_usage(retention_days: int) -> int:
         from novelai.db.engine import session_scope
-        from novelai.services.contributor_credentials import ContributorCredentialService
+        from novelai.services.provider_credentials import ProviderCredentialService
 
         with session_scope() as db_session:
-            return ContributorCredentialService(db_session).cleanup_old_usage(ttl_days=retention_days)
+            return ProviderCredentialService(db_session).cleanup_old_usage(ttl_days=retention_days)
 
     @property
     def operator_alert_service(self) -> OperatorAlertService:
@@ -291,20 +289,20 @@ class Container:
         if not settings.DATABASE_BACKUP_ENABLED:
             return None
         if self._database_backup_service is None:
-            if not settings.BACKUP_S3_BUCKET:
+            if not settings.R2_BACKUP_BUCKET:
                 raise RuntimeError("Database backup bucket is not configured")
             import boto3
 
-            client_kwargs: dict[str, object] = {"region_name": settings.BACKUP_S3_REGION}
-            if settings.BACKUP_S3_ENDPOINT_URL:
-                client_kwargs["endpoint_url"] = settings.BACKUP_S3_ENDPOINT_URL
-            if settings.BACKUP_S3_ACCESS_KEY_ID:
-                client_kwargs["aws_access_key_id"] = settings.BACKUP_S3_ACCESS_KEY_ID.get_secret_value()
-            if settings.BACKUP_S3_SECRET_ACCESS_KEY:
-                client_kwargs["aws_secret_access_key"] = settings.BACKUP_S3_SECRET_ACCESS_KEY.get_secret_value()
+            client_kwargs: dict[str, object] = {"region_name": settings.R2_REGION}
+            if settings.R2_BACKUP_ENDPOINT or settings.R2_ENDPOINT:
+                client_kwargs["endpoint_url"] = settings.R2_BACKUP_ENDPOINT or settings.R2_ENDPOINT
+            if settings.R2_BACKUP_ACCESS_KEY_ID:
+                client_kwargs["aws_access_key_id"] = settings.R2_BACKUP_ACCESS_KEY_ID.get_secret_value()
+            if settings.R2_BACKUP_SECRET_ACCESS_KEY:
+                client_kwargs["aws_secret_access_key"] = settings.R2_BACKUP_SECRET_ACCESS_KEY.get_secret_value()
             self._database_backup_service = DatabaseBackupService(
                 boto3.client("s3", **client_kwargs),
-                settings.BACKUP_S3_BUCKET,
+                settings.R2_BACKUP_BUCKET,
             )
         return self._database_backup_service
 

@@ -26,9 +26,7 @@ class DummySource(SourceAdapter):
     def can_handle(self, identifier_or_url: str) -> bool:
         return identifier_or_url == "dummy://test-novel"
 
-    async def fetch_metadata(
-        self, url: str, *, max_chapter: int | None = None
-    ) -> dict[str, Any]:
+    async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         soup = self._load()
         chapters: list[dict[str, Any]] = []
         for el in soup.select(".chapter"):
@@ -37,13 +35,15 @@ class DummySource(SourceAdapter):
             ch_id = int(str(ch_id_str)) if str(ch_id_str).isdigit() else len(chapters) + 1
             title_el = el.find("h2")
             title = title_el.get_text(strip=True) if title_el else ""
-            chapters.append({
-                "id": ch_id,
-                "num": len(chapters) + 1,
-                "title": title,
-                # http:// scheme is required by validate_safe_url
-                "url": f"http://dummy-e2e.chapter/{ch_id}",
-            })
+            chapters.append(
+                {
+                    "id": ch_id,
+                    "num": len(chapters) + 1,
+                    "title": title,
+                    # http:// scheme is required by validate_safe_url
+                    "url": f"http://dummy-e2e.chapter/{ch_id}",
+                }
+            )
         return {
             "title": "テスト小説",
             "source_url": url,

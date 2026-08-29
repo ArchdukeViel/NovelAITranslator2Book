@@ -101,6 +101,22 @@ class GeminiProvider(TranslationProvider):
             return self._client
 
     @staticmethod
+    def _normalize_response_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
+        """Remove JSON Schema fields unsupported by Gemini's response schema."""
+
+        def normalize(value: Any) -> Any:
+            if isinstance(value, dict):
+                return {key: normalize(child) for key, child in value.items() if key != "additionalProperties"}
+            if isinstance(value, list):
+                return [normalize(item) for item in value]
+            return value
+
+        normalized = normalize(dict(schema))
+        if not isinstance(normalized, dict):
+            raise TypeError("Gemini response schema must be a mapping.")
+        return normalized
+
+    @staticmethod
     def _extract_text(response: Any) -> str:
         text = getattr(response, "text", None)
         if isinstance(text, str) and text.strip():
@@ -292,16 +308,37 @@ class GeminiProvider(TranslationProvider):
             marker in combined for marker in ("not found", "unsupported model", "model is not supported", "unavailable")
         ):
             return ProviderErrorCode.MODEL_UNAVAILABLE, retry_after, details
-        if any(marker in combined for marker in ("context", "token", "too large", "maximum", "max output")):
-            return ProviderErrorCode.CONTEXT_TOO_LARGE, retry_after, details
         if "429" in combined or "resource_exhausted" in combined or "rate limit" in combined or "quota" in combined:
             quota_markers = ("daily", "per day", "quota exceeded", "quota exhausted", "billing", "free tier")
-            rate_markers = ("rpm", "per minute", "rate limit", "retrydelay", "retry delay")
+            rate_markers = (
+                "rpm",
+                "per minute",
+                "rate limit",
+                "retrydelay",
+                "retry delay",
+                "too many requests",
+            )
             if any(marker in combined for marker in quota_markers) and not any(
                 marker in combined for marker in rate_markers
             ):
                 return ProviderErrorCode.QUOTA_EXHAUSTED, retry_after, details
             return ProviderErrorCode.RATE_LIMITED, retry_after, details
+        if any(
+            marker in combined
+            for marker in (
+                "context",
+                "context window",
+                "context length",
+                "input token",
+                "maximum number of tokens",
+                "max output",
+                "maximum output",
+                "too many tokens",
+                "too large",
+                "token limit",
+            )
+        ):
+            return ProviderErrorCode.CONTEXT_TOO_LARGE, retry_after, details
         return ProviderErrorCode.UNKNOWN, retry_after, details
 
     def _provider_error_from_exception(self, exc: BaseException, *, model_name: str) -> ProviderError:
@@ -540,6 +577,8 @@ class GeminiProvider(TranslationProvider):
         request_id = kwargs.pop("request_id", None)
         request = kwargs.pop("request", None)
         json_schema = kwargs.pop("json_schema", None)
+        if isinstance(json_schema, Mapping):
+            json_schema = self._normalize_response_schema(json_schema)
         expect_json = bool(kwargs.pop("expect_json", False))
         if request is not None and not isinstance(request, TranslationRequest):
             raise TypeError("request must be a TranslationRequest instance.")

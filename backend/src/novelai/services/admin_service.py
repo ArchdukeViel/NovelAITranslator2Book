@@ -292,11 +292,13 @@ class AdminService:
         api_key: str | None = None,
         model: str | None = None,
     ) -> dict[str, Any]:
-        normalized_provider = self.normalize_provider(provider)
+        credential_service = self._credential_service()
+        credential = credential_service.get_by_id_or_provider(provider) if credential_service is not None else None
+        normalized_provider = credential.provider if credential is not None else self.normalize_provider(provider)
         previous_api_key = self.preferences.get_api_key(normalized_provider)
         temporary_key = api_key.strip() if isinstance(api_key, str) and api_key.strip() else None
-        credential_service = self._credential_service()
-        credential = credential_service.get_by_provider(normalized_provider) if credential_service is not None else None
+        if credential is None and credential_service is not None:
+            credential = credential_service.get_by_provider(normalized_provider)
         if temporary_key is None and credential is not None and credential_service is not None:
             temporary_key = credential_service.decrypt_api_key(credential)
         resolved_model = self.resolve_default_model(normalized_provider, model)
@@ -500,19 +502,23 @@ class AdminService:
         model: str | None = None,
         is_active: bool | None = None,
         notes: str | None = None,
+        owner_job_eligible: bool | None = None,
+        contributor_pool_eligible: bool | None = None,
     ) -> dict[str, Any]:
-        provider = self.normalize_provider(credential_id)
-        resolved_model = self.resolve_default_model(provider, model) if model is not None else None
         credential_service = self._require_credential_service()
-        credential = credential_service.get_by_id_or_provider(provider)
+        credential = credential_service.get_by_id_or_provider(credential_id)
         if credential is None:
             raise KeyError(f"Provider credential not found: {credential_id}")
+        provider = credential.provider
+        resolved_model = self.resolve_default_model(provider, model) if model is not None else None
         credential_service.update_metadata(
             credential,
             label=label,
             model=resolved_model,
             is_active=is_active,
             notes=notes,
+            owner_job_eligible=owner_job_eligible,
+            contributor_pool_eligible=contributor_pool_eligible,
         )
         self._upsert_credential_metadata(
             provider,
@@ -524,11 +530,11 @@ class AdminService:
         return ProviderCredentialService.safe_response(credential)
 
     def delete_provider_credential(self, credential_id: str) -> dict[str, Any]:
-        provider = self.normalize_provider(credential_id)
         credential_service = self._require_credential_service()
-        credential = credential_service.get_by_id_or_provider(provider)
+        credential = credential_service.get_by_id_or_provider(credential_id)
         if credential is None:
             raise KeyError(f"Provider credential not found: {credential_id}")
+        provider = credential.provider
         credential_service.update_metadata(credential, is_active=False, validation_status="unchecked")
         self.preferences.clear_api_key(provider)
         self._upsert_credential_metadata(provider, is_active=False, validation_status="unchecked")

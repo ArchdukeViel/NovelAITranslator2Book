@@ -56,8 +56,7 @@ def _create_configured_engine(db_url: str) -> Engine:
                 (
                     f"-c statement_timeout={settings.DB_STATEMENT_TIMEOUT_MS}",
                     f"-c lock_timeout={settings.DB_LOCK_TIMEOUT_MS}",
-                    "-c idle_in_transaction_session_timeout="
-                    f"{settings.DB_IDLE_IN_TRANSACTION_TIMEOUT_MS}",
+                    f"-c idle_in_transaction_session_timeout={settings.DB_IDLE_IN_TRANSACTION_TIMEOUT_MS}",
                 )
             ),
         }
@@ -137,6 +136,9 @@ def session_scope(url: str | None = None) -> Generator[Session]:
         session.rollback()
         raise
     finally:
+        for storage in session.info.get("_novelai_r2_bound_storages", ()):
+            if getattr(storage, "_test_db_session", None) is session:
+                delattr(storage, "_test_db_session")
         session.close()
 
 

@@ -15,6 +15,7 @@ def _patch_bootstrap(monkeypatch, fn):
     """Patch the bootstrap function. novelai.runtime.bootstrap is re-exported
     as a function in __init__.py, so we need to patch the actual module."""
     import importlib
+
     mod = importlib.import_module("novelai.runtime.bootstrap")
     monkeypatch.setattr(mod, "bootstrap", fn)
 
@@ -80,7 +81,9 @@ def test_cli_worker_once_runs_one_job(monkeypatch: pytest.MonkeyPatch, capsys: p
     assert "bootstrap" in calls
 
 
-def test_cli_doctor_exits_zero_when_checks_pass(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_doctor_exits_zero_when_checks_pass(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     calls: list[str] = []
     _patch_bootstrap(monkeypatch, lambda: calls.append("bootstrap"))
     monkeypatch.setattr("novelai.runtime.cli._doctor_check", lambda: (0, ["Result: PASS"]), raising=False)

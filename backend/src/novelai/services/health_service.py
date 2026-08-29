@@ -391,7 +391,7 @@ class HealthService:
             if self._storage is not None:
                 path = Path(self._storage.base_dir)
             else:
-                path = Path(settings.NOVEL_LIBRARY_DIR)
+                path = Path(settings.RUNTIME_DIR)
             usage = shutil.disk_usage(str(path))
             total = usage.total
             free = usage.free
@@ -428,25 +428,19 @@ class HealthService:
             }
 
     async def _probe_storage_usage(self) -> dict[str, Any]:
-        """Probe S3/R2 storage usage against soft limit (S3_STORAGE_LIMIT_GB).
+        """Probe R2 storage usage against the configured soft limit.
 
-        For filesystem backend, this probe is skipped (disk probe covers it).
+        The disk probe covers only disposable runtime capacity.
         Always redacted — never exposes bucket name, credentials, or raw paths.
         """
         start = time.monotonic()
-        if settings.STORAGE_BACKEND != "s3":
-            return {
-                "status": STATE_HEALTHY,
-                "message": "Filesystem backend; use disk probe",
-                "latency_ms": 0,
-            }
         try:
-            from novelai.storage.backends import get_storage_backend as _gsb
+            from novelai.storage.backends import get_r2_storage
 
-            backend = _gsb()
+            backend = get_r2_storage()
             used_bytes = backend.total_size_bytes()
 
-            limit_bytes = int(settings.S3_STORAGE_LIMIT_GB * 1024**3)
+            limit_bytes = int(settings.R2_STORAGE_LIMIT_GB * 1024**3)
             used_percent = int(used_bytes / limit_bytes * 100) if limit_bytes > 0 else 0
             free_bytes = max(0, limit_bytes - used_bytes)
             latency = int((time.monotonic() - start) * 1000)

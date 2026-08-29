@@ -1,261 +1,118 @@
-"""Tests for storage backends (filesystem + S3 + factory)."""
+"""Tests for explicit R2 storage and the canonical backend factory."""
 
 from __future__ import annotations
 
 from collections.abc import Generator
-from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from pydantic import SecretStr
 
-from novelai.storage.backends import _reset_backend, get_storage_backend
-from novelai.storage.backends.base import StorageBackend
-from novelai.storage.backends.filesystem import FilesystemBackend, _try_unlink
+from novelai.config.settings import settings
+from novelai.storage.backends import _reset_r2_storage, get_r2_storage
+from novelai.storage.backends.base import R2StorageBackend
+from novelai.storage.backends.r2 import InMemoryR2Storage, R2Storage
 
-# ── FilesystemBackend ────────────────────────────────────────────────
 
-
-class TestFilesystemBackend:
-    """Real filesystem I/O against a temp directory."""
+class TestInMemoryR2Storage:
+    """Exercise the R2 contract without disk or an external service."""
 
     @pytest.fixture
-    def fs(self, tmp_path: Path) -> FilesystemBackend:
-        return FilesystemBackend(base_dir=tmp_path)
+    def store(self) -> InMemoryR2Storage:
+        return InMemoryR2Storage()
 
-    def test_save_and_load(self, fs: FilesystemBackend, tmp_path: Path) -> None:
-        fs.save("hello.txt", b"world")
-        assert fs.load("hello.txt") == b"world"
-        assert (tmp_path / "hello.txt").read_bytes() == b"world"
+    def test_save_and_load(self, store: InMemoryR2Storage) -> None:
+        store.save("hello.txt", b"world")
+        assert store.load("hello.txt") == b"world"
 
-    def test_copy_object(self, fs: FilesystemBackend) -> None:
-        fs.save("source.txt", b"payload")
+    def test_copy_object(self, store: InMemoryR2Storage) -> None:
+        store.save("source.txt", b"payload")
+        store.copy_object("source.txt", "nested/destination.txt")
+        assert store.load("nested/destination.txt") == b"payload"
 
-        fs.copy_object("source.txt", "nested/destination.txt")
-
-        assert fs.load("nested/destination.txt") == b"payload"
-
-    def test_load_missing_raises(self, fs: FilesystemBackend) -> None:
+    def test_load_missing_raises(self, store: InMemoryR2Storage) -> None:
         with pytest.raises(FileNotFoundError):
-            fs.load("does-not-exist.txt")
+            store.load("does-not-exist.txt")
 
-    def test_overwrite(self, fs: FilesystemBackend) -> None:
-        fs.save("x.txt", b"one")
-        fs.save("x.txt", b"two")
-        assert fs.load("x.txt") == b"two"
+    def test_overwrite_and_delete(self, store: InMemoryR2Storage) -> None:
+        store.save("x.txt", b"one")
+        store.save("x.txt", b"two")
+        assert store.load("x.txt") == b"two"
+        store.delete("x.txt")
+        assert not store.exists("x.txt")
 
-    def test_delete(self, fs: FilesystemBackend) -> None:
-        fs.save("x.txt", b"data")
-        fs.delete("x.txt")
-        assert not fs.exists("x.txt")
+    def test_list_and_size(self, store: InMemoryR2Storage) -> None:
+        store.save("a.txt", b"abc")
+        store.save("nested/b.txt", b"12345")
+        assert store.list_keys("", recursive=True) == ["a.txt", "nested/b.txt"]
+        assert store.list_keys("nested") == ["nested/b.txt"]
+        assert store.total_size_bytes() == 8
 
-    def test_delete_prunes_empty_prefix_directories(self, fs: FilesystemBackend, tmp_path: Path) -> None:
-        fs.save("novels/example/chapters/1.json", b"data")
+    def test_compare_and_swap(self, store: InMemoryR2Storage) -> None:
+        assert store.compare_and_swap("x.txt", None, b"one") is True
+        assert store.compare_and_swap("x.txt", b"wrong", b"two") is False
+        assert store.compare_and_swap("x.txt", b"one", b"two") is True
+        assert store.load("x.txt") == b"two"
 
-        fs.delete("novels/example/chapters/1.json")
+    def test_mkdirs_is_virtual_noop(self, store: InMemoryR2Storage) -> None:
+        store.mkdirs("some/path")
+        assert not store.has_keys("some/path")
 
-        assert not (tmp_path / "novels" / "example").exists()
-        assert tmp_path.exists()
+    def test_probe_readiness_uses_bucket_head(self, store: InMemoryR2Storage) -> None:
+        assert store.probe_readiness() is True
+        assert store.stats.operations == {"probe": 1}
 
-    def test_delete_missing_is_noop(self, fs: FilesystemBackend) -> None:
-        fs.delete("nope.txt")
-
-    def test_exists(self, fs: FilesystemBackend) -> None:
-        assert not fs.exists("x.txt")
-        fs.save("x.txt", b"")
-        assert fs.exists("x.txt")
-
-    def test_list_keys_empty(self, fs: FilesystemBackend) -> None:
-        assert fs.list_keys("") == []
-
-    def test_list_keys(self, fs: FilesystemBackend) -> None:
-        fs.save("a.txt", b"1")
-        fs.save("b.txt", b"2")
-        keys = fs.list_keys("")
-        assert "a.txt" in keys
-        assert "b.txt" in keys
-
-    def test_list_keys_nested(self, fs: FilesystemBackend) -> None:
-        fs.save("sub/x.txt", b"1")
-        fs.save("sub/y.txt", b"2")
-        keys = fs.list_keys("sub")
-        assert "sub/x.txt" in keys
-        assert "sub/y.txt" in keys
-
-    def test_mkdirs(self, fs: FilesystemBackend, tmp_path: Path) -> None:
-        p = tmp_path / "a" / "b" / "c"
-        fs.mkdirs(p)
-        assert p.parent.exists()
-
-    def test_absolute_path(self, fs: FilesystemBackend, tmp_path: Path) -> None:
-        outside = tmp_path / "outside.txt"
-        fs.save(outside, b"data")
-        assert outside.exists()
-
-    def test_atomic_write_no_partial(self, fs: FilesystemBackend, tmp_path: Path) -> None:
-        fs.save("atomic.txt", b"final")
-        tmp_files = list(tmp_path.glob("*.tmp"))
-        assert not tmp_files
-
-    def test_total_size_bytes(self, fs: FilesystemBackend) -> None:
-        fs.save("a.txt", b"abc")
-        fs.save("nested/b.txt", b"12345")
-
-        assert fs.total_size_bytes() == 8
-
-
-# ── S3Backend (moto mock) ───────────────────────────────────────────
 
 pytest.importorskip("moto", reason="moto not installed")
 
 
-class TestS3Backend:
-    """S3 backend tested against a moto mock."""
+class TestR2Storage:
+    """Exercise the real S3-compatible client boundary against moto."""
 
     @pytest.fixture
-    def s3(self) -> Generator[StorageBackend]:
-        _reset_backend()
+    def s3(self) -> Generator[R2StorageBackend]:
+        _reset_r2_storage()
         from moto import mock_aws
 
         with mock_aws():
-            from novelai.storage.backends.s3 import S3Backend
-
-            backend = S3Backend(bucket="test-bucket", region="us-east-1")
             import boto3
 
             client = boto3.client("s3", region_name="us-east-1")
             client.create_bucket(Bucket="test-bucket")
-            yield backend
+            yield R2Storage(bucket="test-bucket", region="us-east-1", endpoint_url=None, client=client)
 
-    def test_save_and_load(self, s3: StorageBackend) -> None:
+    def test_save_and_load(self, s3: R2StorageBackend) -> None:
         s3.save("hello.txt", b"world")
         assert s3.load("hello.txt") == b"world"
 
-    def test_copy_object(self, s3: StorageBackend) -> None:
-        s3.save("source.txt", b"payload")
-
-        s3.copy_object("source.txt", "nested/destination.txt")
-
-        assert s3.load("nested/destination.txt") == b"payload"
-
-    def test_load_missing_raises(self, s3: StorageBackend) -> None:
-        with pytest.raises(FileNotFoundError):
-            s3.load("does-not-exist.txt")
-
-    def test_overwrite(self, s3: StorageBackend) -> None:
-        s3.save("x.txt", b"one")
-        s3.save("x.txt", b"two")
-        assert s3.load("x.txt") == b"two"
-
-    def test_delete(self, s3: StorageBackend) -> None:
-        s3.save("x.txt", b"data")
-        s3.delete("x.txt")
-        assert not s3.exists("x.txt")
-
-    def test_delete_missing_is_noop(self, s3: StorageBackend) -> None:
-        s3.delete("nope.txt")
-
-    def test_exists(self, s3: StorageBackend) -> None:
-        assert not s3.exists("x.txt")
-        s3.save("x.txt", b"")
-        assert s3.exists("x.txt")
-
-    def test_exists_propagates_provider_failure(self, s3: StorageBackend, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_provider_failures_propagate(self, s3: R2StorageBackend, monkeypatch: pytest.MonkeyPatch) -> None:
         from botocore.exceptions import ClientError
 
         def denied(**_kwargs: object) -> None:
-            raise ClientError(
-                {"Error": {"Code": "AccessDenied", "Message": "denied"}},
-                "HeadObject",
-            )
+            raise ClientError({"Error": {"Code": "AccessDenied", "Message": "denied"}}, "HeadObject")
 
         monkeypatch.setattr(cast(Any, s3)._client, "head_object", denied)
         with pytest.raises(ClientError):
             s3.exists("x.txt")
 
-    def test_delete_propagates_provider_failure(self, s3: StorageBackend, monkeypatch: pytest.MonkeyPatch) -> None:
-        from botocore.exceptions import ClientError
-
-        def denied(**_kwargs: object) -> None:
-            raise ClientError(
-                {"Error": {"Code": "AccessDenied", "Message": "denied"}},
-                "DeleteObject",
-            )
-
-        monkeypatch.setattr(cast(Any, s3)._client, "delete_object", denied)
-        with pytest.raises(ClientError):
-            s3.delete("x.txt")
-
-    def test_list_keys(self, s3: StorageBackend) -> None:
+    def test_paginated_contract(self, s3: R2StorageBackend) -> None:
         s3.save("a.txt", b"1")
-        s3.save("b.txt", b"2")
-        keys = s3.list_keys("")
-        assert "a.txt" in keys
-        assert "b.txt" in keys
-
-    def test_list_keys_nested(self, s3: StorageBackend) -> None:
-        s3.save("sub/x.txt", b"1")
-        s3.save("sub/y.txt", b"2")
-        keys = s3.list_keys("sub")
-        assert "sub/x.txt" in keys
-
-    def test_mkdirs_is_noop(self, s3: StorageBackend) -> None:
-        s3.mkdirs("some/path")
-
-    def test_key_prefix(self) -> None:
-        from novelai.storage.backends.s3 import S3Backend
-
-        backend = S3Backend(bucket="b", key_prefix="myapp/data")
-        assert backend._key("hello.txt") == "myapp/data/hello.txt"
-        assert backend._key("sub/file.txt") == "myapp/data/sub/file.txt"
-
-    def test_total_size_bytes(self, s3: StorageBackend) -> None:
-        s3.save("a.txt", b"abc")
         s3.save("nested/b.txt", b"12345")
-
-        assert s3.total_size_bytes() == 8
-
-
-# ── Factory / singleton ──────────────────────────────────────────────
+        assert "a.txt" in s3.list_keys("")
+        assert "nested/b.txt" in s3.list_keys("nested")
+        assert s3.total_size_bytes() == 6
 
 
-class TestGetStorageBackend:
-    """Factory behaviour — does not test I/O."""
+class TestGetR2Storage:
+    def test_factory_is_always_r2(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _reset_r2_storage()
+        monkeypatch.setattr(settings, "R2_ACCESS_KEY_ID", SecretStr("test-access"))
+        monkeypatch.setattr(settings, "R2_SECRET_ACCESS_KEY", SecretStr("test-secret"))
+        assert isinstance(get_r2_storage(), R2Storage)
 
-    def test_default_is_filesystem(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        _reset_backend()
-        monkeypatch.setenv("STORAGE_BACKEND", "filesystem")
-        backend = get_storage_backend()
-        assert isinstance(backend, FilesystemBackend)
-
-    def test_singleton(self) -> None:
-        _reset_backend()
-        a = get_storage_backend()
-        b = get_storage_backend()
-        assert a is b
-
-    def test_reset(self) -> None:
-        _reset_backend()
-        a = get_storage_backend()
-        _reset_backend()
-        b = get_storage_backend()
-        assert a is not b
-
-    def test_unknown_choice_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        _reset_backend()
-        monkeypatch.setenv("STORAGE_BACKEND", "nfs")
-        with pytest.raises(RuntimeError, match="Unknown STORAGE_BACKEND"):
-            get_storage_backend()
-
-
-# ── _try_unlink helper ──────────────────────────────────────────────
-
-
-class TestTryUnlink:
-    def test_missing_file(self, tmp_path: Path) -> None:
-        _try_unlink(tmp_path / "nope")
-
-    def test_existing_file(self, tmp_path: Path) -> None:
-        p = tmp_path / "x.txt"
-        p.write_text("hi")
-        _try_unlink(p)
-        assert not p.exists()
+    def test_singleton_and_reset(self) -> None:
+        _reset_r2_storage()
+        first = get_r2_storage()
+        assert first is get_r2_storage()
+        _reset_r2_storage()
+        assert first is not get_r2_storage()

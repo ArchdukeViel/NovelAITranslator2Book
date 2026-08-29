@@ -21,9 +21,7 @@ class ScheduledJobLeaseService:
         try:
             with self._session_scope_factory() as session:
                 lease = session.execute(
-                    select(ScheduledJobLease)
-                    .where(ScheduledJobLease.job_name == job_name)
-                    .with_for_update()
+                    select(ScheduledJobLease).where(ScheduledJobLease.job_name == job_name).with_for_update()
                 ).scalar_one_or_none()
                 if lease is None:
                     session.add(

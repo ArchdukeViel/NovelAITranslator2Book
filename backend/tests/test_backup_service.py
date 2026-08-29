@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from novelai.config.settings import settings
-from novelai.services.backup_manager import BackupManager
 from novelai.services.backup_service import BackupService
 from novelai.services.database_backup_service import DatabaseBackupService
 from novelai.storage.snapshots import SnapshotResult
@@ -42,12 +41,14 @@ class StubSnapshotTarget:
         assert snapshot_id == self.result.snapshot_id
         return self.result
 
+    def apply_retention(self, **_: object) -> int:
+        return 0
+
 
 @pytest.mark.asyncio
-async def test_s3_backup_uses_committed_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "STORAGE_BACKEND", "s3")
+async def test_r2_backup_uses_committed_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     target = StubSnapshotTarget()
-    service = BackupService(BackupManager(tmp_path), snapshot_target=target)
+    service = BackupService(runtime_dir=tmp_path, snapshot_target=target)
 
     result = await service.run_scheduled_backup()
 
@@ -58,10 +59,9 @@ async def test_s3_backup_uses_committed_snapshot(tmp_path: Path, monkeypatch: py
 
 
 @pytest.mark.asyncio
-async def test_s3_backup_fails_when_snapshot_copy_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "STORAGE_BACKEND", "s3")
+async def test_r2_backup_fails_when_snapshot_copy_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     service = BackupService(
-        BackupManager(tmp_path),
+        runtime_dir=tmp_path,
         snapshot_target=StubSnapshotTarget(failure=RuntimeError("provider unavailable")),
     )
 
@@ -72,10 +72,9 @@ async def test_s3_backup_fails_when_snapshot_copy_fails(tmp_path: Path, monkeypa
 
 
 def test_offsite_backup_health_uses_committed_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "STORAGE_BACKEND", "s3")
     monkeypatch.setattr(settings, "BACKUP_ENABLED", True)
     target = StubSnapshotTarget()
-    service = BackupService(BackupManager(tmp_path), snapshot_target=target)
+    service = BackupService(runtime_dir=tmp_path, snapshot_target=target)
 
     health = service.get_backup_health()
 
@@ -87,11 +86,10 @@ def test_offsite_backup_health_uses_committed_manifest(tmp_path: Path, monkeypat
 def test_offsite_backup_health_enforces_freshness(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hours: int, status: str
 ) -> None:
-    monkeypatch.setattr(settings, "STORAGE_BACKEND", "s3")
     monkeypatch.setattr(settings, "BACKUP_ENABLED", True)
     target = StubSnapshotTarget(created_at=_recent_iso(hours=hours))
 
-    assert BackupService(BackupManager(tmp_path), snapshot_target=target).get_backup_health()["status"] == status
+    assert BackupService(runtime_dir=tmp_path, snapshot_target=target).get_backup_health()["status"] == status
 
 
 @pytest.mark.parametrize(("hours", "status"), [(-1, "healthy"), (-37, "unhealthy")])
@@ -107,3 +105,16 @@ def test_database_backup_health_enforces_freshness(hours: int, status: str) -> N
     ]
 
     assert DatabaseBackupService(client, "backup-bucket").get_backup_health()["status"] == status
+
+
+def test_restore_target_prepares_all_application_policy_roles(monkeypatch: pytest.MonkeyPatch) -> None:
+    connection = MagicMock()
+    connection.execute.return_value.scalar_one.return_value = False
+    engine = MagicMock()
+    engine.connect.return_value.__enter__.return_value = connection
+    monkeypatch.setattr("novelai.services.database_backup_service.create_engine", lambda *_args, **_kwargs: engine)
+
+    DatabaseBackupService._prepare_restore_target("postgresql+psycopg://restore:restore@127.0.0.1/novelai_restore")
+
+    statements = [str(call.args[0]) for call in connection.exec_driver_sql.call_args_list]
+    assert 'CREATE ROLE "novelai_app" NOLOGIN' in statements

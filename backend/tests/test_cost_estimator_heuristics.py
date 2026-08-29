@@ -21,7 +21,10 @@ class TestTokenHeuristics:
 
     def test_baseline_input_tokens_includes_overhead(self) -> None:
         h = DEFAULT_TOKEN_HEURISTICS
-        expected = int(h.baseline_japanese_characters * h.source_tokens_per_japanese_character) + h.default_prompt_overhead_tokens
+        expected = (
+            int(h.baseline_japanese_characters * h.source_tokens_per_japanese_character)
+            + h.default_prompt_overhead_tokens
+        )
         assert h.baseline_input_tokens == expected
 
     def test_baseline_output_tokens(self) -> None:

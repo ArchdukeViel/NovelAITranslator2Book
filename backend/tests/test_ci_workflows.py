@@ -74,8 +74,8 @@ def test_s3_integration_has_execution_policy() -> None:
     assert "test_s3_integration.py" in source
     assert "schedule" in source
     assert "workflow_dispatch" in source
-    assert "TEST_S3_ENDPOINT" in source
-    assert "TEST_S3_BUCKET" in source
+    assert "TEST_R2_ENDPOINT" in source
+    assert "TEST_R2_BUCKET" in source
     assert "minio" in source
 
 
@@ -90,6 +90,30 @@ def test_workflow_actions_are_pinned_to_full_commit_shas() -> None:
 
     assert action_lines
     assert all(PINNED_ACTION.fullmatch(line) for line in action_lines), action_lines
+
+
+def test_nonproduction_reader_capacity_workflow_is_isolated_and_cleanup_gated() -> None:
+    source = _workflow("reader-capacity-nonproduction.yml")
+
+    assert "MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}" in source
+    assert "TEST_R2_APPLICATION_BUCKET: test-dokushodo" in source
+    assert "R2_BACKUP_ENABLED=false" in source
+    assert "R2_BACKUP_BUCKET=test-dokushodo-backup" in source
+    assert "READER_CAPACITY_FIXTURE_TARGET=non-production" in source
+    assert "JOB_WORKER_ENABLED=false" in source
+    assert "TRANSLATION_PERSISTENCE_EXPANSION_ENABLED=false" in source
+    assert 'chmod 0777 "$RUNNER_TEMP/reader-capacity-runtime"' in source
+    assert "reset_reader_cache.ps1" in source
+    assert "ColdCacheMode disposable_reader_reset" in source
+    assert "cloudflare/cloudflared:2026.8.0@sha256:" in source
+    assert "Disposable Cloudflare quick tunnel readiness reached HTTP 200." in source
+    assert "--connect-timeout 5 --max-time 15" in source
+    assert "-CaddyBaseUrl http://127.0.0.1:18080" in source
+    assert "-CaddyHostHeader localhost" in source
+    assert "if: always()" in source
+    assert "seed_reader_capacity_fixture cleanup" in source
+    assert "fixture-cleanup.json" in source
+    assert 'docker compose --project-name "$COMPOSE_PROJECT"' in source
 
 
 def test_build_summary_fails_unless_publication_succeeds() -> None:
@@ -120,7 +144,7 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     assert "release.env" in source
     assert "PREVIOUS_RELEASE" in source
     assert "docker image prune" not in source
-    assert '"d7e4f9a1c2b3"' in source
+    assert '"f8a2c4e6b0d1"' in source
     assert 'STAGING_HTTP_BIND="127.0.0.1"' in source
     assert 'STAGING_HTTP_PORT="8080"' in source
     assert "PUBLIC_BIND_ADDRESS=%s\\n" in source
@@ -177,8 +201,6 @@ def test_gitguardian_workflow_contract() -> None:
     assert "if:" in source
     assert "github.event.pull_request.head.repo.full_name == github.repository" in source
     assert "github.event_name" in source
-    assert "github.event.pull_request.user.login != 'dependabot[bot]'" in source
-    assert "github.event.pull_request.user.login == 'dependabot[bot]'" in source
 
 
 def test_secret_backed_opencode_workflow_restricts_commenters() -> None:
@@ -273,10 +295,97 @@ def test_dependency_review_least_privilege() -> None:
 
 
 def test_uv_locked_contract_in_ci_and_managed_verification() -> None:
-    for name in ("ci.yml", "managed-services-verification.yml"):
+    for name in ("ci.yml", "managed-services-verification.yml", "managed-services-test-migrate.yml"):
         source = _workflow(name)
         assert "--frozen" not in source, f"--frozen found in {name}"
         assert "--locked" in source, f"--locked missing in {name}"
+
+
+def test_managed_services_verification_uses_current_restore_contract() -> None:
+    source = _workflow("managed-services-verification.yml")
+
+    assert "backend/tests/integration/test_r2_backup_integration.py" in source
+    assert "backend/tests/integration/test_r2_restore_integration.py" in source
+    assert "test_r2_snapshot_integration.py" not in source
+    for name in (
+        "TEST_R2_APP_ACCESS_KEY_ID",
+        "TEST_R2_APP_SECRET_ACCESS_KEY",
+        "TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY_ID",
+        "TEST_R2_SNAPSHOT_SOURCE_SECRET_ACCESS_KEY",
+        "TEST_R2_BACKUP_ACCESS_KEY_ID",
+        "TEST_R2_BACKUP_SECRET_ACCESS_KEY",
+    ):
+        assert name in source
+    assert "TEST_R2_APP_ACCESS_KEY:" not in source
+    assert "TEST_R2_BACKUP_ACCESS_KEY:" not in source
+
+    managed_postgres = (Path(__file__).parent / "integration" / "test_managed_postgres.py").read_text(encoding="utf-8")
+    assert 'EXPECTED_ALEMBIC_HEAD = "f8a2c4e6b0d1"' in managed_postgres
+    assert "9c2e4a6b8d0f" not in managed_postgres
+
+
+def test_managed_test_database_migration_is_confirmation_gated() -> None:
+    source = _workflow("managed-services-test-migrate.yml")
+
+    assert "workflow_dispatch:" in source
+    assert "workflow_call:" in source
+    assert "confirm_test_database == true" in source
+    assert "MIGRATION_DATABASE_URL" in source
+    assert "MANAGED_DATABASE_TEST_URL" in source
+
+
+def test_managed_recovery_workflow_is_confirmation_gated_and_isolated() -> None:
+    source = _workflow("managed-services-recovery-verification.yml")
+
+    assert "workflow_dispatch:" in source
+    assert "workflow_call:" in source
+    assert "confirm_test_recovery == true" in source
+    assert "MANAGED_DATABASE_TEST_URL" in source
+    assert "TEST_R2_TARGET_BUCKET" in source
+    assert "DATABASE_RESTORE_TARGET_URL" in source
+    assert "postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94" in source
+    assert "docker_args=(" in source
+    assert "--network host" in source
+    assert "--volume" in source
+    assert "/pgrestore" in source
+    assert '[[ "$tool_name" == "pg_restore" && ${#tool_args[@]} -gt 1 ]]' in source
+    assert 'echo "PG_DUMP_PATH=$RUNNER_TEMP/pg_dump"' in source
+    assert 'echo "PG_RESTORE_DIAGNOSTIC_PATH=$RUNNER_TEMP/pg_restore_diagnostic_class"' in source
+    assert "version_mismatch" in source
+    assert "missing_schema" in source
+    assert "missing_relation" in source
+    assert "missing_function" in source
+    assert "missing_extension" in source
+    assert 'echo "::add-mask::$BACKUP_KEY"' in source
+    assert "ephemeral" in source.lower()
+    assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in source
+    assert "TEST_R2_BACKUP_ACCESS_KEY_ID:" in source
+    assert "TEST_R2_BACKUP_SECRET_ACCESS_KEY:" in source
+
+
+def test_managed_verification_dispatches_recovery_with_explicit_confirmation() -> None:
+    source = _workflow("managed-services-verification.yml")
+
+    assert "confirm_test_recovery:" in source
+    assert "if: ${{ inputs.confirm_test_recovery == true ||" in source
+    assert "MANAGED_SERVICE_RECOVERY_ENABLED" in source
+    assert "github.event_name == 'workflow_dispatch'" in source
+    assert "uses: ./.github/workflows/managed-services-recovery-verification.yml" in source
+    assert "MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}" in source
+    assert "TEST_R2_ENDPOINT: ${{ secrets.TEST_R2_ENDPOINT }}" in source
+    assert "TEST_R2_BACKUP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_BACKUP_ACCESS_KEY_ID }}" in source
+    assert "TEST_R2_BACKUP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_BACKUP_SECRET_ACCESS_KEY }}" in source
+
+    recovery_test = (Path(__file__).parent / "integration" / "test_managed_database_recovery.py").read_text(
+        encoding="utf-8"
+    )
+    assert "DatabaseBackupService" in recovery_test
+    assert '"CREATE ROLE' in recovery_test
+    assert '"REVOKE ALL PRIVILEGES ON DATABASE' in recovery_test
+    assert '"REVOKE ALL PRIVILEGES ON ALL TABLES' in recovery_test
+    assert '"DROP ROLE IF EXISTS' in recovery_test
+    assert "_PRODUCTION_BUCKETS" in recovery_test
+    assert "ephemeral local restore database" in recovery_test
 
 
 def test_build_workflow_run_trust_guards_and_concurrency() -> None:
@@ -358,8 +467,8 @@ def test_caddy_internal_proxy_and_staging_cookie_contract() -> None:
     assert "env_file:" not in caddy_service
 
     caddyfile = (repo_root / "deploy" / "Caddyfile").read_text(encoding="utf-8")
-    # Caddy is an internal HTTP hop; staging's browser-facing Tailscale Serve
-    # endpoint terminates HTTPS before forwarding to this loopback listener.
+    # Caddy is an internal HTTP hop; the browser-facing Cloudflare Tunnel
+    # terminates HTTPS before forwarding to this loopback listener.
     caddy_site = next(line for line in caddyfile.splitlines() if line and not line.startswith("#"))
     assert caddy_site == "http://{$SITE_DOMAIN:localhost} {"
     assert "Strict-Transport-Security" not in caddyfile
@@ -421,18 +530,14 @@ def test_deploy_actions_consume_deploy_port() -> None:
     assert deploy[ssh_index : ssh_index + 500].count("port: ${{ env.DEPLOY_PORT }}") == 1
 
 
-def test_deploy_tailscale_private_network_step() -> None:
+def test_deploy_uses_direct_ssh_without_tailscale() -> None:
     deploy = _workflow("deploy.yml")
-    # The deploy job reaches the staging host over the private tailnet; the
-    # GitHub-hosted runner joins as an ephemeral node before any transfer.
-    tailscale_index = deploy.index("tailscale/github-action@")
-    assert "authkey: ${{ env.TS_AUTHKEY }}" in deploy
-    assert "ping: ${{ env.DEPLOY_HOST }}" in deploy
-    assert deploy.count("TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}") == 1
-    # The step must run before both remote actions.
-    assert tailscale_index < deploy.index("appleboy/scp-action")
-    assert tailscale_index < deploy.index("appleboy/ssh-action")
-    # No untagged public-tunnel remnant may exist.
+    # Cloudflare is the browser-facing edge; the deploy runner uses the
+    # existing environment-scoped SSH path directly.
+    assert "tailscale" not in deploy.lower()
+    assert "TS_AUTHKEY" not in deploy
+    assert "DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}" in deploy
+    assert deploy.count("port: ${{ env.DEPLOY_PORT }}") == 2
     assert "ngrok" not in deploy
     assert "pinggy" not in deploy
 

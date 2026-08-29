@@ -119,6 +119,7 @@ class TestStructuredExceptionHandler:
         app.dependency_overrides[get_current_user] = _user_override
 
         from novelai.api.error_handlers import add_error_handlers
+
         add_error_handlers(app)
 
         @app.get("/test-structured-error")
@@ -183,7 +184,7 @@ class TestPipelineStateLogging:
 
         ctx = StageLogContext(novel_id="n1", chapter_id="c1", request_id="req-1", logger=logger)
         marker = ctx.stage_enter("FailStage")
-        ctx.stage_error(marker, error_code="pipeline.fetch.timeout", stack_trace="  File \"test.py\", line 1, in test\n")
+        ctx.stage_error(marker, error_code="pipeline.fetch.timeout", stack_trace='  File "test.py", line 1, in test\n')
 
         assert len(records) == 2
         error_record = records[1]
@@ -241,6 +242,7 @@ class TestJsonFormatter:
             raise ValueError("test error")
         except ValueError:
             import sys
+
             record = logging.LogRecord(
                 name="test",
                 level=logging.ERROR,
@@ -269,6 +271,7 @@ class TestHealthErrorsEndpoint:
         app.include_router(admin_router, prefix="/api")
 
         from novelai.api.error_handlers import add_error_handlers
+
         add_error_handlers(app)
 
         client = TestClient(app, raise_server_exceptions=False)

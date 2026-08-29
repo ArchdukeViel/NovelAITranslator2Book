@@ -22,6 +22,7 @@ from novelai.worker.queue import (
 class TestGetRedisConnection:
     def test_raises_without_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from novelai.config.settings import settings
+
         monkeypatch.setattr(settings, "REDIS_URL", None)
         with pytest.raises(RuntimeError, match="REDIS_URL"):
             get_redis_connection()
@@ -29,6 +30,7 @@ class TestGetRedisConnection:
     def test_accepts_explicit_url(self) -> None:
         # fakeredis doesn't need a real URL — we monkeypatch from_url
         import redis as redis_mod
+
         fake = fakeredis.FakeRedis()
         original = redis_mod.Redis.from_url
         redis_mod.Redis.from_url = lambda url, **kw: fake  # type: ignore[method-assign]

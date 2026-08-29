@@ -5,14 +5,15 @@ Revises: bb48b53baff5
 Create Date: 2026-06-22 12:00:00.000000
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = 'a3f7c91d4e2b'
-down_revision: str | Sequence[str] | None = 'bb48b53baff5'
+revision: str = "a3f7c91d4e2b"
+down_revision: str | Sequence[str] | None = "bb48b53baff5"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -50,61 +51,77 @@ def upgrade() -> None:
     """Create taxonomy tables and seed genre data."""
     # ---- genres ----
     genres_table = op.create_table(
-        'genres',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('slug', sa.String(length=64), nullable=False),
-        sa.Column('name_ja', sa.String(length=128), nullable=False),
-        sa.Column('name_en', sa.String(length=128), nullable=True),
-        sa.Column('is_adult', sa.Boolean(), nullable=False, server_default='0'),
-        sa.Column('display_order', sa.Integer(), nullable=False, server_default='0'),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='1'),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-        sa.PrimaryKeyConstraint('id', name=op.f('pk_genres')),
+        "genres",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("slug", sa.String(length=64), nullable=False),
+        sa.Column("name_ja", sa.String(length=128), nullable=False),
+        sa.Column("name_en", sa.String(length=128), nullable=True),
+        sa.Column("is_adult", sa.Boolean(), nullable=False, server_default="0"),
+        sa.Column("display_order", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default="1"),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_genres")),
     )
-    op.create_index(op.f('ix_genres_slug'), 'genres', ['slug'], unique=True)
-    op.create_index(op.f('ix_genres_is_active'), 'genres', ['is_active'], unique=False)
+    op.create_index(op.f("ix_genres_slug"), "genres", ["slug"], unique=True)
+    op.create_index(op.f("ix_genres_is_active"), "genres", ["is_active"], unique=False)
 
     # ---- tags ----
     op.create_table(
-        'tags',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('name', sa.String(length=255), nullable=False),
-        sa.Column('name_ja', sa.String(length=255), nullable=True),
-        sa.Column('is_adult', sa.Boolean(), nullable=False, server_default='0'),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-        sa.PrimaryKeyConstraint('id', name=op.f('pk_tags')),
+        "tags",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("name", sa.String(length=255), nullable=False),
+        sa.Column("name_ja", sa.String(length=255), nullable=True),
+        sa.Column("is_adult", sa.Boolean(), nullable=False, server_default="0"),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_tags")),
     )
-    op.create_index(op.f('ix_tags_name'), 'tags', ['name'], unique=True)
+    op.create_index(op.f("ix_tags_name"), "tags", ["name"], unique=True)
 
     # ---- novel_genres (junction) ----
     op.create_table(
-        'novel_genres',
-        sa.Column('novel_id', sa.Integer(), nullable=False),
-        sa.Column('genre_id', sa.Integer(), nullable=False),
-        sa.Column('assigned_by', sa.String(length=32), nullable=False, server_default='system'),
-        sa.Column('assigned_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-        sa.ForeignKeyConstraint(['genre_id'], ['genres.id'], name=op.f('fk_novel_genres_genre_id_genres'), ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['novel_id'], ['novels.id'], name=op.f('fk_novel_genres_novel_id_novels'), ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('novel_id', 'genre_id', name=op.f('pk_novel_genres')),
+        "novel_genres",
+        sa.Column("novel_id", sa.Integer(), nullable=False),
+        sa.Column("genre_id", sa.Integer(), nullable=False),
+        sa.Column("assigned_by", sa.String(length=32), nullable=False, server_default="system"),
+        sa.Column(
+            "assigned_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
+        sa.ForeignKeyConstraint(
+            ["genre_id"], ["genres.id"], name=op.f("fk_novel_genres_genre_id_genres"), ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["novel_id"], ["novels.id"], name=op.f("fk_novel_genres_novel_id_novels"), ondelete="CASCADE"
+        ),
+        sa.PrimaryKeyConstraint("novel_id", "genre_id", name=op.f("pk_novel_genres")),
     )
-    op.create_index(op.f('ix_novel_genres_novel_id'), 'novel_genres', ['novel_id'], unique=False)
-    op.create_index(op.f('ix_novel_genres_genre_id'), 'novel_genres', ['genre_id'], unique=False)
+    op.create_index(op.f("ix_novel_genres_novel_id"), "novel_genres", ["novel_id"], unique=False)
+    op.create_index(op.f("ix_novel_genres_genre_id"), "novel_genres", ["genre_id"], unique=False)
 
     # ---- novel_tags (junction) ----
     op.create_table(
-        'novel_tags',
-        sa.Column('novel_id', sa.Integer(), nullable=False),
-        sa.Column('tag_id', sa.Integer(), nullable=False),
-        sa.Column('origin', sa.String(length=32), nullable=False, server_default='unknown'),
-        sa.Column('assigned_by', sa.String(length=32), nullable=False, server_default='system'),
-        sa.Column('assigned_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-        sa.ForeignKeyConstraint(['tag_id'], ['tags.id'], name=op.f('fk_novel_tags_tag_id_tags'), ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['novel_id'], ['novels.id'], name=op.f('fk_novel_tags_novel_id_novels'), ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('novel_id', 'tag_id', name=op.f('pk_novel_tags')),
+        "novel_tags",
+        sa.Column("novel_id", sa.Integer(), nullable=False),
+        sa.Column("tag_id", sa.Integer(), nullable=False),
+        sa.Column("origin", sa.String(length=32), nullable=False, server_default="unknown"),
+        sa.Column("assigned_by", sa.String(length=32), nullable=False, server_default="system"),
+        sa.Column(
+            "assigned_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
+        sa.ForeignKeyConstraint(["tag_id"], ["tags.id"], name=op.f("fk_novel_tags_tag_id_tags"), ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["novel_id"], ["novels.id"], name=op.f("fk_novel_tags_novel_id_novels"), ondelete="CASCADE"
+        ),
+        sa.PrimaryKeyConstraint("novel_id", "tag_id", name=op.f("pk_novel_tags")),
     )
-    op.create_index(op.f('ix_novel_tags_novel_id'), 'novel_tags', ['novel_id'], unique=False)
-    op.create_index(op.f('ix_novel_tags_tag_id'), 'novel_tags', ['tag_id'], unique=False)
+    op.create_index(op.f("ix_novel_tags_novel_id"), "novel_tags", ["novel_id"], unique=False)
+    op.create_index(op.f("ix_novel_tags_tag_id"), "novel_tags", ["tag_id"], unique=False)
 
     # ---- Seed genre data ----
     op.bulk_insert(
@@ -125,14 +142,14 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Drop taxonomy tables."""
-    op.drop_index(op.f('ix_novel_tags_tag_id'), table_name='novel_tags')
-    op.drop_index(op.f('ix_novel_tags_novel_id'), table_name='novel_tags')
-    op.drop_table('novel_tags')
-    op.drop_index(op.f('ix_novel_genres_genre_id'), table_name='novel_genres')
-    op.drop_index(op.f('ix_novel_genres_novel_id'), table_name='novel_genres')
-    op.drop_table('novel_genres')
-    op.drop_index(op.f('ix_tags_name'), table_name='tags')
-    op.drop_table('tags')
-    op.drop_index(op.f('ix_genres_is_active'), table_name='genres')
-    op.drop_index(op.f('ix_genres_slug'), table_name='genres')
-    op.drop_table('genres')
+    op.drop_index(op.f("ix_novel_tags_tag_id"), table_name="novel_tags")
+    op.drop_index(op.f("ix_novel_tags_novel_id"), table_name="novel_tags")
+    op.drop_table("novel_tags")
+    op.drop_index(op.f("ix_novel_genres_genre_id"), table_name="novel_genres")
+    op.drop_index(op.f("ix_novel_genres_novel_id"), table_name="novel_genres")
+    op.drop_table("novel_genres")
+    op.drop_index(op.f("ix_tags_name"), table_name="tags")
+    op.drop_table("tags")
+    op.drop_index(op.f("ix_genres_is_active"), table_name="genres")
+    op.drop_index(op.f("ix_genres_slug"), table_name="genres")
+    op.drop_table("genres")

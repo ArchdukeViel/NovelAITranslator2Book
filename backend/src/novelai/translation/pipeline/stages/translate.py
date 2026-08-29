@@ -9,15 +9,13 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy.orm import load_only
+
 from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.core.errors import PipelineStageError, ProviderConfigError, ProviderError, ProviderErrorCode
 from novelai.prompts.models import TranslationRequest
 from novelai.providers.base import TranslationProvider
 from novelai.providers.model_fallbacks import model_candidates
-from novelai.services.contributor_credentials import (
-    ContributorCredentialLease,
-    ContributorCredentialService,
-)
 from novelai.services.glossary_diagnostics import (
     normalize_glossary_diagnostics,
 )
@@ -27,6 +25,10 @@ from novelai.services.glossary_prompt_injection import (
 )
 from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.preferences_service import PreferencesService
+from novelai.services.provider_credentials import (
+    ProviderCredentialLease,
+    ProviderCredentialService,
+)
 from novelai.services.translation_cache import TranslationCache, TranslationCacheService
 from novelai.services.usage_service import UsageService
 from novelai.shared.pipeline import ChunkAttemptStatus, ChunkTranslationStatus
@@ -94,6 +96,33 @@ from novelai.translation.scheduler import (
 logger = logging.getLogger(__name__)
 
 MAX_ATTEMPTS_EXCEEDED_ERROR_CODE = "max_attempts_exceeded"
+
+
+def _record_pipeline_provider_usage(context: PipelineState, usage: Any) -> None:
+    """Copy only numeric provider usage into bounded pipeline timing metadata."""
+
+    if not isinstance(usage, dict):
+        return
+    timing = context.metadata.setdefault("pipeline_timing", {})
+    if not isinstance(timing, dict):
+        timing = {}
+        context.metadata["pipeline_timing"] = timing
+    totals = timing.setdefault("provider_usage", {})
+    if not isinstance(totals, dict):
+        totals = {}
+        timing["provider_usage"] = totals
+    for key in ("input_tokens", "output_tokens"):
+        value = usage.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            totals[key] = int(totals.get(key, 0) or 0) + value
+
+
+def _record_pipeline_provider_attempt(context: PipelineState, attempt_number: int) -> None:
+    timing = context.metadata.setdefault("pipeline_timing", {})
+    if not isinstance(timing, dict):
+        timing = {}
+        context.metadata["pipeline_timing"] = timing
+    timing["provider_retry_count"] = int(timing.get("provider_retry_count", 0) or 0) + max(0, attempt_number - 1)
 
 
 def _provider_kwargs(provider: Any, values: dict[str, Any]) -> dict[str, Any]:
@@ -485,6 +514,48 @@ class TranslateStage(PipelineStage):
             glossary_hash=glossary_hash,
         )
 
+    @staticmethod
+    def _record_credential_usage(
+        context: PipelineState,
+        identity: dict[str, Any],
+        *,
+        provider_key: str,
+        provider_model: str,
+        status: str,
+        usage: Any = None,
+        error_code: str | None = None,
+    ) -> None:
+        credential_id = identity.get("credential_id")
+        if not isinstance(credential_id, str) or not credential_id.strip():
+            return
+        usage_map = usage if isinstance(usage, dict) else {}
+        ProviderCredentialService.record_usage(
+            credential_id=credential_id,
+            credential_owner_user_id=(
+                identity.get("credential_owner_user_id")
+                if isinstance(identity.get("credential_owner_user_id"), int)
+                else None
+            ),
+            requesting_user_id=(
+                identity.get("requesting_user_id") if isinstance(identity.get("requesting_user_id"), int) else None
+            ),
+            provider_key=provider_key,
+            provider_model=provider_model,
+            request_id=context.metadata.get("request_id")
+            if isinstance(context.metadata.get("request_id"), str)
+            else None,
+            job_id=context.job_id,
+            activity_id=context.activity_id,
+            status=status,
+            input_tokens=usage_map.get("input_tokens") if isinstance(usage_map.get("input_tokens"), int) else None,
+            output_tokens=usage_map.get("output_tokens") if isinstance(usage_map.get("output_tokens"), int) else None,
+            total_tokens=usage_map.get("total_tokens") if isinstance(usage_map.get("total_tokens"), int) else None,
+            estimated_input_tokens=None,
+            estimated_output_tokens=None,
+            error_code=error_code,
+            contribution_mode=str(identity.get("contribution_mode") or "owner"),
+        )
+
     async def _translate_with_model(
         self,
         context: PipelineState,
@@ -508,9 +579,9 @@ class TranslateStage(PipelineStage):
             provider_model,
             contributor_mode=contributor_mode,
         )
-        lease: ContributorCredentialLease | None = None
+        lease: ProviderCredentialLease | None = None
         if contributor_mode:
-            lease = ContributorCredentialService.acquire_runtime_lease(
+            lease = ProviderCredentialService.acquire_runtime_lease(
                 provider_key=provider_key,
                 provider_model=provider_model,
                 requesting_user_id=(
@@ -533,13 +604,29 @@ class TranslateStage(PipelineStage):
                 quota_controller=lease.quota_controller,
                 usage_service=self._usage,
             )
-            context.metadata["credential_id"] = lease.credential_id
-            context.metadata["credential_owner_user_id"] = lease.credential_owner_user_id
-            context.metadata["credential_scope"] = "contributor"
         else:
             provider = self._provider_factory(provider_key)
 
+        requesting_user_id = context.metadata.get("requesting_user_id")
+        if not isinstance(requesting_user_id, int):
+            requesting_user_id = None
+        owner_identity = (
+            ProviderCredentialService.owner_runtime_identity(provider_key)
+            if lease is None and provider_key == "gemini"
+            else None
+        )
+        credential_identity = {
+            "credential_id": lease.credential_id if lease is not None else None,
+            "credential_owner_user_id": lease.credential_owner_user_id if lease is not None else None,
+            "requesting_user_id": requesting_user_id,
+            "credential_scope": "contributor" if lease is not None else "owner",
+            "contribution_mode": "contributor" if lease is not None else "owner",
+        }
+        if owner_identity is not None:
+            credential_identity.update(owner_identity)
+
         started_at = utc_now_iso()
+        _record_pipeline_provider_attempt(context, attempt_number)
         try:
             logger.debug("Translating chunk %s (len=%s) with %s/%s", chunk_id, len(chunk), provider.key, provider_model)
             provider_call = provider.translate(
@@ -555,11 +642,11 @@ class TranslateStage(PipelineStage):
                         "chunk_id": chunk_id,
                         "retry_attempt": attempt_number,
                         "cache_status": "miss",
-                        "credential_id": lease.credential_id if lease is not None else None,
-                        "credential_owner_user_id": lease.credential_owner_user_id if lease is not None else None,
-                        "requesting_user_id": context.metadata.get("requesting_user_id"),
-                        "credential_scope": "contributor" if lease is not None else "owner",
-                        "contribution_mode": "contributor" if lease is not None else "owner",
+                        "credential_id": credential_identity["credential_id"],
+                        "credential_owner_user_id": credential_identity["credential_owner_user_id"],
+                        "requesting_user_id": credential_identity["requesting_user_id"],
+                        "credential_scope": credential_identity["credential_scope"],
+                        "contribution_mode": credential_identity["contribution_mode"],
                     },
                 ),
             )
@@ -573,7 +660,7 @@ class TranslateStage(PipelineStage):
             if lease is not None:
                 usage_metadata = result.get("metadata") if isinstance(result, dict) else None
                 usage = usage_metadata.get("usage") if isinstance(usage_metadata, dict) else None
-                ContributorCredentialService.record_usage(
+                ProviderCredentialService.record_usage(
                     credential_id=lease.credential_id,
                     credential_owner_user_id=lease.credential_owner_user_id,
                     requesting_user_id=(
@@ -601,10 +688,21 @@ class TranslateStage(PipelineStage):
                     estimated_input_tokens=None,
                     estimated_output_tokens=None,
                 )
+            else:
+                usage_metadata = result.get("metadata") if isinstance(result, dict) else None
+                usage = usage_metadata.get("usage") if isinstance(usage_metadata, dict) else None
+                self._record_credential_usage(
+                    context,
+                    credential_identity,
+                    provider_key=provider_key,
+                    provider_model=provider_model,
+                    status="success",
+                    usage=usage,
+                )
         except TimeoutError as exc:
             if lease is not None:
-                ContributorCredentialService.mark_runtime_unhealthy(lease.credential_id, error_code="timeout")
-                ContributorCredentialService.record_usage(
+                ProviderCredentialService.mark_runtime_unhealthy(lease.credential_id, error_code="timeout")
+                ProviderCredentialService.record_usage(
                     credential_id=lease.credential_id,
                     credential_owner_user_id=lease.credential_owner_user_id,
                     requesting_user_id=context.metadata.get("requesting_user_id")
@@ -623,6 +721,15 @@ class TranslateStage(PipelineStage):
                     total_tokens=None,
                     estimated_input_tokens=None,
                     estimated_output_tokens=None,
+                    error_code="timeout",
+                )
+            else:
+                self._record_credential_usage(
+                    context,
+                    credential_identity,
+                    provider_key=provider_key,
+                    provider_model=provider_model,
+                    status="failed",
                     error_code="timeout",
                 )
             finished_at = utc_now_iso()
@@ -651,15 +758,16 @@ class TranslateStage(PipelineStage):
                     finished_at=finished_at,
                     success=False,
                     error=provider_error,
+                    credential_identity=credential_identity,
                 )
             )
             raise provider_error from exc
         except ProviderError as exc:
+            error_code = exc.provider_error_code.value
             if lease is not None:
-                error_code = exc.provider_error_code.value
                 if error_code in {"configuration", "quota_exhausted", "rate_limited"}:
-                    ContributorCredentialService.mark_runtime_unhealthy(lease.credential_id, error_code=error_code)
-                ContributorCredentialService.record_usage(
+                    ProviderCredentialService.mark_runtime_unhealthy(lease.credential_id, error_code=error_code)
+                ProviderCredentialService.record_usage(
                     credential_id=lease.credential_id,
                     credential_owner_user_id=lease.credential_owner_user_id,
                     requesting_user_id=context.metadata.get("requesting_user_id")
@@ -678,6 +786,15 @@ class TranslateStage(PipelineStage):
                     total_tokens=None,
                     estimated_input_tokens=None,
                     estimated_output_tokens=None,
+                    error_code=error_code,
+                )
+            else:
+                self._record_credential_usage(
+                    context,
+                    credential_identity,
+                    provider_key=provider_key,
+                    provider_model=provider_model,
+                    status="failed",
                     error_code=error_code,
                 )
             finished_at = utc_now_iso()
@@ -699,16 +816,17 @@ class TranslateStage(PipelineStage):
                     finished_at=finished_at,
                     success=False,
                     error=exc,
+                    credential_identity=credential_identity,
                 )
             )
             raise
         except Exception as exc:
             if lease is not None:
-                ContributorCredentialService.mark_runtime_unhealthy(lease.credential_id, error_code="unknown")
+                ProviderCredentialService.mark_runtime_unhealthy(lease.credential_id, error_code="unknown")
             finished_at = utc_now_iso()
             provider_error = provider_error_from_generic(exc, provider_key=provider.key, provider_model=provider_model)
             if lease is not None:
-                ContributorCredentialService.record_usage(
+                ProviderCredentialService.record_usage(
                     credential_id=lease.credential_id,
                     credential_owner_user_id=lease.credential_owner_user_id,
                     requesting_user_id=context.metadata.get("requesting_user_id")
@@ -729,6 +847,15 @@ class TranslateStage(PipelineStage):
                     estimated_output_tokens=None,
                     error_code=provider_error.provider_error_code.value,
                 )
+            else:
+                self._record_credential_usage(
+                    context,
+                    credential_identity,
+                    provider_key=provider_key,
+                    provider_model=provider_model,
+                    status="failed",
+                    error_code=provider_error.provider_error_code.value,
+                )
             self._storage.save_provider_request_record(
                 provider_request_record(
                     context,
@@ -747,6 +874,7 @@ class TranslateStage(PipelineStage):
                     finished_at=finished_at,
                     success=False,
                     error=provider_error,
+                    credential_identity=credential_identity,
                 )
             )
             raise provider_error from exc
@@ -761,6 +889,7 @@ class TranslateStage(PipelineStage):
             "metadata": metadata,
         }
         usage = metadata.get("usage") if isinstance(metadata, dict) else None
+        _record_pipeline_provider_usage(context, usage)
         if isinstance(usage, dict):
             usage_entry["tokens"] = usage.get("total_tokens")
             logger.debug("Translation tokens: %s", usage_entry["tokens"])
@@ -835,6 +964,7 @@ class TranslateStage(PipelineStage):
                 finished_at=utc_now_iso(),
                 success=True,
                 metadata=metadata,
+                credential_identity=credential_identity,
             )
         )
         return text, provider.key, provider_model, False
@@ -875,7 +1005,12 @@ class TranslateStage(PipelineStage):
                 from novelai.db.models.novel import Novel as NovelModel
 
                 with session_scope() as session:
-                    novel_row = session.query(NovelModel).filter_by(slug=context.novel_id.strip()).one_or_none()
+                    novel_row = (
+                        session.query(NovelModel)
+                        .options(load_only(NovelModel.id))
+                        .filter_by(slug=context.novel_id.strip())
+                        .one_or_none()
+                    )
                     if novel_row is not None:
                         context.metadata["platform_novel_id"] = novel_row.id
             except Exception as exc:
@@ -895,6 +1030,9 @@ class TranslateStage(PipelineStage):
         scheduler_lock = asyncio.Lock()
         completed = 0
         progress = context.metadata.setdefault("progress", {})
+        timing = context.metadata.setdefault("pipeline_timing", {})
+        if isinstance(timing, dict):
+            timing["concurrency"] = max(1, int(self._concurrency))
         if isinstance(progress, dict):
             progress.setdefault("cache_hits", 0)
             progress.setdefault("cache_misses", 0)

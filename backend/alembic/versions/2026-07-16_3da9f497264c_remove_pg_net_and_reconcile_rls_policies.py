@@ -5,6 +5,7 @@ Revises: 024fcb03c7d0
 Create Date: 2026-07-16 16:15:58.470464
 
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -129,10 +130,7 @@ def _drop_all_policies(table_name: str) -> None:
         {"table_name": table_name},
     ).scalars()
     for policy_name in policy_names:
-        op.execute(
-            f"DROP POLICY {_quote_identifier(str(policy_name))} "
-            f"ON public.{_quote_identifier(table_name)}"
-        )
+        op.execute(f"DROP POLICY {_quote_identifier(str(policy_name))} ON public.{_quote_identifier(table_name)}")
 
 
 def _existing_roles(role_names: str) -> str | None:
@@ -176,14 +174,10 @@ def _owner_write_policies(table_name: str) -> list[Policy]:
 
 def _policies() -> dict[str, list[Policy]]:
     policies: dict[str, list[Policy]] = {
-        table_name: [
-            (f"Owner has full access to {table_name}", "ALL", "authenticated", OWNER, OWNER)
-        ]
+        table_name: [(f"Owner has full access to {table_name}", "ALL", "authenticated", OWNER, OWNER)]
         for table_name in OWNER_ONLY_TABLES
     }
-    policies["alembic_version"] = [
-        ("Owner can read alembic_version", "SELECT", "authenticated", OWNER, None)
-    ]
+    policies["alembic_version"] = [("Owner can read alembic_version", "SELECT", "authenticated", OWNER, None)]
 
     for table_name, public_predicate in PUBLIC_READ_PREDICATES.items():
         policies[table_name] = [
@@ -199,39 +193,153 @@ def _policies() -> dict[str, list[Policy]]:
 
     policies["users"] = [
         ("Owner or self-read for users", "SELECT", "authenticated", f"{OWNER} OR users.id = {CURRENT_USER_ID}", None),
-        ("Owner or self-update for users", "UPDATE", "authenticated", f"{OWNER} OR users.id = {CURRENT_USER_ID}", f"{OWNER} OR users.id = {CURRENT_USER_ID}"),
+        (
+            "Owner or self-update for users",
+            "UPDATE",
+            "authenticated",
+            f"{OWNER} OR users.id = {CURRENT_USER_ID}",
+            f"{OWNER} OR users.id = {CURRENT_USER_ID}",
+        ),
         ("Owner can insert users", "INSERT", "authenticated", None, OWNER),
         ("Owner can delete users", "DELETE", "authenticated", OWNER, None),
     ]
     policies["library_items"] = [
-        ("Owner or user-read for library_items", "SELECT", "authenticated", f"{OWNER} OR library_items.user_id = {CURRENT_USER_ID}", None),
-        ("Owner or user-insert for library_items", "INSERT", "authenticated", None, f"{OWNER} OR library_items.user_id = {CURRENT_USER_ID}"),
-        ("Owner or user-delete for library_items", "DELETE", "authenticated", f"{OWNER} OR library_items.user_id = {CURRENT_USER_ID}", None),
+        (
+            "Owner or user-read for library_items",
+            "SELECT",
+            "authenticated",
+            f"{OWNER} OR library_items.user_id = {CURRENT_USER_ID}",
+            None,
+        ),
+        (
+            "Owner or user-insert for library_items",
+            "INSERT",
+            "authenticated",
+            None,
+            f"{OWNER} OR library_items.user_id = {CURRENT_USER_ID}",
+        ),
+        (
+            "Owner or user-delete for library_items",
+            "DELETE",
+            "authenticated",
+            f"{OWNER} OR library_items.user_id = {CURRENT_USER_ID}",
+            None,
+        ),
     ]
     policies["novel_requests"] = [
-        ("Owner or user-read for novel_requests", "SELECT", "authenticated", f"{OWNER} OR novel_requests.user_id = {CURRENT_USER_ID}", None),
-        ("Owner or user-insert for novel_requests", "INSERT", "authenticated", None, f"{OWNER} OR novel_requests.user_id = {CURRENT_USER_ID}"),
+        (
+            "Owner or user-read for novel_requests",
+            "SELECT",
+            "authenticated",
+            f"{OWNER} OR novel_requests.user_id = {CURRENT_USER_ID}",
+            None,
+        ),
+        (
+            "Owner or user-insert for novel_requests",
+            "INSERT",
+            "authenticated",
+            None,
+            f"{OWNER} OR novel_requests.user_id = {CURRENT_USER_ID}",
+        ),
     ]
     policies["reading_history"] = [
-        ("Owner or user-read for reading_history", "SELECT", "authenticated", f"{OWNER} OR reading_history.user_id = {CURRENT_USER_ID}", None),
-        ("Owner or user-insert for reading_history", "INSERT", "authenticated", None, f"{OWNER} OR reading_history.user_id = {CURRENT_USER_ID}"),
+        (
+            "Owner or user-read for reading_history",
+            "SELECT",
+            "authenticated",
+            f"{OWNER} OR reading_history.user_id = {CURRENT_USER_ID}",
+            None,
+        ),
+        (
+            "Owner or user-insert for reading_history",
+            "INSERT",
+            "authenticated",
+            None,
+            f"{OWNER} OR reading_history.user_id = {CURRENT_USER_ID}",
+        ),
     ]
     policies["reading_progress"] = [
-        ("Owner or user-read for reading_progress", "SELECT", "authenticated", f"{OWNER} OR reading_progress.user_id = {CURRENT_USER_ID}", None),
-        ("Owner or user-insert for reading_progress", "INSERT", "authenticated", None, f"{OWNER} OR reading_progress.user_id = {CURRENT_USER_ID}"),
-        ("Owner or user-update for reading_progress", "UPDATE", "authenticated", f"{OWNER} OR reading_progress.user_id = {CURRENT_USER_ID}", f"{OWNER} OR reading_progress.user_id = {CURRENT_USER_ID}"),
+        (
+            "Owner or user-read for reading_progress",
+            "SELECT",
+            "authenticated",
+            f"{OWNER} OR reading_progress.user_id = {CURRENT_USER_ID}",
+            None,
+        ),
+        (
+            "Owner or user-insert for reading_progress",
+            "INSERT",
+            "authenticated",
+            None,
+            f"{OWNER} OR reading_progress.user_id = {CURRENT_USER_ID}",
+        ),
+        (
+            "Owner or user-update for reading_progress",
+            "UPDATE",
+            "authenticated",
+            f"{OWNER} OR reading_progress.user_id = {CURRENT_USER_ID}",
+            f"{OWNER} OR reading_progress.user_id = {CURRENT_USER_ID}",
+        ),
     ]
     policies["reviews"] = [
-        ("Owner or public-read for reviews", "SELECT", "anon, authenticated", f"{OWNER} OR EXISTS (SELECT 1 FROM public.novels WHERE novels.id = reviews.novel_id AND novels.is_published = true)", None),
-        ("Owner or user-insert for reviews", "INSERT", "authenticated", None, f"{OWNER} OR reviews.user_id = {CURRENT_USER_ID}"),
-        ("Owner or user-update for reviews", "UPDATE", "authenticated", f"{OWNER} OR reviews.user_id = {CURRENT_USER_ID}", f"{OWNER} OR reviews.user_id = {CURRENT_USER_ID}"),
-        ("Owner or user-delete for reviews", "DELETE", "authenticated", f"{OWNER} OR reviews.user_id = {CURRENT_USER_ID}", None),
+        (
+            "Owner or public-read for reviews",
+            "SELECT",
+            "anon, authenticated",
+            f"{OWNER} OR EXISTS (SELECT 1 FROM public.novels WHERE novels.id = reviews.novel_id AND novels.is_published = true)",
+            None,
+        ),
+        (
+            "Owner or user-insert for reviews",
+            "INSERT",
+            "authenticated",
+            None,
+            f"{OWNER} OR reviews.user_id = {CURRENT_USER_ID}",
+        ),
+        (
+            "Owner or user-update for reviews",
+            "UPDATE",
+            "authenticated",
+            f"{OWNER} OR reviews.user_id = {CURRENT_USER_ID}",
+            f"{OWNER} OR reviews.user_id = {CURRENT_USER_ID}",
+        ),
+        (
+            "Owner or user-delete for reviews",
+            "DELETE",
+            "authenticated",
+            f"{OWNER} OR reviews.user_id = {CURRENT_USER_ID}",
+            None,
+        ),
     ]
     policies["user_glossary_display_overrides"] = [
-        ("Owner or user-read for user_glossary_display_overrides", "SELECT", "authenticated", f"{OWNER} OR user_glossary_display_overrides.user_id = {CURRENT_USER_ID}", None),
-        ("Owner or user-insert for user_glossary_display_overrides", "INSERT", "authenticated", None, f"{OWNER} OR user_glossary_display_overrides.user_id = {CURRENT_USER_ID}"),
-        ("Owner or user-update for user_glossary_display_overrides", "UPDATE", "authenticated", f"{OWNER} OR user_glossary_display_overrides.user_id = {CURRENT_USER_ID}", f"{OWNER} OR user_glossary_display_overrides.user_id = {CURRENT_USER_ID}"),
-        ("Owner or user-delete for user_glossary_display_overrides", "DELETE", "authenticated", f"{OWNER} OR user_glossary_display_overrides.user_id = {CURRENT_USER_ID}", None),
+        (
+            "Owner or user-read for user_glossary_display_overrides",
+            "SELECT",
+            "authenticated",
+            f"{OWNER} OR user_glossary_display_overrides.user_id = {CURRENT_USER_ID}",
+            None,
+        ),
+        (
+            "Owner or user-insert for user_glossary_display_overrides",
+            "INSERT",
+            "authenticated",
+            None,
+            f"{OWNER} OR user_glossary_display_overrides.user_id = {CURRENT_USER_ID}",
+        ),
+        (
+            "Owner or user-update for user_glossary_display_overrides",
+            "UPDATE",
+            "authenticated",
+            f"{OWNER} OR user_glossary_display_overrides.user_id = {CURRENT_USER_ID}",
+            f"{OWNER} OR user_glossary_display_overrides.user_id = {CURRENT_USER_ID}",
+        ),
+        (
+            "Owner or user-delete for user_glossary_display_overrides",
+            "DELETE",
+            "authenticated",
+            f"{OWNER} OR user_glossary_display_overrides.user_id = {CURRENT_USER_ID}",
+            None,
+        ),
     ]
     policies["scheduled_cron_log"] = []
     return policies

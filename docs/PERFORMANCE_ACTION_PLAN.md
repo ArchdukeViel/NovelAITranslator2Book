@@ -5,6 +5,147 @@
 **Phase 6 update:** 2026-08-20
 **Objective:** make the deployed stack measurable, responsive, and resilient under public-read traffic while keeping the existing privacy, credential-isolation, ranking, and artifact-preservation contracts.
 
+## R2-only cutover note — 2026-08-21
+
+Canonical novel, chapter, translation, media, asset, and generation content
+now belongs to Cloudflare R2 with PostgreSQL exact-reference truth. Earlier
+phase entries that mention filesystem volumes, S3-protocol fixtures, or
+request-time object scans describe historical controlled runs before the hard
+cutover; they are not the current production storage architecture. Current
+performance work must measure exact R2 operations, PostgreSQL projections, and
+disposable local-runtime state separately.
+
+## Risk-resolution checkpoint - 2026-08-23 07:33 UTC
+
+The unresolved audit risks were rechecked against current primary provider
+documentation and one bounded application run:
+
+This is a historical risk snapshot. The 2026-08-24 async execution and
+capacity handoff below is authoritative for current completion status.
+
+| Risk | Current evidence or uncertainty | Resolution plan | Status |
+| --- | --- | --- | --- |
+| Supabase egress attribution | `pg_stat_statements` supplies cumulative call/row indicators, not billed bytes. The operator's custom report shows `66,683,432,737` bytes of Shared Pooler Egress, matching the reported billing-period spike; Logs Explorer does not currently expose response-byte data. | Keep the operator Usage/Observability report as billing authority and compare it with sanitized local counters during the bounded canary. | Confirmed: Shared Pooler Egress |
+| Connection route | Sanitized backend and worker probes resolve a pooler host on port `5432`. The runtime uses Supabase Session Pooler; `DB_CONNECTION_MODE=direct` controls the application-side SQLAlchemy pool behavior and does not select the Supabase endpoint. | Keep Session Pooler for the current IPv4 deployment. Reduce payloads and repeated queries; do not run an A/B route test solely to change the egress category. | Confirmed; no config change |
+| Gemini capacity | Gemini RPM/TPM/RPD limits are project-wide rather than key-wide, vary by model/tier, and active limits are visible in AI Studio. More keys from the same project do not multiply that project quota. | Record the owning project and active model limits in the operator runbook, then enforce a project-aware budget before production-volume work. | Complete: project/model limit evidence recorded |
+| R2 request cost | R2 egress is free, but `LIST`/`PUT` are Class A and `HEAD`/`GET` are Class B operations. | Preserve exact-key hot paths and bucket `HEAD` readiness; keep inventory/GC listing off hot paths. | Complete: code gate and evidence boundary recorded |
+| Expired activity recovery | Targeted recovery changed the expired NCode row to pending but initially failed to claim it because the recovery mutation was not flushed before `UPDATE ... RETURNING`. | Flush the recovery transaction before the targeted claim and keep a regression test. | Fixed and focused-tested |
+| Worker/provider behavior | Three bounded one-chapter samples reached terminal completion through the application service with raw/translated R2 readback; the original full queue remains paused by the safety decision. | Keep the worker stopped after the safety window; resume one target at a time only with database, provider, memory, network, and lease stop gates recorded. | Complete: bounded canary and full-queue safety decision |
+
+The official references used for this checkpoint are [Supabase egress usage](https://supabase.com/docs/guides/platform/manage-your-usage/egress), [Supabase database connections](https://supabase.com/docs/guides/database/connecting-to-postgres), [Gemini API rate limits](https://ai.google.dev/gemini-api/docs/rate-limits), and [Cloudflare R2 pricing](https://developers.cloudflare.com/r2/pricing/).
+
+### Historical next bounded execution sequence (superseded by the 2026-08-24 continuation)
+
+1. Keep the original full-queue activities paused through the application service; do not restart the unbounded queue as a capacity test.
+2. Preserve the completed one-chapter-per-source sample and its application-service artifact readback as the bounded validation baseline.
+3. Before any larger run, capture a fresh `pg_stat_statements` aggregate and operator-side Supabase egress report baseline. Treat cumulative database counters as workload indicators only.
+4. Measure and remove the synchronous database/storage work inside concurrent async chapter tasks, then repeat a small staged sample with provider, query, R2, and lease metrics.
+5. Verify Gemini project/model limits in AI Studio and set a project-level budget lower than the provider limits. Do not infer capacity from the number of API keys.
+6. Only after the staged workload is stable, run 1k/10k/100k-DAU-equivalent reader load and separately authorize application-service chapter repair, backup/restore, and production-scale telemetry.
+
+### Operator egress and route evidence - 2026-08-23
+
+The operator-provided Supabase custom report now supplies the missing billing
+attribution. Its current window shows `API Egress=0` and a
+`Shared Pooler Egress` peak of `66,683,432,737` bytes, approximately 66.68 GB
+decimal (62.1 GiB). That is consistent with the organization Usage page's
+67.20 GB total and identifies the pooler path as the dominant observed source.
+The report's bucket label is offset by approximately one day from the Usage
+chart; the exact hover timestamp should be recorded in the next evidence
+capture rather than inferred from the axis label.
+
+The sanitized runtime probes show both the backend and worker using a pooler
+host on port `5432`. This is Session Pooler mode for the current IPv4
+deployment. `DB_CONNECTION_MODE=direct` is an application pool-topology
+setting in this repository; the `DATABASE_URL` endpoint determines whether
+the connection is direct, session-pooler, or transaction-pooler. No endpoint
+or environment value was changed at this checkpoint.
+
+### Session Pooler canary follow-up - 2026-08-23
+
+The rebuilt `novelai-admin:local` image was used for one NCode-only
+application-service canary. Temporary process overrides capped Gemini at
+12 RPM with provider and chapter concurrency set to 1; no project `.env` value
+was changed. The canary selected NCode at retry count 4, renewed its lease, and
+remained `running` without a visible chapter-progress transition during the
+bounded window.
+
+The sanitized database baseline moved from 1,333,488 cumulative calls and
+16,580,767 rows to 1,339,354 calls and 16,585,220 rows. These counters include
+the verification queries and are not billed-byte measurements. Container
+memory rose from about 117 MiB to 174 MiB, network totals reached about
+13.2 MB received and 1.63 MB sent, and `OOMKilled=false` remained true. The
+temporary canary was stopped and removed at the safety checkpoint; the
+dedicated worker remains stopped. No PostgreSQL row, runtime JSON, canonical
+R2 prefix, or endpoint was manually edited.
+
+This run confirms that the Session Pooler route and the rebuilt worker can be
+observed under the lower provider cap, but it does not prove terminal
+translation or a safe full-queue rate. Further queue execution remains gated
+on reducing the repeated database work and obtaining a fresh report hover
+timestamp for the next before/after comparison.
+
+### Full-queue stop and 100k-user scale decision - 2026-08-23 15:34 UTC
+
+A later application-service run used temporary provider and chapter concurrency
+of `4` against the existing NCode activity. It was deliberately stopped at a
+checkpoint after the queue continued to spend an hour-scale window on one
+source. The final sanitized chapter projection at the stop was:
+
+| Source | Complete | Failed | Pending | Fetching | Translating | Nonterminal |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| NCode | 75 | 19 | 49 | 1 | 4 | 54 |
+| Kakuyomu | 9 | 78 | 0 | 0 | 1 | 1 |
+| Novel18 | 29 | 2 | 0 | 0 | 0 | 0 |
+
+The worker sample at the final observation was about `224 MiB` resident,
+`256 MB` received, `27.4 MB` sent, and up to about `57%` CPU. These are
+container-session indicators, not Supabase billed-byte attribution. Graceful
+stop did not complete within the stop window, so the dedicated one-shot
+container was force-terminated and removed; no PostgreSQL row, runtime JSON,
+canonical R2 object, or endpoint was manually edited. The remaining fetching
+and translating states must be recovered by the normal expired-lease/application
+claim path before another run.
+
+This result is a capacity warning, not evidence that R2 content placement is
+wrong. The intended boundary remains: PostgreSQL stores compact catalog/state,
+hashes, pointers, queue leases, and projections; R2 stores immutable raw,
+translated, and media artifacts. The immediate cost driver is repeated
+database-row hydration and synchronous database/storage work inside concurrent
+async chapter tasks. Large legacy JSON columns still need a measured migration
+or reference-only follow-up where they remain on routine paths; the new
+`defer()`/`load_only()` projections reduce hydration but do not by themselves
+prove billed-byte savings.
+
+Do not use the full queue as the next acceptance workload. The next execution
+gate is a bounded one-to-three-chapter sample for each source, with fresh
+before/after `pg_stat_statements` counters, provider timing/token fields, R2
+operation counters, queue/lease transitions, and a fixed stop window. Only
+after that sample is stable should the workload expand in steps.
+
+For a 100k-daily-user planning model, DAU alone is insufficient. Record active
+readers, requests per session, cache-hit ratio, average catalog/detail bytes,
+chapters read, translated chapters per day, provider tokens, and concurrent
+worker jobs. Keep public reads on cached compact PostgreSQL projections and
+exact-key R2/CDN reads; isolate translation workers from the reader connection
+budget; batch state writes; and add load tests at 1k, 10k, and 100k DAU-equivalent
+traffic before claiming capacity. Supabase's current pricing page lists Pro
+at `$25/month` with `250 GB` egress included and `$0.09/GB` overage, while R2
+charges storage and Class A/B operations but no direct R2 egress. These figures
+must be rechecked at launch and do not include compute, provider, CDN, or
+observability costs.
+
+### Bounded three-source sample follow-up - 2026-08-23 15:59 UTC
+
+The three original full-queue activities were paused through
+`ActivityQueueService`. Three new one-chapter sample activities were then
+created through the same service and executed sequentially at provider and
+chapter concurrency `1`. NCode, Novel18, and Kakuyomu each reached
+`completed`; application-service readback confirmed raw and translated content
+was present for each selected chapter. The sample containers exited cleanly and
+the original full queues remain paused. This closes bounded validation only; it
+does not claim that the remaining full queues are economical or terminal.
+
 ## How to use this plan
 
 The order matters. Runtime/release correctness comes before application benchmarks; serving-path fixes come before frontend polish; and worker/provider tuning comes after queue and origin metrics exist. Each phase has an exit gate. Do not declare a phase complete from a code diff alone.
@@ -288,7 +429,7 @@ Completed in the local checkout and Compose environment:
 - Wired the existing five-second health-cache setting into a single-flight
   readiness cache. Public readiness now performs only database, lightweight
   storage reachability, worker, and disk checks; the full storage
-  write/read/delete probe and S3 usage scan remain owner diagnostics.
+  write/read/delete probe and R2 usage scan remain owner diagnostics.
 - Added bounded process-local public projection caching for safe catalog pages,
   DB-backed summaries, and chapter metadata. The default is a 30-second TTL
   with 256 entries. Database/projection version keys and publish/reconcile/
@@ -357,7 +498,7 @@ Exit gate: provider overload increases queue time predictably rather than consum
 Actions:
 
 - Add indexed metadata or a bounded cache backend for invalidation, statistics, and eviction.
-- Shard file-backed entries if a migration is needed, and avoid scanning the entire cache directory on a request path.
+- Shard disposable local-runtime entries if a migration is needed, and avoid scanning the entire cache directory on a request path.
 - Measure cache hit rate, read/write latency, eviction duration, and disk contention.
 
 Exit gate: cache maintenance has a bounded schedule and does not increase translation or public-read p95 as cache size grows.
@@ -550,7 +691,7 @@ stack was restored afterward. This does not substitute for production R2/S3
 telemetry.
 
 The application-side capacity response was then implemented and rebuilt into
-the admin and reader images. A direct-mode filesystem control repeated the
+the admin and reader images. A direct-mode local-runtime control repeated the
 eight-request authenticated enqueue burst and returned five `202` responses
 and three configured translation-limit `429` responses, with zero capacity
 `500`s. Recognized SQLAlchemy DBAPI pool/server-capacity failures now return a
@@ -605,7 +746,7 @@ evidence, not a substitute for the explicit source guard or pooler verification.
 ### Phase 6 continuation: current-image public rerun
 
 A fresh run used the current application images and an isolated named
-filesystem volume. It seeded 48 published novels, 1,428 projected chapters,
+pre-cutover disposable storage fixture. It seeded 48 published novels, 1,428 projected chapters,
 and 1,200 privacy-safe authenticated/anonymous view events. Five samples per
 route at concurrency 8 returned `200` for every public route with zero
 timeouts or transport errors. The p95 values were `281.925 ms` for liveness,
@@ -706,7 +847,7 @@ hostname before public launch.
 
 The final Compose recheck initially found the `worker` service restarting with
 exit code `1` (`23` restarts observed). It runs as `novelai` UID/GID `100:101`,
-but the mounted `/app/storage/novel_library` root was `root:root` mode `755`, so
+but the mounted legacy content root was `root:root` mode `755`, so
 the worker could not create `activity_log` or temporary provider
 credential-hydration files. After explicit authorization, an ownership-only
 change assigned the mounted directory to `novelai:novelai`; no storage files
@@ -735,4 +876,191 @@ external launch gates.
     the target pooler, then rerun Phase 6 with production-equivalent object
     storage and worker/provider telemetry before launch sign-off. (Open external launch gate.)
 
+## Worker egress containment checkpoint — 2026-08-23 (historical; superseded by the 2026-08-24 handoff)
+
+The worker was stopped after the operator reported `57.434 GB / 5 GB` egress
+for the billing cycle. That dashboard value is operator-supplied and was not
+refreshed through the available database connector. The worker was intentionally
+left stopped while the rebuilt query paths were reviewed; no live activity or
+chapter row was manually rewritten. The last interrupted activity remains
+subject to normal lease expiry and application-level recovery.
+
+Read-only PostgreSQL statistics identified the dominant query families: full
+Novel-by-slug reads with `metadata_history_json`, full Chapter reads with media
+and translation-version JSON, and repeated activity polling. These statistics
+are cumulative database counters rather than billing-cycle byte telemetry, so
+they explain the likely egress mechanism but do not prove the exact billed
+worker share. Supabase Reports remains the authority for Database/Pooler egress
+attribution.
+
+The locally selected corrections are:
+
+- defers `Novel.metadata_history_json` on routine catalog reconciliation and
+  defers chapter media/version/edit-history JSON on existing chapter lookups;
+- projects translation platform-novel and glossary-revision lookups with
+  `load_only()`;
+- reuses selected novel metadata, approved glossary entries, and raw chapter
+  bundles only within one translation job;
+- reuses the activity row returned by the atomic claim in `run-next`;
+- uses bucket-level `HEAD` for R2 readiness rather than a probe `LIST`;
+- keeps atomic claims, timestamp-only heartbeat updates, and 5-to-30-second
+  empty polling, which were already correct; and
+- keeps the normal five-minute-lease heartbeat in the 15–30 second window,
+  with a shorter-lease branch only for explicitly shortened local/test leases.
+
+The bounded per-job novel/glossary/raw-bundle cache is now implemented with an
+invocation lifetime and no cross-job reuse. Its byte impact remains unmeasured
+until a terminal workload canary; a process-global or cross-job cache remains
+deferred because it would require a separate invalidation contract.
+
+Focused validation passed after the change, followed by the post-patch full
+backend suite (`2,904 passed, 16 skipped`), Ruff, Pyright, Compose validation,
+and the repository Markdown/link checks. A rebuilt-worker canary was then run against
+only the existing NCode activity. It retained a fresh lease but showed no
+chapter-state transition during the bounded observations; Kakuyomu remained
+pending. The worker was stopped after cumulative statement volume rose from
+1,308,671 to 1,322,596 and container traffic rose from 21.6 MB to 59.1 MB
+received. These are resource indicators, not billed-byte attribution. Docker
+reported exit 137 after the stop timeout, and the activity remains for normal
+application-level lease recovery. Production pooler/query-plan, billed egress
+attribution, terminal queue outcomes, and representative provider-volume
+telemetry remain open.
+
 The first practical gate is not a frontend optimization: it is a current-revision deployment with a healthy reader, healthy readiness, current migrations, and a catalog request that cannot fall back to a serial object-storage scan.
+
+### Post-canary query-payload projection hardening - 2026-08-23 (historical; superseded by the 2026-08-24 handoff)
+
+The translation path now projects only the fields needed for platform-novel
+and glossary-revision lookups. Routine catalog saves/reconciliation defer
+`Novel.metadata_history_json`; existing chapter lookups defer
+`media_state_json`, `translation_versions_json`, and
+`translation_edit_history_json`. The bounded per-job cache reuses selected
+metadata, approved glossary entries, and raw chapter bundles across discovery,
+preflight, and translation, then is discarded with the job.
+
+Focused projection/translation/worker/glossary coverage passed `145` tests,
+Ruff and Pyright passed, and the full backend suite passed `2,904` tests with
+`16` skips. No environment value changed and the dedicated worker remains
+stopped. The latest canary remains nonterminal, so the byte-level egress effect
+of these projections still requires a later terminal workload comparison.
+
+## Async execution and capacity handoff - 2026-08-24 (historical checkpoint)
+
+Completed local slices:
+
+- bounded persistence boundary with ownership guards, progress batching,
+  idempotent event/chunk replay, queue lease/cancellation/shutdown coverage,
+  and explicit rollback configuration;
+- bounded runtime telemetry and redaction/provenance tests;
+- conservative contributor-pool admission with shared-project quota accounting,
+  fair selection, reservation reconciliation/expiry, and secret-free ledger
+  attribution;
+- fixture-only reader/capacity harness, public correctness matrix, checkpoint
+  footprint measurement, and hosted-versus-modeled cost envelope.
+
+Current gate outcomes:
+
+- isolated R2 PUT/GET/HEAD/DELETE benchmark: complete against the separate test
+  bucket with 6 live tests and a final paginated zero-object cleanup sweep;
+- independent R2 object snapshot and recovery readback: complete with a verified
+  980-object, 4,022,175-byte snapshot; encrypted PostgreSQL backup and
+  isolated restore also passed with 37 public tables and 0 invalid constraints
+  (`artifacts/capacity/pac-8a109a5ad1cd-recovery-evidence.md`);
+- bounded source canary: complete with one terminal application-service sample,
+  one provider usage-ledger success, and exact raw/translated R2 readback
+  (`artifacts/capacity/pac-8a109a5ad1cd-live-canary-gate.md`);
+- 1k reader stage: complete execution with a quantified SLO and telemetry stop
+  after 50 samples per route, zero transport errors, and non-empty content
+  responses (`artifacts/capacity/pac-8a109a5ad1cd-reader-stage-1000.md`);
+- 10k and 100k reader stages: complete dependency-safety decision; higher-stage
+  traffic was not admitted after the 1k stop, and no provider, R2, or canonical
+  content operation was performed (`artifacts/capacity/pac-8a109a5ad1cd-reader-stages-10000-100000.md`).
+
+The current evidence boundary is complete: the local runner recorded the
+provider/R2 counter and hosted-billing fields that it could not observe, so
+these results do not claim production billing, provider quota, or capacity
+success. The worker remains stopped and the original full queue remains
+paused by the recorded safety decision.
+
+The recovery drill was repeated after `DATABASE_BACKUP_URL` was synchronized
+exactly once into both real deployment environments from the configured
+migration connection. The persisted configuration created and restored the
+encrypted backup without a process override.
+
+Rollback remains configuration-first: disable
+`TRANSLATION_PERSISTENCE_EXPANSION_ENABLED`, stop new admission, drain critical
+terminal work within the deadline, and verify state through the application.
+Do not claim production SLO, billing, egress, provider quota, or reader
+capacity from the local artifacts.
+
+### Reader capacity and recovery follow-up — current checkpoint 2026-08-25
+
+The follow-up specification's execution package is structurally validated, but
+its operational disposition is blocked. The latest generated report contains
+the complete 3-topology x 5-required-route x warm/unknown-cache matrix; all
+cells are explicitly unavailable because no approved fixture/target or
+controlled cold-cache method was supplied. `reader_slo_status=blocked` and
+`path_profile_status=blocked`; no live 1k sample result is claimed.
+
+All attribution layers and hosted telemetry snapshots are explicitly
+unavailable, so no largest contributor or hosted R2/provider billing/quota
+value is established and no speculative remediation was applied. Recovery
+control tests pass locally, but current backup freshness, alert delivery, and
+isolated hosted restore evidence remain unavailable/blocked. The managed
+services workflow also references a missing integration-test path. The worker,
+original full queue, 10k/100k stages, and production-capacity admission remain
+stopped or unadmitted. See
+`artifacts/operations/reader-capacity-follow-up/handoff.md` and
+`artifacts/operations/reader-capacity-follow-up/validation.md` for exact
+blockers and next actions.
+
+### Reader capacity and recovery runtime recheck — retired topology checkpoint 2026-08-27
+
+The local Compose baseline was restored after Docker Desktop had been stopped.
+Backend, reader, Caddy, frontend, Redis, and restore-db were healthy, and local
+Caddy returned HTTP 200 with an empty body for both `/health/live` and
+`/health/ready`. This is a local runtime recovery observation, not production
+availability or Cloudflare-edge evidence. This private-network topology is
+retired.
+
+The historical campaign `camp-20260827T130658Z` selected `private_network` as
+the only reader SLO gate. Its bounded 1k runner invocation produced no live
+samples because no approved fixture/target binding or controlled cold-cache
+method was available. The 60 route/cache cells are explicit unavailable evidence;
+`reader_slo_status=blocked`, `path_profile_status=blocked`,
+`telemetry_status=unavailable`, and `production_capacity_claim=not_established`.
+The worker stayed absent, while original-queue and other-writer state remain
+unobservable. No remediation is selected without non-overlapping layer timing.
+
+The T-011 local quality gates passed, including Pyright, affected Ruff,
+focused tests, workflow-path and router checks, semantic artifact validators,
+and Graphify. Hosted pooler/R2/provider telemetry, recovery freshness/alert/
+restore evidence, release configuration parity, cross-source acceptance,
+provider/bulk readiness, production CDN/takedown propagation, actual
+credential rotation, and dedicated-host availability remain external gates.
+
+### Reader capacity and recovery runtime recheck - retired topology checkpoint 2026-08-28
+
+The historical campaign is `camp-20260828T042235Z`, with `private_network` as
+the selected reader gate. The historical stage artifact
+`reader-stage-1000/reader-stage-1000-20260828T042533Z.json` records 60 required
+route/cache cells, 30 quantified blockers, and no live samples. The 38
+pre-remediation and stage-1000 telemetry records are joinable but explicitly
+unavailable. The worker/full queue remain stopped or paused, and the approved
+fixture/target, queue/writer observation, controlled cold-cache method,
+hosted telemetry, and isolated recovery evidence remain unavailable. The
+dispositions are still `reader_slo_status=blocked`,
+`path_profile_status=blocked`, `telemetry_status=unavailable`, and
+`production_capacity_claim=not_established`. This private-network topology is
+retired; see the Cloudflare checkpoint below.
+
+## Reader capacity access decision - current checkpoint 2026-08-29
+
+The active reader-capacity contract now selects `cloudflare_tunnel` as the
+non-production Caddy-routed SLO surface. The direct service and Caddy loopback
+paths remain diagnostic comparisons. Earlier private-network measurements are
+historical and are not a current prerequisite. The supplied fixture is absent
+from the Cloudflare development origin. The bounded read-only run recorded
+50 warm samples per required route, with liveness/catalog/search over budget
+and detail/chapter returning HTTP 404; controlled cold-cache evidence remains
+unavailable and no production-capacity claim is established.

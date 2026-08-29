@@ -34,27 +34,57 @@ def test_default_settings() -> None:
     assert s.COST_PER_TOKEN_USD > 0
     assert s.SCRAPE_DELAY_SECONDS == 1.0
     assert s.TRANSLATION_TARGET_LANGUAGE == "English"
-    assert s.NOVEL_LIBRARY_DIR.is_absolute() or bool(s.NOVEL_LIBRARY_DIR.anchor)
-    assert s.S3_KEY_PREFIX == "storage/novel_library"
+    assert s.RUNTIME_DIR.is_absolute() or bool(s.RUNTIME_DIR.anchor)
+    assert s.R2_BUCKET == "dokushodo"
+    assert s.R2_REGION == "auto"
+    assert s.R2_BACKUP_BUCKET == "dokushodo-backup"
     assert s.MIGRATION_DATABASE_URL is None
 
 
-def test_novel_library_dir_uses_canonical_setting() -> None:
+def test_capacity_settings_default_to_conservative_rollback_profile() -> None:
+    s = AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+    assert s.TRANSLATION_PERSISTENCE_EXPANSION_ENABLED is False
+    assert s.TRANSLATION_PERSISTENCE_WORKERS == 2
+    assert s.TRANSLATION_PERSISTENCE_QUEUE_SIZE == 8
+    assert s.RUNTIME_TELEMETRY_SAMPLE_INTERVAL_SECONDS == 0.25
+    assert s.RUNTIME_TELEMETRY_MAX_OBSERVATIONS == 256
+    assert s.RUNTIME_EVENT_LOOP_LAG_THRESHOLD_MS == 1000.0
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("TRANSLATION_PERSISTENCE_WORKERS", 0),
+        ("TRANSLATION_PERSISTENCE_QUEUE_SIZE", -1),
+        ("TRANSLATION_PERSISTENCE_OBSERVATION_LIMIT", 16),
+        ("TRANSLATION_PERSISTENCE_SHUTDOWN_TIMEOUT_SECONDS", 0),
+        ("RUNTIME_TELEMETRY_SAMPLE_INTERVAL_SECONDS", 0.01),
+        ("RUNTIME_TELEMETRY_MAX_OBSERVATIONS", 16),
+        ("RUNTIME_EVENT_LOOP_LAG_THRESHOLD_MS", 0),
+    ],
+)
+def test_capacity_settings_reject_values_outside_safe_ranges(field: str, value: object) -> None:
+    with pytest.raises(ValueError):
+        AppSettings(_env_file=None, **{field: value})  # type: ignore[call-arg]
+
+
+def test_runtime_dir_uses_canonical_setting() -> None:
     s = AppSettings(
         _env_file=None,  # type: ignore[call-arg]
-        NOVEL_LIBRARY_DIR=Path("/tmp/test_lib"),
+        RUNTIME_DIR=Path("/tmp/test_runtime"),
     )
-    assert Path("/tmp/test_lib") == s.NOVEL_LIBRARY_DIR
+    assert Path("/tmp/test_runtime") == s.RUNTIME_DIR
     assert not hasattr(s, "DATA_DIR")
 
 
-def test_relative_novel_library_dir_resolves_from_project_root() -> None:
+def test_relative_runtime_dir_resolves_from_project_root() -> None:
     s = AppSettings(
         _env_file=None,  # type: ignore[call-arg]
-        NOVEL_LIBRARY_DIR=Path("storage/novel_library"),
+        RUNTIME_DIR=Path("data/runtime"),
     )
-    assert s.NOVEL_LIBRARY_DIR.is_absolute()
-    assert s.NOVEL_LIBRARY_DIR.parts[-2:] == ("storage", "novel_library")
+    assert s.RUNTIME_DIR.is_absolute()
+    assert s.RUNTIME_DIR.parts[-2:] == ("data", "runtime")
 
 
 def test_web_defaults() -> None:

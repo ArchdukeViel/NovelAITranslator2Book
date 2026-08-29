@@ -32,8 +32,11 @@ ENV/
 .ruff_cache/
 .pyright/
 .playwright-cli/
+.vercel/
+.local/
 
 # Graphify generated knowledge graph
+**/graphify-out/
 graphify-out/
 
 # CodeGraph generated local index
@@ -73,6 +76,8 @@ backend/tests/.pytest_cache/
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+!.vscode/tasks.json
+!.vscode/mcp.json
 .idea/
 *.swp
 *.swo
@@ -92,8 +97,17 @@ __MACOSX/
 .env.*
 !.env.example
 !.env.*.example
+deploy/.env
+deploy/.env.*
+!deploy/.env.example
+
+# Cloudflare tunnels & credentials
+.cloudflared/
+deploy/.cloudflared/
+*.tunnel-token
 
 # Runtime data
+data/runtime/
 novel_library/
 storage/novel_library/
 storage/output/
@@ -116,17 +130,19 @@ storage/backups/
 *.7z
 *.rar
 
-# Legacy path (pre-consolidation)
-data/
+# Regenerated sanitized operational evidence
+artifacts/operations/
 
 # Session exports
 SESSION_EXPORT_*.json
 
 # Agent working directory (Hermes plans/scratch live here; promote keepers to docs/)
 .opencode/
+**/.opencode/
 .codex/plans/
 .codex/scratch/
 .codex/*.log
+.history/
 
 
 # Documentation (tracking)

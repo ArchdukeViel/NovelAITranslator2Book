@@ -37,7 +37,7 @@ class _FakeClient:
 @pytest.fixture(autouse=True)
 def isolate_gemini_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
     """Keep provider accounting and quota state out of the project runtime tree."""
-    monkeypatch.setattr(settings, "NOVEL_LIBRARY_DIR", tmp_path)
+    monkeypatch.setattr(settings, "RUNTIME_DIR", tmp_path)
 
 
 def test_gemini_provider_uses_request_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -130,7 +130,32 @@ def test_gemini_provider_accepts_custom_json_schema(monkeypatch: pytest.MonkeyPa
     config = payload.get("config")
     assert isinstance(config, dict)
     assert config.get("response_mime_type") == "application/json"
-    assert config.get("response_schema") == schema
+    assert config.get("response_schema") == {
+        "type": "object",
+        "properties": {"terms": {"type": "array"}},
+        "required": ["terms"],
+    }
+
+
+def test_gemini_provider_normalizes_nested_unsupported_schema_fields() -> None:
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": False},
+            }
+        },
+    }
+
+    normalized = GeminiProvider._normalize_response_schema(schema)
+
+    assert normalized == {
+        "type": "object",
+        "properties": {"items": {"type": "array", "items": {"type": "object"}}},
+    }
+    assert schema["additionalProperties"] is False
 
 
 def test_gemini_provider_raises_when_api_key_missing() -> None:
@@ -214,6 +239,53 @@ def test_gemini_provider_normalizes_daily_quota_exhaustion(monkeypatch: pytest.M
 
     assert caught.value.provider_error_code == ProviderErrorCode.QUOTA_EXHAUSTED
     assert caught.value.provider_model == GEMINI_DEFAULT_MODEL
+
+
+def test_gemini_provider_prioritizes_maximum_daily_quota_over_context_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {
+        "raise": _FakeGeminiError(
+            "429 RESOURCE_EXHAUSTED: Maximum requests per day exceeded",
+        )
+    }
+
+    with pytest.raises(ProviderError) as caught:
+        _run_gemini_with_state(monkeypatch, state)
+
+    assert caught.value.provider_error_code == ProviderErrorCode.QUOTA_EXHAUSTED
+
+
+def test_gemini_provider_prioritizes_maximum_rpm_over_context_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {
+        "raise": _FakeGeminiError(
+            "429 RESOURCE_EXHAUSTED: Maximum requests per minute exceeded",
+        )
+    }
+
+    with pytest.raises(ProviderError) as caught:
+        _run_gemini_with_state(monkeypatch, state)
+
+    assert caught.value.provider_error_code == ProviderErrorCode.RATE_LIMITED
+
+
+def test_gemini_provider_keeps_actual_context_errors_as_context_too_large(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {
+        "raise": _FakeGeminiError(
+            "400 INVALID_ARGUMENT: input token count exceeds the context window",
+            status_code=400,
+            code="INVALID_ARGUMENT",
+        )
+    }
+
+    with pytest.raises(ProviderError) as caught:
+        _run_gemini_with_state(monkeypatch, state)
+
+    assert caught.value.provider_error_code == ProviderErrorCode.CONTEXT_TOO_LARGE
 
 
 def test_gemini_provider_normalizes_unknown_provider_error(monkeypatch: pytest.MonkeyPatch) -> None:

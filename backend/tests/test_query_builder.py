@@ -40,11 +40,7 @@ def test_query_by_state(storage):
 
 def test_query_by_multiple_states(storage):
     """Test filtering by multiple states."""
-    results = (
-        storage.query_chapters("novel1")
-        .by_states([ChapterState.TRANSLATED, ChapterState.EXPORTED])
-        .execute()
-    )
+    results = storage.query_chapters("novel1").by_states([ChapterState.TRANSLATED, ChapterState.EXPORTED]).execute()
 
     assert len(results) == 4
 

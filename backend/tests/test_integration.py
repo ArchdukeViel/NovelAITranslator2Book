@@ -460,10 +460,12 @@ async def test_bootstrap_and_registry(integration_fixture):
     """Test bootstrap and provider registry."""
     bootstrap()
 
-    from novelai.inputs.registry import available_input_adapters
+    from novelai.inputs.registry import get_input_adapter
 
-    assert "epub" in available_input_adapters()
-    assert "pdf" in available_input_adapters()
+    assert get_input_adapter("web").key == "web"
+    for removed_key in ("text", "epub", "pdf", "image_folder", "cbz"):
+        with pytest.raises(KeyError):
+            get_input_adapter(removed_key)
 
 
 def test_logging_integration():

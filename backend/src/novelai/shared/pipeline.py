@@ -67,8 +67,7 @@ class PipelineContext:
 class PipelineStep(Protocol):
     name: str
 
-    async def run(self, context: PipelineContext) -> PipelineContext:
-        ...
+    async def run(self, context: PipelineContext) -> PipelineContext: ...
 
 
 @dataclass
@@ -90,6 +89,18 @@ class PipelineEvent:
     warning_code: str | None = None
     error_code: str | None = None
     message: str | None = None
+    operation: str | None = None
+    duration_ms: float | None = None
+    input_bytes: int | None = None
+    output_bytes: int | None = None
+    compressed_bytes: int | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    retry_count: int | None = None
+    concurrency: int | None = None
+    db_rows: int | None = None
+    r2_operation_count: int | None = None
+    unavailable_reason: str | None = None
     timestamp: str | None = None
 
     def to_dict(self) -> dict[str, Any]:

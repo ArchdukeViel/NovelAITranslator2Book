@@ -16,6 +16,8 @@ from enum import StrEnum
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from sqlalchemy.engine import make_url
+
 from novelai.config.settings import AppSettings
 
 DEFAULT_SECRET_VALUES: frozenset[str] = frozenset(
@@ -129,6 +131,18 @@ def _secret_value(value: object | None) -> str | None:
         return None
     getter = getattr(value, "get_secret_value", None)
     return str(getter() if getter else value)
+
+
+def _same_database_target(first: str, second: str) -> bool:
+    """Compare database targets without treating the SQLAlchemy driver as identity."""
+    first_normalized = first.replace("postgresql+psycopg://", "postgresql://", 1)
+    second_normalized = second.replace("postgresql+psycopg://", "postgresql://", 1)
+    try:
+        return make_url(first_normalized).render_as_string(hide_password=False) == make_url(
+            second_normalized
+        ).render_as_string(hide_password=False)
+    except TypeError, ValueError:
+        return first_normalized == second_normalized
 
 
 def validate_production_config(settings: AppSettings) -> ValidationResult:
@@ -247,33 +261,17 @@ def validate_production_config(settings: AppSettings) -> ValidationResult:
                 "Aggregate database pool ceiling exceeds DB_CONNECTION_BUDGET.",
             )
 
-    # --- Storage backend
-    if settings.STORAGE_BACKEND == "s3":
-        if not settings.S3_BUCKET:
-            result.add(
-                Severity.FATAL,
-                "storage",
-                "S3_BUCKET is required when STORAGE_BACKEND=s3.",
-            )
-        # R2 and other S3-compatible targets without IAM require explicit credentials
-        if settings.S3_ENDPOINT and not (settings.S3_ACCESS_KEY_ID and settings.S3_SECRET_ACCESS_KEY):
-            result.add(
-                Severity.FATAL,
-                "storage",
-                "S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY are required when S3_ENDPOINT is set (e.g. Cloudflare R2).",
-            )
-        if settings.S3_KEY_PREFIX.strip().strip("/") != "storage/novel_library":
-            result.add(
-                Severity.FATAL,
-                "storage",
-                "S3_KEY_PREFIX must be storage/novel_library in production.",
-            )
-    elif settings.STORAGE_BACKEND not in ("filesystem", "s3"):
-        result.add(
-            Severity.FATAL,
-            "storage",
-            "Unknown STORAGE_BACKEND value.",
-        )
+    # --- R2-only content storage
+    if settings.R2_BUCKET != "dokushodo":
+        result.add(Severity.FATAL, "storage", "R2_BUCKET must be dokushodo in production.")
+    if settings.R2_REGION != "auto":
+        result.add(Severity.FATAL, "storage", "R2_REGION must be auto for Cloudflare R2.")
+    if not settings.R2_ENDPOINT:
+        result.add(Severity.FATAL, "storage", "R2_ENDPOINT is required in production.")
+    if not settings.R2_ACCESS_KEY_ID or not settings.R2_SECRET_ACCESS_KEY:
+        result.add(Severity.FATAL, "storage", "R2 application credentials are required in production.")
+    if settings.R2_BACKUP_BUCKET != "dokushodo-backup":
+        result.add(Severity.FATAL, "storage", "R2_BACKUP_BUCKET must be dokushodo-backup in production.")
 
     # --- Trusted proxy
     if not settings.TRUSTED_PROXY_CIDRS:
@@ -321,67 +319,70 @@ def validate_production_config(settings: AppSettings) -> ValidationResult:
             "backup",
             "BACKUP_ENABLED is false; production should have backups enabled or a documented exception.",
         )
-    elif settings.STORAGE_BACKEND == "s3":
-        if not settings.BACKUP_S3_ENABLED:
+    elif not settings.R2_BACKUP_ENABLED:
+        result.add(
+            Severity.FATAL,
+            "backup",
+            "R2_BACKUP_ENABLED must be true when BACKUP_ENABLED is enabled in production.",
+        )
+    else:
+        if not settings.R2_BACKUP_BUCKET:
             result.add(
                 Severity.FATAL,
                 "backup",
-                "BACKUP_S3_ENABLED must be true when production storage uses S3.",
+                "R2_BACKUP_BUCKET is required when production backups are enabled.",
             )
-        if not settings.BACKUP_S3_BUCKET:
+        if settings.R2_BACKUP_BUCKET == settings.R2_BUCKET:
             result.add(
                 Severity.FATAL,
                 "backup",
-                "BACKUP_S3_BUCKET is required when S3 offsite backups are enabled.",
+                "R2_BACKUP_BUCKET must differ from R2_BUCKET.",
             )
-        elif settings.BACKUP_S3_BUCKET == settings.S3_BUCKET:
+        if not settings.R2_BACKUP_ENDPOINT:
             result.add(
                 Severity.FATAL,
                 "backup",
-                "BACKUP_S3_BUCKET must be different from the production S3_BUCKET.",
+                "R2_BACKUP_ENDPOINT is required for recovery writes.",
             )
-        if not settings.BACKUP_S3_PREFIX.strip().strip("/"):
+        if not settings.R2_BACKUP_ACCESS_KEY_ID or not settings.R2_BACKUP_SECRET_ACCESS_KEY:
             result.add(
                 Severity.FATAL,
                 "backup",
-                "BACKUP_S3_PREFIX must be a non-root prefix.",
+                "R2 backup-write credentials are required.",
             )
-        if not settings.BACKUP_S3_ENDPOINT_URL:
+        if not settings.R2_SOURCE_ACCESS_KEY_ID or not settings.R2_SOURCE_SECRET_ACCESS_KEY:
             result.add(
                 Severity.FATAL,
                 "backup",
-                "BACKUP_S3_ENDPOINT_URL is required for S3-compatible offsite backups.",
+                "R2 source-read credentials are required for backups.",
             )
-        if not settings.BACKUP_S3_ACCESS_KEY_ID or not settings.BACKUP_S3_SECRET_ACCESS_KEY:
-            result.add(
-                Severity.FATAL,
-                "backup",
-                "BACKUP_S3_ACCESS_KEY_ID and BACKUP_S3_SECRET_ACCESS_KEY are required for offsite backups.",
-            )
-        if not settings.SNAPSHOT_SOURCE_S3_ACCESS_KEY_ID or not settings.SNAPSHOT_SOURCE_S3_SECRET_ACCESS_KEY:
-            result.add(
-                Severity.FATAL,
-                "backup",
-                "Dedicated read-only snapshot-source credentials are required for S3 backups.",
-            )
-        source_access_key = _secret_value(settings.SNAPSHOT_SOURCE_S3_ACCESS_KEY_ID)
-        target_access_key = _secret_value(settings.BACKUP_S3_ACCESS_KEY_ID)
-        application_access_key = _secret_value(settings.S3_ACCESS_KEY_ID)
+        source_access_key = _secret_value(settings.R2_SOURCE_ACCESS_KEY_ID)
+        target_access_key = _secret_value(settings.R2_BACKUP_ACCESS_KEY_ID)
+        application_access_key = _secret_value(settings.R2_ACCESS_KEY_ID)
         if source_access_key and source_access_key in {target_access_key, application_access_key}:
             result.add(
                 Severity.FATAL,
                 "backup",
-                "Snapshot-source credentials must differ from application and backup-target credentials.",
+                "R2 source-read credentials must differ from application and backup credentials.",
             )
         if not _valid_schedule(settings.BACKUP_SCHEDULE_CRON, settings.BACKUP_TIMEZONE):
             result.add(Severity.FATAL, "backup", "BACKUP_SCHEDULE_CRON or BACKUP_TIMEZONE is invalid.")
 
     if settings.DATABASE_BACKUP_ENABLED:
-        if not settings.BACKUP_S3_ENABLED:
-            result.add(Severity.FATAL, "database_backup", "Database backups require the independent S3 target.")
-        if not settings.DATABASE_BACKUP_S3_PREFIX.strip().strip("/"):
-            result.add(Severity.FATAL, "database_backup", "DATABASE_BACKUP_S3_PREFIX must not be root.")
-        if settings.DATABASE_BACKUP_S3_PREFIX.strip("/") == settings.BACKUP_S3_PREFIX.strip("/"):
+        if not settings.R2_BACKUP_ENABLED:
+            result.add(Severity.FATAL, "database_backup", "Database backups require the independent R2 target.")
+        backup_url = _secret_value(settings.DATABASE_BACKUP_URL)
+        if not backup_url:
+            result.add(Severity.FATAL, "database_backup", "DATABASE_BACKUP_URL is required for RLS-safe dumps.")
+        elif settings.DATABASE_URL and _same_database_target(backup_url, settings.DATABASE_URL):
+            result.add(
+                Severity.FATAL,
+                "database_backup",
+                "DATABASE_BACKUP_URL must use a dedicated backup-capable database role.",
+            )
+        if not settings.DATABASE_BACKUP_PREFIX.strip().strip("/"):
+            result.add(Severity.FATAL, "database_backup", "DATABASE_BACKUP_PREFIX must not be root.")
+        if settings.DATABASE_BACKUP_PREFIX.strip("/") == settings.R2_BACKUP_PREFIX.strip("/"):
             result.add(Severity.FATAL, "database_backup", "Database and object snapshots require separate prefixes.")
         encryption_key = _secret_value(settings.DATABASE_BACKUP_ENCRYPTION_KEY)
         if not encryption_key or len(encryption_key) < 32:

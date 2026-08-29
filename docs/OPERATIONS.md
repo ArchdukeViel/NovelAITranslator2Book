@@ -2,6 +2,142 @@
 
 Solo-owner runbook for health, maintenance, backup, recovery, incidents, and reader budgets. For topology, environment setup, and release procedures, see [`DEPLOYMENT.md`](DEPLOYMENT.md). Never record secret values in evidence.
 
+## Managed test database verification
+
+`MANAGED_DATABASE_TEST_URL` is reserved for the disposable Supabase project
+named `testdatabase=dokushodo`. It may use the Supabase session pooler, but it
+must never point at the active application database. The strict hosted
+verification workflow does not apply migrations automatically; this preserves
+stale-schema detection.
+
+When the candidate schema must be created or refreshed, run the manual
+confirmation-gated `managed-services-verification.yml` workflow with
+`migrate_test_database=true` and `confirm_test_database=true`. It calls
+`.github/workflows/managed-services-test-migrate.yml`, which runs Alembic once
+with the privileged `MIGRATION_DATABASE_URL` variable and does not start an
+application or worker. After it succeeds, run the same verification workflow
+again with migration disabled for the observed database and R2 checks, then
+leave `MANAGED_SERVICE_TESTS_ENABLED=false`.
+Record only the workflow URL, commit, UTC timestamp, pass/skip/fail counts,
+and sanitized schema evidence; never record the URL or its credentials.
+
+The candidate migration `f8a2c4e6b0d1` also conditionally revokes Data API
+execution on the optional Supabase `public.rls_auto_enable()` security-definer
+helper. It does not create the helper, alter application rows, or restore broad
+execution on downgrade. After a test-database migration, rerun the Supabase
+security advisor and record only the sanitized lint result; do not paste ACL
+or connection-string details into evidence.
+
+## Managed non-production recovery verification
+
+`managed-services-recovery-verification.yml` is a manual, confirmation-gated
+development workflow for the disposable `testdatabase=dokushodo` project and
+the dedicated test R2 target. The candidate branch contains the workflow and
+the `Managed Services Verification` wrapper, but GitHub only exposes a manual
+workflow after its file is present on the default branch. On 2026-08-29 a direct
+dispatch therefore returned `404 workflow ... not found on the default branch`;
+no recovery write was performed in that attempt. Register the candidate workflow
+through the normal reviewed branch flow before relying on a new dispatch. The
+workflow creates a temporary backup-capable database role for the run, generates
+the database-backup encryption key in the runner, uses the existing
+`DatabaseBackupService`, and restores into an ephemeral local PostgreSQL
+service. The run uses a unique R2 prefix and removes the temporary role and
+test objects before recording sanitized evidence.
+
+The recovery runner uses a pinned PostgreSQL 17 client container so the dump
+client matches the managed database major version. Its generated encryption
+key is masked at the runner boundary and is never part of the evidence. A
+restore archive is mounted read-only into that client container. A failed
+restore records only a fixed diagnostic class and deletes raw client
+diagnostics before evidence publication.
+
+GitHub validates manual-dispatch inputs against the default-branch workflow
+copy. The candidate wrapper declares `confirm_test_recovery=true`, but that
+input is usable through the GitHub UI/API only after the wrapper revision is
+registered on the default branch. Until then, a branch-local run may use the
+temporary repository variable `MANAGED_SERVICE_RECOVERY_ENABLED=true` as the
+explicit confirmation, dispatch `Managed Services Verification` against the
+candidate branch, and delete the variable after the run. The variable is
+honored only for `workflow_dispatch`; it must not be left enabled.
+
+For a workflow revision that exposes the input, run it only with
+`confirm_test_recovery=true`. When the default-branch workflow copy does not
+yet expose that input, the documented temporary repository variable is the
+explicit confirmation and must be deleted after the run. The workflow refuses
+the canonical production bucket names and refuses a non-local restore target.
+Its success proves one current isolated backup/restore path and representative
+schema/public-isolation checks; it does not prove recurring production backup
+freshness, operator alert delivery, or production recovery readiness. Keep the
+worker/full queue paused and leave `MANAGED_SERVICE_TESTS_ENABLED=false`.
+
+## Disposable reader-capacity evidence
+
+`.github/workflows/reader-capacity-nonproduction.yml` is the confirmation-gated
+path for the bounded reader-capacity follow-up. It uses the existing
+`MANAGED_DATABASE_TEST_URL` Supabase session-pooler secret and the test R2
+application credentials, while binding the application fixture to the dedicated
+`test-dokushodo` bucket. `test-dokushodo-backup` remains reserved for recovery
+verification; the reader run does not write the canonical `dokushodo` or
+`dokushodo-backup` buckets.
+
+The workflow applies candidate migrations, seeds the explicit synthetic
+`reader-fixture-test-v1` fixture (`test-novel`, chapters `456` and `457`), and
+always cleans the exact fixture rows and R2 namespace. It starts an isolated
+Compose project with worker, provider, analytics, and translation expansion
+disabled, exposes only its internal Caddy listener through an ephemeral
+Cloudflare quick tunnel, waits for that tunnel to return HTTP 200 from the
+isolated `/health/live` route, and runs the bounded reader profile. The profile
+records the Cloudflare SLO-gate cells plus a Caddy-loopback diagnostic target
+with an explicit `localhost` Host binding, 50-count warm cells, and 50-count
+cold cells; each cold cell is
+preceded by `reset_reader_cache.ps1`, which flushes only that project's Redis
+database, restarts only its reader service, waits for reader health, and emits a
+sanitized reset proof. The reset receives the same disposable `deploy/.env` as
+the Compose stack, and fixture cleanup is retained as a separate sanitized
+artifact record.
+
+Each route cell also records coarse sanitized error-class counts (`connect`,
+`transport`, `timeout`, `redirect`, and `other`) when the underlying runner
+exposes an error name. These counts are diagnostic only; they never convert an
+unavailable or incomplete Cloudflare gate cell into a passing result.
+
+The uploaded artifact is retained for seven days and contains sanitized route,
+cache-state, reset-proof, and disposition data only. A successful workflow or
+valid blocked report is non-production evidence: it does not change the named
+`dev.dokushodo.online` tunnel, prove hosted billing/queue telemetry, or establish
+production reader capacity.
+
+### Latest disposable profile checkpoint - 2026-08-29
+
+The follow-up rerun [33259176327](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33259176327)
+completed after the workflow added a tunnel-readiness smoke check and a
+loopback Caddy diagnostic target. The readiness check returned HTTP 200 before
+sampling. Its 20 Cloudflare cells attempted 1,000 requests with 850 valid
+samples, zero transport errors, 144 timeouts, nine passing cells, eight failed
+cells, and three unavailable cells. Its 20 Caddy diagnostic cells attempted
+1,000 requests with 800 valid samples, zero transport errors, 189 timeouts, ten
+passing cells, six failed cells, and four unavailable cells. The Cloudflare gate
+remained blocked because the required health/catalog/detail budgets were
+exceeded and chapter/search cells were incomplete; the Caddy comparison shows
+the same origin-side latency/timeout pattern.
+
+The run recorded 20 controlled cold-reset proofs and completed guarded cleanup.
+Independent Supabase and Cloudflare MCP checks confirmed zero fixture rows in
+the disposable managed database, zero objects under `novels/123/` in
+`test-dokushodo`, and zero `recovery-` objects in `test-dokushodo-backup`.
+The worker remained stopped, queue/writer state remained unknown, hosted
+reader-window telemetry was unavailable, recovery was not assessed in this run,
+and production capacity remains unestablished. The named durable development
+tunnel was down with zero connectors at the control-plane check; the disposable
+quick Tunnel passed independently. The readiness fix removes the earlier
+tunnel-startup transport ambiguity; it does not make the slow or incomplete
+reader routes a capacity pass.
+
+The Supabase test-project advisor and aggregate SQL checks were read-only. The
+Cloudflare zone analytics call was unavailable, zone latency had no usable
+payload, and account-level R2 metrics lacked exact test-bucket/window
+granularity. These provider limitations remain explicit unavailable evidence.
+
 ## Health
 
 | Endpoint | Expected behavior |
@@ -12,7 +148,7 @@ Solo-owner runbook for health, maintenance, backup, recovery, incidents, and rea
 
 States: `healthy`, `degraded`, `unhealthy`. Investigate stale worker heartbeat,
 DB connectivity, storage reachability/capacity, and disk before restart. Public
-readiness does not perform a mutating storage probe or S3 usage enumeration;
+readiness does not perform a mutating storage probe or R2 usage enumeration;
 `/api/admin/health` remains the fresh owner diagnostic for those checks.
 Public health output never includes paths, hosts, credentials, or traces.
 
@@ -58,12 +194,11 @@ cache or increasing probe timeouts blindly.
 - Check owner worker/scheduler status and `SchedulerRuntimeState` heartbeat,
   last result, cooldown/exhaustion, and next eligible run.
 - Scheduled jobs use cron/timezone evaluation and renewable PostgreSQL leases.
-- Local filesystem writes/retention also use `InterProcessFileLock` where needed.
-- Generation pointer activation uses `compare_and_swap_active_pointer`: the
-  filesystem backend wraps the read-compare-write in an `InterProcessFileLock`;
-  the S3 backend uses a conditional `PUT` with `If-Match`/`If-None-Match`.
-  Concurrent activations cannot silently overwrite each other; the loser
-  receives `GenerationConflictError` and must roll its stage back.
+- Local disk is runtime-only; it is never used for canonical novel content or
+  retention. Redis/Valkey owns distributed leases and coordination.
+- Generation activation verifies immutable R2 objects and changes the active
+  PostgreSQL reference with optimistic concurrency. There is no R2 pointer
+  object, filesystem compare-and-swap, or local-generation fallback.
 - Explicit operator recovery from a failed generation activation uses
   `commit_generation_recovery(reason=..., evidence=...)` — both arguments are
   required non-empty strings that are logged for audit. This bypasses the
@@ -100,12 +235,47 @@ the non-secret operation parameters. Poll
 cancel, retry, and lease status controls.
 
 The Compose `worker` service is the normal execution owner. Keep
-`JOB_WORKER_ENABLED=false` on web services so the admin/reader processes do
-not duplicate provider work. The activity queue is backed by the
-`activity_records` table; claims are row-locked, expired leases are recovered,
-and bounded history/metadata limits prevent queue state from growing without
-control. Monitor `novelai_activity_queue_age_seconds`,
+`JOB_WORKER_ENABLED=false` explicitly on both web services so the admin/reader
+processes do not duplicate provider work; do not rely on a shared environment
+file to provide that override. Before a repair or image recreation, verify the
+effective flag in `backend`, `reader`, and `worker`, and verify that only the
+dedicated worker owns the `novelaibook worker` process. The activity queue is
+backed by the `activity_records` table; claims are row-locked, expired leases
+are recovered, and bounded history/metadata limits prevent queue state from
+growing without control. Monitor `novelai_activity_queue_age_seconds`,
 `novelai_activity_queue_operation_total_ms`, and the activity status gauges.
+The worker heartbeat renews from an independent daemon thread, so synchronous
+provider or orchestration work cannot starve lease renewal; the focused worker
+test covers this failure mode. After a code rebuild, verify the running worker
+image before relying on the correction for multi-worker recovery.
+
+The worker protects managed-database egress on the translation hot path. Claims
+use one atomic returning update, the `run-next` path reuses that returned row,
+heartbeats write only lease timestamps, and empty-queue polling backs off from
+5 to 30 seconds. Routine catalog reconciliation defers the large novel
+metadata-history JSON. A broader per-job metadata/glossary/raw-bundle cache was
+not selected because the live audit did not establish a safe repetition or
+invalidation baseline. If Supabase egress rises unexpectedly, stop the worker
+before investigating:
+
+```powershell
+docker compose -f deploy/compose.yml stop --timeout 5 worker
+docker compose -f deploy/compose.yml ps worker
+```
+
+Then inspect Supabase **Reports → Database / Pooler Egress** and compare the
+time window with sanitized application query/operation metrics. `pg_stat_*`
+views can identify query volume and rows but do not provide an exact billing
+byte attribution; do not claim a precise worker share without provider-side
+egress evidence. Do not restart the worker until the query-shape fix is built,
+validated, and the operator has reviewed the remaining queue state.
+
+When a worker is interrupted, repair chapter state through the activity and
+storage services or the documented activity retry controls. Do not hand-edit or
+delete `data/runtime/chapter-state` or checkpoint JSON files. A stale lease
+should be allowed to expire and be recovered by the queue; a terminal QA or
+provider failure should remain visible for review rather than being relabeled
+as translated.
 
 Provider overload should surface as queue age, bounded retry delay, or a
 truthful paused/failed activity—not as an unbounded web request. Owner Gemini
@@ -140,7 +310,7 @@ Admin UI: /admin/maintenance
 Every allowlisted task records best-effort start/success/failure transitions in
 `SchedulerRuntimeState`. Observability-write failure is logged safely and does
 not turn successful cleanup into failed cleanup. DB state is durable truth;
-absence remains explicit and no filesystem cache may manufacture success.
+absence remains explicit and no local runtime cache may manufacture success.
 
 Manual novel cache invalidation:
 
@@ -153,18 +323,53 @@ POST /api/admin/novels/{novel_id}/cache/invalidate
 ### Object storage
 
 - `BACKUP_ENABLED=true` enables scheduled snapshots.
-- R2/S3 production snapshots require independent target bucket and credentials.
+- R2 production snapshots use independent `dokushodo-backup` target
+  credentials.
 - Application CRUD, snapshot-source read, and backup-target write credentials
   remain separate and least privilege.
-- Snapshot success requires manifest-last commit plus byte-length and SHA-256 verification.
-- Retention preserves newest successful backup and
-  `BACKUP_MIN_SUCCESSFUL_TO_KEEP`; lifecycle/locks are safeguards, not copies.
+- Snapshot success requires a manifest-last commit plus byte-length, checksum,
+  and referenced-object verification. Incremental manifests copy only new
+  content-addressed objects and reference prior verified snapshots.
+- Retention is implemented by `R2IncrementalBackupTarget` and preserves the
+  configured newest/minimum successful manifests. It deletes a shared object
+  only when no retained manifest references it and its
+  `BACKUP_SAFETY_GRACE_DAYS` period has elapsed. Lifecycle rules/locks are
+  safeguards, not copies.
 
 Manual trigger:
 
 ```text
 POST /api/admin/backups
 ```
+
+### R2-only cutover and migration
+
+The hard cutover is an operator-gated data operation, not a startup migration.
+Before any destructive action:
+
+1. Pause crawl, import, translation, worker, and maintenance writers.
+2. Record the three PostgreSQL novel IDs, slugs, source URLs, publication
+   states, chapter counts, active generations, and exact current references.
+3. Inventory `dokushodo` and `dokushodo-backup` with fully paginated listings,
+   checksums, byte totals, and sanitized manifests.
+4. Verify an independent backup and an isolated restore before reset.
+5. Require an explicit confirmation naming both buckets and the migration ID.
+
+The reset tool may delete only the named buckets after the confirmation gate;
+it must verify zero objects, keep both buckets, repopulate immutable objects,
+upload manifests, commit PostgreSQL references, and verify all three previous
+public URLs. It must refuse legacy prefixes, guessed buckets, incomplete
+identity evidence, or a live writer. A dry-run is the default. Production
+object counts and repopulation are not claimed until sanitized live evidence is
+recorded in the conformance ledger.
+
+### Garbage collection
+
+GC is mark-and-sweep over exact PostgreSQL references plus protected rollback,
+backup, and in-progress migration manifests. It lists R2 only in the GC job,
+archives or verifies backup presence before deletion, applies the configured
+grace period (seven days initially), and emits a dry-run report. Active,
+current, protected, referenced, or grace-period objects are never deleted.
 
 ### Backup Bucket Object Lock & Operator Retention Debt Procedure
 
@@ -227,6 +432,11 @@ storage failure, severe reader errors, or failed recovery without safe mitigatio
 
 `AUTH_EMAIL_DELIVERY_MODE=noop` is the safe default. Before switching to `smtp`:
 
+While `noop` is active, public password signup is intentionally a deferred
+email-delivery path: account creation and session login can be tested, but
+verification and password-reset messages are not sent. Do not treat an
+unverified account or a generated but undelivered token as SMTP evidence.
+
 1. Verify sending domain ownership plus SPF, DKIM, and DMARC.
 2. Store SMTP credentials only in provider secret storage.
 3. Test verification/reset delivery, bounce handling, timeout, and rate limits.
@@ -271,7 +481,7 @@ upgrades, or accidental deletions:
 ```powershell
 py -3.14 -m venv .venv
 & .venv\Scripts\python.exe -m pip install --upgrade pip
-& uv sync --extra documents --extra dev --extra db --extra auth --extra s3 --extra worker --extra gemini --extra test
+& uv sync --extra dev --extra db --extra auth --extra s3 --extra worker --extra gemini --extra test
 ```
 
 Then verify tooling resolves the venv (not a PATH shadow):
@@ -287,9 +497,10 @@ is missing. The readme at `tools/README.md` lists the canonical extras.
 
 Current unresolved operator gates live in [`WORK.md`](WORK.md).
 
-## Contributor Credential Operations
+## Unified Provider Credential Operations
 
-For an enabled contributor deployment, verify:
+For an enabled credential deployment, the owner and user paths operate on the
+same `provider_credentials` table. Verify:
 
 1. Confirm `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` is present and not the owner
    bootstrap or session secret.
@@ -297,11 +508,27 @@ For an enabled contributor deployment, verify:
    the frontend and record any consent copy change.
 3. Confirm per-credential RPM/TPM/RPD limits and the quota-state directory are
    writable only by the backend runtime.
-4. Apply Alembic migrations with the elevated migration role before starting
+4. Import the configured owner key only through the owner-only
+   `POST /api/admin/providers/credentials/import-environment` operation. It
+   explicitly validates `PROVIDER_GEMINI_API_KEY`, stores it encrypted, marks
+   it owner-job eligible, and never makes it contributor-pool eligible. A
+   failed validation is persisted as `invalid`; do not queue owner bulk work
+   until the key validates. At the current 2026-08-22 checkpoint the imported
+   owner row is `active`/`valid` and owner-job eligible; this does not make it
+   contributor-pool eligible.
+5. Confirm at least one user contribution is `active` with
+   `validation_status=valid` and `contributor_pool_eligible=true` before
+   queueing contributor-backed translation. A zero-key pool is an intentional
+   preflight stop; never substitute an owner row or environment key.
+6. Verify the active Gemini project limits in Google AI Studio. The local
+   RPM/TPM/RPD values are defensive ceilings, not proof of independent quota
+   per API key; TPD is model-dependent and is not configured separately here.
+7. Apply Alembic migrations with the elevated migration role before starting
    the long-running services; the runtime role must have the required DML but
    should not be granted broad schema-DDL privileges.
-5. Verify the user route returns masked metadata only, unsafe methods reject
-   missing CSRF, and a user cannot read or mutate another user's credential.
+8. Verify the user route returns masked metadata only, unsafe methods reject
+   missing CSRF, validation attempts are rate-limited per user, and a user
+   cannot read or mutate another user's credential.
 
 Owners may pause or revoke a credential for emergency abuse remediation. A
 revoked credential cannot be resumed by a user. Permanent user deletion removes
@@ -375,3 +602,161 @@ The contributor usage ledger is pruned by the `contributor_usage_cleanup`
 maintenance task according to `CONTRIBUTOR_USAGE_RETENTION_DAYS`. Permanent
 credential deletion preserves rows until that retention task removes them;
 dry-run the task before changing the policy.
+
+## Reader capacity and recovery follow-up checkpoint — 2026-08-25
+
+The current operational evidence package is blocked, with local validation
+complete. The 1k reader report has a complete required matrix but no approved
+fixture/target or controlled cold-cache evidence; all cells are therefore
+unavailable and `reader_slo_status=blocked`. Layer attribution and hosted
+telemetry are explicitly unavailable. Recovery control tests do not prove
+current backup freshness, alert delivery, or an isolated hosted restore; the
+workflow audit also identifies a missing integration-test path.
+
+Keep the worker and original full queue stopped/paused. Do not run 10k/100k,
+provider-volume, or full-queue traffic and do not make a production-capacity,
+billing, or quota claim. Before any retry, an owner must supply the approved
+opaque fixture and targets, establish a disposable cold-cache control, enable
+fixed-label layer telemetry, repair or disposition the workflow path, and
+authorize isolated recovery targets. The sanitized handoff and validation
+records are under `artifacts/operations/reader-capacity-follow-up/`.
+
+## Reader capacity and recovery runtime recheck — 2026-08-27
+
+The local runtime baseline was re-established after Docker Desktop recovery.
+Backend, reader, Caddy, frontend, Redis, and the isolated `restore-db` service
+were healthy; the dedicated worker remained absent. Through local Caddy,
+`/health/live` and `/health/ready` both returned HTTP 200 with empty bodies.
+This closes the previously observed local Docker/Caddy outage only; it is not
+private second-peer, hosted, or production availability evidence.
+
+The campaign `camp-20260827T130658Z` and its `private_network` selection are
+retired historical evidence. They were superseded on 2026-08-29 by the
+Cloudflare-only reader gate described below. Keep the worker/full queue
+stopped/paused and preserve the remaining release-configuration, cross-source,
+provider/bulk, hosted pool/cache/analytics, CDN propagation, credential
+rotation, and dedicated-host gates in `docs/WORK.md`.
+
+## Reader capacity and recovery runtime recheck - 2026-08-28
+
+The current local split Compose runtime remained healthy for the bounded
+recheck: backend, reader, Caddy, frontend, Redis, and restore-db were healthy,
+while the dedicated worker was absent. Local Caddy returned HTTP 200 with
+empty bodies for `/health/live` and `/health/ready`. This is local runtime
+evidence only and does not establish hosted, private second-peer, or
+production availability.
+
+The campaign `camp-20260828T042235Z` and its `private_network` selection are
+retired historical evidence. The current Cloudflare-only stage report is
+recorded in the authorization checkpoint below. Recovery freshness, alert
+delivery, and provider/R2 telemetry remain unobserved; `production_capacity_claim`
+is `not_established`.
+
+## Reader authorization input check - 2026-08-29
+
+The project owner supplied a non-production, read-only reader-capacity
+authorization and an explicit disposable fixture description. This is test
+input, not execution evidence. The selected SLO gate is now
+`cloudflare_tunnel`; the Cloudflare development hostname is the approved
+non-production reader-facing path through the public edge and internal Caddy.
+
+Fresh Cloudflare MCP inspection confirms the development zone is active, the
+development DNS route is proxied to the healthy `dokushodo-dev` tunnel, and
+the tunnel has one active connector. The public development liveness request
+returned HTTP 200, but the supplied fixture was not present at that origin
+(the novel and both requested chapter routes returned HTTP 404). The test R2
+buckets are present in the Cloudflare account, but the proposed fixture
+namespace has no objects in either test bucket; R2 existence alone therefore
+does not establish reader-fixture content.
+
+No private-network peer check is required for this Cloudflare-only contract.
+The current baseline and route profile use the opaque binding derived from the
+supplied fixture. The bounded read-only Cloudflare run completed with 50 warm
+samples per required route: liveness p95 was 155.096 ms, catalog p95 was
+1518.142 ms, search p95 was 1368.677 ms, and the requested detail/chapter
+fixture returned HTTP 404. All controlled-cold cells remain unavailable, so
+the operational disposition remains blocked with
+`production_capacity_claim=not_established`. No content, secret, worker, or
+queue mutation was performed.
+
+## Managed non-production recovery checkpoint - 2026-08-28
+
+The confirmation-gated recovery run
+[`33182847311`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33182847311)
+ran at candidate commit `30fe82c` against the disposable managed test
+database and dedicated non-production R2 target. Its sanitized artifact is
+`artifacts/operations/reader-capacity-follow-up/remote-recovery-33182847311/managed-database-recovery-evidence.json`.
+
+The run passed encrypted database backup creation, manifest and checksum
+verification, backup freshness, isolated local restore, Alembic-head
+verification, representative queries, public isolation, R2-prefix cleanup,
+temporary-role cleanup, and overall cleanup. The restored target contained 37
+public tables, all 37 had RLS enabled, and there were zero invalid
+constraints. The run recorded `production_mutation=none`; the temporary
+confirmation variable was removed and `MANAGED_SERVICE_TESTS_ENABLED` remains
+`false`.
+
+A later candidate-only check synchronized the disposable test project's
+Alembic marker to `f8a2c4e6b0d1` after applying the idempotent RLS-helper
+revocation. Its application fixture tables remain empty and the security
+advisor reports no lints. This does not change the scope of the recovery run
+above or establish reader-fixture, production, or capacity readiness.
+
+This is current non-production recovery evidence for one isolated path. It
+does not establish recurring production backup freshness, alert delivery,
+production smoke, reader capacity, hosted telemetry, or production recovery
+readiness. Keep the worker and original full queue stopped/paused.
+
+## Pipeline async execution and capacity runbook checkpoint - 2026-08-24
+
+The local audit completed the bounded persistence boundary, fixed-label runtime
+telemetry, contributor-pool admission/accounting, fixture-only reader harness,
+checkpoint footprint measurement, and modeled cost-envelope work. Evidence is
+under `artifacts/capacity/`. Local tests do not authorize a live workload.
+
+Before any live action, confirm the worker is intentionally running, the
+original queues are not being used as a benchmark, the migration head and
+readiness state are healthy, and an operator has recorded the traffic model,
+SLO/error budget, provider/R2/egress ceilings, stop thresholds, telemetry
+window, and rollback owner. Do not activate a contributor key or substitute an
+owner key for the contributor pool. Keep `translation_provider_rps` and
+`reader_http_rps` in separate reports.
+
+Rollback order is: stop new load; stop worker admission; allow critical
+terminal writes to settle within the bounded shutdown deadline; disable the
+expansion gate; verify queue/lease state through application APIs; and record
+the result. Do not edit queue rows, runtime JSON, checkpoint files, R2 objects,
+or canonical content by hand. The current audit did not resume the worker or
+the original queues.
+
+The isolated R2 benchmark is unavailable when `TEST_R2_ENDPOINT` is absent.
+The source canary and reader stages are operator/hosted gates; missing hosted
+telemetry is an unavailable result, never a pass.
+
+## Cloudflare development tunnel operation - 2026-08-28
+
+The temporary external development origin is
+`https://dev.dokushodo.online`. Cloudflare manages the `dokushodo-dev`
+tunnel configuration and its single development DNS route; the production
+apex and `www` records are not part of this operation. The tunnel forwards to
+the existing internal Caddy service at `http://caddy:80` on `novelai-net`.
+
+The connector token is stored only in the ignored local file
+`deploy/.cloudflared/dokushodo-dev.token` and is mounted as a Compose secret.
+Do not print, commit, copy, or place it in an environment example. If the
+token is exposed, rotate it through the Cloudflare control plane before
+restarting the connector.
+
+Use the explicit service target below for a restart; a bare Compose `up`
+also includes the worker service, which must remain stopped while the reader
+capacity and recovery gates are blocked:
+
+```powershell
+docker compose --env-file deploy/.env -f deploy/compose.yml up -d --no-build cloudflared
+docker compose --env-file deploy/.env -f deploy/compose.yml stop --timeout 0 worker
+```
+
+Verify the connector with `docker compose ... ps -a` and the Cloudflare MCP
+tunnel/DNS read path, then verify the real development URL. A healthy tunnel
+and HTTP smoke result do not authorize provider work, the original full
+queue, recovery writes, or a production launch.

@@ -101,9 +101,7 @@ class ProviderRequest(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow
     )
 
-    translation_job: Mapped[TranslationJob | None] = relationship(
-        "TranslationJob", back_populates="provider_requests"
-    )
+    translation_job: Mapped[TranslationJob | None] = relationship("TranslationJob", back_populates="provider_requests")
 
     def __repr__(self) -> str:
         return f"<ProviderRequest id={self.id} provider={self.provider_key!r} status={self.status!r}>"

@@ -20,8 +20,7 @@ def _physical_stem(chapter_id: str) -> str:
 
 def _get_state_dir(self: Any, novel_id: str) -> Path:
     """Get the directory for chapter state files."""
-    novel_dir = self._novel_dir(novel_id)
-    state_dir = novel_dir / "state"
+    state_dir = self.runtime_path("chapter-state", novel_id)
     self._mkdirs(state_dir)
     return state_dir
 
@@ -123,7 +122,7 @@ def load_chapter_state(self: Any, novel_id: str, chapter_id: str) -> dict[str, A
             "error_count": data.get("error_count", 0),
             "retry_count": data.get("retry_count", 0),
         }
-    except (json.JSONDecodeError, OSError, KeyError, ValueError):
+    except json.JSONDecodeError, OSError, KeyError, ValueError:
         logger.warning("Failed to load chapter state %s/%s.", novel_id, chapter_id)
         return None
 
@@ -178,8 +177,7 @@ def update_chapter_state(
 
 def _get_checkpoints_dir(self: Any, novel_id: str) -> Path:
     """Get directory for chapter checkpoints."""
-    novel_dir = self._novel_dir(novel_id)
-    checkpoints_dir = novel_dir / "checkpoints"
+    checkpoints_dir = self.runtime_path("checkpoints", novel_id)
     self._mkdirs(checkpoints_dir)
     return checkpoints_dir
 
@@ -261,7 +259,7 @@ def list_checkpoints(self: Any, novel_id: str, chapter_id: str) -> list[Checkpoi
                     "checkpoint_name": checkpoint_name,
                 }
             )
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             logger.debug("Skipping unreadable checkpoint file %s.", checkpoint_file)
             continue
 
@@ -295,7 +293,7 @@ def restore_from_checkpoint(
             if data.get("checkpoint_name") == safe_checkpoint_name:
                 checkpoint_file = cf
                 break
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             logger.debug("Skipping unreadable checkpoint file %s.", cf)
             continue
 
@@ -310,19 +308,8 @@ def restore_from_checkpoint(
         # generation snapshot is active — the snapshot's ``chapters/``
         # tree is byte-immutable and the canonical raw layout. The
         # translated overlay and chapter state may still be restored.
-        raw_restore_refused = False
-        if checkpoint_data.get("raw_chapter") and self.get_active_generation(novel_id) is not None:
-            raw_restore_refused = True
-            logger.warning(
-                "Refusing raw restore for %s/%s from checkpoint %r: "
-                "active generation snapshot is the authoritative raw layout",
-                novel_id,
-                safe_chapter_id,
-                safe_checkpoint_name,
-            )
-
         # Restore raw chapter
-        if checkpoint_data.get("raw_chapter") and not raw_restore_refused:
+        if checkpoint_data.get("raw_chapter"):
             raw_chapter = checkpoint_data["raw_chapter"]
             self.save_chapter(
                 novel_id,
@@ -408,23 +395,9 @@ def rollback_to_state(self: Any, novel_id: str, chapter_id: str, target_state: C
         logger.warning(f"Cannot rollback to {target_state.value} from {current_state.value}")
         return
 
-    # Delete files for states beyond target
+    # Raw R2 artifacts are immutable and retained when state rolls back.
     if target_idx < state_order.index(ChapterState.TRANSLATED):
-        # Section 11: the bundle-pop branch only applies to the legacy
-        # layout (no active generation). With an active generation the raw
-        # bundle is byte-immutable and translation state lives in the
-        # overlay; deleting the legacy ``translated/`` file is still safe.
-        if self.get_active_generation(novel_id) is None:
-            chapter_payload = self._load_chapter_bundle(novel_id, safe_chapter_id)
-            if chapter_payload and "translation_versions" in chapter_payload:
-                chapter_payload.pop("translation_versions", None)
-                chapter_payload.pop("active_translation_version_id", None)
-                chapter_payload.pop("edit_history", None)
-                self._persist_chapter_bundle(novel_id, safe_chapter_id, chapter_payload)
-                logger.debug(f"Deleted translated chapter {safe_chapter_id}")
-        translated_path = self._novel_dir(novel_id) / "translated" / f"{_physical_stem(safe_chapter_id)}.json"
-        if self._path_exists(translated_path):
-            self._unlink_path(translated_path)
+        pass
 
     if target_idx < state_order.index(ChapterState.SEGMENTED):
         # Segmentation is in-memory only, but we mark state

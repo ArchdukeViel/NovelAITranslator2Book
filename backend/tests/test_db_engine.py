@@ -32,6 +32,7 @@ class TestGetEngine:
 
     def test_raises_runtime_error_without_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from novelai.config.settings import settings
+
         monkeypatch.setattr(settings, "DATABASE_URL", None)
         with pytest.raises(RuntimeError, match="DATABASE_URL"):
             get_engine()
@@ -39,6 +40,7 @@ class TestGetEngine:
     def test_explicit_url_overrides_settings(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Explicit URL is used even when settings.DATABASE_URL is unset."""
         from novelai.config.settings import settings
+
         monkeypatch.setattr(settings, "DATABASE_URL", None)
         engine = get_engine(_SQLITE)
         assert engine is not None
@@ -135,6 +137,7 @@ class TestCheckConnectivity:
 
     def test_returns_false_for_bad_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Returns False when the engine raises on connect."""
+
         def _bad_engine(url: str | None = None) -> None:
             raise Exception("simulated connection failure")
 

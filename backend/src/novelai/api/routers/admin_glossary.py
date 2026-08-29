@@ -36,9 +36,6 @@ from novelai.api.schemas.admin_glossary import (
     GlossaryQAFindingStatusRequest,
     GlossaryStatusTransitionRequest,
     GlossaryStatusTransitionResponse,
-    GlossarySyncRequest,
-    GlossarySyncResponse,
-    GlossarySyncStatusResponse,
     _alias_response,
     _body_fields,
     _entry_response,
@@ -364,7 +361,9 @@ async def list_novel_glossary_provenance(
         raise AssertionError("unreachable") from exc
 
 
-@router.get("/novels/{novel_id}/glossary/entries/{entry_id}/provenance", response_model=list[GlossaryProvenanceResponse])
+@router.get(
+    "/novels/{novel_id}/glossary/entries/{entry_id}/provenance", response_model=list[GlossaryProvenanceResponse]
+)
 async def list_entry_glossary_provenance(
     novel_id: str,
     entry_id: int,
@@ -372,10 +371,7 @@ async def list_entry_glossary_provenance(
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryProvenanceResponse]:
     try:
-        return [
-            _provenance_response(item)
-            for item in svc.list_entry_provenance(novel_id, entry_id)
-        ]
+        return [_provenance_response(item) for item in svc.list_entry_provenance(novel_id, entry_id)]
     except (LookupError, ValueError) as exc:
         _raise_repo_error(exc)
         raise AssertionError("unreachable") from exc
@@ -434,10 +430,7 @@ async def list_entry_glossary_decision_events(
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryDecisionEventResponse]:
     try:
-        return [
-            _event_response(event)
-            for event in svc.list_entry_decision_events(novel_id, entry_id)
-        ]
+        return [_event_response(event) for event in svc.list_entry_decision_events(novel_id, entry_id)]
     except (LookupError, ValueError) as exc:
         _raise_repo_error(exc)
         raise AssertionError("unreachable") from exc
@@ -569,61 +562,8 @@ async def transition_glossary_status(
 # ── Glossary Sync Bridge ─────────────────────────────────────────────
 
 
-@router.post(
-    "/novels/{novel_id}/glossary/sync-to-db",
-    response_model=GlossarySyncResponse,
-)
-async def sync_glossary_to_db(
-    novel_id: str,
-    body: GlossarySyncRequest,
-    svc=Depends(get_glossary_workflow_service),
-    _owner=Depends(require_role("owner")),
-) -> GlossarySyncResponse:
-    try:
-        result = svc.sync_from_file(novel_id, dry_run=body.dry_run)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        msg = str(exc)
-        if "novel_not_in_db" in msg:
-            raise HTTPException(
-                status_code=422,
-                detail="Novel slug has no corresponding database row (cannot resolve platform_novel_id).",
-            ) from exc
-        raise HTTPException(status_code=422, detail=msg) from exc
-
-    if not body.dry_run:
-        svc.record_sync_timestamp(novel_id)
-
-    return GlossarySyncResponse(
-        novel_id=result.novel_id,
-        dry_run=result.dry_run,
-        created=result.created,
-        updated=result.updated,
-        skipped=result.skipped,
-        errors=result.errors,
-        synced_terms=result.synced_terms,
-    )
-
-
-@router.get(
-    "/novels/{novel_id}/glossary/sync-status",
-    response_model=GlossarySyncStatusResponse,
-)
-async def get_glossary_sync_status(
-    novel_id: str,
-    svc=Depends(get_glossary_workflow_service),
-    _owner=Depends(require_role("owner")),
-) -> GlossarySyncStatusResponse:
-    try:
-        status_data = svc.get_sync_status(novel_id)
-        return GlossarySyncStatusResponse(**status_data)
-    except (LookupError, ValueError) as exc:
-        _raise_repo_error(exc)
-        raise AssertionError("unreachable") from exc
-
-
 # ── Global glossary endpoints ────────────────────────────────────
+
 
 @router.get("/glossary/global", response_model=list[GlossaryEntryResponse])
 async def list_global_glossary_entries(

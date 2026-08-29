@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any
@@ -14,6 +15,9 @@ def _utc_now_iso() -> str:
 
 class BackgroundActivityRunner:
     """Continuously executes pending queued activity in the active event loop."""
+
+    IDLE_POLL_MIN_SECONDS = 5.0
+    IDLE_POLL_MAX_SECONDS = 30.0
 
     def __init__(
         self,
@@ -35,6 +39,20 @@ class BackgroundActivityRunner:
         self._activity_processed = 0
         self._idle_ticks = 0
         self._error_count = 0
+        self._idle_poll_seconds = self._initial_idle_poll_seconds()
+
+    def _initial_idle_poll_seconds(self) -> float:
+        return min(self.IDLE_POLL_MAX_SECONDS, max(self.IDLE_POLL_MIN_SECONDS, self.poll_seconds))
+
+    def _reset_idle_backoff(self) -> None:
+        self._idle_poll_seconds = self._initial_idle_poll_seconds()
+
+    def next_idle_poll_seconds(self) -> float:
+        """Return the current empty-queue delay and increase it for the next poll."""
+
+        delay = self._idle_poll_seconds
+        self._idle_poll_seconds = min(self.IDLE_POLL_MAX_SECONDS, delay * 2)
+        return delay
 
     def is_running(self) -> bool:
         return self._task is not None and not self._task.done()
@@ -47,6 +65,7 @@ class BackgroundActivityRunner:
         self._started_at = _utc_now_iso()
         self._stopped_at = None
         self._last_error = None
+        self._reset_idle_backoff()
         self._task = asyncio.create_task(self._run_loop(), name="novelai-activity-runner")
         return self.status()
 
@@ -60,6 +79,12 @@ class BackgroundActivityRunner:
             with suppress(asyncio.CancelledError):
                 await task
 
+        shutdown = getattr(self.worker, "shutdown", None)
+        if callable(shutdown):
+            result = shutdown()
+            if inspect.isawaitable(result):
+                await result
+
         self._task = None
         self._stop_event = None
         self._stopped_at = _utc_now_iso()
@@ -71,6 +96,7 @@ class BackgroundActivityRunner:
         if activity is None:
             self._idle_ticks += 1
             return None
+        self._reset_idle_backoff()
         self._activity_processed += 1
         self._last_activity_id = str(activity.get("activity_id")) if activity.get("activity_id") is not None else None
         self._last_error = str(activity.get("error")) if activity.get("error") else None
@@ -82,7 +108,7 @@ class BackgroundActivityRunner:
             try:
                 activity = await self.run_once()
                 if activity is None:
-                    await asyncio.wait_for(self._stop_event.wait(), timeout=self.poll_seconds)
+                    await asyncio.wait_for(self._stop_event.wait(), timeout=self.next_idle_poll_seconds())
             except TimeoutError:
                 continue
             except asyncio.CancelledError:
@@ -91,7 +117,7 @@ class BackgroundActivityRunner:
                 self._error_count += 1
                 self._last_error = str(exc)
                 try:
-                    await asyncio.wait_for(self._stop_event.wait(), timeout=self.poll_seconds)
+                    await asyncio.wait_for(self._stop_event.wait(), timeout=self.next_idle_poll_seconds())
                 except TimeoutError:
                     continue
 
@@ -99,6 +125,7 @@ class BackgroundActivityRunner:
         return {
             "running": self.is_running(),
             "poll_seconds": self.poll_seconds,
+            "idle_poll_seconds": self._idle_poll_seconds,
             "activity_type": self.activity_type,
             "started_at": self._started_at,
             "stopped_at": self._stopped_at,

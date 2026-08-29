@@ -74,9 +74,7 @@ class GlossaryPromptInjectionService:
         source term.  The result is deterministic.
         """
         global_entries = self.repository.list_approved_global_entries()
-        novel_entries = self.repository.list_glossary_entries_for_novel(
-            novel_id, status="approved"
-        )
+        novel_entries = self.repository.list_glossary_entries_for_novel(novel_id, status="approved")
 
         # Build index of novel entries by normalized term
         novel_by_term: dict[str, NovelGlossaryEntry] = {}
@@ -213,7 +211,9 @@ class GlossaryPromptInjectionService:
         rendered = _render_text(selected, options=options) if selected else ""
         if rendered and len(rendered) > options.max_block_chars:
             rendered = ""
-            skipped_terms.extend(SkippedGlossaryTerm(term.entry_id, term.term, "max_block_chars_exceeded") for term in selected)
+            skipped_terms.extend(
+                SkippedGlossaryTerm(term.entry_id, term.term, "max_block_chars_exceeded") for term in selected
+            )
             selected = []
             truncated = True
 
@@ -299,7 +299,7 @@ def _render_text(terms: list[PromptGlossaryTerm], *, options: GlossaryPromptInje
     avoid_lines: list[str] = []
     for term in terms:
         for variant in term.avoid_variants[: options.max_avoid_variants_per_term]:
-            avoid_lines.append(f"- {term.term}: avoid \"{variant}\"")
+            avoid_lines.append(f'- {term.term}: avoid "{variant}"')
 
     if avoid_lines:
         lines.extend(["Avoid these rejected variants:", *avoid_lines])

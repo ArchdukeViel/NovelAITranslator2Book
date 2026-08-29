@@ -25,17 +25,7 @@ from novelai.sources.quality import (
     evaluate_chapter_quality,
     evaluate_metadata_quality,
 )
-from novelai.storage.generations import (
-    DISPOSITION_CARRIED_UNSELECTED,
-    DISPOSITION_FETCHED_NEW,
-    DISPOSITION_FETCHED_REPLACED,
-    DISPOSITION_REFRESH_FAILED_RETAINED,
-    DISPOSITION_REUSED_PLANNER,
-    DISPOSITION_UNAVAILABLE,
-    DISPOSITION_UNCHANGED_SELECTED,
-)
 from novelai.utils.chapter_selection import (
-    ResolvedChapterSelection,
     _chapter_logical_id,
     resolve_chapter_selection,
 )
@@ -462,7 +452,7 @@ async def scrape_chapters(
 
     In ``full`` mode, a new generation is staged for the complete current
     index. If validation fails the stage is rolled back and the previous
-    active generation (or legacy layout) remains in effect — no active
+    active generation remains in effect â€” no active
     data is deleted. In ``update`` mode (default), a generation is staged
     for the complete index but only selected chapters are fetched; unselected
     chapters are carried forward from the active generation. A scoped crawl
@@ -523,7 +513,7 @@ async def scrape_chapters(
     return result
 
 
-async def _scrape_chapters_impl(
+async def _scrape_chapters_r2_impl(
     self: Any,
     source_key: str,
     novel_id: str,
@@ -534,13 +524,17 @@ async def _scrape_chapters_impl(
     progress_events_callback: Callable[[CrawlProgressEvent], None] | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Internal implementation of scrape_chapters (called under lock).
+    """Fetch chapters into immutable R2 artifacts and activate DB references.
 
-    ``progress_callback`` is a label-only channel; numeric progress is
-    reported through ``progress_events_callback`` via
-    :class:`CrawlProgressEvent` records. Only the terminal processing of a
-    chapter increments ``completed``, and the value never exceeds ``total``.
+    R2 objects are written before the PostgreSQL transaction.  The transaction
+    then records the chapter references and changes the active generation in a
+    single commit; there is no filesystem stage or R2 pointer object.
     """
+
+    from novelai.db.models.chapter import Chapter
+    from novelai.services.catalog_service import CatalogService
+    from novelai.services.r2_activation_service import R2GenerationActivationService
+
     source = self._source_factory(source_key)
 
     def _emit(
@@ -552,644 +546,445 @@ async def _scrape_chapters_impl(
         label: str | None = None,
         details: dict[str, Any] | None = None,
     ) -> None:
-        if progress_events_callback is None:
-            return
-        progress_events_callback(
-            CrawlProgressEvent(
-                stage=stage,
-                status=status,
-                completed=completed,
-                total=total,
-                source_episode_id=source_episode_id,
-                label=label,
-                details=details or {},
+        if progress_events_callback is not None:
+            progress_events_callback(
+                CrawlProgressEvent(
+                    stage=stage,
+                    status=status,
+                    completed=completed,
+                    total=total,
+                    source_episode_id=source_episode_id,
+                    label=label,
+                    details=details or {},
+                )
             )
-        )
 
-    self.storage.update_onboarding_status(novel_id, "scraping_chapters", clear_error=True)
-
-    # Section 5: declare the stage up-front so the metadata, chapter index,
-    # source state and chapter bundles can all be staged into it before
-    # activation rolls the active pointer.
-    generation_id = f"gen-{uuid.uuid4().hex[:12]}"
-
-    if mode == "full":
-        if isinstance(metadata, dict):
-            # A queued scrape has already completed metadata reconciliation.
-            # Carry that exact snapshot into the chapter phase so a long
-            # scrape does not refetch the source index or rerun metadata
-            # translation with a different identifier.
-            meta = dict(metadata)
-        else:
-            meta = await source.fetch_metadata(novel_id)
-            meta = _apply_metadata_quality_gate(meta, source_key=source_key, novel_id=novel_id)
-            if not meta.get("source_language"):
-                detected = self._infer_source_language(source_key, meta)
-                if detected:
-                    meta["source_language"] = detected
-            meta.setdefault("origin_type", "url")
-            meta.setdefault("origin_uri_or_path", str(meta.get("source_url") or novel_id))
-            meta.setdefault("document_type", "web_novel")
-            meta.setdefault("input_adapter_key", "web")
-            meta.setdefault("context_group_id", novel_id)
-            meta = await _translate_and_mark_metadata(self, meta)
-        # Section 3: the legacy ``save_metadata`` live projection is NOT
-        # written here. It is deferred until after ``commit_generation``
-        # swaps the active pointer so a partial or failed run can never
-        # expose half-committed metadata. The authoritative metadata is
-        # staged into the generation snapshot below; the active pointer is
-        # the source of truth after activation, and a failed stage is
-        # rolled back without touching the legacy file.
+    if mode == "full" and metadata is None:
+        meta = await source.fetch_metadata(novel_id)
+        meta = _apply_metadata_quality_gate(meta, source_key=source_key, novel_id=novel_id)
+        if not meta.get("source_language"):
+            detected = self._infer_source_language(source_key, meta)
+            if detected:
+                meta["source_language"] = detected
+        meta.setdefault("origin_type", "url")
+        meta.setdefault("origin_uri_or_path", str(meta.get("source_url") or novel_id))
+        meta.setdefault("document_type", "web_novel")
+        meta.setdefault("input_adapter_key", "web")
+        meta.setdefault("context_group_id", novel_id)
+        meta = await _translate_and_mark_metadata(self, meta)
     else:
         load_metadata_for_crawl = getattr(self.storage, "load_metadata_for_crawl", self.storage.load_metadata)
-        meta = metadata if metadata is not None else load_metadata_for_crawl(novel_id)
-        if not meta:
+        meta = dict(metadata) if isinstance(metadata, dict) else load_metadata_for_crawl(novel_id)
+        if not isinstance(meta, dict) or not meta:
             raise RuntimeError("Metadata not found; run scrape-metadata first.")
 
-    # Section 2: resolve the selection to stable resolved records; non-numeric
-    # Kakuyomu ids, sequence-position selections, and full-crawl selections
-    # all flow through the same resolver. The *selection* decides which
-    # bodies are fetched; the *complete current chapter index* decides the
-    # membership of the new raw generation.
-    complete_index_entries = meta.get("chapters", [])
-    if not isinstance(complete_index_entries, list) or not complete_index_entries:
+    raw_index_entries = meta.get("chapters")
+    if not isinstance(raw_index_entries, list) or not raw_index_entries:
         raise RuntimeError(f"Chapter index is empty for {source_key}/{novel_id}; cannot crawl chapters.")
-    resolved: list[ResolvedChapterSelection] = resolve_chapter_selection(meta, chapters)
+    complete_index_entries: list[dict[str, Any]] = [entry for entry in raw_index_entries if isinstance(entry, dict)]
+    try:
+        storage_novel_id = self.storage.resolve_storage_novel_id(novel_id)
+    except ValueError:
+        # Full crawls may begin from a source URL without a prior metadata
+        # request. Establish the PostgreSQL identity before writing R2 keys.
+        self.storage.save_metadata(novel_id, meta)
+        storage_novel_id = self.storage.resolve_storage_novel_id(novel_id)
+    resolved = resolve_chapter_selection(meta, chapters)
     if not resolved:
         raise ValueError(
-            f"No chapters matched selection {chapters!r} for {source_key}/{novel_id}; refusing to create a generation."
+            f"No chapters matched selection {chapters!r} for {source_key}/{novel_id}; refusing to activate."
         )
-    selected_fetch_entries = [record.metadata for record in resolved if isinstance(record.metadata, dict)]
-    _total_chapters = len(complete_index_entries)
-    if progress_callback:
-        progress_callback(f"Preparing to scrape {_total_chapters} chapter(s)…")
 
-    succeeded = 0
-    skipped = 0
-    failed = 0
-    failures: list[dict[str, Any]] = []
-    image_download_failures = 0
-    scraped_chapters_for_state: list[dict[str, Any]] = []
-    existing_source_state = self.storage.load_source_state(novel_id)
+    total = len(resolved)
+    existing_source_state = self.storage.load_source_state(novel_id) or {}
+    existing_by_id: dict[str, dict[str, Any]] = {}
+    for record in resolved:
+        existing = self.storage.load_chapter(novel_id, record.chapter_id)
+        if isinstance(existing, dict):
+            existing_by_id[record.chapter_id] = existing
 
-    existing_chapters_map = {
-        record.chapter_id: (self.storage.load_chapter(novel_id, record.chapter_id) or {}) for record in resolved
-    }
+    selected_index_entries: list[dict[str, Any]] = []
+    for record in resolved:
+        entry = dict(record.metadata)
+        entry.setdefault("id", record.chapter_id)
+        entry.setdefault("source_episode_id", record.source_episode_id)
+        entry.setdefault("sequence_number", record.sequence_number)
+        selected_index_entries.append(entry)
     crawl_plan = create_crawl_plan(
         novel_id,
-        selected_fetch_entries,
+        selected_index_entries,
         existing_source_state,
-        existing_chapters_map,
+        existing_by_id,
         mode=mode,
         all_chapters=complete_index_entries,
     )
+    chapters_to_fetch = crawl_plan.chapters_to_fetch_set
 
-    # Section 5: capture the active pointer at crawl start so activation can
-    # compare-and-swap; a concurrent crawl that activates meanwhile must not
-    # be overwritten.
-    starting_active_generation_id = self.storage.resolve_active_generation_id(novel_id)
+    if progress_callback:
+        progress_callback(f"Preparing to scrape {len(complete_index_entries)} chapter(s)…")
 
-    # Staged generation (DEBT-GEN-01): all crawl writes go into a generation
-    # snapshot and become visible only after commit_generation swaps the
-    # active_generation.json pointer (manifest written last). On any hard
-    # failure the stage is rolled back and the previous active state stays.
-    self.storage.create_generation_stage(
-        novel_id,
-        generation_id,
-        source_key=source_key,
-        source_work_id=str(meta.get("source_novel_id") or novel_id),
-        mode=mode,
-        expected_chapters=_total_chapters,
-        metadata_fingerprint=str(meta.get("metadata_fingerprint") or ""),
-        index_fingerprint=str(meta.get("index_fingerprint") or ""),
-    )
+    fetched: dict[str, dict[str, Any]] = {}
+    scraped_for_state: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    succeeded = 0
+    skipped = 0
+    failed = 0
+    image_download_failures = 0
+    cached_hashes = _stored_chapter_hashes(self.storage, novel_id, exclude_chapter_id="")
 
-    # Section 5: stage metadata+chapter_index+source_state up-front so the
-    # pre-activation validation can verify them even when the body loop
-    # fails before staging them itself. The final source state still
-    # re-runs ``update_source_state`` after the body loop and stages the
-    # authoritative copy, overwriting this provisional one.
-    self.storage.stage_generation_metadata(novel_id, generation_id, meta)
-    self.storage.stage_generation_chapter_index(novel_id, generation_id, meta.get("chapters", []))
+    for _index, record in enumerate(resolved):
+        if cancellation_check is not None and cancellation_check():
+            raise asyncio.CancelledError(f"Scrape cancelled for {source_key}/{novel_id}")
+        chapter = record.metadata if isinstance(record.metadata, dict) else {}
+        chapter_id = record.chapter_id
+        chapter_number = record.sequence_number
+        episode_id = record.source_episode_id or chapter_id
+        retry_attempts = 0
 
-    # Build stored chapter hash cache once before chapter loop to avoid O(n^2) disk re-scans
-    cached_stored_hashes = _stored_chapter_hashes(self.storage, novel_id, exclude_chapter_id="")
-
-    # Section 2: the stage is seeded from the *complete* current chapter
-    # index — every still-current chapter available in the previous active
-    # generation — so a scoped crawl (e.g. ``chapters="1"`` against a
-    # 100-chapter work) still activates a generation representing all 100
-    # index entries. The body loop below then replaces only the selected
-    # entries. A replaced bundle must validate before it replaces the seeded
-    # one (validation runs on the whole stage at commit time); unselected
-    # chapters are preserved untouched.
-    seed_targets = []
-    for entry in complete_index_entries:
-        if not isinstance(entry, dict):
+        if mode != "full" and episode_id not in chapters_to_fetch:
+            existing = existing_by_id.get(chapter_id, {})
+            existing_text = existing.get("text") if isinstance(existing.get("text"), str) else ""
+            existing_images = existing.get("images") if isinstance(existing.get("images"), list) else []
+            existing_signature = self._chapter_content_signature(existing_text, existing_images)
+            skipped += 1
+            scraped_for_state.append({**chapter, "id": chapter_id, "content_hash": existing_signature})
+            if progress_callback:
+                progress_callback(f"Chapter {chapter_id}: reused via planner")
+            _emit(
+                STAGE_BODY_CRAWL,
+                "skipped",
+                succeeded + skipped + failed,
+                total,
+                source_episode_id=episode_id,
+                label=f"Chapter {chapter_id}: unchanged",
+            )
             continue
-        cid = _chapter_logical_id(entry)
-        if cid:
-            seed_targets.append(cid)
-    if seed_targets:
-        self.storage.seed_generation_from_active(novel_id, generation_id, seed_targets)
 
-    # Canonical per-chapter dispositions. Start with carried_unselected for
-    # all current-index chapters (they were all seeded from the active
-    # generation). The body loop will upgrade the disposition when a
-    # chapter is fetched, reused via planner, skipped as unchanged, or
-    # marked refresh_failed_retained / unavailable.
-    chapter_dispositions: dict[str, str] = {}
-    for entry in complete_index_entries:
-        if not isinstance(entry, dict):
-            continue
-        cid = _chapter_logical_id(entry)
-        if cid:
-            chapter_dispositions[cid] = DISPOSITION_CARRIED_UNSELECTED
+        if progress_callback:
+            progress_callback(f"Chapter {chapter_id}: fetching")
 
-    _emit(
-        STAGE_INDEX_CRAWL,
-        "started",
-        0,
-        _total_chapters,
-        label="Preparing chapter crawl",
-        details=crawl_plan.plan_reason,
-    )
+        def _on_retry(attempt: int, _error: Exception) -> None:
+            nonlocal retry_attempts
+            retry_attempts = max(retry_attempts, int(attempt))
 
-    try:
-        for _chapter_index, record in enumerate(resolved):
-            if cancellation_check is not None and cancellation_check():
-                raise asyncio.CancelledError(f"Scrape cancelled for {source_key}/{novel_id}")
-            chapter = record.metadata if isinstance(record.metadata, dict) else {}
-            chapter_id = record.chapter_id
-            chapter_num = record.sequence_number
-            ep_id = record.source_episode_id or chapter_id
-
-            # Operationalized Crawl Plan Check: skip HTTP fetch when planner marked chapter reusable!
-            if (
-                mode != "full"
-                and ep_id in crawl_plan.reusable_episode_ids
-                and ep_id not in crawl_plan.chapters_to_fetch_set
-            ):
-                skipped += 1
-                chapter_dispositions[chapter_id] = DISPOSITION_REUSED_PLANNER
-                existing = existing_chapters_map.get(chapter_id) or {}
-                scraped_chapters_for_state.append(
-                    {
-                        **chapter,
-                        "id": chapter_id,
-                        "source_episode_id": ep_id,
-                        "content_hash": existing.get("content_hash"),
-                    }
+        try:
+            payload = await source.fetch_chapter_payload(chapter["url"], on_retry=_on_retry)
+            text = payload.get("text")
+            if not isinstance(text, str):
+                raise RuntimeError("Source returned invalid chapter text.")
+            raw_images = payload.get("images")
+            image_manifest = (
+                [item for item in raw_images if isinstance(item, dict)] if isinstance(raw_images, list) else []
+            )
+            quality = evaluate_chapter_quality(
+                text,
+                source_key=source_key,
+                url=chapter.get("url") if isinstance(chapter.get("url"), str) else None,
+                images=image_manifest,
+                duplicate_hashes=cached_hashes,
+            )
+            if quality.errors:
+                raise SourceError(
+                    f"Chapter quality gate failed for {source_key}/{novel_id}/{chapter_id}: "
+                    + ", ".join(quality.errors)
                 )
-                if progress_callback:
-                    progress_callback(
-                        f"[{_chapter_index + 1}/{_total_chapters}] Chapter {chapter_id}: reused via planner"
-                    )
+
+            existing = existing_by_id.get(chapter_id, {})
+            existing_signature = self._chapter_content_signature(
+                existing.get("text") if isinstance(existing.get("text"), str) else "",
+                existing.get("images") if isinstance(existing.get("images"), list) else [],
+            )
+            new_signature = self._chapter_content_signature(text, image_manifest)
+            if mode != "full" and existing and existing_signature == new_signature:
+                skipped += 1
+                scraped_for_state.append({**chapter, "id": chapter_id, "content_hash": new_signature})
                 _emit(
                     STAGE_BODY_CRAWL,
-                    "reused",
+                    "skipped",
                     succeeded + skipped + failed,
-                    _total_chapters,
-                    source_episode_id=ep_id,
-                    label=f"Chapter {chapter_id}: reused",
+                    total,
+                    source_episode_id=episode_id,
+                    label=f"Chapter {chapter_id}: unchanged",
                 )
                 continue
-            # Retry telemetry is per-chapter: a retry performed for an earlier
-            # chapter must never leak into the attempt count of a later chapter.
-            retry_attempts = [0]
-            if progress_callback:
-                _ch_title = str(chapter.get("title") or f"Chapter {chapter_id}")
-                progress_callback(f"[{_chapter_index + 1}/{_total_chapters}] {_ch_title}")
 
-            def _on_retry(retry_number: int, exc: Exception) -> None:
-                retry_attempts[0] = retry_number
-
-            try:
-                payload = await source.fetch_chapter_payload(chapter["url"], on_retry=_on_retry)
-                text = payload.get("text")
-                if not isinstance(text, str):
-                    raise RuntimeError(f"Source returned invalid chapter text for {chapter['url']}.")
-
-                images = payload.get("images")
-                image_manifest = (
-                    [image for image in images if isinstance(image, dict)] if isinstance(images, list) else []
-                )
-                quality = evaluate_chapter_quality(
-                    text,
-                    source_key=source_key,
-                    url=chapter.get("url") if isinstance(chapter.get("url"), str) else None,
-                    images=image_manifest,
-                    duplicate_hashes=cached_stored_hashes,
-                )
-                if quality.warnings:
-                    logger.warning(
-                        "Chapter quality warnings for %s/%s/%s: %s",
-                        source_key,
-                        novel_id,
-                        chapter_id,
-                        quality.warnings,
-                    )
-                    if progress_callback:
-                        progress_callback(f"  Quality warnings: {', '.join(quality.warnings)}")
-                if quality.errors:
-                    raise SourceError(
-                        f"Chapter quality gate failed for {source_key}/{novel_id}/{chapter_id}: "
-                        + ", ".join(quality.errors)
-                    )
-
-                existing = self.storage.load_chapter(novel_id, chapter_id) or {}
-                existing_text = existing.get("text")
-                existing_images = existing.get("images") if isinstance(existing.get("images"), list) else []
-                existing_signature = self._chapter_content_signature(
-                    existing_text if isinstance(existing_text, str) else "",
-                    existing_images,
-                )
-                new_signature = self._chapter_content_signature(text, image_manifest)
-
-                if mode == "update" and existing_signature == new_signature:
-                    if progress_callback:
-                        progress_callback(f"  Chapter {chapter_id}: unchanged, skipping.")
-                    # Carry the existing bundle (raw + translations + images)
-                    # forward into the staged snapshot.
-                    self.storage.seed_generation_from_active(novel_id, generation_id, [chapter_id])
-                    skipped += 1
-                    chapter_dispositions[chapter_id] = DISPOSITION_UNCHANGED_SELECTED
-                    scraped_chapters_for_state.append(
-                        {
-                            **chapter,
-                            "id": chapter_id,
-                            "source_episode_id": ep_id,
-                            "content_hash": new_signature,
-                        }
-                    )
-                    _emit(
-                        STAGE_BODY_CRAWL,
-                        "skipped",
-                        succeeded + skipped + failed,
-                        _total_chapters,
-                        source_episode_id=chapter_id,
-                        label=f"Chapter {chapter_id}: unchanged",
-                    )
-                    continue
-
-                downloaded_images: list[dict[str, Any]] = []
-                for image in image_manifest:
-                    entry = dict(image)
-                    original_url = entry.get("original_url")
-                    if not isinstance(original_url, str) or not original_url.strip():
-                        downloaded_images.append(entry)
-                        continue
+            stored_images: list[dict[str, Any]] = []
+            chapter_image_failed = False
+            for image_index, image in enumerate(image_manifest):
+                entry = dict(image)
+                original_url = entry.get("original_url")
+                if isinstance(original_url, str) and original_url.strip() and hasattr(source, "fetch_asset"):
                     try:
                         asset = await source.fetch_asset(original_url, referer=chapter.get("url"))
                         content = asset.get("content")
-                        if not isinstance(content, (bytes, bytearray)):
+                        if not isinstance(content, (bytes, bytearray)) or not content:
                             raise RuntimeError("Source returned invalid asset bytes.")
-                        if not content:
-                            raise RuntimeError("Source returned empty asset bytes.")
                         content_type = asset.get("content_type") if isinstance(asset.get("content_type"), str) else None
-                        if isinstance(content_type, str) and content_type.lower().startswith("text/html"):
+                        if content_type and content_type.lower().startswith("text/html"):
                             raise RuntimeError("Asset response was HTML instead of image content.")
-                        stored_asset = self.storage.stage_generation_image(
-                            novel_id,
-                            generation_id,
-                            chapter_id,
-                            image_index=int(entry.get("index", len(downloaded_images))),
-                            content=bytes(content),
-                            source_url=str(asset.get("url") or original_url),
-                            content_type=content_type,
+                        entry.update(
+                            self.storage.save_chapter_image_asset(
+                                novel_id,
+                                chapter_id,
+                                storage_novel_id=storage_novel_id,
+                                image_index=image_index,
+                                content=bytes(content),
+                                source_url=str(asset.get("url") or original_url),
+                                content_type=content_type,
+                            )
                         )
-                        entry.update(stored_asset)
-                        entry["original_url"] = str(asset.get("url") or original_url)
                     except Exception as exc:
-                        logger.warning(
-                            "Failed to download chapter image for %s/%s from %s: %s",
-                            novel_id,
-                            chapter_id,
-                            original_url,
-                            exc,
-                        )
-                        entry["download_error"] = str(exc)
-                    downloaded_images.append(entry)
+                        chapter_image_failed = True
+                        entry["download_error"] = str(exc)[:500]
+                stored_images.append(entry)
+            if chapter_image_failed:
+                image_download_failures += 1
 
-                chapter_payload = self.storage.build_chapter_payload(
-                    novel_id,
-                    chapter_id,
-                    text,
-                    source_key=source_key,
-                    source_url=chapter.get("url"),
-                    images=downloaded_images,
-                    source_blocks=payload.get("source_blocks")
-                    if isinstance(payload.get("source_blocks"), list)
-                    else None,
-                    input_adapter_key="web",
-                    origin_type="url",
-                    origin_uri_or_path=str(chapter.get("url") or meta.get("source_url") or novel_id),
-                    document_type="web_novel",
-                    unit_type="chapter",
-                    import_order=chapter_num,
-                    context_group_id=novel_id,
-                )
-                raw_block = chapter_payload.get("raw") if isinstance(chapter_payload.get("raw"), dict) else {}
-                self.storage.stage_generation_chapter(
-                    novel_id,
-                    generation_id,
-                    chapter_id,
-                    chapter_payload,
-                    source_hash=new_signature,
-                    structure_hash=_json_hash(raw_block.get("source_blocks") or []),
-                    image_manifest_hash=_json_hash(downloaded_images),
-                    parser_version=str(meta.get("chapter_index_extraction_mode") or ""),
-                )
-                # Section 6: crawl writes are *staged only*. Catalog/library
-                # projection refreshes happen exactly once after successful
-                # activation, never per staged chapter write.
-                if progress_callback:
-                    progress_callback(f"  Saved chapter {chapter_id}.")
-                if any(img.get("download_error") for img in downloaded_images):
-                    image_download_failures += 1
-                succeeded += 1
-                # Section 3: fetched_new vs fetched_replaced — decided by the
-                # stable logical chapter id's previous usable bundle, never by
-                # sequence number. A brand-new logical chapter (no prior
-                # bundle anywhere) is ``fetched_new``; a chapter whose previous
-                # bundle was replaced by freshly fetched content is
-                # ``fetched_replaced``.
-                if existing:
-                    chapter_dispositions[chapter_id] = DISPOSITION_FETCHED_REPLACED
-                else:
-                    chapter_dispositions[chapter_id] = DISPOSITION_FETCHED_NEW
-                cached_stored_hashes.add(new_signature)
-                scraped_chapters_for_state.append(
-                    {
-                        "id": chapter_id,
-                        "chapter_id": chapter_id,
-                        "source_episode_id": str(chapter.get("source_episode_id") or chapter_id),
-                        "source_update_date": chapter.get("source_update_date") or chapter.get("date_added"),
-                        "content_hash": new_signature,
-                    }
-                )
-                _emit(
-                    STAGE_BODY_CRAWL,
-                    "completed",
-                    succeeded + skipped + failed,
-                    _total_chapters,
-                    source_episode_id=chapter_id,
-                    label=f"Chapter {chapter_id}: saved",
-                )
-
-            except (SourceError, RuntimeError, Exception) as exc:
-                error_type = type(exc).__name__
-                error_message = str(exc) if str(exc) else error_type
-                # Sanitize: remove stack traces, limit length
-                if "\nTraceback" in error_message:
-                    error_message = error_message.split("\nTraceback")[0]
-                error_message = error_message[:500]
-
-                logger.warning(
-                    "Chapter %s/%s/%s failed (%s): %s",
-                    source_key,
-                    novel_id,
-                    chapter_id,
-                    error_type,
-                    error_message,
-                )
-                if progress_callback:
-                    progress_callback(f"  Chapter {chapter_id} failed ({error_type}): {error_message}")
-
-                http_status_code = _extract_http_status(exc)
-                failure = {
-                    "chapter_id": chapter_id,
-                    "chapter_number": chapter_num,
-                    "title": chapter.get("title"),
-                    "source_url": chapter.get("url"),
-                    "error_type": error_type,
-                    "error_message": error_message,
-                    "error_category": _classify_error(exc, error_message, http_status_code),
-                    "http_status_code": http_status_code,
-                    "retry_attempts": retry_attempts[0],
-                }
-                failures.append(failure)
-                failed += 1
-                # Section 3: two distinct dispositions — never conflated.
-                # A: a *previous* valid bundle exists for this current
-                #    episode; it is carried forward into the stage and the
-                #    chapter is marked refresh_failed_retained.
-                # B: no usable raw bundle exists for the current source
-                #    episode; the chapter is marked explicitly unavailable.
-                previous_bundle = self.storage._load_chapter_bundle(novel_id, chapter_id)
-                if previous_bundle is not None:
-                    self.storage.seed_generation_from_active(novel_id, generation_id, [chapter_id])
-                    self.storage.record_refresh_failed_chapter(
-                        novel_id,
-                        generation_id,
-                        chapter_id,
-                        reason=error_message,
-                        error_category=failure["error_category"],
-                    )
-                    chapter_dispositions[chapter_id] = DISPOSITION_REFRESH_FAILED_RETAINED
-                else:
-                    self.storage.record_unavailable_chapter(
-                        novel_id,
-                        generation_id,
-                        chapter_id,
-                        reason=error_message,
-                        error_category=failure["error_category"],
-                    )
-                    chapter_dispositions[chapter_id] = DISPOSITION_UNAVAILABLE
-                _emit(
-                    STAGE_BODY_CRAWL,
-                    "failed",
-                    succeeded + skipped + failed,
-                    _total_chapters,
-                    source_episode_id=chapter_id,
-                    label=f"Chapter {chapter_id}: failed ({error_type})",
-                    details={
-                        "error_type": error_type,
-                        "error_category": failure["error_category"],
-                        "http_status_code": http_status_code,
-                        "retry_attempts": failure["retry_attempts"],
-                    },
-                )
-
-        terminal_status = crawl_terminal_status(
-            succeeded=succeeded,
-            skipped=skipped,
-            failed=failed,
-            image_download_failures=image_download_failures,
-        )
-
-        if progress_callback:
-            if failures:
-                progress_callback(
-                    f"Scrape finished with partial success: {succeeded} saved, {skipped} skipped, {failed} failed."
-                )
-            else:
-                progress_callback(f"Scrape finished: {succeeded} saved, {skipped} skipped.")
-
-        new_source_state = update_source_state(
-            novel_id=novel_id,
-            existing_state=existing_source_state,
-            metadata=meta,
-            scraped_chapters=scraped_chapters_for_state,
-        )
-        if terminal_status in (TERMINAL_STATUS_COMPLETED, TERMINAL_STATUS_COMPLETED_WITH_WARNINGS):
-            # Onboarding status is operational metadata, but the active
-            # generation is authoritative once it exists. Persist the final
-            # status in the staged snapshot so a metadata handoff from the
-            # preceding activity cannot leave a completed crawl appearing as
-            # chapters_pending to the next operation.
-            meta["onboarding_status"] = "ready_for_translation"
-            meta["body_scrape_required"] = False
-            meta.pop("onboarding_error_code", None)
-            meta.pop("onboarding_error_message", None)
-        elif terminal_status == TERMINAL_STATUS_COMPLETED_WITH_ERRORS:
-            meta["onboarding_status"] = "partially_scraped"
-            meta["body_scrape_required"] = True
-            meta["onboarding_error_code"] = "scrape_completed_with_errors"
-            meta["onboarding_error_message"] = (
-                f"Chapter scrape completed with errors: {succeeded} succeeded, {failed} failed."
+            chapter_payload = self.storage.build_chapter_payload(
+                novel_id,
+                chapter_id,
+                text,
+                title=chapter.get("title"),
+                source_key=source_key,
+                source_url=chapter.get("url"),
+                images=stored_images,
+                source_blocks=payload.get("source_blocks") if isinstance(payload.get("source_blocks"), list) else None,
+                input_adapter_key="web",
+                origin_type="url",
+                origin_uri_or_path=str(chapter.get("url") or meta.get("source_url") or novel_id),
+                document_type="web_novel",
+                unit_type="chapter",
+                import_order=chapter_number,
+                context_group_id=novel_id,
             )
-        # Stage the source-state / chapter-index / metadata snapshots so the
-        # committed generation is a complete, reproducible record of the run.
-        self.storage.stage_generation_source_state(novel_id, generation_id, new_source_state)
-        self.storage.stage_generation_chapter_index(novel_id, generation_id, meta.get("chapters", []))
-        self.storage.stage_generation_metadata(novel_id, generation_id, meta)
+            raw_artifact = self.storage.save_raw_chapter_artifact(
+                novel_id,
+                chapter_id,
+                text,
+                title=chapter.get("title"),
+                source_key=source_key,
+                source_url=chapter.get("url"),
+                artifact_payload=chapter_payload,
+                storage_novel_id=storage_novel_id,
+            )
+            media_artifact = None
+            if stored_images:
+                media_artifact = self.storage._r2_artifacts().put_json(
+                    storage_novel_id=storage_novel_id,
+                    kind="media",
+                    identity=chapter_id,
+                    payload={"chapter_id": chapter_id, "images": stored_images},
+                )
+            fetched[chapter_id] = {
+                "chapter": chapter,
+                "text": text,
+                "signature": new_signature,
+                "payload": chapter_payload,
+                "raw_artifact": raw_artifact,
+                "media_artifact": media_artifact,
+                "images": stored_images,
+            }
+            cached_hashes.add(new_signature)
+            succeeded += 1
+            scraped_for_state.append({**chapter, "id": chapter_id, "content_hash": new_signature})
+            _emit(
+                STAGE_BODY_CRAWL,
+                "completed",
+                succeeded + skipped + failed,
+                total,
+                source_episode_id=episode_id,
+                label=f"Chapter {chapter_id}: saved",
+            )
+            if progress_callback:
+                progress_callback(f"Chapter {chapter_id}: saved")
+        except Exception as exc:
+            failed += 1
+            message = str(exc)[:500] or type(exc).__name__
+            failure = {
+                "chapter_id": chapter_id,
+                "chapter_number": chapter_number,
+                "title": chapter.get("title"),
+                "source_url": chapter.get("url"),
+                "error_type": type(exc).__name__,
+                "error_message": message,
+                "error_category": _classify_error(exc, message, _extract_http_status(exc)),
+                "http_status_code": _extract_http_status(exc),
+                "retry_attempts": retry_attempts,
+            }
+            failures.append(failure)
+            if progress_callback:
+                progress_callback(f"Chapter {chapter_id} failed ({type(exc).__name__}): {message}")
+            _emit(
+                STAGE_BODY_CRAWL,
+                "failed",
+                succeeded + skipped + failed,
+                total,
+                source_episode_id=episode_id,
+                label=f"Chapter {chapter_id}: failed",
+                details=failure,
+            )
 
-        # Section 2/3: every current-index chapter must end the crawl with a
-        # bundle or an explicit disposition. In update mode a scoped crawl may
-        # leave genuinely unfetched current content (no prior bundle anywhere)
-        # marked unavailable under the explicit partial-update policy. In full
-        # mode any unresolved required content prevents activation entirely.
-        stage_manifest = self.storage.load_generation_manifest(novel_id, generation_id)
-        staged_ids = set(stage_manifest.chapter_ids or []) if stage_manifest else set()
-        recorded_unavailable = set(stage_manifest.unavailable_chapter_ids or []) if stage_manifest else set()
-        recorded_refresh = set(stage_manifest.refresh_failed_chapter_ids or []) if stage_manifest else set()
-        missing_current_ids: list[str] = []
+    terminal_status = crawl_terminal_status(
+        succeeded=succeeded,
+        skipped=skipped,
+        failed=failed,
+        image_download_failures=image_download_failures,
+    )
+    expected_generation_id = self.storage.resolve_active_generation_id(novel_id)
+    if expected_generation_id and succeeded == 0 and failed == 0 and skipped == total:
+        return {
+            "succeeded": 0,
+            "skipped": skipped,
+            "failed": 0,
+            "failures": [],
+            "image_download_failures": 0,
+            "terminal_status": terminal_status,
+            "generation_id": expected_generation_id,
+            "no_op": True,
+        }
+
+    if progress_callback:
+        if failures:
+            progress_callback(
+                f"Scrape finished with partial success: {succeeded} saved, {skipped} skipped, {failed} failed."
+            )
+        else:
+            progress_callback(f"Scrape finished: {succeeded} saved, {skipped} skipped.")
+
+    generation_id = f"gen-{uuid.uuid4().hex[:12]}"
+    new_source_state = update_source_state(
+        novel_id=novel_id,
+        existing_state=existing_source_state,
+        metadata=meta,
+        scraped_chapters=scraped_for_state,
+    )
+    meta = dict(meta)
+    if terminal_status in (TERMINAL_STATUS_COMPLETED, TERMINAL_STATUS_COMPLETED_WITH_WARNINGS):
+        meta["onboarding_status"] = "ready_for_translation"
+        meta["body_scrape_required"] = False
+    elif terminal_status == TERMINAL_STATUS_COMPLETED_WITH_ERRORS:
+        meta["onboarding_status"] = "partially_scraped"
+        meta["body_scrape_required"] = True
+
+    with session_scope() as session:
+        catalog = CatalogService(storage=self.storage, session=session)
+        novel = catalog.get_or_create_novel(novel_id, meta)
+        for chapter_id, item in fetched.items():
+            chapter = item["chapter"]
+            row = catalog.save_raw_chapter(
+                novel_id,
+                chapter_id,
+                item["text"],
+                title=chapter.get("title"),
+                source_key=source_key,
+                chapter_number=chapter.get("num") or chapter.get("chapter_number"),
+                source_episode_id=chapter.get("source_episode_id"),
+                sequence_number=chapter.get("sequence_number") or item["chapter"].get("num"),
+                source_url=chapter.get("url"),
+                artifact_payload=item["payload"],
+            )
+            media_artifact = item.get("media_artifact")
+            if media_artifact is not None:
+                row.media_storage_key = media_artifact.key
+                row.media_content_hash = media_artifact.logical_sha256
+                row.media_state_json = {"images": item["images"]}
+                session.add(row)
+        novel.source_state_json = dict(new_source_state)
+        manifest_chapters: list[dict[str, Any]] = []
+        rows = {
+            row.logical_chapter_id: row for row in session.query(Chapter).filter(Chapter.novel_id == novel.id).all()
+        }
         for entry in complete_index_entries:
             if not isinstance(entry, dict):
                 continue
-            cid = _chapter_logical_id(entry)
-            if not cid:
+            chapter_id = _chapter_logical_id(entry)
+            if not chapter_id:
                 continue
-            if cid in staged_ids or cid in recorded_unavailable or cid in recorded_refresh:
-                continue
-            missing_current_ids.append(cid)
-
-        if mode == "full":
-            if failed > 0 or missing_current_ids:
-                logger.error(
-                    "Full crawl for %s/%s has unresolved current content (%d fetch failures, %d missing bundles); "
-                    "refusing to activate and rolling the stage back.",
-                    source_key,
-                    novel_id,
-                    failed,
-                    len(missing_current_ids),
-                )
-                self.storage.rollback_generation(
-                    novel_id,
-                    generation_id,
-                    reason=f"full crawl unresolved: {failed} failures, {len(missing_current_ids)} missing bundles",
-                )
-                raise RuntimeError(
-                    f"Full crawl for {source_key}/{novel_id} could not resolve all current chapters "
-                    f"({failed} fetch failures, {len(missing_current_ids)} missing bundles). "
-                    "Previous generation remains active; fix the failures and retry."
-                )
-        else:
-            # Update mode: partial-update policy — mark genuinely unavailable
-            # new/current content explicitly so the activated generation stays
-            # complete, and removed episodes are excluded from membership.
-            # The disposition map must agree with the explicit unavailable
-            # marker: ``commit_generation`` regenerates
-            # ``unavailable_chapter_ids`` from the disposition map, so a
-            # chapter recorded as unavailable here but still labelled
-            # ``carried_unselected`` would erase its own unavailable record
-            # and fail activation validation.
-            for cid in missing_current_ids:
-                self.storage.record_unavailable_chapter(
-                    novel_id,
-                    generation_id,
-                    cid,
-                    reason="current index entry has no usable raw bundle after a scoped crawl",
-                    error_category="not_fetched",
-                )
-                chapter_dispositions[cid] = DISPOSITION_UNAVAILABLE
-
-        # Section 4: validation must succeed before we swap the active pointer.
-        # Section 5: activation compare-and-swaps the pointer captured at
-        # crawl start so a concurrent crawl can never be overwritten.
-        self.storage.commit_generation(
-            novel_id,
-            generation_id,
-            removed_episode_ids=list(crawl_plan.removed_episode_ids),
-            chapter_dispositions=chapter_dispositions,
-            starting_active_generation_id=starting_active_generation_id,
-        )
-
-        # Section 3/6: live legacy projections (novel-root metadata.json and
-        # source_state.json) and the catalog/library projections are refreshed
-        # exactly ONCE, only after the active pointer has swapped. A partial
-        # or failed run can never expose half-committed state through the
-        # legacy layout. These writes are best-effort and never roll back the
-        # already-committed generation: the committed snapshot remains the
-        # authoritative record and readers must still see the new generation.
-        projection_health: dict[str, Any] = {}
-        try:
-            if mode == "full":
-                self.storage.save_metadata(novel_id, meta)
-                projection_health["metadata"] = "written"
-            self.storage.save_source_state(novel_id, new_source_state)
-            projection_health["source_state"] = "written"
-            projection_health["catalog_refresh"] = safely_refresh_catalog_projection_after_storage_write(
-                novel_id,
-                self.storage,
-                context="scrape_chapters_post_commit",
+            row = rows.get(chapter_id)
+            manifest_entry: dict[str, Any] = {"chapter_id": chapter_id}
+            if row is not None:
+                for field in ("raw_storage_key", "translated_storage_key", "media_storage_key"):
+                    value = getattr(row, field, None)
+                    if value:
+                        manifest_entry[field] = value
+                for field in ("raw_content_hash", "translated_content_hash", "media_content_hash"):
+                    value = getattr(row, field, None)
+                    if value:
+                        manifest_entry[field] = value
+            images = fetched.get(chapter_id, {}).get("images")
+            if not isinstance(images, list):
+                existing = existing_by_id.get(chapter_id, {})
+                existing_images = existing.get("images")
+                images = existing_images if isinstance(existing_images, list) else []
+            manifest_entry["assets"] = sorted(
+                str(image["storage_key"])
+                for image in images
+                if isinstance(image, dict) and isinstance(image.get("storage_key"), str)
             )
-            best_effort_invalidate(context="scrape_chapters_post_commit")
-        except Exception as exc:  # pragma: no cover - defensive
-            projection_health["error"] = str(exc)
-            logger.warning(
-                "Post-commit legacy projection refresh failed for %s/%s: %s",
-                source_key,
-                novel_id,
-                exc,
-            )
-        if projection_health.get("error") or projection_health.get("catalog_refresh") is False:
-            logger.warning(
-                "Projection-health evidence for %s/%s: %s (active generation %s remains authoritative)",
-                source_key,
-                novel_id,
-                projection_health,
-                generation_id,
-            )
-
-        _emit(
-            STAGE_RECONCILIATION,
-            terminal_status,
-            succeeded + skipped + failed,
-            _total_chapters,
-            label="Scrape finished",
-            details={
-                "succeeded": succeeded,
-                "skipped": skipped,
-                "failed": failed,
-                "image_download_failures": image_download_failures,
-                "generation_id": generation_id,
-            },
-        )
-
-        return {
-            "succeeded": succeeded,
-            "skipped": skipped,
-            "failed": failed,
-            "failures": failures,
-            "image_download_failures": image_download_failures,
-            "terminal_status": terminal_status,
+            manifest_chapters.append(manifest_entry)
+        manifest = {
+            "schema_version": 1,
+            "novel_id": str(novel.id),
+            "public_slug": novel_id,
             "generation_id": generation_id,
+            "mode": mode,
+            "source": {"source_key": source_key},
+            "chapters": manifest_chapters,
         }
-    except BaseException as exc:
-        # A hard failure (including cancellation) must not leave a partially
-        # recorded snapshot: roll the stage back and keep the previously
-        # active generation (or legacy layout) in effect.
-        self.storage.rollback_generation(novel_id, generation_id, reason=str(exc.__class__.__name__))
-        raise
+        R2GenerationActivationService(storage=self.storage, db_session=session).activate(
+            novel_id=novel_id,
+            generation_id=generation_id,
+            manifest=manifest,
+            expected_generation_id=expected_generation_id,
+        )
+
+    safely_refresh_catalog_projection_after_storage_write(
+        novel_id,
+        self.storage,
+        context="scrape_chapters_r2",
+    )
+    best_effort_invalidate(context="scrape_chapters_r2")
+    _emit(
+        STAGE_RECONCILIATION,
+        terminal_status,
+        succeeded + skipped + failed,
+        total,
+        label="Scrape finished",
+        details={"succeeded": succeeded, "skipped": skipped, "failed": failed, "generation_id": generation_id},
+    )
+    return {
+        "succeeded": succeeded,
+        "skipped": skipped,
+        "failed": failed,
+        "failures": failures,
+        "image_download_failures": image_download_failures,
+        "terminal_status": terminal_status,
+        "generation_id": generation_id,
+        "no_op": False,
+    }
+
+
+async def _scrape_chapters_impl(
+    self: Any,
+    source_key: str,
+    novel_id: str,
+    chapters: str,
+    mode: str,
+    progress_callback: Callable[[str], None] | None,
+    cancellation_check: Callable[[], bool] | None = None,
+    progress_events_callback: Callable[[CrawlProgressEvent], None] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run chapter crawling through the R2 immutable-generation pipeline."""
+
+    return await _scrape_chapters_r2_impl(
+        self,
+        source_key,
+        novel_id,
+        chapters,
+        mode,
+        progress_callback,
+        cancellation_check,
+        progress_events_callback,
+        metadata=metadata,
+    )

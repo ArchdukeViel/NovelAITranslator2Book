@@ -4,21 +4,21 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, SecretStr
 from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
-from novelai.api.auth.security import require_csrf_token
+from novelai.api.auth.security import require_csrf_token, require_public_rate_limit
 from novelai.api.auth.session import SessionUser
 from novelai.api.routers.dependencies import get_db_session
 from novelai.config.settings import settings
-from novelai.services.contributor_credentials import ContributorCredentialService
+from novelai.services.provider_credentials import ProviderCredentialService
 
 router = APIRouter(prefix="/api/user/contributions", tags=["contributions"])
 
 
-class ContributorCredentialResponse(BaseModel):
+class ContributionCredentialResponse(BaseModel):
     credential_id: str
     provider: str
     provider_model: str
@@ -35,7 +35,7 @@ class ContributorCredentialResponse(BaseModel):
     failure_count: int
 
 
-class ContributorLimitsResponse(BaseModel):
+class ContributionLimitsResponse(BaseModel):
     requests_per_minute: int
     tokens_per_minute: int
     requests_per_day: int
@@ -45,12 +45,12 @@ class ContributionListResponse(BaseModel):
     enabled: bool
     encryption_ready: bool
     consent_version: str
-    limits: ContributorLimitsResponse
-    credentials: list[ContributorCredentialResponse]
+    limits: ContributionLimitsResponse
+    credentials: list[ContributionCredentialResponse]
 
 
 class ContributionWriteResponse(BaseModel):
-    credential: ContributorCredentialResponse
+    credential: ContributionCredentialResponse
     validation_ok: bool
 
 
@@ -87,7 +87,7 @@ class UsageEntryResponse(BaseModel):
 
 class UsageResponse(BaseModel):
     credential_id: str
-    limits: ContributorLimitsResponse
+    limits: ContributionLimitsResponse
     current_minute: dict[str, int]
     today: dict[str, int]
     recent: list[UsageEntryResponse]
@@ -98,8 +98,8 @@ def _user_id(user: SessionUser) -> int:
     return user.user_id
 
 
-def _limits() -> ContributorLimitsResponse:
-    return ContributorLimitsResponse(
+def _limits() -> ContributionLimitsResponse:
+    return ContributionLimitsResponse(
         requests_per_minute=settings.CONTRIBUTOR_RPM_LIMIT,
         tokens_per_minute=settings.CONTRIBUTOR_TPM_LIMIT,
         requests_per_day=settings.CONTRIBUTOR_RPD_LIMIT,
@@ -111,14 +111,14 @@ def list_contributions(
     user: SessionUser = Depends(require_role("user")),
     db: Session = Depends(get_db_session),
 ) -> ContributionListResponse:
-    service = ContributorCredentialService(db)
+    service = ProviderCredentialService(db)
     return ContributionListResponse(
         enabled=service.enabled(),
         encryption_ready=service.encryption_available(),
         consent_version=settings.CONTRIBUTOR_CONSENT_VERSION,
         limits=_limits(),
         credentials=[
-            ContributorCredentialResponse.model_validate(service.safe_response(item))
+            ContributionCredentialResponse.model_validate(service.safe_response(item))
             for item in service.list_for_user(_user_id(user))
         ],
     )
@@ -127,10 +127,12 @@ def list_contributions(
 @router.put("", response_model=ContributionWriteResponse, dependencies=[Depends(require_csrf_token)])
 async def replace_contribution(
     body: ContributionUpsertRequest,
+    request: Request,
     user: SessionUser = Depends(require_role("user")),
     db: Session = Depends(get_db_session),
 ) -> ContributionWriteResponse:
-    service = ContributorCredentialService(db)
+    require_public_rate_limit(request, "contributor_validation", user_id=_user_id(user))
+    service = ProviderCredentialService(db)
     if not service.enabled():
         raise HTTPException(status_code=503, detail="Contributor credentials are temporarily unavailable.")
     if not service.encryption_available():
@@ -146,14 +148,14 @@ async def replace_contribution(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     ok, _message = await service.validate_and_activate(credential, api_key)
     return ContributionWriteResponse(
-        credential=ContributorCredentialResponse.model_validate(service.safe_response(credential)),
+        credential=ContributionCredentialResponse.model_validate(service.safe_response(credential)),
         validation_ok=ok,
     )
 
 
 @router.patch(
     "/{credential_id}",
-    response_model=ContributorCredentialResponse,
+    response_model=ContributionCredentialResponse,
     dependencies=[Depends(require_csrf_token)],
 )
 def update_contribution_status(
@@ -161,8 +163,8 @@ def update_contribution_status(
     body: ContributionStatusRequest,
     user: SessionUser = Depends(require_role("user")),
     db: Session = Depends(get_db_session),
-) -> ContributorCredentialResponse:
-    service = ContributorCredentialService(db)
+) -> ContributionCredentialResponse:
+    service = ProviderCredentialService(db)
     credential = service.get_owned(_user_id(user), credential_id)
     if credential is None:
         raise HTTPException(status_code=404, detail="Contributor credential not found.")
@@ -170,7 +172,7 @@ def update_contribution_status(
         updated = service.resume(credential) if body.status == "active" else service.pause(credential)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return ContributorCredentialResponse.model_validate(service.safe_response(updated))
+    return ContributionCredentialResponse.model_validate(service.safe_response(updated))
 
 
 @router.delete("/{credential_id}", status_code=204, dependencies=[Depends(require_csrf_token)])
@@ -179,7 +181,7 @@ def delete_contribution(
     user: SessionUser = Depends(require_role("user")),
     db: Session = Depends(get_db_session),
 ) -> None:
-    service = ContributorCredentialService(db)
+    service = ProviderCredentialService(db)
     credential = service.get_owned(_user_id(user), credential_id)
     if credential is None:
         raise HTTPException(status_code=404, detail="Contributor credential not found.")
@@ -192,7 +194,7 @@ def contribution_usage(
     user: SessionUser = Depends(require_role("user")),
     db: Session = Depends(get_db_session),
 ) -> UsageResponse:
-    service = ContributorCredentialService(db)
+    service = ProviderCredentialService(db)
     if service.get_owned(_user_id(user), credential_id) is None:
         raise HTTPException(status_code=404, detail="Contributor credential not found.")
     return UsageResponse.model_validate(service.usage_summary(credential_id))
