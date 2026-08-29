@@ -1064,3 +1064,18 @@ from the Cloudflare development origin. The bounded read-only run recorded
 50 warm samples per required route, with liveness/catalog/search over budget
 and detail/chapter returning HTTP 404; controlled cold-cache evidence remains
 unavailable and no production-capacity claim is established.
+
+### Managed non-production recovery checkpoint - 2026-08-30
+
+The explicitly authorized test-only recovery workflow
+[`33270802038`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33270802038)
+passed backup creation, healthy freshness, manifest/checksum verification,
+isolated restore, representative queries, migration-head verification, public
+isolation, and cleanup against only the disposable managed test database and
+dedicated test R2 buckets. Independent Supabase and Cloudflare MCP checks
+confirmed zero fixture rows and zero test objects under the exact prefixes.
+The recovery disposition is `partial`, not complete: recurring
+schedule/retention evidence, alert transition/delivery, production smoke, and
+production recovery readiness remain unverified. Reader SLO/path remain
+blocked, hosted telemetry remains unavailable, and
+`production_capacity_claim=not_established`.
