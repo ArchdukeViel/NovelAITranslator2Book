@@ -1,9 +1,9 @@
 # Reader Capacity and Recovery Operational Follow-up Requirements
 
 Spec ID: reader-capacity-and-recovery-follow-up
-Version: 0.4.1
+Version: 0.4.2
 Status: Approved
-Updated: 2026-08-29
+Updated: 2026-08-30
 Requester: Project owner
 Owner: Project owner with implementation agent
 Target project or release: Current split deployment after the quantified 1k reader-stage stop
@@ -24,13 +24,24 @@ loopback diagnostic cells attempted another 1,000 requests with 800 valid
 samples and 189 timeouts. The result is therefore a quantified stop rather
 than a capacity pass:
 `reader_slo_status=blocked`, `path_profile_status=blocked`,
-`telemetry_status=unavailable`, `recovery_status=not_assessed`, and
+`telemetry_status=unavailable`, `recovery_status=partial`, and
 `production_capacity_claim=not_established`. The worker remained stopped;
 queue/writer observation remained unknown; and production content, R2, and
 provider surfaces were not used. Supabase and Cloudflare MCP checks confirmed
 the test identities and cleanup, while exact reader-window provider telemetry
 was unavailable. The readiness gate removes the prior tunnel startup ambiguity
 but does not establish route-budget or production capacity.
+
+The later explicitly authorized test-only recovery workflow [33270802038](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33270802038)
+completed at merged `main` commit `01f106ade3700405f3f4a998a1c708ed7113505b`.
+Its sanitized evidence passed backup creation, healthy freshness,
+manifest/checksum verification, isolated restore, representative queries,
+Alembic-head verification, public isolation, and cleanup against only the
+disposable managed test database and dedicated test R2 buckets. Independent
+Supabase and Cloudflare MCP checks found zero fixture rows and zero objects
+under the exact test prefixes. The current recovery disposition is therefore
+`partial`, not `not_assessed`; recurring schedule/retention and alert evidence,
+production smoke, and production recovery readiness remain unverified.
 
 ## Goal
 

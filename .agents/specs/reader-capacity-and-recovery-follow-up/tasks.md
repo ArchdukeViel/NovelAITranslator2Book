@@ -1,9 +1,9 @@
 # Reader Capacity and Recovery Operational Follow-up Tasks
 
 Spec ID: reader-capacity-and-recovery-follow-up
-Version: 0.4.1
+Version: 0.4.2
 Status: Approved
-Updated: 2026-08-29
+Updated: 2026-08-30
 
 Execution is dependency-ordered. Every task starts unchecked and remains
 unchecked until its verification command and evidence review pass. This spec
@@ -181,7 +181,7 @@ operation passed. The current operational dispositions are:
   - Verification: `tools/pytest.ps1 backend/tests/test_backup_service.py backend/tests/test_database_backup_crypto.py backend/tests/test_health_service.py backend/tests/test_operator_alert_service.py backend/tests/test_scheduler_service.py -q`
   - Expected: Both database and R2 backup classes expose current or explicitly unavailable freshness/alert evidence, with schedule source and owner assignment; Object Lock retention debt is not misclassified as an application backup failure; no production object is deleted or overwritten.
   - Attempts: 1
-  - Last result: complete with recovery evidence unavailable; local control tests pass, but current freshness and alert state were not observed.
+  - Last result: complete with partial current evidence; the latest test-only recovery run verified one-run backup freshness and cleanup, but recurring schedule history, retention behavior, and alert transition/delivery remain unobserved.
   - Evidence: recorded in `artifacts/operations/reader-capacity-follow-up/backup-controls.json`.
 
 - [x] **T-009 Execute an isolated restore verification**
@@ -192,9 +192,9 @@ operation passed. The current operational dispositions are:
   - Scope: Use the documented service paths and the managed-services recovery procedure to select a committed backup, verify manifest/checksum/reference evidence, restore the encrypted database into the dedicated `restore` target, restore representative R2 material into an isolated prefix or test bucket, verify migration head/tables/constraints/row counts and representative application reads, run isolated public-boundary smoke checks, and record operator/time/result without secrets. Before relying on hosted workflow evidence, verify that the workflow's referenced integration-test paths exist at the candidate revision; a stale workflow path is a named CI-evidence blocker, not a passing restore result. Capture cleanup status only after evidence is committed.
   - Verification: `tools/pytest.ps1 backend/tests/test_database_backup_crypto.py backend/tests/test_r2_backup.py backend/tests/test_backup_service.py -q`
   - Expected: The isolated restore either passes all declared checks or records the exact blocked step, workflow/commit/UTC evidence, target-isolation proof, and cleanup status. Restore freshness is timestamped separately from backup creation freshness. Production database, canonical R2 content, and public production routes remain untouched.
-  - Attempts: 1
-  - Last result: complete for the one-run test-only restore; the earlier hosted workflow passed isolated backup/restore, schema/public-isolation, and cleanup checks. A new direct dispatch on 2026-08-29 was blocked by default-branch workflow registration, so no newer recovery evidence was claimed.
-  - Evidence: recorded in `artifacts/operations/reader-capacity-follow-up/restore-verification.md` and `artifacts/operations/reader-capacity-follow-up/remote-recovery-33182847311/managed-database-recovery-evidence.json`.
+  - Attempts: 2
+  - Last result: complete for the current test-only restore verification; workflow run `33270802038` passed backup, freshness, manifest/checksum, isolated restore, schema/public-isolation, and cleanup checks against disposable targets. Independent Supabase and Cloudflare MCP checks confirmed zero fixture rows and zero test objects. Recurring recovery controls remain a separate partial-status gate.
+  - Evidence: recorded in `artifacts/operations/reader-capacity-follow-up/restore-verification.md`, the earlier `remote-recovery-33182847311` evidence, and GitHub artifact `managed-database-recovery-evidence-33270802038`.
 
 - [x] **T-010 Complete least-privilege and credential-rotation procedure**
   - Maps to: REQ-009, REQ-011, AC-009
@@ -230,6 +230,6 @@ operation passed. The current operational dispositions are:
   - Scope: Update only the affected sections of `docs/PERFORMANCE_ACTION_PLAN.md`, `docs/PERFORMANCE_AUDIT.md`, `docs/OPERATIONS.md`, `docs/WORK.md`, `docs/HISTORY.md`, and the R2 plan. Distinguish completed evidence, quantified blockers, unavailable hosted metrics, recovery ownership, and the still-paused worker/higher stages. Do not mark production capacity or billing ready.
   - Verification: `graphify update . --no-cluster`
   - Expected: Canonical documents, evidence artifacts, this spec's task states, and the Graphify index agree on the current disposition; the final handoff names the independent SLO/telemetry/recovery statuses, next practical action, production-capacity non-claim, and safety stop where applicable.
-  - Attempts: 1
-  - Last result: handoff updated as blocked after the latest disposable Cloudflare evidence run; canonical documents preserve the distinction between this valid non-production package, the separate one-run restore evidence, and unperformed hosted/production operations.
+  - Attempts: 2
+  - Last result: handoff refreshed as blocked after the latest disposable Cloudflare profile and test-only recovery run; canonical documents preserve the reader/telemetry blockers, partial recovery status, independent cleanup proof, and unperformed production operations.
   - Evidence: recorded in `artifacts/operations/reader-capacity-follow-up/handoff.md`.
