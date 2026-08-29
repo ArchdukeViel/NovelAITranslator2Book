@@ -14,6 +14,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ComposeProject,
     [string]$ComposeFile = "deploy/compose.yml",
+    [string]$ComposeEnvFile,
     [Parameter(Mandatory = $true)]
     [string]$OutputPath
 )
@@ -27,8 +28,14 @@ if ($ComposeProject -notmatch "^reader-capacity-test-[A-Za-z0-9_-]+$") {
 if (-not (Test-Path -LiteralPath $ComposeFile -PathType Leaf)) {
     throw "Compose file does not exist."
 }
+if (-not [string]::IsNullOrWhiteSpace($ComposeEnvFile) -and -not (Test-Path -LiteralPath $ComposeEnvFile -PathType Leaf)) {
+    throw "Compose environment file does not exist."
+}
 
 $composeArgs = @("--project-name", $ComposeProject, "--file", $ComposeFile)
+if (-not [string]::IsNullOrWhiteSpace($ComposeEnvFile)) {
+    $composeArgs += @("--env-file", $ComposeEnvFile)
+}
 
 & docker compose @composeArgs exec -T redis redis-cli FLUSHDB *> $null
 if ($LASTEXITCODE -ne 0) {

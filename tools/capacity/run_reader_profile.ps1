@@ -27,6 +27,7 @@ param(
     [string]$ColdResetScript,
     [string]$ColdResetComposeProject,
     [string]$ColdResetComposeFile = "deploy/compose.yml",
+    [string]$ColdResetComposeEnvFile,
     [string]$BaselinePath = "artifacts/operations/reader-capacity-follow-up/baseline.json",
     [string]$TelemetryPath = "artifacts/operations/reader-capacity-follow-up/hosted-telemetry.json",
     [string]$RunId,
@@ -298,6 +299,8 @@ function Invoke-ColdReset([string]$Topology, [string]$Route) {
         $ColdResetComposeProject,
         "-ComposeFile",
         $ColdResetComposeFile,
+        "-ComposeEnvFile",
+        $ColdResetComposeEnvFile,
         "-OutputPath",
         $proofPath
     )

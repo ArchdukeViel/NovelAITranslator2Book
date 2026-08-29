@@ -243,8 +243,15 @@ def test_reader_runner_uses_the_isolated_reset_helper_contract():
 
     assert "[string]$ColdResetScript" in runner
     assert "[string]$ColdResetComposeProject" in runner
+    assert "[string]$ColdResetComposeEnvFile" in runner
     assert "Invoke-ColdReset" in runner
     assert "-ComposeProject" in runner
+    assert "-ComposeEnvFile" in runner
+    assert "[string]$ComposeEnvFile" in reset
+    assert "--env-file" in reset
+    preflight = (CAPACITY_TOOLS / "run_reader_follow_up_preflight.ps1").read_text(encoding="utf-8")
+    assert "function Get-PowerShellCommand" in preflight
+    assert "& $validatorShell" in preflight
     assert "redis-cli FLUSHDB" in reset
     assert "restart reader" in reset
     assert '"^reader-capacity-test-[A-Za-z0-9_-]+$"' in reset

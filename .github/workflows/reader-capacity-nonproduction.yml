@@ -285,6 +285,7 @@ jobs:
             -ColdResetScript tools/capacity/reset_reader_cache.ps1 `
             -ColdResetComposeProject $env:COMPOSE_PROJECT `
             -ColdResetComposeFile $env:COMPOSE_FILE `
+            -ColdResetComposeEnvFile deploy/.env `
             -BaselinePath artifacts/operations/reader-capacity-follow-up/baseline.json `
             -ReportDir artifacts/operations/reader-capacity-follow-up/reader-stage-1000 `
             -WarmSamples 50 `
@@ -305,6 +306,13 @@ jobs:
               python -m novelai.scripts.seed_reader_capacity_fixture cleanup \
               > "$RUNNER_TEMP/reader-capacity-cleanup.log" 2>&1
             cleanup_status=$?
+          fi
+          if [[ "$cleanup_status" -eq 0 ]]; then
+            printf '{"schema_version":1,"status":"cleanup_completed","target_class":"isolated_non_production_reader_runtime","operation":"guarded_fixture_and_exact_r2_namespace_cleanup"}\n' \
+              > artifacts/operations/reader-capacity-follow-up/fixture-cleanup.json
+          else
+            printf '{"schema_version":1,"status":"cleanup_failed","target_class":"isolated_non_production_reader_runtime","operation":"guarded_fixture_and_exact_r2_namespace_cleanup"}\n' \
+              > artifacts/operations/reader-capacity-follow-up/fixture-cleanup.json
           fi
           docker rm --force "$CLOUD_FLARED_CONTAINER" > "$RUNNER_TEMP/reader-capacity-tunnel-cleanup.log" 2>&1
           docker compose --project-name "$COMPOSE_PROJECT" --env-file deploy/.env \

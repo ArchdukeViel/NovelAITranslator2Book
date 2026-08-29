@@ -84,7 +84,9 @@ Cloudflare quick tunnel, and runs the bounded Cloudflare reader profile. The
 profile records 50-count warm cells and 50-count cold cells; each cold cell is
 preceded by `reset_reader_cache.ps1`, which flushes only that project's Redis
 database, restarts only its reader service, waits for reader health, and emits a
-sanitized reset proof.
+sanitized reset proof. The reset receives the same disposable `deploy/.env` as
+the Compose stack, and fixture cleanup is retained as a separate sanitized
+artifact record.
 
 The uploaded artifact is retained for seven days and contains sanitized route,
 cache-state, reset-proof, and disposition data only. A successful workflow or

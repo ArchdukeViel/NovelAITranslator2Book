@@ -108,6 +108,7 @@ def test_nonproduction_reader_capacity_workflow_is_isolated_and_cleanup_gated() 
     assert "cloudflare/cloudflared:2026.8.0@sha256:" in source
     assert "if: always()" in source
     assert "seed_reader_capacity_fixture cleanup" in source
+    assert "fixture-cleanup.json" in source
     assert 'docker compose --project-name "$COMPOSE_PROJECT"' in source
 
 

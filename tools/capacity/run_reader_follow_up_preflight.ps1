@@ -39,6 +39,14 @@ function Get-EnvValue([string]$Name) {
     return $value.Trim()
 }
 
+function Get-PowerShellCommand() {
+    $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+    if ($null -ne $pwsh) { return [string]$pwsh.Source }
+    $powershell = Get-Command powershell -ErrorAction SilentlyContinue
+    if ($null -ne $powershell) { return [string]$powershell.Source }
+    throw "No PowerShell executable is available for evidence validation."
+}
+
 function Get-ComposeSnapshot() {
     $rows = @()
     $composeArgs = @()
@@ -189,6 +197,7 @@ $json = $baseline | ConvertTo-Json -Depth 12
 [System.IO.File]::WriteAllText($OutputPath, $json, [System.Text.Encoding]::UTF8)
 
 $validator = Join-Path $PSScriptRoot "validate_reader_follow_up.ps1"
-& powershell -NoProfile -ExecutionPolicy Bypass -File $validator -Kind baseline -Path $OutputPath
+$validatorShell = Get-PowerShellCommand
+& $validatorShell -NoProfile -ExecutionPolicy Bypass -File $validator -Kind baseline -Path $OutputPath
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Baseline created with $(@($blockers).Count) explicit blocker(s): $OutputPath" -ForegroundColor Yellow
