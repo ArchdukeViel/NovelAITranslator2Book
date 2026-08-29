@@ -174,7 +174,10 @@ function New-Cell([string]$CampaignId, [string]$RunId, [string]$FixtureId, [stri
         }
     }
     if ($unavailable) {
-        $statusCounts = [ordered]@{}
+        # Preserve the attempted/completed/error/timeout counters as diagnostic
+        # evidence, but never count an incomplete cell as valid samples.
+        $sampleCount = 0
+        $valid = 0
         $responseStatus = "unavailable"
         $provenance = "unavailable"
     }

@@ -252,6 +252,8 @@ def test_reader_runner_uses_the_isolated_reset_helper_contract():
     preflight = (CAPACITY_TOOLS / "run_reader_follow_up_preflight.ps1").read_text(encoding="utf-8")
     assert "function Get-PowerShellCommand" in preflight
     assert "& $validatorShell" in preflight
+    assert "$sampleCount = 0" in runner
+    assert "$valid = 0" in runner
     assert "redis-cli FLUSHDB" in reset
     assert "restart reader" in reset
     assert '"^reader-capacity-test-[A-Za-z0-9_-]+$"' in reset
