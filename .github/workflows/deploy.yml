@@ -56,7 +56,6 @@ jobs:
       DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-      TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
       VERSION: ${{ inputs.version }}
       DEPLOY_ENV: ${{ inputs.environment }}
 
@@ -176,23 +175,17 @@ jobs:
           IMAGE_HEAD=$(docker run --rm --entrypoint alembic -w /app/backend \
             "$ADMIN_IMAGE" -c alembic.ini heads | awk '/\(head\)/ { print $1 }')
 
-          if [[ "$SOURCE_HEAD" != "$IMAGE_HEAD" || "$SOURCE_HEAD" != "d7e4f9a1c2b3" ]]; then
+          if [[ "$SOURCE_HEAD" != "$IMAGE_HEAD" || "$SOURCE_HEAD" != "f8a2c4e6b0d1" ]]; then
             echo "::error::Source and admin image Alembic heads do not match the expected release head."
             exit 1
           fi
           echo "Source and admin image Alembic heads match the expected release head."
 
-      # Private-network bridge: the GitHub-hosted runner joins the tailnet as
-      # an ephemeral node so SCP/SSH below reach the staging host without any
-      # public port exposure or inbound firewall config. The action's post step
-      # logs the runner node out again; `ping` verifies the staging node is
-      # reachable before any transfer is attempted.
-      - name: Connect to Tailscale private network
-        uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
-        with:
-          authkey: ${{ env.TS_AUTHKEY }}
-          hostname: novelai-ci
-          ping: ${{ env.DEPLOY_HOST }}
+      # Web traffic is exposed through the Cloudflare Tunnel configured for
+      # the target environment. Deployment transport remains the existing
+      # environment-scoped SSH key, so DEPLOY_HOST must be a stable host that
+      # the GitHub runner can reach directly; it must not be a private-mesh-
+      # only address or hostname.
 
       - name: Copy deploy directory to remote host
         uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
@@ -257,10 +250,9 @@ jobs:
                 exit 1
               fi
             done
-            # Docker Desktop's WSL backend cannot bind a container directly to
-            # the Windows Tailnet address. Keep staging private by publishing
-            # Caddy only on the WSL loopback port; Windows forwards Tailnet
-            # port 80 to this port through the narrowly scoped host rule.
+            # Keep the Caddy host bind loopback-only for staging. The
+            # Cloudflare connector reaches Caddy over the Compose network, so
+            # no Windows host forwarding or private-mesh address is required.
             STAGING_HTTP_BIND=""
             STAGING_HTTP_PORT=""
             if [[ "$DEPLOY_ENV" == "staging" ]]; then

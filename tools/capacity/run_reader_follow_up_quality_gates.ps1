@@ -160,8 +160,16 @@ try {
         foreach ($requiredPath in $requiredPaths) {
             if (-not (Test-Path -LiteralPath $requiredPath)) { throw "required documentation or evidence path is missing: $requiredPath" }
         }
-        & git diff --check
-        if ($LASTEXITCODE -ne 0) { throw "git diff --check reported whitespace errors" }
+        # Git may emit a harmless core.autocrlf conversion notice for files
+        # edited on Windows. Preserve the native exit code while keeping that
+        # stderr notice from becoming a PowerShell terminating error under
+        # ErrorActionPreference=Stop.
+        $gitErrorAction = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        $gitDiffOutput = @(& git diff --check 2>&1)
+        $gitDiffExitCode = $LASTEXITCODE
+        $ErrorActionPreference = $gitErrorAction
+        if ($gitDiffExitCode -ne 0) { throw "git diff --check reported whitespace errors" }
     }
 
     $validator = "tools/capacity/validate_reader_follow_up.ps1"

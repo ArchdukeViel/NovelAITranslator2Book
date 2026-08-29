@@ -92,17 +92,21 @@ The production topology is the target.
   and an ignored local token file under ``deploy/.cloudflared/``. The token is
   never checked into the repository or passed through tracked configuration.
 - This is an externally reachable development smoke path over the current
-  Windows Docker host. It is not the Tailscale production topology and does
-  not establish production capacity, recovery, monitoring, or launch
-  readiness. The worker/full queue remains stopped unless a separate gate
-  explicitly authorizes it.
+  Windows Docker host. It is not a production topology and does not establish
+  production capacity, recovery, monitoring, or launch readiness. The
+  worker/full queue remains stopped unless a separate gate explicitly
+  authorizes it.
+- Cloudflare is the active external edge for the development reader path. The
+  reader-capacity follow-up does not require a private-peer network check;
+  earlier private-network records are historical evidence only.
 
-### Tailscale-hosted production (WSL/Docker + split containers + managed PostgreSQL + R2)
+### Cloudflare-protected production target (WSL/Docker + split containers + managed PostgreSQL + R2)
 
 - **Frontend**: pinned Node.js 26.7.x Next.js container behind Caddy on the
   WSL/Docker host, with explicit
   ``WEB_CORS_ORIGINS``, ``CSRF_TRUSTED_ORIGINS``, ``ALLOWED_HOSTS``, CSP,
-  and HSTS. Operators reach the private site through Tailscale.
+  and HSTS. Operators reach the public site through the selected Cloudflare
+  edge/proxy, with origin access restricted to the deployment boundary.
 - **Backend**: always-on split deployment:
   - **Admin process** (``admin.Dockerfile``, port 8000) — owner/user
     control plane, session-authenticated endpoints, CSRF-protected
@@ -127,6 +131,12 @@ The production topology is the target.
   - ``anon`` and ``authenticated`` roles exist only if Data API is
     enabled; their privileges are explicitly revoked on backend-internal
     tables and sequences.
+  - If a managed Supabase project contains the optional
+    ``public.rls_auto_enable()`` ``SECURITY DEFINER`` event-trigger helper,
+    migration ``f8a2c4e6b0d1`` conditionally revokes ``PUBLIC``, ``anon``, and
+    ``authenticated`` execution. The helper is not application schema and is
+    never Data API-callable by those roles; deployments without it are a
+    no-op.
 - **Storage**: two separate R2 buckets with least-privilege credentials:
   - **App bucket**: chapter content, novel assets, catalog projections.
   - **Backup bucket**: encrypted dumps and snapshots. Backup-target

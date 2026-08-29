@@ -11,8 +11,8 @@
 param(
     [switch]$ReadOnly,
     [string]$OutputPath = "artifacts/operations/reader-capacity-follow-up/baseline.json",
-    [ValidateSet("caddy_loopback", "private_network")]
-    [string]$SloGateTopology = "private_network",
+    [ValidateSet("caddy_loopback", "cloudflare_tunnel")]
+    [string]$SloGateTopology = "cloudflare_tunnel",
     [ValidateSet(1000)]
     [int]$Profile = 1000,
     # Accept only the already-opaque binding produced by the reader runner;
@@ -132,7 +132,7 @@ $baseline = [ordered]@{
     baseline_revision = $revision
     topology = "split"
     worktree_state = if ($worktreeLines.Count -eq 0) { "clean" } else { "dirty_preserved" }
-    target_aliases = @("direct_service", "caddy_loopback", "private_network")
+    target_aliases = @("direct_service", "caddy_loopback", "cloudflare_tunnel")
     slo_gate_topology = $SloGateTopology
     fixture_binding_method = if ($fixtureId -eq "not-supplied") { "explicit_binding_missing" } else { "explicit_runtime_binding" }
     fixture_binding_id = $fixtureId
@@ -153,11 +153,11 @@ $baseline = [ordered]@{
         max_p95_chapter_ms = 750
         max_p95_search_ms = 500
     }
-    configuration_keys = @("APP_ENV", "DATABASE_URL", "REDIS_URL", "R2_BUCKET", "HEALTH_PROBE_TIMEOUT_MS", "HEALTH_TOTAL_TIMEOUT_MS", "READER_CADDY_HOST_HEADER")
+    configuration_keys = @("APP_ENV", "DATABASE_URL", "REDIS_URL", "R2_BUCKET", "HEALTH_PROBE_TIMEOUT_MS", "HEALTH_TOTAL_TIMEOUT_MS", "READER_CADDY_HOST_HEADER", "READER_CLOUDFLARE_BASE_URL")
     target_binding_contract = [ordered]@{
         direct_service = "diagnostic_only; host-published reader service or approved internal source"
         caddy_loopback = "diagnostic_only; requires an explicit Host binding"
-        private_network = "selected_reader_slo_gate; private Caddy-routed entry point"
+        cloudflare_tunnel = "selected_reader_slo_gate; HTTPS Cloudflare Tunnel and proxied development entry point"
     }
     authorized_profile = [ordered]@{
         model = "1000_dau_equivalent"

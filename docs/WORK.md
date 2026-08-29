@@ -165,7 +165,7 @@ exists and is recorded in `HISTORY.md`.
 | 4 | DEBT-079A | Deploy always-on candidate | REL-001 | Migrations one-shot succeeds; immutable images run; production config validated (COMPLETED 2026-08-17) |
 | 5 | DEBT-079B | Hosted auth/security smoke | DEBT-079A | OAuth, cookies, CSRF, CORS, hosts, roles, disabled users, admin/reader boundaries pass (COMPLETED 2026-08-17) |
 | 6 | DEBT-075A | Verify hosted PostgreSQL/R2 workflow | DEBT-079A | Managed-services workflow passes against isolated targets (COMPLETED 2026-08-17) |
-| 7 | DEBT-075B | Current-head recovery drill | DEBT-075A | User-deferred for the current R2 cutover; do not claim DB/object restore evidence until separately authorized and recorded |
+| 7 | DEBT-075B | Current-head recovery drill | DEBT-075A | Current disposable managed PostgreSQL backup/restore evidence recorded on 2026-08-28; recurring backup/alert, production smoke, and production recovery readiness remain separate gates |
 | 8 | DEBT-118 | Activate and verify SMTP, including signup verification and password-reset delivery | DEBT-079A | Domain/SPF/DKIM/DMARC, auth mail, bounce/error handling, redaction, limits, `noop` rollback proven |
 | 9 | DEBT-075C | Real operator alert | DEBT-118 | Stale/failure alert delivered; threshold, cooldown, redaction, escalation proven |
 | 10 | DEBT-079C | External monitoring | DEBT-079A, OWN-001 | Scheduled runs, dashboard, operator delivery, escalation ownership proven |
@@ -504,69 +504,53 @@ graphify update . --no-cluster
 
 ## Operator Acceptance
 
-Current follow-up checkpoint — 2026-08-27:
+Current follow-up checkpoint — 2026-08-29:
 `reader-capacity-and-recovery-follow-up` remains an active, blocked operational
-spec. Its local contracts and evidence postconditions are valid, and the
-approved private-service liveness evidence remains historical provenance.
-Docker, Compose, Caddy, `/health/live`, and `/health/ready` were rechecked
-locally on 2026-08-27, but the selected reader gate still has no approved
-fixture/target binding or controlled cold-cache run; queue/writer state and
-hosted telemetry remain unavailable; and current recovery freshness, alert
-delivery, and isolated hosted restore are not observed. The repaired workflow
-path has a passing local reference audit but has not run at the candidate
-revision. The worker and original full queue remain stopped/paused by policy;
-production capacity is not established. The Recovery and Performance rows
-below retain their earlier audit provenance and must not be read as overriding
-this current checkpoint.
+spec. Its local contracts and evidence postconditions are valid, but the
+selected Cloudflare gate has a public target but no matching fixture at that
+origin; controlled cold-cache evidence is unavailable, and hosted telemetry is
+unavailable. Recovery freshness/alert state is not observed. The current
+non-production managed PostgreSQL/R2 recovery
+verification now passes after the candidate schema was applied. It is recovery
+evidence for that disposable path, but it is not production recovery readiness
+or capacity evidence. The worker and original full queue remain stopped/paused
+by policy; production capacity is not established. The Recovery and
+Performance rows below retain their earlier audit provenance and must not be
+read as overriding this current checkpoint.
 
-Current follow-up evidence refresh - 2026-08-28:
-The current baseline campaign is `camp-20260828T042235Z`, with
-`private_network` selected as the reader gate. The bounded stage artifact
-`reader-stage-1000/reader-stage-1000-20260828T042533Z.json` contains 60
-required route/cache cells, 30 quantified blockers, and no live reader
-samples. Pre-remediation and stage-1000 telemetry are joinable across 38
-snapshot records, but every required operational value remains explicitly
-unavailable. Recovery controls remain unavailable and no hosted restore or
-backup-alert delivery was observed. The worker/full queue remain stopped or
-paused, and `production_capacity_claim` remains `not_established`.
+The current recovery artifact records backup, manifest, checksum, freshness,
+restore, representative-query, public-isolation, R2-cleanup, and role-cleanup
+success. The isolated target contained 37 public tables, 37 RLS tables, and
+zero invalid constraints. The temporary confirmation variable was removed;
+`MANAGED_SERVICE_TESTS_ENABLED` remains `false`.
+The disposable test project's security advisor was rerun after the optional
+RLS-helper execution was revoked and reported no lints. Repository migration
+`f8a2c4e6b0d1` carries that conditional hardening for the next normal schema
+deployment; this does not establish production security or capacity readiness.
 
-Current reconciliation of the audit additions: release configuration parity,
-Syosetu/Novel18/Kakuyomu live hierarchy acceptance, provider/bulk translation
-readiness, production pool/analytics/cache behavior, CDN/takedown propagation,
-actual credential rotation, and a dedicated always-on/second-host availability
-decision remain open launch gates. Privacy-policy/pseudonymity sign-off,
-manual admin Spotlight persistence/API contract, and library plan-to-read/
-dropped mutations remain deferred; the existing FE-06/FE-09 rows are the
-canonical records for the latter two items.
-
-Current development edge checkpoint - 2026-08-28:
-the explicitly authorized `https://dev.dokushodo.online` origin is reachable
-through the new remotely managed Cloudflare development tunnel. Cloudflare
-reports the tunnel healthy with the intended ingress and DNS route, and the
-development URL returned HTTP 200 for liveness, readiness, frontend root, and
-the public catalog smoke request. This closes only the temporary development
-origin wiring; it does not close hosted production smoke/auth acceptance,
-reader-capacity and recovery evidence, provider/R2 telemetry, alerts,
-monitoring, rollback, or the production-domain gate. The worker/full queue
-remain stopped or paused.
-
-The current release-control ledger is maintained in
-`artifacts/operations/release-controls-2026-08-27.md`. It records local
-automated evidence separately from current production evidence. Every missing
-external input has an owner, reason, next action, retry condition, and safety
-disposition; a local pass does not close its hosted counterpart.
+Operator authorization input refresh - 2026-08-29:
+The project owner supplied a non-production read-only reader-capacity
+authorization and an explicit disposable fixture description. It is not a
+passing evidence record. Cloudflare MCP confirms the active development zone,
+proxied development tunnel, healthy connector, and public liveness smoke, but
+the supplied fixture is not present at that public origin. The active
+reader-capacity contract now selects `cloudflare_tunnel` as its non-production
+SLO gate. The bounded read-only run collected 50 warm samples per required
+route, but liveness/catalog/search exceeded budgets and detail/chapter returned
+404; all cold cells remain unavailable. Production capacity remains
+unestablished.
 
 | Gate | Status | Required evidence |
 |---|---|---|
-| Reader capacity and recovery follow-up (current) | Blocked | `artifacts/operations/reader-capacity-follow-up/handoff.md`; approved fixture/targets, controlled cold-cache evidence, hosted telemetry, and isolated recovery evidence remain required. |
+| Reader capacity and recovery follow-up (current) | Blocked | `artifacts/operations/reader-capacity-follow-up/handoff.md`; owner authorization input is present, but the fixture must be provisioned/bound at the selected Cloudflare development target, controlled cold-cache evidence must be recorded, and hosted telemetry remains required. Current isolated recovery evidence is recorded separately. |
 | Hosted smoke and auth/security boundaries | Blocked | Candidate commit, domains, UTC time, commands/URLs, sanitized results. |
-| Secret scanning | Local negative control pass / hosted exercise blocked | Five sanitized local files scanned with zero incidents; historical hosted checks remain historical. The authorized incident/false-positive triage record is still required; no repository secret or ignore rule was changed. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
+| Secret scanning | Partial (hosted scans passed) | PR #12 proved successful GitGuardian push and same-repo PR checks. Still require protected required-check configuration and sanitized incident/false-positive triage evidence. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
 | Alerts and monitoring | Blocked (tooling complete) | Configure `PRODUCTION_BASE_URL`, prove scheduled external runs and real operator delivery, cooldown/redaction, dashboards, escalation, and ownership. |
-| Recovery | Needs current run (tooling complete) | Current-head database restore and object snapshot restore into isolated targets. Backup-stale alert threshold, restore-freshness max age, and runtime-role verifier implemented locally. |
-| Accessibility | Automated pass / current manual pending | Automated AX/responsive coverage and focused frontend tests pass. Current-candidate keyboard, screen-reader, 200% zoom, 320px/physical-device, reduced-motion, and forced-colors acceptance is not recorded; the 2026-08-17 attestation is historical. |
-| Performance | Partial / Fail (AUDITED 2026-08-17) | Catalog API p95 on hosted staging exceeds hard budget (reader direct p95=1001.60ms, Tailscale HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + object-store metadata-list latency in the pre-cutover measurement). Novel detail and Chapter APIs NOT RUN on hosted staging (no published novel/chapter fixture in DB). First-load JS passes (169.8 KiB <= 250 KiB). |
-| SEO | Local contract pass / current production blocked | Robots, sitemap, metadata, canonical, and indexability tests pass locally; current production domain and edge validation are unavailable until the candidate/domain gate is supplied. |
-| Legal propagation | Local HTTP 451 contract pass / production CDN blocked | Local HTTP 451, no-store, redaction, sitemap exclusion, and 404 tests pass; current production edge purge and takedown propagation are not observed. |
+| Recovery | Partial (current non-production run passed) | Current isolated database backup/restore and representative public-isolation checks are recorded. Recurring backup freshness, stale/failure alert delivery, production smoke, and production recovery readiness remain required. |
+| Accessibility | Pass (COMPLETED 2026-08-17) | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast verified via automated test suite and operator physical device attestation. |
+| Performance | Partial / Fail (AUDITED 2026-08-17; retired private transport) | Catalog API p95 on the retired hosted staging path exceeded the hard budget (reader direct p95=1001.60ms, private HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + object-store metadata-list latency in the pre-cutover measurement). The current Cloudflare-only follow-up also remains blocked: catalog p95=1518.142ms, search p95=1368.677ms, and the requested detail/chapter fixture returned 404; cold cells are unavailable. |
+| SEO | Staging Pass / Production Deferred (AUDITED 2026-08-17) | Staging robots.txt, sitemap.xml, Open Graph / Twitter metadata, canonical URLs verified on staging hostname; production domain SEO validation deferred until public domain cutover. |
+| Legal propagation | Pass (AUDITED 2026-08-17) | HTTP 451 legal takedown verified (Cache-Control: no-store, no private info leak); sitemap exclusion & 404 contracts verified; CDN purge deferred to public edge. |
 | Rollback | Blocked | Pause worker/scheduler, purge cache, disable reader, redeploy previous immutable version, rerun smoke. |
 | Ownership | Assigned / waiver not approved | All gates are assigned to the operator, but no second reviewer or approved solo-operator waiver with expiry and mitigation record is present for the current release. No launch approval may rely on the historical waiver-eligible wording. |
 

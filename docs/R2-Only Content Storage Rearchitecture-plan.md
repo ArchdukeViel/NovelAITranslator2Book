@@ -3114,15 +3114,16 @@ Evidence: `artifacts/operations/reader-capacity-follow-up/handoff.md`,
 artifacts in the same directory. Resolve the handoff blockers before
 describing this project as production-capacity-ready.
 
-# 71. Reader Capacity and Recovery Runtime Recheck — 2026-08-27
+# 71. Reader Capacity and Recovery Runtime Recheck — retired topology 2026-08-27
 
 The local runtime was restored after Docker Desktop had been stopped. Backend,
 reader, Caddy, frontend, Redis, and restore-db were healthy, and local Caddy
 returned HTTP 200 with empty bodies for `/health/live` and `/health/ready`.
 The dedicated worker remained absent. This is local runtime evidence only and
-does not prove production or independent private-peer availability.
+does not prove production or independent Cloudflare-edge availability. This
+private-network topology is retired.
 
-The current follow-up campaign is `camp-20260827T130658Z`, with
+The historical follow-up campaign is `camp-20260827T130658Z`, with
 `private_network` as the selected reader gate. The bounded 1k invocation
 produced no live samples because no approved fixture/target binding or
 controlled cold-cache reset was available. Queue/writer state also remains
@@ -3138,9 +3139,9 @@ dedicated-host decision remain open. No worker, full queue, higher-stage,
 canonical-content, bucket, schema, secret, or production-restore operation was
 performed.
 
-# 72. Reader Capacity and Recovery Runtime Recheck - 2026-08-28
+# 72. Reader Capacity and Recovery Runtime Recheck - retired topology 2026-08-28
 
-The current follow-up campaign is `camp-20260828T042235Z`, with
+The historical follow-up campaign is `camp-20260828T042235Z`, with
 `private_network` selected as the reader gate. The stage report
 `reader-stage-1000/reader-stage-1000-20260828T042533Z.json` contains 60
 required route/cache cells, 30 quantified blockers, and no live samples. The
@@ -3155,4 +3156,17 @@ and Graphify passed, while `reader_slo_status=blocked`,
 `path_profile_status=blocked`, `telemetry_status=unavailable`, and
 `production_capacity_claim=not_established` remain the authoritative
 dispositions. No worker, full queue, higher-stage, bucket, schema, secret, or
-production-restore operation was performed.
+production-restore operation was performed. This private-network topology is
+retired; the Cloudflare-only checkpoint below is current.
+
+# 73. Reader capacity access decision - 2026-08-29
+
+The active reader-capacity follow-up selects `cloudflare_tunnel` as the
+non-production reader-facing Caddy path. Cloudflare is the current external
+edge for the development hostname; private-peer networking is not required by
+the active contract. The bounded read-only profile collected 50 warm samples
+per required route, but liveness/catalog/search exceeded budgets, the requested
+detail/chapter fixture returned HTTP 404, and controlled cold-cache evidence
+remains unavailable. This does not establish R2 fixture content, recovery
+readiness, or production capacity. Earlier private-network observations remain
+historical only.

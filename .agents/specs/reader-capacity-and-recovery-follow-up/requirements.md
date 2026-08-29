@@ -1,9 +1,9 @@
 # Reader Capacity and Recovery Operational Follow-up Requirements
 
 Spec ID: reader-capacity-and-recovery-follow-up
-Version: 0.3.0
+Version: 0.4.0
 Status: Approved
-Updated: 2026-08-27
+Updated: 2026-08-29
 Requester: Project owner
 Owner: Project owner with implementation agent
 Target project or release: Current split deployment after the quantified 1k reader-stage stop
@@ -19,7 +19,7 @@ The latest 1k reader evidence is a quantified stop rather than a capacity pass:
 liveness p95 was about 118 ms against a 100 ms budget, catalog about 1,516 ms
 against 500 ms, detail about 4,432 ms against 300 ms, chapter about 16,871 ms
 against 750 ms, and search about 1,544 ms against 500 ms. The largest
-contributor is not isolated across the backend, Caddy, private network path,
+contributor is not isolated across the backend, Caddy, Cloudflare edge/tunnel path,
 database pool/query work, exact R2 reads, serialization, and proxy overhead.
 Hosted provider billing and operation counters are also not fully visible to
 the local runner. Recovery controls need recurring freshness, alerting,
@@ -45,8 +45,8 @@ claim.
 ### In Scope
 
 - Profile liveness, catalog, novel detail, chapter, and search route families
-  separately through the direct service boundary, Caddy, and the private
-  network/Tailscale path. Readiness is a diagnostic health signal because a
+  separately through the direct service boundary, Caddy, and the Cloudflare
+  Tunnel/CDN path. Readiness is a diagnostic health signal because a
   deliberately stopped worker may make it degraded; it is not a reason to
   resume the worker.
 - Attribute elapsed time across proxy connection/upstream handling, backend or
@@ -101,9 +101,10 @@ claim.
    protected-surface boundaries. Preserve unrelated worktree changes.
 2. **REQ-002: Layer-separated reader profile**: Produce comparable samples for
    the required route families through direct service, Caddy loopback, and the
-   private network path. The current campaign selects `private_network` as the
-   production-facing Caddy-routed SLO gate; loopback is diagnostic and requires
-   an explicit Host binding. Keep route, path, cache state, status, payload size,
+   Cloudflare Tunnel/CDN path. The current campaign selects
+   `cloudflare_tunnel` as the non-production reader-facing Caddy-routed SLO
+   gate; loopback is diagnostic and requires an explicit Host binding. Keep
+   route, path, cache state, status, payload size,
    sample count, and percentile calculations separate. Collect at least 50
    attempted and 50 valid latency samples for each required route/path/cache
    cell; a warmup request does not count. If a controlled cold state cannot be
@@ -133,9 +134,9 @@ claim.
 6. **REQ-006: Gated 1k-profile rerun and independent dispositions**: Rerun the
    fixed 1k profile only after the baseline, attribution, remediation decision,
    and safety gates pass. The baseline must select exactly one Caddy-routed
-   acceptance topology (`caddy_loopback` or `private_network`) as the reader
-   SLO gate; the current baseline selects `private_network` because it is the
-   reader-facing private Caddy path. Direct service and the other path are
+   acceptance topology (`caddy_loopback` or `cloudflare_tunnel`) as the reader
+   SLO gate; the current baseline selects `cloudflare_tunnel` because it is the
+   reader-facing non-production Cloudflare Caddy path. Direct service and the other path are
    comparison evidence and do not silently change the SLO budget. The
    post-remediation candidate revision
    may differ from the baseline revision, but every cell in one comparison run
@@ -152,7 +153,7 @@ claim.
      errors, and passes its p95 budget; `failed` when complete evidence exceeds
      a budget; `blocked` when required evidence is incomplete or unavailable.
    - `path_profile_status`: `complete`, `partial`, or `blocked` for the direct,
-     Caddy, and private comparison matrix.
+   Caddy, and Cloudflare comparison matrix.
    - `telemetry_status`: `complete`, `partial`, or `unavailable` for the hosted
      and local telemetry matrix. Hosted billing/quota visibility is not required
      to call a route SLO result `passed`, but its absence prevents any capacity
@@ -239,10 +240,10 @@ claim.
   - Maps to: REQ-001, REQ-004, REQ-010
 - AC-002: A route matrix contains at least 50 valid warm and 50 valid cold
   samples for liveness, catalog, detail, chapter, and search through each
-  declared direct-service, Caddy, and private-network path, or records a
+  declared direct-service, Caddy, and Cloudflare Tunnel/CDN path, or records a
   quantified unavailable cell. The selected Caddy-routed path is explicitly
-  identified as the production-facing SLO gate; loopback requires an explicit
-  Host binding and warmup requests are not counted as samples.
+  identified as the non-production reader-facing SLO gate; loopback requires
+  an explicit Host binding and warmup requests are not counted as samples.
   - Maps to: REQ-002, REQ-004
 - AC-003: For each slow route, the evidence identifies proxy, application,
   database pool/query, exact R2, serialization, and network-remainder timing
@@ -311,12 +312,12 @@ claim.
 
 ## Open Decisions and Dependencies
 
-- The operator must authorize the hosted telemetry window, private-network
-  traffic source, route fixture, stop thresholds, and isolated restore target
+- The operator must authorize the hosted telemetry window, Cloudflare
+  development-host traffic source, route fixture, stop thresholds, and isolated restore target
   before T-001 proceeds beyond read-only inspection.
 - T-001 must select exactly one Caddy-routed `slo_gate_topology` and record why
   it represents the intended reader acceptance surface. The current approved
-  baseline selection is `private_network`; direct service is never an SLO
+  baseline selection is `cloudflare_tunnel`; direct service is never an SLO
   gate. The selected topology must remain unchanged for the campaign unless a
   new baseline is captured.
 - The fixture binding is an opaque `fixture-<16 lowercase hex>` identifier
@@ -327,14 +328,14 @@ claim.
 - `caddy_loopback` is diagnostic only unless `READER_CADDY_HOST_HEADER` (or
   the equivalent explicit runner argument) is supplied. A configured loopback
   URL without that binding is unavailable, not a valid fast-path sample.
-- The runtime must name the direct, Caddy, and private target aliases and the
+- The runtime must name the direct, Caddy, and Cloudflare target aliases and the
   controlled warm/cold method. The cold state remains unavailable until a
   disposable reader/cache reset can be independently verified. If cold-cache
   control or a path cannot be
   established safely, the corresponding cell is unavailable and cannot be
   represented as a passing sample.
-- The selected Caddy-routed topology is the reader SLO gate. Direct/private comparisons and
-  hosted telemetry are separate dispositions and must be joined by campaign,
+- The selected Caddy-routed topology is the reader SLO gate. Direct/Cloudflare
+  comparisons and hosted telemetry are separate dispositions and must be joined by campaign,
   run, revision, and UTC interval before they can support remediation claims.
 - The exact largest contributor is intentionally undecided until T-002 through
   T-005 produce comparable attribution. No implementation choice is implied by

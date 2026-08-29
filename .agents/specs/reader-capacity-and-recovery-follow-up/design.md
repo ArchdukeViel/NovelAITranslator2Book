@@ -1,9 +1,9 @@
 # Reader Capacity and Recovery Operational Follow-up Design
 
 Spec ID: reader-capacity-and-recovery-follow-up
-Version: 0.3.0
+Version: 0.4.0
 Status: Approved
-Updated: 2026-08-27
+Updated: 2026-08-29
 
 ## Source of Truth Mapping
 
@@ -37,7 +37,7 @@ worker restart, full-queue run, or higher-stage load.
 ```text
 direct service probe ───────────────┐
 Caddy loopback probe ───────────────┼─> route profile harness
-private HTTPS/Tailscale probe ──────┘       │
+Cloudflare Tunnel/CDN probe
                                             ├─> Caddy access/proxy evidence
                                             ├─> reader/backend request telemetry
                                             ├─> DB pool/query and exact-R2 timing
@@ -54,8 +54,9 @@ The public reader remains a GET-only public surface. Measurement is performed
 by an external or operator-controlled probe and by internal redacted metrics;
 it does not add tracing data to public responses. The direct and Caddy probes
 must use the same revision, route fixture, request shape, timeout, concurrency,
-and cache state for comparison. The private-network probe uses an
-operator-supplied target and must not expose that target in committed evidence.
+and cache state for comparison. The Cloudflare probe uses the owner-approved
+non-production development hostname and must not expose that target in
+committed evidence.
 
 `backend/tests/capacity_harness.py` is a deterministic synthetic contract
 harness. Its tests can prove configuration, boundedness, and redaction rules,
@@ -64,13 +65,13 @@ used as the route-profile or 1k-stage result.
 
 ### Route and path matrix
 
-| Route family | Canonical request shape | Direct boundary | Caddy boundary | Private boundary | Gate |
+| Route family | Canonical request shape | Direct boundary | Caddy boundary | Cloudflare boundary | Gate |
 |---|---|---|---|---|---|
-| Liveness | `/health/live` | Reader/backend process | Caddy public path | Private HTTPS | p95 <= 100 ms |
-| Catalog | `/api/public/catalog?page=1&page_size=24` | Reader | Caddy public path | Private HTTPS | p95 <= 500 ms |
-| Detail | Published novel detail by opaque fixture slug | Reader | Caddy public path | Private HTTPS | p95 <= 300 ms |
-| Chapter | Published translated chapter by opaque fixture identifiers | Reader | Caddy public path | Private HTTPS | p95 <= 750 ms |
-| Search | Catalog query and tag-search route families | Reader | Caddy public path | Private HTTPS | p95 <= 500 ms |
+| Liveness | `/health/live` | Reader/backend process | Caddy public path | Cloudflare HTTPS tunnel path | p95 <= 100 ms |
+| Catalog | `/api/public/catalog?page=1&page_size=24` | Reader | Caddy public path | Cloudflare HTTPS tunnel path | p95 <= 500 ms |
+| Detail | Published novel detail by opaque fixture slug | Reader | Caddy public path | Cloudflare HTTPS tunnel path | p95 <= 300 ms |
+| Chapter | Published translated chapter by opaque fixture identifiers | Reader | Caddy public path | Cloudflare HTTPS tunnel path | p95 <= 750 ms |
+| Search | Catalog query and tag-search route families | Reader | Caddy public path | Cloudflare HTTPS tunnel path | p95 <= 500 ms |
 
 The exact fixture slug, chapter identifier, host, and credentials are supplied
 at runtime through protected operator configuration and never copied into the
@@ -98,7 +99,7 @@ The topology aliases have these meanings:
 |---|---|---|
 | `direct_service` | Controlled request to the reader service boundary, bypassing Caddy | Diagnostic attribution |
 | `caddy_loopback` | Request through the local Caddy public route with an explicit Host binding | Diagnostic; unavailable when the binding is absent |
-| `private_network` | Request through the approved private/Tailscale Caddy route from the named operator source | Current reader SLO gate |
+| `cloudflare_tunnel` | Request through the owner-approved HTTPS Cloudflare Tunnel/CDN development route to Caddy | Current non-production reader SLO gate |
 
 The runtime command must record the target alias, a redacted target class, and
 TLS verification mode. A comparison target may be omitted only when the
@@ -108,7 +109,7 @@ token, certificate detail, or IP into the report.
 
 Allowlisted unavailable reasons include `target_not_configured`,
 `caddy_host_binding_unavailable`,
-`private_network_unavailable`, `direct_service_unavailable`,
+`cloudflare_tunnel_unavailable`, `direct_service_unavailable`,
 `tls_verification_unavailable`, `cold_cache_control_unavailable`,
 `provider_metric_unavailable`, `pooler_metric_unavailable`,
 `r2_metric_unavailable`, and `alert_delivery_unavailable`. Free-form reasons
@@ -116,7 +117,7 @@ may be stored only in a separately redacted operator note; they are not report
 labels.
 Exactly one Caddy-routed alias is selected as `slo_gate_topology` in the
 baseline. That selected route is the only route used to decide
-`reader_slo_status`; direct service is never a gate. The other Caddy/private
+`reader_slo_status`; direct service is never a gate. The other Caddy/Cloudflare
 result and direct result are required comparison evidence but do not silently
 create a second SLO budget.
 
@@ -155,7 +156,7 @@ uses its cells; all other cells are comparison evidence.
    request or from a cache header that was not verified by the serving layer.
 3. For each available topology alias, run the same required route set with the
    same fixture binding, revision, request shape, timeout, concurrency, and
-   sample targets. An unavailable direct/private target produces an explicit
+   sample targets. An unavailable direct/Cloudflare target produces an explicit
    unavailable matrix cell, not a process failure. Keep topology and
    cache-state samples in separate reports and do not merge their percentile
    distributions.
@@ -195,7 +196,7 @@ one campaign/run/topology/cache-state cell:
   "interval_start": "UTC timestamp",
   "interval_end": "UTC timestamp",
   "revision": "immutable revision label",
-  "topology": "direct_service|caddy_loopback|private_network",
+  "topology": "direct_service|caddy_loopback|cloudflare_tunnel",
   "tls_verification_mode": "verified|approved_disposable_insecure|not_applicable",
   "gate_role": "slo_gate|diagnostic",
   "route": "health_live|catalog|detail|chapter|search",
@@ -371,8 +372,8 @@ The bottleneck classification is:
 | Class | Evidence pattern | Allowed action |
 |---|---|---|
 | Local application | Direct service is slow and internal stage time explains the delay | Small code/config fix with focused regression tests |
-| Proxy or deployment | Direct service is within budget but Caddy/private path adds the delay | Reversible proxy/deployment correction after owner approval |
-| Hosted dependency | DB/R2/private-network interval dominates and provider evidence is available | Operator/provider action or quantified blocker; no speculative app rewrite |
+| Proxy or deployment | Direct service is within budget but Caddy/Cloudflare path adds the delay | Reversible proxy/deployment correction after owner approval |
+| Hosted dependency | DB/R2/Cloudflare edge interval dominates and provider evidence is available | Operator/provider action or quantified blocker; no speculative app rewrite |
 | Mixed/unavailable | Measurements overlap, conflict, or required hosted data is missing | Preserve current behavior and record an explicit blocker |
 
 Any correction records the before value, after value, environment scope,

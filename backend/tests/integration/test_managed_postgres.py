@@ -22,7 +22,7 @@ pytestmark = pytest.mark.slow
 # This is the migration head committed with the candidate checkout. Keeping
 # it explicit makes a stale managed database fail closed instead of silently
 # turning an older schema into a successful deployment gate.
-EXPECTED_ALEMBIC_HEAD = "e7f1a9c3b5d2"
+EXPECTED_ALEMBIC_HEAD = "f8a2c4e6b0d1"
 
 
 @pytest.fixture(scope="module")

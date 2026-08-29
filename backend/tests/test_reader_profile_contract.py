@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 REQUIRED_ROUTES = {"health_live", "catalog", "detail", "chapter", "search"}
-TOPOLOGIES = {"direct_service", "caddy_loopback", "private_network"}
+TOPOLOGIES = {"direct_service", "caddy_loopback", "cloudflare_tunnel"}
 VALID_STATUSES = {"passed", "failed", "unavailable"}
 
 CAPACITY_TOOLS = Path(__file__).parents[2] / "tools" / "capacity"
@@ -209,12 +209,15 @@ def test_profile_contract_rejects_fake_unavailable_or_unknown_samples():
     assert validate_profile_contract(payload) is False
 
 
-def test_reader_runner_contract_uses_private_gate_and_explicit_caddy_binding():
+def test_reader_runner_contract_uses_cloudflare_gate_and_explicit_caddy_binding():
     runner = (CAPACITY_TOOLS / "run_reader_profile.ps1").read_text(encoding="utf-8")
     preflight = (CAPACITY_TOOLS / "run_reader_follow_up_preflight.ps1").read_text(encoding="utf-8")
 
-    assert '[string]$SloGateTopology = "private_network"' in runner
-    assert '[string]$SloGateTopology = "private_network"' in preflight
+    assert "[string]$CloudflareBaseUrl" in runner
+    assert '[string]$SloGateTopology = "cloudflare_tunnel"' in runner
+    assert '[string]$SloGateTopology = "cloudflare_tunnel"' in preflight
+    assert 'env = "READER_CLOUDFLARE_BASE_URL"' in runner
+    assert '"cloudflare_tunnel"' in preflight
     assert "[string]$CaddyHostHeader" in runner
     assert 'Get-EnvValue "READER_CADDY_HOST_HEADER"' in runner
     assert '"--host-header", $HostHeader' in runner

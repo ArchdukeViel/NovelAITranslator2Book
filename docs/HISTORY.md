@@ -1,3 +1,31 @@
+## 2026-08-29 CLOUDFLARE-ONLY READER FOLLOW-UP AND TAILSCALE RETIREMENT
+
+The active development reader path is now Cloudflare-only. The configured
+Cloudflare MCP can inspect the `dokushodo.online` zone, the healthy
+`dokushodo-dev` tunnel, DNS routing, and R2 buckets without exposing
+credentials. The development hostname returned HTTP 200 for liveness and the
+public catalog smoke request. No production hostname, database, bucket, or
+canonical object was changed.
+
+The active deployment workflow and Codex MCP configuration no longer use
+Tailscale. Web traffic remains on the Cloudflare Tunnel; deployment SSH stays
+on the existing directly reachable environment-scoped host. Historical
+private-network evidence is retained below for provenance and is not an
+active acceptance path.
+
+The read-only Cloudflare 1k profile collected 50 warm samples per required
+route. Liveness, catalog, and search exceeded their configured budgets; the
+requested detail/chapter fixture returned 404; and all controlled-cold cells
+remain unavailable. The result is a quantified blocker, not a capacity pass.
+The worker and original full queue remain stopped or paused, and
+`production_capacity_claim` remains `not_established`.
+
+The disposable Supabase security advisor was also rerun after applying the
+candidate RLS-helper hardening DDL and reported no lints. The repository now
+contains conditional Alembic migration `f8a2c4e6b0d1`; it revokes broad
+execution on the optional `public.rls_auto_enable()` helper when present and
+does not claim production schema or capacity readiness.
+
 ## 2026-08-28 READER CAPACITY AND RECOVERY CURRENT RECHECK
 
 The follow-up package was refreshed against campaign
@@ -111,7 +139,6 @@ not claim that the five live follow-ups passed:
 - Recovery control tests passed locally, while current backup freshness, alert delivery, and isolated hosted restore remain unavailable or blocked.
 - The recovery-owner and rotation procedure is recorded; actual credential rotation remains deferred.
 - Quality-gate results and the stale workflow test-path blocker are recorded in `artifacts/operations/reader-capacity-follow-up/validation.md`.
-- A read-only operator-phone liveness check through the approved Tailscale service was observed successfully; this does not establish the 1k reader profile, queue/writer safety, hosted telemetry, or recovery gates.
 - The final handoff remains blocked (`artifacts/operations/reader-capacity-follow-up/handoff.md`); worker/full-queue state was not broadened or resumed.
 
 ## 2026-08-28 NON-PRODUCTION R2 DATA-PLANE VERIFICATION

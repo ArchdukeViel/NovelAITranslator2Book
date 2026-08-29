@@ -16,9 +16,9 @@ param(
     [int]$Profile = 1000,
     [string]$DirectBaseUrl,
     [string]$CaddyBaseUrl,
-    [string]$PrivateBaseUrl,
-    [ValidateSet("caddy_loopback", "private_network")]
-    [string]$SloGateTopology = "private_network",
+    [string]$CloudflareBaseUrl,
+    [ValidateSet("caddy_loopback", "cloudflare_tunnel")]
+    [string]$SloGateTopology = "cloudflare_tunnel",
     [string]$CaddyHostHeader,
     [string]$NovelSlug,
     [string]$ChapterId,
@@ -56,7 +56,7 @@ $Budgets = [ordered]@{ health_live = 100; catalog = 500; detail = 300; chapter =
 $TargetParameters = [ordered]@{
     direct_service = @{ supplied = $DirectBaseUrl; env = "READER_DIRECT_BASE_URL" }
     caddy_loopback = @{ supplied = $CaddyBaseUrl; env = "READER_STAGE_BASE_URL" }
-    private_network = @{ supplied = $PrivateBaseUrl; env = "READER_PRIVATE_BASE_URL" }
+    cloudflare_tunnel = @{ supplied = $CloudflareBaseUrl; env = "READER_CLOUDFLARE_BASE_URL" }
 }
 
 function Get-EnvValue([string]$Name) {
@@ -75,6 +75,7 @@ function Resolve-Target([string]$Alias) {
     $uri = $null
     if (-not [Uri]::TryCreate($value, [UriKind]::Absolute, [ref]$uri)) { throw "Target alias '$Alias' is not a valid absolute URI." }
     if ($null -ne $uri.UserInfo -and -not [string]::IsNullOrWhiteSpace($uri.UserInfo)) { throw "Target alias '$Alias' may not contain URI credentials." }
+    if ($Alias -eq "cloudflare_tunnel" -and $uri.Scheme -ine "https" -and -not $Insecure) { throw "Target alias 'cloudflare_tunnel' requires an HTTPS URL unless -Insecure is explicitly supplied." }
     return $value.TrimEnd('/')
 }
 
@@ -292,9 +293,9 @@ $cells = @()
 $blockers = @()
 $targetResults = @{}
 
-foreach ($alias in @("direct_service", "caddy_loopback", "private_network")) {
+foreach ($alias in @("direct_service", "caddy_loopback", "cloudflare_tunnel")) {
     $targetUrl = Resolve-Target $alias
-    $targetResults[$alias] = if ($null -eq $targetUrl) { [ordered]@{ configured = $false; reason = if ($alias -eq "direct_service") { "direct_service_unavailable" } elseif ($alias -eq "private_network") { "private_network_unavailable" } else { "target_not_configured" } } } else { [ordered]@{ configured = $true; reason = $null; url = $targetUrl } }
+    $targetResults[$alias] = if ($null -eq $targetUrl) { [ordered]@{ configured = $false; reason = if ($alias -eq "direct_service") { "direct_service_unavailable" } elseif ($alias -eq "cloudflare_tunnel") { "cloudflare_tunnel_unavailable" } else { "target_not_configured" } } } else { [ordered]@{ configured = $true; reason = $null; url = $targetUrl } }
     $warmResult = $null
     if ($null -ne $targetUrl) {
         $hostHeader = if ($alias -eq "caddy_loopback") { $caddyHostHeader } else { $null }

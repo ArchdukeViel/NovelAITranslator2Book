@@ -15,8 +15,8 @@ param(
     [string]$Phase = "pre_remediation",
     [string]$ReaderRunId,
     [string]$Revision,
-    [ValidateSet("direct_service", "caddy_loopback", "private_network")]
-    [string]$Topology = "caddy_loopback"
+    [ValidateSet("direct_service", "caddy_loopback", "cloudflare_tunnel")]
+    [string]$Topology = "cloudflare_tunnel"
 )
 
 $ErrorActionPreference = "Stop"

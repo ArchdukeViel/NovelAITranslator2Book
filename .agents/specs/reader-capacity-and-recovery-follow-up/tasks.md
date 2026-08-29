@@ -1,9 +1,9 @@
 # Reader Capacity and Recovery Operational Follow-up Tasks
 
 Spec ID: reader-capacity-and-recovery-follow-up
-Version: 0.3.0
+Version: 0.4.0
 Status: Approved
-Updated: 2026-08-27
+Updated: 2026-08-29
 
 Execution is dependency-ordered. Every task starts unchecked and remains
 unchecked until its verification command and evidence review pass. This spec
@@ -17,15 +17,16 @@ validator may return success for a well-formed `blocked` disposition because
 the safety decision is valid; it must return failure for malformed or
 under-specified evidence.
 
-## Approved contract amendment (2026-08-25)
+## Approved contract amendment (2026-08-29)
 
-This revision tightens the executable contracts only. It does not start the
-1k reader profile, a hosted restore, the translation worker, the original full
-queue, or a higher capacity stage.
+This revision tightens the executable contracts only. At amendment time it did
+not start the 1k reader profile, a hosted restore, the translation worker, the
+original full queue, or a higher capacity stage. The later bounded Cloudflare
+read-only profile is recorded separately below.
 
-- The selected SLO gate is `private_network`, the reader-facing private
-  Caddy route. `caddy_loopback` is diagnostic and requires an explicit Host
-  binding; a missing binding is unavailable.
+- The selected SLO gate is `cloudflare_tunnel`, the non-production
+  reader-facing Cloudflare HTTPS Caddy route. `caddy_loopback` is diagnostic
+  and requires an explicit Host binding; a missing binding is unavailable.
 - The published fixture is supplied explicitly at runtime and represented in
   evidence by the matching opaque `fixture-<16 lowercase hex>` binding. The
   preflight and runner must agree on that binding.
@@ -40,7 +41,8 @@ queue, or a higher capacity stage.
 
 The disposition rows below retain the original evidence wording for
 provenance. In this amendment, the stale workflow reference is repaired in
-source; the hosted workflow and restore operation remain unrun.
+source; the bounded reader result and the separate managed recovery result are
+recorded without promoting either to production capacity.
 
 ## Current execution disposition
 
@@ -51,15 +53,15 @@ operation passed. The current operational dispositions are:
 | Tasks | Disposition | Meaning |
 |---|---|---|
 | T-000 | Complete | Semantic validator and contract self-test are implemented. |
-| T-001 | Complete with blockers | The current baseline is valid with the selected private-network gate; the worker is stopped and local Compose is healthy, while queue/writer state and fixture binding remain unavailable. |
-| T-002 | Complete with unavailable cells | The executable matrix contract is valid; the current rerun contains explicit unavailable cells because no fixture/target or controlled cold-cache method was supplied. |
+| T-001 | Complete with blockers | Baseline is valid with the selected Cloudflare gate and opaque fixture binding; queue/writer state remains unavailable. |
+| T-002 | Complete with quantified unavailable/failed cells | The executable matrix contract is valid; the Cloudflare-only run collected 50 warm samples per required route, but the selected gate exceeded budgets or returned the absent fixture, and all cold cells remain unavailable. |
 | T-003 | Blocked | Layer attribution is structurally recorded, but all layer timings are unavailable. |
-| T-004 | Complete with unavailable telemetry | Current pre-remediation and stage-1000 snapshots are joinable and explicitly unavailable; no hosted value is inferred. |
+| T-004 | Complete with unavailable telemetry | All required snapshots are joinable and explicitly unavailable. |
 | T-005–T-006 | Complete as safe no-op | No evidence-backed local remediation was authorized or applied. |
-| T-007 | Blocked admission decision | A current bounded runner invocation created no live samples because fixture/target and cold-cache controls remain unavailable; admission stays blocked. |
+| T-007 | Blocked admission decision | The bounded Cloudflare-only 1k run completed with 25 blockers: warm SLO failures/fixture 404s and unavailable cold-cache cells; admission remains blocked. |
 | T-008–T-009 | Blocked operational evidence | Local tests pass, but current freshness/alert and isolated hosted restore evidence are absent. |
 | T-010 | Complete as procedure-only | Actual credential rotation is deferred to a separately authorized maintenance action. |
-| T-011–T-012 | Complete with handoff blocker | Current local quality and documentation gates pass; private-profile, hosted telemetry, recovery, and release-readiness blockers remain. |
+| T-011–T-012 | Complete with handoff blocker | Local quality and documentation gates pass; Cloudflare-only access is validated, but fixture, cold-cache, telemetry, and operational blockers remain. |
 
 ## Evidence Contract and Validator
 
@@ -81,12 +83,12 @@ operation passed. The current operational dispositions are:
   - Maps to: REQ-001, REQ-004, REQ-009, REQ-010, AC-001, AC-007, AC-009
   - Depends on: T-000
   - State: complete
-  - Authorization: Project-owner approval is required for hosted traffic, private-network targets, and isolated recovery targets; local read-only inspection is allowed before that approval. The recovery owner role and escalation path must be assigned in this baseline before T-008 or T-009.
+  - Authorization: Project-owner approval is required for hosted traffic, Cloudflare development-host targets, and isolated recovery targets; local read-only inspection is allowed before that approval. The recovery owner role and escalation path must be assigned in this baseline before T-008 or T-009.
   - Scope: Create or extend `tools/capacity/run_reader_follow_up_preflight.ps1` to record current revision, worktree state, Compose topology, target aliases and gate topology, required/diagnostic route sets, explicit fixture binding method, cache warm/cold control method, effective configuration key names without values, authorized profile/sample/timeout/concurrency values, stop thresholds, worker state, original queue state, other writer state, recovery owner role, and protected data/storage boundaries. Capture before/after safety snapshots for the later run without printing secrets, invoke the T-000 validator, and fail closed if worker/queue/writer state or owner assignment cannot be proven.
   - Verification: `powershell -NoProfile -File tools/capacity/run_reader_follow_up_preflight.ps1 -ReadOnly -OutputPath artifacts/operations/reader-capacity-follow-up/baseline.json`
   - Expected: The validator confirms a sanitized baseline with campaign id, revision, UTC interval, target aliases, same-fixture binding, cache-control method, route sets, stop thresholds, owner/escalation record, and explicit worker/full-queue/writer safety states. The worker and original full queue are confirmed stopped/paused; no secret value, canonical content, or raw target is read into evidence.
   - Attempts: 1
-  - Last result: current baseline refreshed after Docker recovery; worker is stopped and Compose/Caddy health is observed, while queue/writer state and fixture binding remain unavailable.
+  - Last result: complete with safety blockers; worker absence was observed and the refreshed baseline now carries the opaque fixture binding, but queue/writer state remains unavailable.
   - Evidence: recorded in `artifacts/operations/reader-capacity-follow-up/baseline.json`.
 
 - [x] **T-002 Build the executable separated reader route and cache-state profile**
@@ -94,11 +96,11 @@ operation passed. The current operational dispositions are:
   - Depends on: T-001
   - State: complete
   - Authorization: Read-only public GET traffic against an approved disposable or published fixture; no translation enqueue and no canonical mutation.
-  - Scope: Reuse or extend `backend/tests/run_phase6_acceptance.py`, `backend/tests/capacity_harness.py`, and `tools/capacity/run_reader_load.ps1`, and create the spec-owned wrapper `tools/capacity/run_reader_profile.ps1`, so the required five routes are sampled separately through `direct_service`, `caddy_loopback`, and `private_network`. Add `backend/tests/test_reader_profile_contract.py` for the wrapper contract. The command contract must accept explicit target aliases, one explicit fixture binding, `WarmSamples >= 50`, `ColdSamples >= 50`, finite `MaxAttemptsPerCell`, concurrency, timeout, a declared `ColdCacheMode`, `SloGateTopology`, `BaselinePath`, and a report directory. Direct/private targets may be unavailable only through an explicit allowlisted reason; the selected SLO target is mandatory. It must run separate topology/cache-state cells, use deterministic percentile aggregation, identify exactly one Caddy-routed SLO gate from the baseline, classify auxiliary routes as diagnostic, and return nonzero for runner failure without confusing a valid quantified blocker with a process failure. It must not inherit the existing fixed-two-telemetry-blocker-as-pass logic.
+  - Scope: Reuse or extend `backend/tests/run_phase6_acceptance.py`, `backend/tests/capacity_harness.py`, and `tools/capacity/run_reader_load.ps1`, and create the spec-owned wrapper `tools/capacity/run_reader_profile.ps1`, so the required five routes are sampled separately through `direct_service`, `caddy_loopback`, and `cloudflare_tunnel`. Add `backend/tests/test_reader_profile_contract.py` for the wrapper contract. The command contract must accept explicit target aliases, one explicit fixture binding, `WarmSamples >= 50`, `ColdSamples >= 50`, finite `MaxAttemptsPerCell`, concurrency, timeout, a declared `ColdCacheMode`, `SloGateTopology`, `BaselinePath`, and a report directory. Direct/Cloudflare targets may be unavailable only through an explicit allowlisted reason; the selected SLO target is mandatory. It must run separate topology/cache-state cells, use deterministic percentile aggregation, identify exactly one Caddy-routed SLO gate from the baseline, classify auxiliary routes as diagnostic, and return nonzero for runner failure without confusing a valid quantified blocker with a process failure. It must not inherit the existing fixed-two-telemetry-blocker-as-pass logic.
   - Verification: `tools/pytest.ps1 backend/tests/test_capacity_harness.py backend/tests/test_reader_profile_contract.py -q`
   - Expected: The harness produces a complete matrix or explicit quantified unavailable cells with campaign/run/fixture joins, path/route/cache-state records, attempted/valid/error/timeout counts, p50/p95/p99, status counts, payload summaries, and no raw request data. Readiness remains diagnostic while the worker is stopped.
   - Attempts: 1
-  - Last result: current 60-cell artifact is structurally valid with quantified unavailable cells; no approved target/fixture or controlled cold-cache method was supplied.
+  - Last result: complete with quantified unavailable/failed cells; the 60-cell Cloudflare artifact is structurally valid, with 50 warm samples per required route, failed budgets/fixture 404s, and unavailable cold cells.
   - Evidence: recorded in `artifacts/operations/reader-capacity-follow-up/route-profile.json`.
 
 ## Attribution and Remediation
@@ -132,7 +134,7 @@ operation passed. The current operational dispositions are:
   - Depends on: T-003, T-004
   - State: complete
   - Authorization: Project-owner review of the attribution report before any production-like configuration or code change.
-  - Scope: Compare direct/Caddy/private layers and non-overlapping backend, database, R2, serialization, and network timings. Classify the result as local application, proxy/deployment, hosted dependency, or mixed/unavailable. Name one largest actionable contributor, rollback boundary, stop condition, and expected effect, or record an NFR-006 blocker without speculative remediation. The decision must link baseline revision to the proposed candidate revision, state whether the selected Caddy SLO gate is affected, and state whether T-006 is authorized.
+  - Scope: Compare direct/Caddy/Cloudflare layers and non-overlapping backend, database, R2, serialization, and network timings. Classify the result as local application, proxy/deployment, hosted dependency, or mixed/unavailable. Name one largest actionable contributor, rollback boundary, stop condition, and expected effect, or record an NFR-006 blocker without speculative remediation. The decision must link baseline revision to the proposed candidate revision, state whether the selected Caddy SLO gate is affected, and state whether T-006 is authorized.
   - Verification: `powershell -NoProfile -File tools/capacity/validate_reader_follow_up.ps1 -Kind remediation-decision -Path artifacts/operations/reader-capacity-follow-up/remediation-decision.md`
   - Expected: `artifacts/operations/reader-capacity-follow-up/remediation-decision.md` records the measured rationale, campaign/run references, before value, intended after value, environment scope, rollback value, stop condition, owner, next action, and whether T-006 is authorized. A mixed/unavailable result remains a quantified blocker rather than a speculative code change.
   - Attempts: 1
@@ -158,11 +160,11 @@ operation passed. The current operational dispositions are:
   - Depends on: T-006
   - State: complete
   - Authorization: Project-owner approval after T-006; read-only content traffic only; worker and original full queue must remain stopped.
-  - Scope: Run only the 1k DAU-equivalent sampled profile using the approved candidate revision and one explicitly supplied fixture binding across direct, Caddy, and private paths. Collect at least 50 valid warm and 50 valid controlled-cold samples per required route/path cell, with a finite maximum attempt bound, concurrency 8, and a 20-second request timeout unless an owner-approved change is recorded. Capture the five required routes plus fixed diagnostic auxiliary routes, status/error/timeout/transport counts, payloads, process snapshots, joined pre/post telemetry references, and unavailable fields. Do not run 10k/100k, sustained capacity traffic, or translation traffic. The wrapper must recheck worker/queue/writer safety after the run and fail closed on drift. An unavailable comparison path is a quantified matrix blocker, not a runner crash.
+  - Scope: Run only the 1k DAU-equivalent sampled profile using the approved candidate revision and one explicitly supplied fixture binding across direct, Caddy, and Cloudflare paths. Collect at least 50 valid warm and 50 valid controlled-cold samples per required route/path cell, with a finite maximum attempt bound, concurrency 8, and a 20-second request timeout unless an owner-approved change is recorded. Capture the five required routes plus fixed diagnostic auxiliary routes, status/error/timeout/transport counts, payloads, process snapshots, joined pre/post telemetry references, and unavailable fields. Do not run 10k/100k, sustained capacity traffic, or translation traffic. The wrapper must recheck worker/queue/writer safety after the run and fail closed on drift. An unavailable comparison path is a quantified matrix blocker, not a runner crash.
   - Verification: `powershell -NoProfile -File tools/capacity/run_reader_profile.ps1 -ReadOnly -Profile 1000 -ReportDir artifacts/operations/reader-capacity-follow-up/reader-stage-1000 -BaselinePath artifacts/operations/reader-capacity-follow-up/baseline.json`
   - Expected: The report contains baseline/candidate revision linkage, `reader_slo_status`, `path_profile_status`, `telemetry_status`, `recovery_status`, `overall_follow_up_disposition`, and `production_capacity_claim`. Before recovery tasks run, `recovery_status=not_assessed` and the overall disposition cannot be `complete`. `reader_slo_status=passed` requires every required selected-gate route/cache cell to pass its budget with complete valid evidence; hosted billing/quota unavailability is recorded as a telemetry blocker and never becomes a capacity claim. Worker/queue/writer state remains paused and no canonical content or provider operation is performed. The validator accepts a quantified blocked disposition only when all NFR-006 fields are present.
   - Attempts: 1
-  - Last result: current invocation completed with a quantified admission blocker; no live 1k samples were collected because target, fixture, and cold-cache controls were unavailable.
+  - Last result: blocked with quantified admission decision; the Cloudflare target was sampled read-only, but the requested fixture returned 404, selected warm budgets failed, and controlled cold-cache evidence was unavailable.
   - Evidence: recorded in `artifacts/operations/reader-capacity-follow-up/reader-stage-1000/`.
 
 - [x] **T-008 Verify recurring backup freshness, retention, and stale/failure alert controls**

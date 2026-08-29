@@ -20,12 +20,12 @@ Set-StrictMode -Version Latest
 
 $RequiredRoutes = @("health_live", "catalog", "detail", "chapter", "search")
 $DiagnosticRoutes = @("health_ready", "ranking_daily", "ranking_weekly", "ranking_monthly", "home")
-$Topologies = @("direct_service", "caddy_loopback", "private_network")
+$Topologies = @("direct_service", "caddy_loopback", "cloudflare_tunnel")
 $CacheStates = @("warm", "cold", "unknown")
 $AllowedUnavailableReasons = @(
     "target_not_configured",
     "caddy_host_binding_unavailable",
-    "private_network_unavailable",
+    "cloudflare_tunnel_unavailable",
     "direct_service_unavailable",
     "tls_verification_unavailable",
     "cold_cache_control_unavailable",
@@ -212,7 +212,7 @@ function Validate-Baseline($Data, [string]$RawText) {
     Require-Text $Data "campaign_id" "Baseline"
     Require-Text $Data "baseline_revision" "Baseline"
     Validate-FixtureBinding $Data "Baseline"
-    Validate-Enum ([string](Value-Of $Data "slo_gate_topology")) @("caddy_loopback", "private_network") "Baseline.slo_gate_topology"
+    Validate-Enum ([string](Value-Of $Data "slo_gate_topology")) @("caddy_loopback", "cloudflare_tunnel") "Baseline.slo_gate_topology"
     Validate-Enum ([string](Value-Of $Data "fixture_binding_method")) @("explicit_binding_missing", "explicit_runtime_binding") "Baseline.fixture_binding_method"
     $fixtureMissing = [string](Value-Of $Data "fixture_binding_id") -eq "not-supplied"
     $methodMissing = [string](Value-Of $Data "fixture_binding_method") -eq "explicit_binding_missing"
@@ -406,7 +406,7 @@ function Validate-Stage1000($Data, [string]$RawText) {
     foreach ($field in @("schema_version", "campaign_id", "run_id", "baseline_revision", "candidate_revision", "fixture_binding_id", "profile", "slo_gate_topology", "route_cells", "sample_targets", "budgets", "telemetry_snapshot_ids", "provenance", "reader_slo_status", "path_profile_status", "telemetry_status", "recovery_status", "overall_follow_up_disposition", "production_capacity_claim", "blockers")) { Require-Property $Data $field "Stage 1000" }
     if ([int](Value-Of $Data "schema_version") -ne 1) { Fail "Stage 1000 schema_version must be 1" }
     Validate-FixtureBinding $Data "Stage 1000"
-    Validate-Enum ([string](Value-Of $Data "slo_gate_topology")) @("caddy_loopback", "private_network") "Stage 1000.slo_gate_topology"
+    Validate-Enum ([string](Value-Of $Data "slo_gate_topology")) @("caddy_loopback", "cloudflare_tunnel") "Stage 1000.slo_gate_topology"
     Validate-Enum ([string](Value-Of $Data "reader_slo_status")) @("passed", "failed", "blocked") "Stage 1000.reader_slo_status"
     Validate-Enum ([string](Value-Of $Data "path_profile_status")) @("complete", "partial", "blocked") "Stage 1000.path_profile_status"
     Validate-Enum ([string](Value-Of $Data "telemetry_status")) @("complete", "partial", "unavailable") "Stage 1000.telemetry_status"
@@ -489,7 +489,7 @@ function New-SelfTestCell([string]$Campaign, [string]$Topology, [string]$Route, 
         revision = "revision-test"
         topology = $Topology
         tls_verification_mode = "not_applicable"
-        gate_role = if ($Topology -eq "private_network") { "slo_gate" } else { "diagnostic" }
+        gate_role = if ($Topology -eq "cloudflare_tunnel") { "slo_gate" } else { "diagnostic" }
         route = $Route
         cache_state = $CacheState
         cache_control_method = if ($CacheState -eq "warm") { "warmup_only" } else { "unavailable" }
@@ -526,7 +526,7 @@ function New-SelfTestBaseline() {
         baseline_revision = "revision-test"
         topology = "split"
         target_aliases = $Topologies
-        slo_gate_topology = "private_network"
+        slo_gate_topology = "cloudflare_tunnel"
         fixture_binding_method = "explicit_runtime_binding"
         fixture_binding_id = "fixture-0000000000000000"
         cache_control_method = "disposable_reader_reset_or_explicit_unavailable"
@@ -538,7 +538,7 @@ function New-SelfTestBaseline() {
         required_routes = $RequiredRoutes
         diagnostic_routes = $DiagnosticRoutes
         stop_thresholds = [ordered]@{ max_transport_errors = 0; max_timeouts = 0 }
-        configuration_keys = @("READER_STAGE_BASE_URL")
+        configuration_keys = @("READER_STAGE_BASE_URL", "READER_CLOUDFLARE_BASE_URL")
         authorized_profile = [ordered]@{ model = "1000_dau_equivalent"; profile = 1000; concurrency = 8; timeout_seconds = 20 }
         protected_surface_boundaries = [ordered]@{ writes = "forbidden"; provider_traffic = "forbidden"; worker_resume = "forbidden"; secrets = "not_recorded" }
         safety_state_source = "self_test"
@@ -562,7 +562,7 @@ function Run-SelfTest() {
     try { Validate-RouteProfile ([PSCustomObject]$badProfile) ($badProfile | ConvertTo-Json -Depth 8) } catch { $rejected = $true }
     if (-not $rejected) { Fail "Self-test did not reject a missing matrix cell" }
     $blocker = [ordered]@{ blocker_id = "blk-test"; observed_utc = "2026-08-25T12:00:00Z"; affected_target = "caddy_detail"; measured_value = $null; budget_ms = 300; source_or_reason = "target_not_configured unavailable"; unavailable_reason = "target_not_configured"; owner_role = "project_owner"; next_action = "supply_stage_target"; retry_or_admission_condition = "retry only after target and fixture are authorized"; safety_disposition = "keep_capacity_unadmitted" }
-    $stage = [ordered]@{ schema_version = 1; campaign_id = "camp-test"; run_id = "run-test"; baseline_revision = "revision-test"; candidate_revision = "revision-test"; fixture_binding_id = "fixture-0000000000000000"; profile = [ordered]@{ model = "1000_dau_equivalent"; dau = 1000 }; slo_gate_topology = "private_network"; route_cells = $cells; sample_targets = [ordered]@{ warm = 50; cold = 50 }; budgets = [ordered]@{ health_live = 100; catalog = 500; detail = 300; chapter = 750; search = 500 }; telemetry_snapshot_ids = @("telemetry-test"); provenance = "blocked_before_target_execution"; reader_slo_status = "blocked"; path_profile_status = "blocked"; telemetry_status = "unavailable"; recovery_status = "not_assessed"; overall_follow_up_disposition = "complete_with_quantified_blocker"; production_capacity_claim = "not_established"; blockers = @($blocker) }
+    $stage = [ordered]@{ schema_version = 1; campaign_id = "camp-test"; run_id = "run-test"; baseline_revision = "revision-test"; candidate_revision = "revision-test"; fixture_binding_id = "fixture-0000000000000000"; profile = [ordered]@{ model = "1000_dau_equivalent"; dau = 1000 }; slo_gate_topology = "cloudflare_tunnel"; route_cells = $cells; sample_targets = [ordered]@{ warm = 50; cold = 50 }; budgets = [ordered]@{ health_live = 100; catalog = 500; detail = 300; chapter = 750; search = 500 }; telemetry_snapshot_ids = @("telemetry-test"); provenance = "blocked_before_target_execution"; reader_slo_status = "blocked"; path_profile_status = "blocked"; telemetry_status = "unavailable"; recovery_status = "not_assessed"; overall_follow_up_disposition = "complete_with_quantified_blocker"; production_capacity_claim = "not_established"; blockers = @($blocker) }
     Validate-Stage1000 ([PSCustomObject]$stage) ($stage | ConvertTo-Json -Depth 10)
     Write-Host "ALL SELF-TESTS PASSED." -ForegroundColor Green
 }

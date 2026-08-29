@@ -96,15 +96,15 @@ Generate secrets with `python -c "import secrets; print(secrets.token_hex(32))"`
 | Storage | R2-only: `R2_BUCKET=dokushodo`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`; no filesystem content backend. |
 | Distributed runtime | Redis URL and Redis rate limiter for split/multi-instance mode. |
 
-## Private HTTPS Staging
+## Cloudflare HTTPS Staging
 
 The single-host staging release uses `ENV=staging`, `DB_CONNECTION_MODE=session`,
 and `DB_SSL_MODE=require` with Supabase session-pooler URLs on port 5432. Set
 `PUBLIC_FRONTEND_URL`, `WEB_CORS_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, and
-`ALLOWED_HOSTS` to the same `https://<tailscale-hostname>` origin. Set
-`SITE_DOMAIN` to that hostname, keep `PUBLIC_BIND_ADDRESS=127.0.0.1`, and set
-`SESSION_COOKIE_SECURE=true`. Tailscale Serve terminates HTTPS for the browser
-and forwards to the loopback-only internal Caddy listener. Staging and
+`ALLOWED_HOSTS` to the same approved Cloudflare HTTPS origin. Set `SITE_DOMAIN`
+to that hostname, keep `PUBLIC_BIND_ADDRESS=127.0.0.1`, and set
+`SESSION_COOKIE_SECURE=true`. Cloudflare Tunnel terminates HTTPS for the
+browser and forwards to the loopback-only internal Caddy listener. Staging and
 production always force secure session cookies, even when an old environment
 file contains an explicit false override.
 
@@ -124,6 +124,8 @@ This development origin is not the production apex or `www` topology. Keep
 the worker/full queue stopped and use an explicit Compose service target when
 restarting the tunnel; external development HTTP success does not establish
 production capacity, recovery, monitoring, or launch acceptance.
+The reader-capacity follow-up uses this Cloudflare origin as its selected
+`cloudflare_tunnel` SLO topology; no private-peer network setting is required.
 
 ## Storage and Recovery Groups
 

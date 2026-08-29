@@ -1014,18 +1014,19 @@ stopped or unadmitted. See
 `artifacts/operations/reader-capacity-follow-up/validation.md` for exact
 blockers and next actions.
 
-### Reader capacity and recovery runtime recheck — current checkpoint 2026-08-27
+### Reader capacity and recovery runtime recheck — retired topology checkpoint 2026-08-27
 
 The local Compose baseline was restored after Docker Desktop had been stopped.
 Backend, reader, Caddy, frontend, Redis, and restore-db were healthy, and local
 Caddy returned HTTP 200 with an empty body for both `/health/live` and
 `/health/ready`. This is a local runtime recovery observation, not production
-availability or private second-peer evidence.
+availability or Cloudflare-edge evidence. This private-network topology is
+retired.
 
-The current campaign `camp-20260827T130658Z` selected `private_network` as the
-only reader SLO gate. Its bounded 1k runner invocation produced no live samples
-because no approved fixture/target binding or controlled cold-cache method was
-available. The 60 route/cache cells are explicit unavailable evidence;
+The historical campaign `camp-20260827T130658Z` selected `private_network` as
+the only reader SLO gate. Its bounded 1k runner invocation produced no live
+samples because no approved fixture/target binding or controlled cold-cache
+method was available. The 60 route/cache cells are explicit unavailable evidence;
 `reader_slo_status=blocked`, `path_profile_status=blocked`,
 `telemetry_status=unavailable`, and `production_capacity_claim=not_established`.
 The worker stayed absent, while original-queue and other-writer state remain
@@ -1038,10 +1039,10 @@ restore evidence, release configuration parity, cross-source acceptance,
 provider/bulk readiness, production CDN/takedown propagation, actual
 credential rotation, and dedicated-host availability remain external gates.
 
-### Reader capacity and recovery runtime recheck - current checkpoint 2026-08-28
+### Reader capacity and recovery runtime recheck - retired topology checkpoint 2026-08-28
 
-The current campaign is `camp-20260828T042235Z`, with `private_network` as the
-selected reader gate. The stage artifact
+The historical campaign is `camp-20260828T042235Z`, with `private_network` as
+the selected reader gate. The historical stage artifact
 `reader-stage-1000/reader-stage-1000-20260828T042533Z.json` records 60 required
 route/cache cells, 30 quantified blockers, and no live samples. The 38
 pre-remediation and stage-1000 telemetry records are joinable but explicitly
@@ -1050,4 +1051,16 @@ fixture/target, queue/writer observation, controlled cold-cache method,
 hosted telemetry, and isolated recovery evidence remain unavailable. The
 dispositions are still `reader_slo_status=blocked`,
 `path_profile_status=blocked`, `telemetry_status=unavailable`, and
-`production_capacity_claim=not_established`.
+`production_capacity_claim=not_established`. This private-network topology is
+retired; see the Cloudflare checkpoint below.
+
+## Reader capacity access decision - current checkpoint 2026-08-29
+
+The active reader-capacity contract now selects `cloudflare_tunnel` as the
+non-production Caddy-routed SLO surface. The direct service and Caddy loopback
+paths remain diagnostic comparisons. Earlier private-network measurements are
+historical and are not a current prerequisite. The supplied fixture is absent
+from the Cloudflare development origin. The bounded read-only run recorded
+50 warm samples per required route, with liveness/catalog/search over budget
+and detail/chapter returning HTTP 404; controlled cold-cache evidence remains
+unavailable and no production-capacity claim is established.

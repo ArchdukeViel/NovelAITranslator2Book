@@ -55,21 +55,18 @@ Optional comma-separated list settings such as `WEB_CORS_ORIGINS` are passed
 as blank Compose defaults, not JSON `[]`; configure their explicit values in
 the target environment when they are required.
 
-### Tailscale staging access
+### Cloudflare staging access
 
-Staging is reachable only on the private Tailscale network. Set `SITE_DOMAIN` to
-the host's stable Tailscale DNS name (not a changing Tailnet IP), keep
-`PUBLIC_BIND_ADDRESS=127.0.0.1`, and configure Tailscale Serve on the Windows
-host to terminate HTTPS and forward the private hostname to the WSL loopback
-listener on `127.0.0.1:8080`. Browse only to `https://<tailscale-hostname>/`.
-The checked-in Caddyfile is the internal HTTP hop; it must not be exposed
-directly to the Tailnet. Set `PUBLIC_FRONTEND_URL`, `WEB_CORS_ORIGINS`,
-`CSRF_TRUSTED_ORIGINS`, and `ALLOWED_HOSTS` to the HTTPS hostname and keep
-`SESSION_COOKIE_SECURE=true`. Backend, reader, Redis, and PostgreSQL have no
-host-published ports. Only `SITE_DOMAIN` is passed to Caddy; backend and reader
-healthchecks send the same configured host header. Never inject the shared
-`.env` into the proxy container because it contains unrelated database and
-runtime secrets.
+Staging is reachable through the approved Cloudflare HTTPS hostname. Set
+`SITE_DOMAIN` and the public origin settings to that hostname, keep
+`PUBLIC_BIND_ADDRESS=127.0.0.1`, and run the remotely managed Cloudflare Tunnel
+to the WSL/Docker Caddy listener on `127.0.0.1:8080`. Browse only to the
+approved Cloudflare hostname. The checked-in Caddyfile remains the internal
+HTTP hop; it must not be exposed directly. Backend, reader, Redis, and
+PostgreSQL have no host-published ports. Only `SITE_DOMAIN` is passed to Caddy;
+backend and reader healthchecks send the same configured host header. Never
+inject the shared `.env` into the proxy container because it contains
+unrelated database and runtime secrets.
 
 ## Profiles
 
@@ -83,19 +80,21 @@ canonical non-reload backend command. Uvicorn's Python 3.14 reload subprocess
 is not stable without a TTY in Docker Desktop; recreate the backend/reader/
 worker services after source or environment changes.
 
-### Local and Tailscale staging
+### Local and Cloudflare staging
 
-Use the same Docker Compose services for local acceptance and private staging.
-Local checks use the host's loopback entry point; staging uses the WSL/Docker host
-through Tailscale and exposes only Caddy. Run the one-shot migration and the
-container health/readiness checks before browser acceptance. This path keeps the
-frontend, admin API, reader API, Redis, and their configuration together.
+Use the same Docker Compose services for local acceptance and Cloudflare
+staging. Local checks use the host's loopback entry point; staging uses the
+Cloudflare Tunnel to expose only Caddy. Run the one-shot migration and the
+container health/readiness checks before browser acceptance. This path keeps
+the frontend, admin API, reader API, Redis, and their configuration together.
 
 ### Production
 
-Tailscale-hosted WSL/Docker Compose frontend and split backend, Supabase/managed
-PostgreSQL, R2 application and independent backup buckets, managed Redis, tested
-SMTP, and external monitoring. Must satisfy `WORK.md` operator gates.
+Cloudflare-protected WSL/Docker Compose frontend and split backend,
+Supabase/managed PostgreSQL, R2 application and independent backup buckets,
+managed Redis, tested SMTP, and external monitoring. Must satisfy `WORK.md`
+operator gates; the current development tunnel does not by itself establish
+the production route.
 
 ## Production Validation
 
@@ -172,8 +171,10 @@ Hardening contract:
   invalid.
 - **Migration-head parity.** Before SSH, the workflow compares the checked-out
   migration head with the exact admin image digest and requires
-  `d7e4f9a1c2b3`, the current release head. The role migration
-  `c7d9e1f3a5b2` is an earlier migration in that chain, not the final head;
+  `f8a2c4e6b0d1`, the current release head. The optional Supabase RLS-helper
+  hardening migration is conditional and a no-op when the helper is absent;
+  it still remains part of the source/image parity contract.
+  The role migration `c7d9e1f3a5b2` is an earlier migration in that chain, not the final head;
   a staging database at that earlier head is advanced by the one-shot
   migration profile before readiness is accepted.
 - **Immutable Release Directory.** Deployment files under `deploy/` are copied
@@ -290,6 +291,12 @@ Required deployment configuration:
 - Managed-service verification variables and credentials use the scopes
   documented by `managed-services-verification.yml`.
 
+`DEPLOY_HOST` is a stable host or public DNS name reachable by the GitHub
+runner over the configured SSH port. It must not be a private-mesh-only
+address.
+Cloudflare Tunnel is the browser-facing application edge; it does not provide
+the SSH transport used by this workflow.
+
 ## Provider Boundaries
 
 - Caddy is the only host-published entry point; it routes the frontend and API
@@ -314,8 +321,9 @@ and scheduler lease ownership.
 
 The following sanitized record captures the first successful private staging
 cutover for PR #88 before the HTTPS session-cookie hardening in this review. It
-is historical evidence for this WSL/Docker host, not the current staging access
-contract, and does not change the production `NO-GO` decision above.
+is retired historical evidence for this WSL/Docker host, not the current
+staging access contract, and does not change the production `NO-GO` decision
+above.
 
 - **UTC deployment window:** `2026-08-15 13:46:20Z` through `2026-08-15 13:47:50Z`
   (Deploy run `31888063044`).
@@ -331,10 +339,11 @@ contract, and does not change the production `NO-GO` decision above.
   read-only verification reported Alembic head `c7a8b9d0e1f2`, with
   `novelai_app` present as `NOLOGIN` and `novelai_runtime` present as the
   application `LOGIN` role.
-- **Private URL:** `http://100.93.40.30/` through Tailscale. Windows forwards
-  Tailnet port 80 to WSL loopback port 8080; only Caddy is host-published.
+- **Private URL:** `http://100.93.40.30/` through the retired private-network
+  transport. Windows forwarded port 80 to WSL loopback port 8080; only Caddy
+  was host-published.
   Backend, reader, Redis, and PostgreSQL have no host-published ports.
-- **Routing evidence:** Through the Tailnet address, `/`, `/health/live`,
+- **Routing evidence:** Through the historical private address, `/`, `/health/live`,
   `/health/ready`, `/api/auth/me`, and `/api/public/catalog?page_size=1`
   returned `200`; `/api/admin/health` returned the expected unauthenticated
   `401`.
@@ -344,9 +353,9 @@ contract, and does not change the production `NO-GO` decision above.
   because earlier failed attempts never advanced `/opt/novelai/current`. The
   old `sha-071f6829f572b431f9583ff0988560cd795c9b56` image remains an
   identifiable schema-incompatible rollback candidate and was not executed.
-- **Limitations:** This is one WSL/Docker host, not HA; the laptop, Docker
-  Desktop, Ubuntu/WSL, network, and Tailscale must remain available. Access is
-  private HTTP only; TLS, production hosted monitoring, recovery acceptance,
+- **Limitations:** This was one WSL/Docker host, not HA; the laptop, Docker
+  Desktop, Ubuntu/WSL, and network had to remain available. The private
+  transport is retired. Production hosted monitoring, recovery acceptance,
   and the full end-user flow remain outstanding. This documentation-only
   follow-up is not redeployed.
 
@@ -435,3 +444,12 @@ docker compose --env-file deploy/.env -f deploy/compose.yml up -d --no-build clo
 
 The worker was stopped after an earlier broad Compose start and remains
 paused by policy.
+
+## Active reader access decision - 2026-08-29
+
+Cloudflare is the active external edge for the non-production reader path.
+The approved reader-capacity follow-up selects `cloudflare_tunnel` and uses
+the development hostname routed by `dokushodo-dev` to Caddy. The retired
+private-network transport is not part of the current reader or deployment
+configuration. Older private-network records remain dated historical evidence
+and are not current access instructions.

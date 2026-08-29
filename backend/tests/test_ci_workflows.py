@@ -120,7 +120,7 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     assert "release.env" in source
     assert "PREVIOUS_RELEASE" in source
     assert "docker image prune" not in source
-    assert '"d7e4f9a1c2b3"' in source
+    assert '"f8a2c4e6b0d1"' in source
     assert 'STAGING_HTTP_BIND="127.0.0.1"' in source
     assert 'STAGING_HTTP_PORT="8080"' in source
     assert "PUBLIC_BIND_ADDRESS=%s\\n" in source
@@ -296,7 +296,7 @@ def test_managed_services_verification_uses_current_restore_contract() -> None:
     assert "TEST_R2_BACKUP_ACCESS_KEY:" not in source
 
     managed_postgres = (Path(__file__).parent / "integration" / "test_managed_postgres.py").read_text(encoding="utf-8")
-    assert 'EXPECTED_ALEMBIC_HEAD = "e7f1a9c3b5d2"' in managed_postgres
+    assert 'EXPECTED_ALEMBIC_HEAD = "f8a2c4e6b0d1"' in managed_postgres
     assert "9c2e4a6b8d0f" not in managed_postgres
 
 
@@ -443,8 +443,8 @@ def test_caddy_internal_proxy_and_staging_cookie_contract() -> None:
     assert "env_file:" not in caddy_service
 
     caddyfile = (repo_root / "deploy" / "Caddyfile").read_text(encoding="utf-8")
-    # Caddy is an internal HTTP hop; staging's browser-facing Tailscale Serve
-    # endpoint terminates HTTPS before forwarding to this loopback listener.
+    # Caddy is an internal HTTP hop; the browser-facing Cloudflare Tunnel
+    # terminates HTTPS before forwarding to this loopback listener.
     caddy_site = next(line for line in caddyfile.splitlines() if line and not line.startswith("#"))
     assert caddy_site == "http://{$SITE_DOMAIN:localhost} {"
     assert "Strict-Transport-Security" not in caddyfile
@@ -506,18 +506,14 @@ def test_deploy_actions_consume_deploy_port() -> None:
     assert deploy[ssh_index : ssh_index + 500].count("port: ${{ env.DEPLOY_PORT }}") == 1
 
 
-def test_deploy_tailscale_private_network_step() -> None:
+def test_deploy_uses_direct_ssh_without_tailscale() -> None:
     deploy = _workflow("deploy.yml")
-    # The deploy job reaches the staging host over the private tailnet; the
-    # GitHub-hosted runner joins as an ephemeral node before any transfer.
-    tailscale_index = deploy.index("tailscale/github-action@")
-    assert "authkey: ${{ env.TS_AUTHKEY }}" in deploy
-    assert "ping: ${{ env.DEPLOY_HOST }}" in deploy
-    assert deploy.count("TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}") == 1
-    # The step must run before both remote actions.
-    assert tailscale_index < deploy.index("appleboy/scp-action")
-    assert tailscale_index < deploy.index("appleboy/ssh-action")
-    # No untagged public-tunnel remnant may exist.
+    # Cloudflare is the browser-facing edge; the deploy runner uses the
+    # existing environment-scoped SSH path directly.
+    assert "tailscale" not in deploy.lower()
+    assert "TS_AUTHKEY" not in deploy
+    assert "DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}" in deploy
+    assert deploy.count("port: ${{ env.DEPLOY_PORT }}") == 2
     assert "ngrok" not in deploy
     assert "pinggy" not in deploy
 

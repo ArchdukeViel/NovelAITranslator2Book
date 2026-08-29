@@ -1,5 +1,5 @@
-# This is an internal hop. Production uses Caddy TLS from Caddyfile.example;
-# Tailscale staging terminates HTTPS before forwarding to this loopback listener.
+# This is an internal hop. Cloudflare Tunnel terminates HTTPS for the
+# development hostname before forwarding to this loopback listener.
 http://{$SITE_DOMAIN:localhost} {
   encode zstd gzip
 

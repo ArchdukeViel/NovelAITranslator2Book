@@ -36,6 +36,7 @@ ENV/
 .local/
 
 # Graphify generated knowledge graph
+**/graphify-out/
 graphify-out/
 
 # CodeGraph generated local index
@@ -96,7 +97,14 @@ __MACOSX/
 .env.*
 !.env.example
 !.env.*.example
+deploy/.env
+deploy/.env.*
+!deploy/.env.example
+
+# Cloudflare tunnels & credentials
+.cloudflared/
 deploy/.cloudflared/
+*.tunnel-token
 
 # Runtime data
 data/runtime/
@@ -130,9 +138,11 @@ SESSION_EXPORT_*.json
 
 # Agent working directory (Hermes plans/scratch live here; promote keepers to docs/)
 .opencode/
+**/.opencode/
 .codex/plans/
 .codex/scratch/
 .codex/*.log
+.history/
 
 
 # Documentation (tracking)

@@ -21,6 +21,13 @@ leave `MANAGED_SERVICE_TESTS_ENABLED=false`.
 Record only the workflow URL, commit, UTC timestamp, pass/skip/fail counts,
 and sanitized schema evidence; never record the URL or its credentials.
 
+The candidate migration `f8a2c4e6b0d1` also conditionally revokes Data API
+execution on the optional Supabase `public.rls_auto_enable()` security-definer
+helper. It does not create the helper, alter application rows, or restore broad
+execution on downgrade. After a test-database migration, rerun the Supabase
+security advisor and record only the sanitized lint result; do not paste ACL
+or connection-string details into evidence.
+
 ## Managed non-production recovery verification
 
 `managed-services-recovery-verification.yml` is a manual, confirmation-gated
@@ -550,13 +557,9 @@ were healthy; the dedicated worker remained absent. Through local Caddy,
 This closes the previously observed local Docker/Caddy outage only; it is not
 private second-peer, hosted, or production availability evidence.
 
-The current campaign is `camp-20260827T130658Z`. The selected reader gate is
-`private_network`, but the queue and other-writer states remain unobservable,
-no approved fixture/target binding was supplied, and no controlled cold-cache
-reset exists. The bounded 1k invocation therefore produced explicit
-unavailable cells, `reader_slo_status=blocked`, `path_profile_status=blocked`,
-`telemetry_status=unavailable`, and
-`production_capacity_claim=not_established`. Keep the worker/full queue
+The campaign `camp-20260827T130658Z` and its `private_network` selection are
+retired historical evidence. They were superseded on 2026-08-29 by the
+Cloudflare-only reader gate described below. Keep the worker/full queue
 stopped/paused and preserve the remaining release-configuration, cross-source,
 provider/bulk, hosted pool/cache/analytics, CDN propagation, credential
 rotation, and dedicated-host gates in `docs/WORK.md`.
@@ -570,15 +573,38 @@ empty bodies for `/health/live` and `/health/ready`. This is local runtime
 evidence only and does not establish hosted, private second-peer, or
 production availability.
 
-The current campaign is `camp-20260828T042235Z`. Its bounded stage report is
-`reader-stage-1000/reader-stage-1000-20260828T042533Z.json`, with 60 required
-route/cache cells, 30 quantified blockers, and no live samples. The selected
-`private_network` gate remains blocked because the approved fixture/target,
-queue/writer observation, and controlled cold-cache method are unavailable.
-The 38 pre-remediation and stage-1000 telemetry records are joinable but
-explicitly unavailable. Recovery freshness, alert delivery, hosted restore,
-and provider/R2 telemetry remain unobserved; `production_capacity_claim` is
-`not_established`.
+The campaign `camp-20260828T042235Z` and its `private_network` selection are
+retired historical evidence. The current Cloudflare-only stage report is
+recorded in the authorization checkpoint below. Recovery freshness, alert
+delivery, and provider/R2 telemetry remain unobserved; `production_capacity_claim`
+is `not_established`.
+
+## Reader authorization input check - 2026-08-29
+
+The project owner supplied a non-production, read-only reader-capacity
+authorization and an explicit disposable fixture description. This is test
+input, not execution evidence. The selected SLO gate is now
+`cloudflare_tunnel`; the Cloudflare development hostname is the approved
+non-production reader-facing path through the public edge and internal Caddy.
+
+Fresh Cloudflare MCP inspection confirms the development zone is active, the
+development DNS route is proxied to the healthy `dokushodo-dev` tunnel, and
+the tunnel has one active connector. The public development liveness request
+returned HTTP 200, but the supplied fixture was not present at that origin
+(the novel and both requested chapter routes returned HTTP 404). The test R2
+buckets are present in the Cloudflare account, but the proposed fixture
+namespace has no objects in either test bucket; R2 existence alone therefore
+does not establish reader-fixture content.
+
+No private-network peer check is required for this Cloudflare-only contract.
+The current baseline and route profile use the opaque binding derived from the
+supplied fixture. The bounded read-only Cloudflare run completed with 50 warm
+samples per required route: liveness p95 was 155.096 ms, catalog p95 was
+1518.142 ms, search p95 was 1368.677 ms, and the requested detail/chapter
+fixture returned HTTP 404. All controlled-cold cells remain unavailable, so
+the operational disposition remains blocked with
+`production_capacity_claim=not_established`. No content, secret, worker, or
+queue mutation was performed.
 
 ## Managed non-production recovery checkpoint - 2026-08-28
 
