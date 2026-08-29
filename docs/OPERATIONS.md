@@ -65,6 +65,33 @@ schema/public-isolation checks; it does not prove recurring production backup
 freshness, operator alert delivery, or production recovery readiness. Keep the
 worker/full queue paused and leave `MANAGED_SERVICE_TESTS_ENABLED=false`.
 
+## Disposable reader-capacity evidence
+
+`.github/workflows/reader-capacity-nonproduction.yml` is the confirmation-gated
+path for the bounded reader-capacity follow-up. It uses the existing
+`MANAGED_DATABASE_TEST_URL` Supabase session-pooler secret and the test R2
+application credentials, while binding the application fixture to the dedicated
+`test-dokushodo` bucket. `test-dokushodo-backup` remains reserved for recovery
+verification; the reader run does not write the canonical `dokushodo` or
+`dokushodo-backup` buckets.
+
+The workflow applies candidate migrations, seeds the explicit synthetic
+`reader-fixture-test-v1` fixture (`test-novel`, chapters `456` and `457`), and
+always cleans the exact fixture rows and R2 namespace. It starts an isolated
+Compose project with worker, provider, analytics, and translation expansion
+disabled, exposes only its internal Caddy listener through an ephemeral
+Cloudflare quick tunnel, and runs the bounded Cloudflare reader profile. The
+profile records 50-count warm cells and 50-count cold cells; each cold cell is
+preceded by `reset_reader_cache.ps1`, which flushes only that project's Redis
+database, restarts only its reader service, waits for reader health, and emits a
+sanitized reset proof.
+
+The uploaded artifact is retained for seven days and contains sanitized route,
+cache-state, reset-proof, and disposition data only. A successful workflow or
+valid blocked report is non-production evidence: it does not change the named
+`dev.dokushodo.online` tunnel, prove hosted billing/queue telemetry, or establish
+production reader capacity.
+
 ## Health
 
 | Endpoint | Expected behavior |

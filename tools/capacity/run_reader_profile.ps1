@@ -6,8 +6,8 @@
     This wrapper never auto-selects a fixture, never starts a worker, never
     enqueues translation, and never treats a process exit as a capacity pass.
     When a target and fixture are supplied it delegates read-only HTTP sampling
-    to the existing phase-6 client. Cold-cache control is unavailable unless a
-    separately verified control is added to this task.
+    to the existing phase-6 client. Cold-cache samples require the separately
+    verified disposable reader/cache reset helper.
 #>
 [CmdletBinding()]
 param(
@@ -22,8 +22,11 @@ param(
     [string]$CaddyHostHeader,
     [string]$NovelSlug,
     [string]$ChapterId,
-    [ValidateSet("unavailable")]
+    [ValidateSet("unavailable", "disposable_reader_reset")]
     [string]$ColdCacheMode = "unavailable",
+    [string]$ColdResetScript,
+    [string]$ColdResetComposeProject,
+    [string]$ColdResetComposeFile = "deploy/compose.yml",
     [string]$BaselinePath = "artifacts/operations/reader-capacity-follow-up/baseline.json",
     [string]$TelemetryPath = "artifacts/operations/reader-capacity-follow-up/hosted-telemetry.json",
     [string]$RunId,
@@ -58,6 +61,7 @@ $TargetParameters = [ordered]@{
     caddy_loopback = @{ supplied = $CaddyBaseUrl; env = "READER_STAGE_BASE_URL" }
     cloudflare_tunnel = @{ supplied = $CloudflareBaseUrl; env = "READER_CLOUDFLARE_BASE_URL" }
 }
+$ColdResetProofs = @()
 
 function Get-EnvValue([string]$Name) {
     $property = Get-Item -Path ("Env:" + $Name) -ErrorAction SilentlyContinue
@@ -65,6 +69,14 @@ function Get-EnvValue([string]$Name) {
     $value = [string]$property.Value
     if ([string]::IsNullOrWhiteSpace($value)) { return $null }
     return $value.Trim()
+}
+
+function Get-PowerShellCommand() {
+    $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+    if ($null -ne $pwsh) { return [string]$pwsh.Source }
+    $powershell = Get-Command powershell -ErrorAction SilentlyContinue
+    if ($null -ne $powershell) { return [string]$powershell.Source }
+    return $null
 }
 
 function Resolve-Target([string]$Alias) {
@@ -102,7 +114,7 @@ function New-Blocker([string]$Id, [string]$Target, [string]$Reason, [string]$Una
     }
 }
 
-function New-Cell([string]$CampaignId, [string]$RunId, [string]$FixtureId, [string]$Revision, [string]$Topology, [string]$Route, [string]$CacheState, [string]$Status, [string]$Reason, [int]$SampleTarget, [object]$Summary) {
+function New-Cell([string]$CampaignId, [string]$RunId, [string]$FixtureId, [string]$Revision, [string]$Topology, [string]$Route, [string]$CacheState, [string]$Status, [string]$Reason, [int]$SampleTarget, [object]$Summary, [string]$CacheControlMethod = "unavailable", [string]$CacheResetProofId = $null) {
     $start = [DateTime]::UtcNow
     $end = $start
     $expectedStatus = if ($Route -eq "health_ready") { 503 } else { 200 }
@@ -145,10 +157,10 @@ function New-Cell([string]$CampaignId, [string]$RunId, [string]$FixtureId, [stri
         $bodyNonEmpty = $expectedCount -eq $attempted -and $bytes -gt 0
         $responseStatus = if ($bodyNonEmpty) { "valid" } else { "invalid" }
         $provenance = "reader_http_sample"
-        if ($valid -lt $WarmSamples -or $timeouts -gt 0 -or $transport -gt 0) {
+        if ($valid -lt $SampleTarget -or $timeouts -gt 0 -or $transport -gt 0) {
             $Status = "unavailable"
             $unavailable = $true
-            $Reason = "incomplete_sample_cell"
+            $Reason = "profile_runner_unavailable"
             $p50 = $null
             $p95 = $null
             $p99 = $null
@@ -178,7 +190,8 @@ function New-Cell([string]$CampaignId, [string]$RunId, [string]$FixtureId, [stri
         gate_role = if ($Topology -eq $SloGateTopology) { "slo_gate" } else { "diagnostic" }
         route = $Route
         cache_state = $CacheState
-        cache_control_method = if ($CacheState -eq "warm") { "warmup_only" } else { "unavailable" }
+        cache_control_method = $CacheControlMethod
+        cache_reset_proof_id = $CacheResetProofId
         max_attempts_per_cell = $MaxAttemptsPerCell
         sample_target = $SampleTarget
         attempted_count = $attempted
@@ -203,9 +216,25 @@ function New-Cell([string]$CampaignId, [string]$RunId, [string]$FixtureId, [stri
     }
 }
 
-function Invoke-WarmTarget([string]$Alias, [string]$BaseUrl, [string]$HostHeader, [string]$CampaignId, [string]$RunId, [string]$FixtureId, [string]$Revision) {
-    $pythonPath = Join-Path (Get-Location) ".venv\Scripts\python.exe"
-    if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
+function Invoke-TargetSamples([string]$Alias, [string]$BaseUrl, [string]$HostHeader, [string]$CampaignId, [string]$RunId, [string]$FixtureId, [string]$Revision, [string]$Route = $null, [switch]$SkipWarmup) {
+    $pythonPath = $null
+    foreach ($candidate in @(
+        (Join-Path (Get-Location) ".venv\Scripts\python.exe"),
+        (Join-Path (Get-Location) ".venv/bin/python"),
+        "python"
+    )) {
+        $available = if ($candidate -eq "python") {
+            $null -ne (Get-Command python -ErrorAction SilentlyContinue)
+        }
+        else {
+            Test-Path -LiteralPath $candidate -PathType Leaf
+        }
+        if ($available) {
+            $pythonPath = $candidate
+            break
+        }
+    }
+    if ($null -eq $pythonPath) {
         return [ordered]@{ available = $false; reason = "profile_runner_unavailable"; summaries = @{} }
     }
     if ([string]::IsNullOrWhiteSpace($NovelSlug) -or [string]::IsNullOrWhiteSpace($ChapterId)) {
@@ -229,6 +258,8 @@ function Invoke-WarmTarget([string]$Alias, [string]$BaseUrl, [string]$HostHeader
             "--timeout-seconds", [string]$TimeoutSeconds,
             "--json-out", $rawPath
         )
+        if (-not [string]::IsNullOrWhiteSpace($Route)) { $arguments += @("--route", $Route) }
+        if ($SkipWarmup) { $arguments += "--skip-warmup" }
         if (-not [string]::IsNullOrWhiteSpace($HostHeader)) { $arguments += @("--host-header", $HostHeader) }
         if ($Insecure) { $arguments += "--insecure" }
         & $pythonPath @arguments *> $logPath
@@ -237,10 +268,53 @@ function Invoke-WarmTarget([string]$Alias, [string]$BaseUrl, [string]$HostHeader
             return [ordered]@{ available = $false; reason = "profile_runner_unavailable"; summaries = @{} }
         }
         $raw = Get-Content -LiteralPath $rawPath -Raw | ConvertFrom-Json
-        return [ordered]@{ available = $true; reason = $null; summaries = $raw.routes; started_at = $raw.started_at_utc }
+        return [ordered]@{
+            available = $true
+            reason = $null
+            summaries = $raw.routes
+            started_at = $raw.started_at_utc
+            warmup_executed = [bool]$raw.warmup_executed
+        }
     }
     finally {
         Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-ColdReset([string]$Topology, [string]$Route) {
+    $shell = Get-PowerShellCommand
+    if ($null -eq $shell -or [string]::IsNullOrWhiteSpace($ColdResetScript)) {
+        return [ordered]@{ available = $false; reason = "cold_cache_control_unavailable"; proof_id = $null }
+    }
+    $proofPath = Join-Path $ReportDir (".cold-reset-{0}-{1}-{2}.json" -f $RunId, $Topology, $Route)
+    $logPath = Join-Path $ReportDir (".cold-reset-{0}-{1}-{2}.log" -f $RunId, $Topology, $Route)
+    $arguments = @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $ColdResetScript,
+        "-ComposeProject",
+        $ColdResetComposeProject,
+        "-ComposeFile",
+        $ColdResetComposeFile,
+        "-OutputPath",
+        $proofPath
+    )
+    & $shell @arguments *> $logPath
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $proofPath -PathType Leaf)) {
+        return [ordered]@{ available = $false; reason = "cold_cache_control_unavailable"; proof_id = $null }
+    }
+    try {
+        $proof = Get-Content -LiteralPath $proofPath -Raw | ConvertFrom-Json
+        $proofId = [string]$proof.proof_id
+        if ([string]$proof.status -ne "reset" -or [string]::IsNullOrWhiteSpace($proofId)) {
+            return [ordered]@{ available = $false; reason = "cold_cache_control_unavailable"; proof_id = $null }
+        }
+        return [ordered]@{ available = $true; reason = $null; proof_id = $proofId; observed_utc = [string]$proof.observed_utc }
+    }
+    catch {
+        return [ordered]@{ available = $false; reason = "cold_cache_control_unavailable"; proof_id = $null }
     }
 }
 
@@ -287,6 +361,14 @@ $caddyHostHeader = Resolve-CaddyHostHeader
 $runId = if ([string]::IsNullOrWhiteSpace($RunId)) { [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssZ") } else { $RunId }
 if ([string]$baseline.slo_gate_topology -ne $SloGateTopology) { throw "SloGateTopology must match the baseline selection." }
 if ($baselineFixtureId -ne $fixtureId) { throw "The supplied fixture does not match the baseline fixture binding." }
+if ($ColdCacheMode -eq "disposable_reader_reset") {
+    if ([string]::IsNullOrWhiteSpace($ColdResetScript) -or -not (Test-Path -LiteralPath $ColdResetScript -PathType Leaf)) {
+        throw "ColdCacheMode disposable_reader_reset requires an existing ColdResetScript."
+    }
+    if ([string]::IsNullOrWhiteSpace($ColdResetComposeProject) -or $ColdResetComposeProject -notmatch "^reader-capacity-test-[A-Za-z0-9_-]+$") {
+        throw "ColdCacheMode disposable_reader_reset requires an isolated reader-capacity Compose project."
+    }
+}
 
 if (-not (Test-Path -LiteralPath $ReportDir -PathType Container)) { New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null }
 $cells = @()
@@ -299,21 +381,57 @@ foreach ($alias in @("direct_service", "caddy_loopback", "cloudflare_tunnel")) {
     $warmResult = $null
     if ($null -ne $targetUrl) {
         $hostHeader = if ($alias -eq "caddy_loopback") { $caddyHostHeader } else { $null }
-        $warmResult = Invoke-WarmTarget $alias $targetUrl $hostHeader $campaignId $runId $fixtureId $revision
+        $warmResult = Invoke-TargetSamples $alias $targetUrl $hostHeader $campaignId $runId $fixtureId $revision
     }
     foreach ($route in $AllRoutes) {
         $warmReason = if ($fixtureId -eq "not-supplied") { "fixture_not_configured" } elseif ($null -eq $targetUrl) { [string]$targetResults[$alias].reason } elseif ($null -eq $warmResult -or -not $warmResult.available) { [string]$warmResult.reason } else { $null }
         $summary = if ($null -ne $warmResult -and $warmResult.available -and $null -ne $warmResult.summaries.PSObject.Properties[$route]) { $warmResult.summaries.$route } else { $null }
         if ([string]::IsNullOrWhiteSpace($warmReason) -and $null -ne $summary) {
             $budget = if ($Budgets.Contains($route)) { [double]$Budgets[$route] } else { $null }
-            $cell = New-Cell $campaignId $runId $fixtureId $revision $alias $route "warm" "passed" "" $WarmSamples $summary
+            $cell = New-Cell $campaignId $runId $fixtureId $revision $alias $route "warm" "passed" "" $WarmSamples $summary "warmup_only" $null
             if ($null -ne $budget -and $null -ne $cell.p95_ms -and [double]$cell.p95_ms -gt $budget) { $cell.status = "failed" }
         }
         else {
-            $cell = New-Cell $campaignId $runId $fixtureId $revision $alias $route "warm" "unavailable" $warmReason $WarmSamples $null
+            $cell = New-Cell $campaignId $runId $fixtureId $revision $alias $route "warm" "unavailable" $warmReason $WarmSamples $null "warmup_only" $null
         }
         $cells += $cell
-        $coldCell = New-Cell $campaignId $runId $fixtureId $revision $alias $route "unknown" "unavailable" "cold_cache_control_unavailable" $ColdSamples $null
+
+        $coldCell = $null
+        if ($null -eq $targetUrl) {
+            $coldCell = New-Cell $campaignId $runId $fixtureId $revision $alias $route "unknown" "unavailable" "cold_cache_control_unavailable" $ColdSamples $null "unavailable" $null
+        }
+        elseif ($ColdCacheMode -eq "unavailable") {
+            $coldCell = New-Cell $campaignId $runId $fixtureId $revision $alias $route "unknown" "unavailable" "cold_cache_control_unavailable" $ColdSamples $null "unavailable" $null
+        }
+        else {
+            $reset = Invoke-ColdReset $alias $route
+            if (-not $reset.available) {
+                $coldCell = New-Cell $campaignId $runId $fixtureId $revision $alias $route "unknown" "unavailable" ([string]$reset.reason) $ColdSamples $null "unavailable" $null
+            }
+            else {
+                $hostHeader = if ($alias -eq "caddy_loopback") { $caddyHostHeader } else { $null }
+                $coldResult = Invoke-TargetSamples $alias $targetUrl $hostHeader $campaignId $runId $fixtureId $revision $route -SkipWarmup
+                $coldSummary = if ($coldResult.available -and $null -ne $coldResult.summaries.PSObject.Properties[$route]) { $coldResult.summaries.$route } else { $null }
+                $proofId = [string]$reset.proof_id
+                $proofObserved = [string]$reset.observed_utc
+                if ([string]::IsNullOrWhiteSpace($proofObserved)) { $proofObserved = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") }
+                $ColdResetProofs += [ordered]@{
+                    proof_id = $proofId
+                    topology = $alias
+                    route = $route
+                    cache_state = "cold"
+                    observed_utc = $proofObserved
+                }
+                if ($null -eq $coldSummary) {
+                    $coldCell = New-Cell $campaignId $runId $fixtureId $revision $alias $route "cold" "unavailable" "profile_runner_unavailable" $ColdSamples $null "disposable_reader_reset" $proofId
+                }
+                else {
+                    $budget = if ($Budgets.Contains($route)) { [double]$Budgets[$route] } else { $null }
+                    $coldCell = New-Cell $campaignId $runId $fixtureId $revision $alias $route "cold" "passed" "" $ColdSamples $coldSummary "disposable_reader_reset" $proofId
+                    if ($null -ne $budget -and $null -ne $coldCell.p95_ms -and [double]$coldCell.p95_ms -gt $budget) { $coldCell.status = "failed" }
+                }
+            }
+        }
         $cells += $coldCell
         if ($route -in $RequiredRoutes) {
             $budgetValue = if ($Budgets.Contains($route)) { [Nullable[double]]$Budgets[$route] } else { $null }
@@ -355,6 +473,7 @@ $routeProfile = [ordered]@{
     candidate_revision = $revision
     fixture_binding_id = $fixtureId
     execution_status = if ($readerSlo -eq "blocked") { "complete_with_quantified_blocker" } else { "complete" }
+    cold_cache_mode = $ColdCacheMode
     cells = $cells
 }
 $routeProfilePath = Join-Path (Get-Location) "artifacts/operations/reader-capacity-follow-up/route-profile.json"
@@ -370,7 +489,8 @@ $stage = [ordered]@{
     profile = $profileModel
     slo_gate_topology = $SloGateTopology
     route_cells = $cells
-    sample_targets = [ordered]@{ warm = $WarmSamples; cold = $ColdSamples; max_attempts_per_cell = $MaxAttemptsPerCell; concurrency = $Concurrency; timeout_seconds = $TimeoutSeconds }
+    sample_targets = [ordered]@{ warm = $WarmSamples; cold = $ColdSamples; max_attempts_per_cell = $MaxAttemptsPerCell; concurrency = $Concurrency; timeout_seconds = $TimeoutSeconds; cold_cache_mode = $ColdCacheMode }
+    cache_reset_proofs = @($ColdResetProofs)
     budgets = $Budgets
     telemetry_snapshot_ids = $telemetrySnapshotIds
     provenance = if ($readerSlo -eq "blocked") { "blocked_or_unavailable_reader_profile" } else { "reader_http_sample" }
@@ -390,11 +510,13 @@ $attribution = New-Attribution $campaignId $runId $revision $fixtureId $routePro
 $attribution | ConvertTo-Json -Depth 15 | Set-Content -LiteralPath $attributionPath -Encoding utf8
 
 $validator = Join-Path $PSScriptRoot "validate_reader_follow_up.ps1"
-& powershell -NoProfile -ExecutionPolicy Bypass -File $validator -Kind route-profile -Path $routeProfilePath
+$validatorShell = Get-PowerShellCommand
+if ($null -eq $validatorShell) { throw "PowerShell runtime is required to validate the reader profile." }
+& $validatorShell -NoProfile -ExecutionPolicy Bypass -File $validator -Kind route-profile -Path $routeProfilePath
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-& powershell -NoProfile -ExecutionPolicy Bypass -File $validator -Kind stage-1000 -Path $reportPath
+& $validatorShell -NoProfile -ExecutionPolicy Bypass -File $validator -Kind stage-1000 -Path $reportPath
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-& powershell -NoProfile -ExecutionPolicy Bypass -File $validator -Kind latency-attribution -Path $attributionPath
+& $validatorShell -NoProfile -ExecutionPolicy Bypass -File $validator -Kind latency-attribution -Path $attributionPath
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host ("Profile artifact generated: {0}; reader_slo_status={1}; path_profile_status={2}; blockers={3}" -f $reportPath, $readerSlo, $pathStatus, @($uniqueBlockers).Count) -ForegroundColor Yellow

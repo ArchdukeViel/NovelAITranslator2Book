@@ -15,6 +15,9 @@ param(
     [string]$SloGateTopology = "cloudflare_tunnel",
     [ValidateSet(1000)]
     [int]$Profile = 1000,
+    [string]$ComposeProject,
+    [string]$ComposeFile = "deploy/compose.yml",
+    [string]$ComposeEnvFile,
     # Accept only the already-opaque binding produced by the reader runner;
     # never pass a raw slug or chapter identifier through this parameter.
     [string]$FixtureBindingId
@@ -38,7 +41,11 @@ function Get-EnvValue([string]$Name) {
 
 function Get-ComposeSnapshot() {
     $rows = @()
-    $raw = @(docker compose -f deploy/compose.yml ps --format json 2>$null)
+    $composeArgs = @()
+    if (-not [string]::IsNullOrWhiteSpace($ComposeProject)) { $composeArgs += @("--project-name", $ComposeProject) }
+    if (-not [string]::IsNullOrWhiteSpace($ComposeEnvFile)) { $composeArgs += @("--env-file", $ComposeEnvFile) }
+    $composeArgs += @("--file", $ComposeFile, "ps", "--format", "json")
+    $raw = @(& docker compose @composeArgs 2>$null)
     if ($LASTEXITCODE -ne 0) {
         return [ordered]@{ status = "unavailable"; reason = "runtime_state_unavailable"; services = @() }
     }

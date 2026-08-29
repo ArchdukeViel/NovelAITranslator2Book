@@ -453,3 +453,12 @@ the development hostname routed by `dokushodo-dev` to Caddy. The retired
 private-network transport is not part of the current reader or deployment
 configuration. Older private-network records remain dated historical evidence
 and are not current access instructions.
+
+The named development tunnel is not repurposed for disposable capacity runs.
+The confirmation-gated
+`.github/workflows/reader-capacity-nonproduction.yml` workflow builds an
+isolated Compose project against the managed test database and the dedicated
+`test-dokushodo` R2 application bucket, then uses an ephemeral Cloudflare quick
+tunnel to reach that project's Caddy listener. It always removes the synthetic
+fixture, test runtime, and quick tunnel. See [`OPERATIONS.md`](OPERATIONS.md)
+for the evidence and cold-cache reset contract.

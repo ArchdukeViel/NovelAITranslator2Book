@@ -336,6 +336,7 @@ async def _workload_route(
     headers: dict[str, str],
     json_body: dict[str, Any] | None = None,
     header_factory: Callable[[int], dict[str, str]] | None = None,
+    warmup: bool = True,
 ) -> list[RequestResult]:
     semaphore = asyncio.Semaphore(max(1, concurrency))
 
@@ -351,17 +352,18 @@ async def _workload_route(
                 json_body=json_body,
             )
 
-    # One warmup request establishes the cold-to-warm transition without
-    # contaminating the reported sample distribution.
-    warmup_headers = header_factory(-1) if header_factory is not None else dict(headers)
-    await _request(
-        client,
-        route=f"{route}:warmup",
-        method=method,
-        path=path,
-        headers=warmup_headers,
-        json_body=json_body,
-    )
+    if warmup:
+        # One warmup request establishes the cold-to-warm transition without
+        # contaminating the reported sample distribution.
+        warmup_headers = header_factory(-1) if header_factory is not None else dict(headers)
+        await _request(
+            client,
+            route=f"{route}:warmup",
+            method=method,
+            path=path,
+            headers=warmup_headers,
+            json_body=json_body,
+        )
     return list(await asyncio.gather(*(one(index) for index in range(samples))))
 
 
@@ -439,6 +441,8 @@ async def _run_workload(args: argparse.Namespace) -> dict[str, Any]:
         ("ranking_monthly", "GET", "/api/public/rankings?period=monthly&limit=10", public_headers, None),
         ("home", "GET", "/home", public_headers, None),
     ]
+    if args.route is not None:
+        route_specs = [spec for spec in route_specs if spec[0] == args.route]
     if cookie:
         route_specs.extend(
             [
@@ -464,6 +468,7 @@ async def _run_workload(args: argparse.Namespace) -> dict[str, Any]:
                 concurrency=args.concurrency,
                 headers=headers,
                 json_body=body,
+                warmup=not args.skip_warmup,
             )
             results_by_route[route] = _summarize(results)
 
@@ -508,6 +513,8 @@ async def _run_workload(args: argparse.Namespace) -> dict[str, Any]:
         "fixture_slug": slug,
         "samples_per_route": args.samples,
         "concurrency": args.concurrency,
+        "route": args.route,
+        "warmup_executed": not args.skip_warmup,
         "routes": results_by_route,
         "translation_enqueue": translation_status,
         "metrics": metrics,
@@ -540,6 +547,23 @@ def _parse_args() -> argparse.Namespace:
     workload.add_argument("--base-url", default="http://localhost")
     workload.add_argument("--novel-slug", default=LARGE_FIXTURE_SLUG)
     workload.add_argument("--chapter-id", default="1")
+    workload.add_argument(
+        "--route",
+        choices=(
+            "health_live",
+            "health_ready",
+            "catalog",
+            "detail",
+            "chapter",
+            "search",
+            "ranking_daily",
+            "ranking_weekly",
+            "ranking_monthly",
+            "home",
+        ),
+        default=None,
+        help="Sample only one declared route; used by controlled cache-state runs.",
+    )
     workload.add_argument("--samples", type=int, default=20)
     workload.add_argument("--concurrency", type=int, default=8)
     workload.add_argument("--translation-samples", type=int, default=8)
@@ -551,6 +575,11 @@ def _parse_args() -> argparse.Namespace:
         help="Optional Host header for internal proxy targets such as http://caddy.",
     )
     workload.add_argument("--insecure", action="store_true")
+    workload.add_argument(
+        "--skip-warmup",
+        action="store_true",
+        help="Do not issue the excluded warmup request before counted samples.",
+    )
     workload.add_argument("--session-cookie-env", default=None)
     workload.add_argument("--csrf-token-env", default=None)
     workload.add_argument("--json-out", type=Path, default=None)

@@ -1,0 +1,264 @@
+name: Non-production Reader Capacity Evidence
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/reader-capacity-nonproduction.yml"
+      - "backend/alembic/**"
+      - "backend/src/**"
+      - "backend/tests/run_phase6_acceptance.py"
+      - "deploy/**"
+      - "tools/capacity/**"
+      - ".agents/specs/reader-capacity-and-recovery-follow-up/**"
+  workflow_dispatch:
+    inputs:
+      confirm_non_production:
+        description: "Confirm disposable testdatabase=dokushodo, test R2 buckets, and an ephemeral Cloudflare quick tunnel only"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reader-capacity-nonproduction
+  cancel-in-progress: false
+
+jobs:
+  isolated-reader-capacity:
+    if: >-
+      ${{
+        (github.event_name == 'workflow_dispatch' && inputs.confirm_non_production == true) ||
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name == github.repository)
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT: reader-capacity-test-${{ github.run_id }}
+      COMPOSE_FILE: deploy/compose.yml
+      CLOUD_FLARED_CONTAINER: reader-capacity-test-${{ github.run_id }}-cloudflared
+      CLOUDFLARED_IMAGE: cloudflare/cloudflared:2026.8.0@sha256:2535e54b16adf1d50630f99d0886471926c5ef3f6b328100ec6589f731c48969
+      MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
+      TEST_R2_ENDPOINT: ${{ secrets.TEST_R2_ENDPOINT }}
+      TEST_R2_APP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_APP_ACCESS_KEY_ID }}
+      TEST_R2_APP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_APP_SECRET_ACCESS_KEY }}
+      TEST_R2_APPLICATION_BUCKET: test-dokushodo
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14.6"
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.0"
+          enable-cache: true
+
+      - name: Install locked test tooling
+        run: >-
+          uv sync --locked --extra gemini --extra dev --extra test
+          --extra s3 --extra auth
+
+      - name: Prepare guarded disposable runtime environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+
+          if [[ -z "${MANAGED_DATABASE_TEST_URL:-}" || -z "${TEST_R2_ENDPOINT:-}" ||
+                -z "${TEST_R2_APP_ACCESS_KEY_ID:-}" || -z "${TEST_R2_APP_SECRET_ACCESS_KEY:-}" ||
+                -z "${TEST_R2_APPLICATION_BUCKET:-}" ]]; then
+            echo "::error::The disposable managed database/R2 test secrets or application bucket are unavailable."
+            exit 1
+          fi
+          if [[ "$TEST_R2_APPLICATION_BUCKET" != "test-dokushodo" ]]; then
+            echo "::error::The reader fixture requires the dedicated test-dokushodo application bucket."
+            exit 1
+          fi
+
+          database_url="$MANAGED_DATABASE_TEST_URL"
+          case "$database_url" in
+            postgres://*) database_url="postgresql+psycopg://${database_url#postgres://}" ;;
+            postgresql://*) database_url="postgresql+psycopg://${database_url#postgresql://}" ;;
+            postgresql+psycopg://*) ;;
+            *) echo "::error::The managed test database URL uses an unsupported scheme."; exit 1 ;;
+          esac
+
+          session_secret="$(openssl rand -hex 32)"
+          owner_secret="$(openssl rand -hex 32)"
+          echo "::add-mask::$session_secret"
+          echo "::add-mask::$owner_secret"
+
+          mkdir -p artifacts/operations/reader-capacity-follow-up "$RUNNER_TEMP/reader-capacity-runtime"
+          {
+            printf 'ENV=staging\n'
+            printf 'DATABASE_URL=%s\n' "$database_url"
+            printf 'MIGRATION_DATABASE_URL=%s\n' "$database_url"
+            printf 'DB_CONNECTION_MODE=session\n'
+            printf 'DB_POOL_SIZE=5\nDB_MAX_OVERFLOW=2\nDB_POOL_PROCESS_COUNT=2\nDB_CONNECTION_RESERVE=2\nDB_CONNECTION_BUDGET=32\n'
+            printf 'DB_SSL_MODE=require\nDB_CONNECT_TIMEOUT_SECONDS=15\n'
+            printf 'R2_BUCKET=%s\n' "$TEST_R2_APPLICATION_BUCKET"
+            printf 'R2_REGION=auto\nR2_ENDPOINT=%s\n' "$TEST_R2_ENDPOINT"
+            printf 'R2_ACCESS_KEY_ID=%s\nR2_SECRET_ACCESS_KEY=%s\n' "$TEST_R2_APP_ACCESS_KEY_ID" "$TEST_R2_APP_SECRET_ACCESS_KEY"
+            printf 'R2_BACKUP_ENABLED=false\nR2_BACKUP_BUCKET=test-dokushodo-backup\n'
+            printf 'SESSION_SECRET_KEY=%s\nOWNER_BOOTSTRAP_SECRET=%s\n' "$session_secret" "$owner_secret"
+            printf 'PUBLIC_FRONTEND_URL=https://reader-capacity-test.invalid\n'
+            printf 'SITE_DOMAIN=localhost\nPUBLIC_BIND_ADDRESS=127.0.0.1\nPUBLIC_HTTP_PORT=18080\n'
+            printf 'RUNTIME_HOST_DIR=%s\n' "$RUNNER_TEMP/reader-capacity-runtime"
+            printf 'ALLOWED_HOSTS=\nWEB_CORS_ORIGINS=\nAUTH_EMAIL_DELIVERY_MODE=noop\n'
+            printf 'WEB_RATE_LIMITER_BACKEND=redis\nJOB_WORKER_ENABLED=false\nANALYTICS_ENABLED=false\n'
+            printf 'TRANSLATION_PERSISTENCE_EXPANSION_ENABLED=false\n'
+            printf 'READER_CAPACITY_FIXTURE_TARGET=non-production\n'
+            printf 'ADMIN_IMAGE=novelai-admin:capacity\nREADER_IMAGE=novelai-reader:capacity\nFRONTEND_IMAGE=novelai-frontend:capacity\n'
+          } > deploy/.env
+
+      - name: Build isolated application images
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --file deploy/admin.Dockerfile --tag novelai-admin:capacity .
+          docker build --file deploy/reader.Dockerfile --tag novelai-reader:capacity .
+          docker build --file deploy/frontend.Dockerfile --tag novelai-frontend:capacity .
+
+      - name: Apply migrations to the disposable database
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          docker compose --project-name "$COMPOSE_PROJECT" --env-file deploy/.env \
+            --file "$COMPOSE_FILE" --profile migration run --rm migrate \
+            > "$RUNNER_TEMP/reader-capacity-migrate.log" 2>&1
+          status=$?
+          set -e
+          if [[ "$status" -ne 0 ]]; then
+            echo "::error::Disposable database migration failed; see the sanitized job outcome."
+            exit "$status"
+          fi
+
+      - name: Seed the explicit synthetic reader fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          docker compose --project-name "$COMPOSE_PROJECT" --env-file deploy/.env \
+            --file "$COMPOSE_FILE" run --rm --no-deps backend \
+            python -m novelai.scripts.seed_reader_capacity_fixture seed \
+            > artifacts/operations/reader-capacity-follow-up/fixture-seed.json \
+            2> "$RUNNER_TEMP/reader-capacity-seed.log"
+          status=$?
+          set -e
+          if [[ "$status" -ne 0 ]]; then
+            echo "::error::Disposable reader fixture seeding failed; no reader profile was run."
+            exit "$status"
+          fi
+
+      - name: Start the isolated reader runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose --project-name "$COMPOSE_PROJECT" --env-file deploy/.env \
+            --file "$COMPOSE_FILE" up -d --wait --wait-timeout 180 \
+            redis backend reader frontend caddy
+
+      - name: Capture the isolated safety baseline
+        shell: pwsh
+        run: |
+          $bytes = [Text.Encoding]::UTF8.GetBytes("test-novel|456")
+          $hash = [Security.Cryptography.SHA256]::Create().ComputeHash($bytes)
+          $fixtureId = "fixture-" + (($hash | ForEach-Object { $_.ToString("x2") }) -join "").Substring(0, 16)
+          "READER_FIXTURE_BINDING_ID=$fixtureId" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File tools/capacity/run_reader_follow_up_preflight.ps1 `
+            -ReadOnly `
+            -OutputPath artifacts/operations/reader-capacity-follow-up/baseline.json `
+            -SloGateTopology cloudflare_tunnel `
+            -FixtureBindingId $fixtureId `
+            -ComposeProject $env:COMPOSE_PROJECT `
+            -ComposeFile $env:COMPOSE_FILE `
+            -ComposeEnvFile deploy/.env
+
+      - name: Start the disposable Cloudflare quick tunnel
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --name "$CLOUD_FLARED_CONTAINER" --network host \
+            "$CLOUDFLARED_IMAGE" tunnel --no-autoupdate \
+            --url http://127.0.0.1:18080 --http-host-header localhost \
+            > "$RUNNER_TEMP/reader-capacity-cloudflared-id"
+
+          cloudflare_url=""
+          for _ in $(seq 1 60); do
+            cloudflare_url="$(docker logs "$CLOUD_FLARED_CONTAINER" 2>&1 \
+              | sed -nE 's/.*(https:\/\/[a-z0-9-]+\.trycloudflare\.com).*/\1/p' \
+              | head -n 1 || true)"
+            if [[ -n "$cloudflare_url" ]]; then break; fi
+            sleep 1
+          done
+          if [[ -z "$cloudflare_url" ]]; then
+            echo "::error::The disposable Cloudflare quick tunnel did not start."
+            exit 1
+          fi
+          printf 'READER_CLOUDFLARE_BASE_URL=%s\n' "$cloudflare_url" >> "$GITHUB_ENV"
+
+      - name: Run the bounded Cloudflare reader profile
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File tools/capacity/run_reader_profile.ps1 `
+            -ReadOnly `
+            -Profile 1000 `
+            -SloGateTopology cloudflare_tunnel `
+            -CloudflareBaseUrl $env:READER_CLOUDFLARE_BASE_URL `
+            -NovelSlug test-novel `
+            -ChapterId 456 `
+            -ColdCacheMode disposable_reader_reset `
+            -ColdResetScript tools/capacity/reset_reader_cache.ps1 `
+            -ColdResetComposeProject $env:COMPOSE_PROJECT `
+            -ColdResetComposeFile $env:COMPOSE_FILE `
+            -BaselinePath artifacts/operations/reader-capacity-follow-up/baseline.json `
+            -ReportDir artifacts/operations/reader-capacity-follow-up/reader-stage-1000 `
+            -WarmSamples 50 `
+            -ColdSamples 50 `
+            -MaxAttemptsPerCell 100 `
+            -Concurrency 8 `
+            -TimeoutSeconds 20
+
+      - name: Clean the disposable fixture, runtime, and tunnel
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          cleanup_status=0
+          if [[ -f deploy/.env ]]; then
+            docker compose --project-name "$COMPOSE_PROJECT" --env-file deploy/.env \
+              --file "$COMPOSE_FILE" run --rm --no-deps backend \
+              python -m novelai.scripts.seed_reader_capacity_fixture cleanup \
+              > "$RUNNER_TEMP/reader-capacity-cleanup.log" 2>&1
+            cleanup_status=$?
+          fi
+          docker rm --force "$CLOUD_FLARED_CONTAINER" > "$RUNNER_TEMP/reader-capacity-tunnel-cleanup.log" 2>&1
+          docker compose --project-name "$COMPOSE_PROJECT" --env-file deploy/.env \
+            --file "$COMPOSE_FILE" down --volumes --remove-orphans \
+            > "$RUNNER_TEMP/reader-capacity-compose-cleanup.log" 2>&1
+          rm -f deploy/.env
+          if [[ "$cleanup_status" -ne 0 ]]; then
+            echo "::error::Disposable fixture cleanup failed; review the test bucket before rerunning."
+            exit "$cleanup_status"
+          fi
+
+      - name: Upload sanitized reader evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: reader-capacity-nonproduction-${{ github.run_id }}
+          path: artifacts/operations/reader-capacity-follow-up/
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 7

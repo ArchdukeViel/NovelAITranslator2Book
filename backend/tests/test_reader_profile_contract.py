@@ -231,4 +231,20 @@ def test_reader_runner_keeps_cold_sample_target_separate_from_warm_target():
     runner = (CAPACITY_TOOLS / "run_reader_profile.ps1").read_text(encoding="utf-8")
 
     assert "$WarmSamples $summary" in runner
-    assert '"cold_cache_control_unavailable" $ColdSamples $null' in runner
+    assert "$ColdSamples $coldSummary" in runner
+    assert '"disposable_reader_reset"' in runner
+    assert '"--skip-warmup"' in runner
+    assert '"cold_cache_control_unavailable"' in runner
+
+
+def test_reader_runner_uses_the_isolated_reset_helper_contract():
+    runner = (CAPACITY_TOOLS / "run_reader_profile.ps1").read_text(encoding="utf-8")
+    reset = (CAPACITY_TOOLS / "reset_reader_cache.ps1").read_text(encoding="utf-8")
+
+    assert "[string]$ColdResetScript" in runner
+    assert "[string]$ColdResetComposeProject" in runner
+    assert "Invoke-ColdReset" in runner
+    assert "-ComposeProject" in runner
+    assert "redis-cli FLUSHDB" in reset
+    assert "restart reader" in reset
+    assert '"^reader-capacity-test-[A-Za-z0-9_-]+$"' in reset
