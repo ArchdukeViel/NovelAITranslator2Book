@@ -2,7 +2,7 @@ name: Static Analysis
 
 on:
   push:
-    branches: [main, develop, feat/r2-only-content-storage]
+    branches: [main, develop]
   pull_request:
     branches: [main, develop]
 
