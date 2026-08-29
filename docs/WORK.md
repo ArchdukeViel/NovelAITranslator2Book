@@ -506,17 +506,21 @@ graphify update . --no-cluster
 
 Current follow-up checkpoint — 2026-08-29:
 `reader-capacity-and-recovery-follow-up` remains an active, blocked operational
-spec. Its local contracts and evidence postconditions are valid, but the
-selected Cloudflare gate has a public target but no matching fixture at that
-origin; controlled cold-cache evidence is unavailable, and hosted telemetry is
-unavailable. Recovery freshness/alert state is not observed. The current
-non-production managed PostgreSQL/R2 recovery
-verification now passes after the candidate schema was applied. It is recovery
-evidence for that disposable path, but it is not production recovery readiness
-or capacity evidence. The worker and original full queue remain stopped/paused
-by policy; production capacity is not established. The Recovery and
-Performance rows below retain their earlier audit provenance and must not be
-read as overriding this current checkpoint.
+spec. Its local contracts and evidence postconditions are valid, and the
+confirmation-gated non-production workflow [33246036636](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33246036636)
+successfully bound the explicit fixture to the disposable managed database and
+dedicated test R2 bucket. The isolated runtime, safety baseline, ephemeral
+Cloudflare quick tunnel, 60-cell matrix, ten cold-reset proofs, and cleanup all
+completed. The selected Cloudflare cells attempted 1,000 read-only requests,
+but every request was recorded as an error/transport failure; no valid latency
+sample or p95 result was available. Therefore `reader_slo_status=blocked` and
+`path_profile_status=blocked`; `telemetry_status=unavailable`,
+`recovery_status=not_assessed`, and `production_capacity_claim=not_established`.
+The worker remained stopped, while original queue and other-writer state
+remained unknown. This is current non-production evidence, not production
+recovery readiness or reader capacity evidence. The Recovery and Performance
+rows below retain their earlier audit provenance and must not be read as
+overriding this current checkpoint.
 
 The current recovery artifact records backup, manifest, checksum, freshness,
 restore, representative-query, public-isolation, R2-cleanup, and role-cleanup
@@ -530,27 +534,26 @@ deployment; this does not establish production security or capacity readiness.
 The disposable test project's Alembic marker is now synchronized to that head,
 while its application fixture tables remain empty.
 
-Operator authorization input refresh - 2026-08-29:
+Operator authorization and disposable execution - 2026-08-29:
 The project owner supplied a non-production read-only reader-capacity
-authorization and an explicit disposable fixture description. It is not a
-passing evidence record. Cloudflare MCP confirms the active development zone,
-proxied development tunnel, healthy connector, and public liveness smoke, but
-the supplied fixture is not present at that public origin. The active
-reader-capacity contract now selects `cloudflare_tunnel` as its non-production
-SLO gate. The bounded read-only run collected 50 warm samples per required
-route, but liveness/catalog/search exceeded budgets and detail/chapter returned
-404; all cold cells remain unavailable. Production capacity remains
-unestablished.
+authorization and an explicit disposable fixture description. The fixture was
+seeded only in the managed test database and dedicated test R2 bucket, then
+removed by the guarded cleanup path. Independent post-run checks found zero
+fixture rows and zero objects under the exact fixture prefix. The active
+reader-capacity contract selects `cloudflare_tunnel` as its non-production SLO
+gate. Its 20 Cloudflare cells recorded 1,000 error/transport outcomes and zero
+valid samples; the report is a valid quantified blocker, not a capacity pass.
+Production capacity remains unestablished.
 
 | Gate | Status | Required evidence |
 |---|---|---|
-| Reader capacity and recovery follow-up (current) | Blocked | `artifacts/operations/reader-capacity-follow-up/handoff.md`; owner authorization input is present, but the fixture must be provisioned/bound at the selected Cloudflare development target, controlled cold-cache evidence must be recorded, and hosted telemetry remains required. Current isolated recovery evidence is recorded separately. |
+| Reader capacity and recovery follow-up (current) | Blocked | Owner authorization, the disposable fixture binding, ten controlled cold-reset proofs, and cleanup verification are recorded by workflow run [33246036636](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33246036636); all 1,000 selected Cloudflare requests were transport errors with zero valid latency samples, queue/writer state remains unknown, and hosted telemetry/recovery evidence remain required. |
 | Hosted smoke and auth/security boundaries | Blocked | Candidate commit, domains, UTC time, commands/URLs, sanitized results. |
 | Secret scanning | Partial (hosted scans passed) | PR #12 proved successful GitGuardian push and same-repo PR checks. Still require protected required-check configuration and sanitized incident/false-positive triage evidence. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
 | Alerts and monitoring | Blocked (tooling complete) | Configure `PRODUCTION_BASE_URL`, prove scheduled external runs and real operator delivery, cooldown/redaction, dashboards, escalation, and ownership. |
 | Recovery | Partial (current non-production run passed) | Current isolated database backup/restore and representative public-isolation checks are recorded. Recurring backup freshness, stale/failure alert delivery, production smoke, and production recovery readiness remain required. |
 | Accessibility | Pass (COMPLETED 2026-08-17) | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast verified via automated test suite and operator physical device attestation. |
-| Performance | Partial / Fail (AUDITED 2026-08-17; retired private transport) | Catalog API p95 on the retired hosted staging path exceeded the hard budget (reader direct p95=1001.60ms, private HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + object-store metadata-list latency in the pre-cutover measurement). The current Cloudflare-only follow-up also remains blocked: catalog p95=1518.142ms, search p95=1368.677ms, and the requested detail/chapter fixture returned 404; cold cells are unavailable. |
+| Performance | Partial / Fail (AUDITED 2026-08-17; retired private transport) | Catalog API p95 on the retired hosted staging path exceeded the hard budget (reader direct p95=1001.60ms, private HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + object-store metadata-list latency in the pre-cutover measurement). The initial named-development-host Cloudflare probe also recorded catalog p95=1518.142ms, search p95=1368.677ms, and a detail/chapter fixture 404. The current disposable Cloudflare run is blocked earlier: all 1,000 selected requests were transport errors with zero valid latency samples. |
 | SEO | Staging Pass / Production Deferred (AUDITED 2026-08-17) | Staging robots.txt, sitemap.xml, Open Graph / Twitter metadata, canonical URLs verified on staging hostname; production domain SEO validation deferred until public domain cutover. |
 | Legal propagation | Pass (AUDITED 2026-08-17) | HTTP 451 legal takedown verified (Cache-Control: no-store, no private info leak); sitemap exclusion & 404 contracts verified; CDN purge deferred to public edge. |
 | Rollback | Blocked | Pause worker/scheduler, purge cache, disable reader, redeploy previous immutable version, rerun smoke. |

@@ -10,21 +10,20 @@ Target project or release: Current split deployment after the quantified 1k read
 
 ## Context and Problem
 
-The only work completed in the current follow-up was a read-only documentation
-quality review. The existing async-capacity, resource-audit, performance, and
-R2 records contain historical measurements and safety decisions, but they do
-not authorize this specification's operational work to be treated as complete.
-
-The latest 1k reader evidence is a quantified stop rather than a capacity pass:
-liveness p95 was about 118 ms against a 100 ms budget, catalog about 1,516 ms
-against 500 ms, detail about 4,432 ms against 300 ms, chapter about 16,871 ms
-against 750 ms, and search about 1,544 ms against 500 ms. The largest
-contributor is not isolated across the backend, Caddy, Cloudflare edge/tunnel path,
-database pool/query work, exact R2 reads, serialization, and proxy overhead.
-Hosted provider billing and operation counters are also not fully visible to
-the local runner. Recovery controls need recurring freshness, alerting,
-restore, credential-scope, and ownership evidence rather than a one-time
-document statement.
+The follow-up now has a confirmation-gated disposable execution path. Workflow
+run [33246036636](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33246036636)
+seeded the explicit published reader fixture into the managed test database and
+dedicated test R2 bucket, started an isolated runtime, captured a safety
+baseline, opened an ephemeral Cloudflare quick tunnel, and completed cleanup.
+The report validators accepted the resulting 60-cell matrix and ten cold-reset
+proofs. The 20 Cloudflare cells attempted 1,000 read-only requests, all of
+which were recorded as transport errors; there were zero valid latency samples.
+The result is therefore a quantified stop rather than a capacity pass:
+`reader_slo_status=blocked`, `path_profile_status=blocked`,
+`telemetry_status=unavailable`, `recovery_status=not_assessed`, and
+`production_capacity_claim=not_established`. The worker remained stopped;
+queue/writer observation remained unknown; and production content, R2, and
+provider surfaces were not used.
 
 ## Goal
 

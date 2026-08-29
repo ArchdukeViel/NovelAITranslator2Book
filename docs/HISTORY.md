@@ -1,4 +1,32 @@
-## 2026-08-29 CLOUDFLARE-ONLY READER FOLLOW-UP AND TAILSCALE RETIREMENT
+## 2026-08-29 NON-PRODUCTION CLOUDFLARE READER EVIDENCE
+
+The confirmation-gated non-production reader workflow [run
+33246036636](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33246036636)
+completed successfully at candidate commit `6eb3d699334925f28f3ba113d5369f9400c4c690`.
+It applied the current migration head, seeded the explicit published fixture
+`reader-fixture-test-v1` (novel `123`, chapters `456` and `457`) into the
+disposable managed test database and dedicated `test-dokushodo` R2 bucket,
+started an isolated Compose reader runtime, captured the safety baseline, and
+opened an ephemeral Cloudflare quick tunnel. The worker remained stopped; the
+original queue and other-writer states remained explicitly unknown.
+
+The sanitized report validators accepted a 60-cell matrix. The 20
+`cloudflare_tunnel` cells attempted 1,000 read-only requests (50 warm and 50
+cold samples for each required and diagnostic route); all were recorded as
+transport errors, so there were zero valid latency samples and no Cloudflare
+p95 result. Ten disposable Redis-flush/reader-restart proofs were recorded.
+The independent dispositions are `reader_slo_status=blocked`,
+`path_profile_status=blocked`, `telemetry_status=unavailable`,
+`recovery_status=not_assessed`, and `production_capacity_claim=not_established`.
+The workflow still succeeded because a quantified blocked report is valid
+evidence; it is not a capacity pass.
+
+The workflow cleanup completed, and post-run checks found zero fixture rows in
+the test database and zero objects under the exact `novels/123/` prefix in
+`test-dokushodo`. No canonical database, R2 bucket, named development tunnel,
+provider traffic, worker, or translation queue was changed.
+
+## 2026-08-29 INITIAL CLOUDFLARE-ONLY READER FOLLOW-UP AND TAILSCALE RETIREMENT
 
 The active development reader path is now Cloudflare-only. The configured
 Cloudflare MCP can inspect the `dokushodo.online` zone, the healthy
@@ -13,10 +41,13 @@ on the existing directly reachable environment-scoped host. Historical
 private-network evidence is retained below for provenance and is not an
 active acceptance path.
 
-The read-only Cloudflare 1k profile collected 50 warm samples per required
-route. Liveness, catalog, and search exceeded their configured budgets; the
-requested detail/chapter fixture returned 404; and all controlled-cold cells
-remain unavailable. The result is a quantified blocker, not a capacity pass.
+The initial named-development-host read-only Cloudflare 1k profile collected
+50 warm samples per required route. Liveness, catalog, and search exceeded
+their configured budgets; the requested detail/chapter fixture returned 404;
+and all controlled-cold cells were unavailable. That probe predates the
+disposable fixture workflow recorded above and remains historical evidence,
+not the current fixture-bound run. It was a quantified blocker, not a
+capacity pass.
 The worker and original full queue remain stopped or paused, and
 `production_capacity_claim` remains `not_established`.
 
