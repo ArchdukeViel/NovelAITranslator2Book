@@ -5,7 +5,7 @@ import { maskToken, containsSecret } from "../mask-token";
 // Feature: admin-ui-rework, Property 5: Credentials are always masked and raw values are never rendered
 
 describe("maskToken", () => {
-  // Property 5: For any token string, assert masking reveals at most a short prefix/suffix 
+  // Property 5: For any token string, assert masking reveals at most a short prefix/suffix
   // and never the obscured middle verbatim. Min 100 iterations.
   it("reveals at most a short prefix and suffix, never emits the obscured middle verbatim", () => {
     fc.assert(
@@ -38,10 +38,10 @@ describe("maskToken", () => {
           const suffix = value.slice(-4);
           const originalMiddle = value.slice(4, -4);
           const maskedMiddle = masked.slice(4, -4);
-          
+
           // The masked middle should NOT contain the original middle verbatim
           expect(maskedMiddle).not.toContain(originalMiddle);
-          
+
           // The masked middle should contain asterisks
           expect(maskedMiddle).toMatch(/^\*+$/);
         }
@@ -66,10 +66,10 @@ describe("maskToken", () => {
   it("handles known secret patterns correctly", () => {
     // Google API key: length 28, prefix=AIza, suffix=6789, middle=20 chars -> 8 asterisks
     expect(maskToken("AIzaSyD_example_key_123456789")).toBe("AIza********6789");
-    
-    // OpenAI key: length 24, prefix=sk-1 (first 4), suffix=ghij, middle=16 chars -> 8 asterisks  
+
+    // OpenAI key: length 24, prefix=sk-1 (first 4), suffix=ghij, middle=16 chars -> 8 asterisks
     expect(maskToken("sk-1234567890abcdefghij")).toBe("sk-1********ghij");
-    
+
     // Generic long token: length 28, prefix=very, suffix=2345 (last 4 chars), middle=20 chars -> 8 asterisks
     expect(maskToken("very-long-secret-token-12345")).toBe("very********2345");
   });
@@ -87,12 +87,12 @@ describe("maskToken", () => {
 
     for (const token of tokens) {
       const masked = maskToken(token);
-      
+
       if (token.length > 12) {
         const prefix = token.slice(0, 4);
         const suffix = token.slice(-4);
         const middle = token.slice(4, -4);
-        
+
         // The masked version should start with prefix
         expect(masked.startsWith(prefix)).toBe(true);
         // The masked version should end with suffix

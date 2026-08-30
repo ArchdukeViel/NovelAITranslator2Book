@@ -92,7 +92,7 @@ function removeStackTrace(text: string): string {
 /**
  * Formats an admin error into a safe, human-readable message.
  * This is the single redaction chokepoint - all error display should go through here.
- * 
+ *
  * @param error - The error to format (ApiError, Error, string, or object)
  * @param fallback - Fallback message if error cannot be parsed
  * @returns A safe, redacted message suitable for display, plus optional trace_id
