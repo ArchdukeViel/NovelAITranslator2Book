@@ -55,7 +55,7 @@ jobs:
       DATABASE_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
       DATABASE_RESTORE_TARGET_URL: postgresql+psycopg://novelai_restore@127.0.0.1:5432/novelai_restore_verify
       TEST_R2_ENDPOINT: ${{ secrets.TEST_R2_ENDPOINT }}
-      TEST_R2_TARGET_BUCKET: test-dokushodo
+      TEST_R2_TARGET_BUCKET: test-dokushodo-backup
       TEST_R2_BACKUP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_BACKUP_ACCESS_KEY_ID }}
       TEST_R2_BACKUP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_BACKUP_SECRET_ACCESS_KEY }}
       TEST_R2_REGION: auto
