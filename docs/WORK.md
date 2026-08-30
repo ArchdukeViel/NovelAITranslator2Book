@@ -504,7 +504,7 @@ graphify update . --no-cluster
 
 ## Operator Acceptance
 
-Current follow-up checkpoint — 2026-08-30:
+Prior follow-up checkpoint — 2026-08-30 (superseded by the current checkpoint below):
 `reader-capacity-and-recovery-follow-up` remains an active, blocked operational
 spec. Its local contracts and evidence postconditions are valid, and the
 confirmation-gated non-production workflow [33259176327](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33259176327)
@@ -524,7 +524,7 @@ The worker remained stopped, while original queue and other-writer state
 remained unknown. This is current non-production evidence, not reader-capacity
 admission or production capacity evidence.
 
-The latest explicitly authorized test-only recovery run [33270802038](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33270802038)
+The prior explicitly authorized test-only recovery run [33270802038](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33270802038)
 passed backup creation, healthy freshness, manifest/checksum verification,
 isolated restore, representative queries, Alembic-head verification, public
 isolation, R2 cleanup, temporary-role cleanup, and overall cleanup. Its
@@ -546,6 +546,44 @@ deployment; this does not establish production security or capacity readiness.
 The disposable test project's Alembic marker is now synchronized to that head,
 while its application fixture tables remain empty.
 
+Current follow-up checkpoint — 2026-08-30:
+The complete bounded reader workflow [33284596466](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33284596466)
+resolved the active test project `testingdatabase-dokushodo`, the dedicated
+`test-dokushodo` application bucket, and the isolated reader runtime. Its
+60-cell matrix and controlled cold-reset evidence completed, but the selected
+Cloudflare SLO cells failed closed: health p95 was 179.369 ms warm and
+350.074 ms cold, catalog p95 was 4241.234/6362.442 ms, detail p95 was
+6281.739/7985.510 ms, warm search p95 was 7293.396 ms, and chapter/cold-search
+cells were unavailable. This is quantified non-production evidence, not reader
+capacity admission. Therefore `reader_slo_status=blocked` and
+`path_profile_status=blocked`; `telemetry_status=unavailable`,
+`recovery_status=partial`, `overall_follow_up_disposition=complete_with_quantified_blocker`,
+and `production_capacity_claim=not_established`.
+
+Subsequent telemetry-enabled reader attempts [33286324252](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33286324252),
+[33286713872](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33286713872),
+and [33287228638](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33287228638)
+did not reach a complete profile: the first stopped at the Linux PowerShell
+telemetry boundary, and the latter two stopped at bounded disposable quick
+tunnel readiness. Cloudflare MCP cannot repair those anonymous transient quick
+tunnel sessions; its read-only control-plane check independently found the
+durable development tunnel and proxied DNS route healthy. The worker and full
+translation queue remained stopped/paused, and queue/other-writer state remains
+unknown.
+
+The corrected explicitly authorized test-only recovery run [33287970969](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33287970969)
+passed backup creation, healthy freshness, manifest/checksum/reference
+verification, isolated restore, representative queries, public isolation, and
+cleanup against only the disposable test database, `test-dokushodo`,
+`test-dokushodo-backup`, and an ephemeral restore database. Its sanitized
+artifact is `managed-database-recovery-evidence-33287970969` and records
+`production_mutation=none`. Independent Supabase MCP SQL confirmed zero fixture
+novel and chapter rows; Cloudflare MCP confirmed zero objects under
+`novels/123/` and `recovery-`. Recovery remains `partial`, not complete:
+recurring schedule/retention evidence, alert transition/delivery, production
+smoke, and production recovery readiness remain unverified. No production
+resource, secret, or repository variable was changed.
+
 Operator authorization and disposable execution - 2026-08-29:
 The project owner supplied a non-production read-only reader-capacity
 authorization and an explicit disposable fixture description. The fixture was
@@ -562,11 +600,11 @@ remains unestablished.
 
 | Gate | Status | Required evidence |
 |---|---|---|
-| Reader capacity and recovery follow-up (current) | Blocked | Owner authorization, the disposable fixture binding, twenty controlled cold-reset proofs, and cleanup verification are recorded by workflow run [33259176327](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33259176327); the 1,000 Cloudflare requests produced 850 valid samples, zero transport errors, 144 timeouts, and over-budget/incomplete required cells, queue/writer state remains unknown, and exact reader-window telemetry plus recurring recovery controls remain required. |
+| Reader capacity and recovery follow-up (current) | Blocked | Run [33284596466](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33284596466) completed the bounded matrix and cleanup but recorded over-budget Cloudflare cells and unavailable chapter/search cells; telemetry remains unavailable, queue/writer state remains unknown, and recurring recovery controls remain required. |
 | Hosted smoke and auth/security boundaries | Blocked | Candidate commit, domains, UTC time, commands/URLs, sanitized results. |
 | Secret scanning | Partial (hosted scans passed) | PR #12 proved successful GitGuardian push and same-repo PR checks. Still require protected required-check configuration and sanitized incident/false-positive triage evidence. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
 | Alerts and monitoring | Blocked (tooling complete) | Configure `PRODUCTION_BASE_URL`, prove scheduled external runs and real operator delivery, cooldown/redaction, dashboards, escalation, and ownership. |
-| Recovery | Partial (current test-only restore passed) | Test-only recovery workflow [33270802038](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33270802038) passed backup, freshness, manifest/checksum, isolated restore, public-isolation, and cleanup checks against disposable targets; independent MCP checks found zero fixture rows and zero test objects. Recurring schedule/retention evidence, stale/failure alert transition and delivery, production smoke, and production recovery readiness remain required. |
+| Recovery | Partial (current test-only restore passed) | Test-only recovery workflow [33287970969](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33287970969) passed backup, freshness, manifest/checksum/reference, isolated restore, public-isolation, and cleanup checks against disposable targets; independent MCP checks found zero fixture rows and zero test objects. Recurring schedule/retention evidence, stale/failure alert transition and delivery, production smoke, and production recovery readiness remain required. |
 | Accessibility | Pass (COMPLETED 2026-08-17) | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast verified via automated test suite and operator physical device attestation. |
 | Performance | Partial / Fail (AUDITED 2026-08-17; retired private transport) | Catalog API p95 on the retired hosted staging path exceeded the hard budget (reader direct p95=1001.60ms, private HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + object-store metadata-list latency in the pre-cutover measurement). The latest disposable run proves quick-tunnel readiness but remains blocked: Cloudflare health p95 was 85.434/1129.843ms, catalog 11008.173/11761.447ms, detail 13060.920/16360.286ms, chapter warm/cold were unavailable, and search warm was unavailable while cold was 16608.013ms. |
 | SEO | Staging Pass / Production Deferred (AUDITED 2026-08-17) | Staging robots.txt, sitemap.xml, Open Graph / Twitter metadata, canonical URLs verified on staging hostname; production domain SEO validation deferred until public domain cutover. |

@@ -1,3 +1,38 @@
+## 2026-08-30 CURRENT NON-PRODUCTION FOLLOW-UP CHECKPOINT
+
+The corrected test-only recovery workflow [33287970969](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33287970969)
+passed backup creation, healthy freshness, manifest/checksum/reference
+verification, isolated PostgreSQL restore, representative reads, public
+isolation, and cleanup using only the disposable managed test database,
+`test-dokushodo`, `test-dokushodo-backup`, and an ephemeral restore target. Its
+sanitized artifact is `managed-database-recovery-evidence-33287970969` and it
+records `production_mutation=none`. Independent Supabase and Cloudflare MCP
+checks found zero fixture rows and zero objects under the exact test prefixes.
+This is one-run recovery evidence; recurring schedule/retention behavior,
+alert transition/delivery, production smoke, and production recovery readiness
+remain unverified, so `recovery_status=partial`.
+
+The complete bounded reader workflow [33284596466](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33284596466)
+produced the sanitized artifact `reader-capacity-nonproduction-33284596466`.
+The Cloudflare SLO gate remained blocked by health, catalog, detail, and search
+latencies above budget plus unavailable chapter/cold-search cells; all required
+reader statuses remain fail-closed and `production_capacity_claim` remains
+`not_established`. Later telemetry-enabled attempts [33286324252](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33286324252),
+[33286713872](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33286713872),
+and [33287228638](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33287228638)
+stopped before a complete profile at the Linux PowerShell or anonymous quick
+tunnel readiness boundary. Cloudflare MCP confirmed the durable development
+tunnel/DNS control plane separately; it cannot repair an anonymous quick-tunnel
+edge session, and the durable route was not substituted for the required
+isolated test path.
+
+The authorized candidate workflows ran on one disposable Ubuntu 24.04 WSL2
+self-hosted runner labeled `dokushodo-nonprod-linux-x64`; production workflows
+were not rerouted. Reader/recovery artifact uploads now pin `actions/upload-artifact`
+to v7.0.1, so the earlier Node.js 20 deprecation warning is historical rather
+than current configuration. The worker and original full translation queue
+remained stopped/paused throughout.
+
 ## 2026-08-30 TEST-ONLY MANAGED DATABASE RECOVERY RERUN
 
 The explicitly authorized test-only recovery workflow [run

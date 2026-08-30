@@ -358,7 +358,7 @@ def test_managed_recovery_workflow_is_confirmation_gated_and_isolated() -> None:
     assert "missing_extension" in source
     assert 'echo "::add-mask::$BACKUP_KEY"' in source
     assert "ephemeral" in source.lower()
-    assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in source
+    assert "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a" in source
     assert "TEST_R2_BACKUP_ACCESS_KEY_ID:" in source
     assert "TEST_R2_BACKUP_SECRET_ACCESS_KEY:" in source
 
