@@ -306,6 +306,17 @@ jobs:
           echo "Disposable Cloudflare quick tunnel readiness reached HTTP 200."
           printf 'READER_CLOUDFLARE_BASE_URL=%s\n' "$cloudflare_url" >> "$GITHUB_ENV"
 
+      - name: Capture sanitized hosted telemetry boundary
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File tools/capacity/capture_reader_follow_up_telemetry.ps1 `
+            -BaselinePath artifacts/operations/reader-capacity-follow-up/baseline.json `
+            -OutputPath artifacts/operations/reader-capacity-follow-up/hosted-telemetry.json `
+            -Phase pre_remediation `
+            -ReaderRunId "reader-${{ github.run_id }}" `
+            -Revision "${{ github.sha }}" `
+            -Topology cloudflare_tunnel
+
       - name: Run the bounded Cloudflare reader profile
         shell: pwsh
         run: |
