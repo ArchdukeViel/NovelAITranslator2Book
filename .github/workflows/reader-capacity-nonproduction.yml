@@ -144,7 +144,29 @@ jobs:
           status=$?
           set -e
           if [[ "$status" -ne 0 ]]; then
-            echo "::error::Disposable database migration failed; see the sanitized job outcome."
+            migration_class="migration_log_unavailable"
+            migration_log="$RUNNER_TEMP/reader-capacity-migrate.log"
+            if [[ -r "$migration_log" ]]; then
+              migration_class="migration_failed_unclassified"
+              if grep -Eqi 'password authentication failed|authentication failed|invalid password|role .* does not exist' "$migration_log"; then
+                migration_class="database_authentication"
+              elif grep -Eqi 'connection refused|could not connect|connection timed out|timeout expired|network is unreachable|temporary failure' "$migration_log"; then
+                migration_class="database_connectivity"
+              elif grep -Eqi 'permission denied|must be owner|insufficient privilege|not authorized' "$migration_log"; then
+                migration_class="database_permission"
+              elif grep -Eqi 'ssl|tls|certificate' "$migration_log"; then
+                migration_class="database_ssl"
+              elif grep -Eqi 'invalid.*dsn|postgresql\\+psycopg|driver|unsupported scheme' "$migration_log"; then
+                migration_class="database_url_or_driver"
+              elif grep -Eqi 'can.t locate revision|no such revision|not a valid revision|alembic' "$migration_log"; then
+                migration_class="migration_schema"
+              elif grep -Eqi 'docker|compose|service|image|daemon' "$migration_log"; then
+                migration_class="compose_runtime"
+              fi
+            fi
+            printf '{"schema_version":"1","status":"migration_failed","error_class":"%s","raw_log_emitted":false}\n' "$migration_class" \
+              > artifacts/operations/reader-capacity-follow-up/migration-diagnostic.json
+            echo "::error::Disposable database migration failed; sanitized error class: $migration_class"
             exit "$status"
           fi
 
