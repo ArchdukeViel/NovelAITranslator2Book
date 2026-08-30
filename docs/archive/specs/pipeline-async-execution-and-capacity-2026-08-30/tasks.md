@@ -2,7 +2,7 @@
 
 Spec ID: pipeline-async-execution-and-capacity
 Version: 0.3.0
-Status: Approved
+Status: Complete
 Updated: 2026-08-24
 
 Execution is dependency-ordered. Every task starts unchecked and remains
@@ -301,8 +301,8 @@ into a pass.
   - Depends on: T-012, T-013, T-016, T-017, T-018, T-021, T-022, T-023, T-024
   - State: complete
   - Authorization: project-owner-approved documentation edits within affected canonical Markdown
-  - Scope: `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, `docs/OPERATIONS.md`, `docs/TRANSLATION.md`, performance docs, `docs/WORK.md`, `docs/HISTORY.md`, the R2 plan, and any directly affected design brief
-  - Verification: Run `git diff --check`, then `rg -n "async|event loop|capacity|egress|pool|R2|unavailable|deferred|rollback" docs/ARCHITECTURE.md docs/CONFIGURATION.md docs/OPERATIONS.md docs/TRANSLATION.md docs/PERFORMANCE_AUDIT.md docs/PERFORMANCE_ACTION_PLAN.md docs/WORK.md docs/HISTORY.md "docs/R2-Only Content Storage Rearchitecture-plan.md"`, then `graphify update . --no-cluster`.
+  - Scope: `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, `docs/OPERATIONS.md`, `docs/TRANSLATION.md`, performance docs, `docs/STATUS.md`, `docs/EVIDENCE.md`, the R2 plan, and any directly affected design brief
+  - Verification: Run `git diff --check`, then `rg -n "async|event loop|capacity|egress|pool|R2|unavailable|deferred|rollback" docs/ARCHITECTURE.md docs/CONFIGURATION.md docs/OPERATIONS.md docs/TRANSLATION.md docs/PERFORMANCE_AUDIT.md docs/PERFORMANCE_ACTION_PLAN.md docs/STATUS.md docs/EVIDENCE.md "docs/R2-Only Content Storage Rearchitecture-plan.md"`, then `graphify update . --no-cluster`.
   - Expected: Documentation agrees with code and evidence, distinguishes completed/partial/unavailable/operator-owned states, and does not claim full-queue or 100k-user success without the required stage evidence.
   - Attempts: 1
   - Last result: `git diff --check` exit 0, required documentation scan exit 0, and `graphify update . --no-cluster` exit 0; documentation records the completed implementation decisions, measured boundaries, operator-owned gates, and safety stops without unsupported capacity claims.

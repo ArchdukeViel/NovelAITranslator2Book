@@ -2,7 +2,7 @@
 
 Spec ID: pipeline-async-execution-and-capacity
 Version: 0.3.0
-Status: Approved
+Status: Complete
 Updated: 2026-08-24
 Requester: Project owner
 Owner: Project owner with implementation agent

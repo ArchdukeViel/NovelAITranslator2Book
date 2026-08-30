@@ -1,4 +1,28 @@
+---
+title: Architecture
+document_role: normative
+authority: canonical
+scope: system architecture dependency direction trust boundaries and stable service contracts
+audience:
+  - agents
+  - developers
+  - operators
+update_triggers:
+  - architecture contract changes
+  - trust-boundary changes
+  - service-boundary changes
+owned_concerns:
+  - architecture-system-boundaries
+---
 # Architecture
+
+This document owns the system architecture, dependency direction, trust boundaries, and stable service contracts. It does not own environment values, release procedures, operational runbooks, or dated evidence.
+
+Current state: the implemented application uses split admin/reader services, PostgreSQL, R2-only novel content storage, Redis/Valkey coordination, and an owner-operated translation control plane.
+
+Related contracts: [`CONFIGURATION.md`](CONFIGURATION.md), [`DEPLOYMENT.md`](DEPLOYMENT.md), [`STORAGE.md`](STORAGE.md), [`OPERATIONS.md`](OPERATIONS.md), and [`TRANSLATION.md`](TRANSLATION.md).
+
+Maintenance: update this document when a durable boundary or dependency contract changes; record candidate-specific results in [`EVIDENCE.md`](EVIDENCE.md) and unresolved work in [`STATUS.md`](STATUS.md).
 
 Canonical project architecture. This file wins when project documents conflict.
 
@@ -557,7 +581,7 @@ unchanged.
 - No billing, organizations, multi-admin teams, or broad package flattening
   without architecture change.
 
-Current unfinished work lives only in [`WORK.md`](WORK.md).
+Current unfinished work lives only in [`STATUS.md`](STATUS.md).
 
 ## Pipeline async execution and capacity checkpoint - 2026-08-24
 

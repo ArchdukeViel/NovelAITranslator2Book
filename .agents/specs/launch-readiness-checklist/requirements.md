@@ -16,7 +16,7 @@ evidence without treating local checks or historical evidence as launch proof.
 
 ### REQ-001: Canonical gate ownership
 
-Use the operator gates in `docs/WORK.md` as the live launch register. Keep
+Use the operator gates in `docs/STATUS.md` as the live launch register. Keep
 launch, rollback, monitoring, security, recovery, accessibility, performance,
 SEO, and legal ownership explicit and sanitized.
 
@@ -74,9 +74,9 @@ raw paths, request bodies, cookies, or traces in launch records.
 
 | Acceptance criterion | Requirement | Tasks | Current evidence |
 | --- | --- | --- | --- |
-| AC-001 | REQ-001 | T-001 | `docs/WORK.md` owner row; backup reviewer remains open |
+| AC-001 | REQ-001 | T-001 | `docs/STATUS.md` owner row; backup reviewer remains open |
 | AC-002 | REQ-002 | T-002 | Current candidate reconciliation remains open |
-| AC-003 | REQ-003 | T-003 | `docs/WORK.md` lists hosted/manual blockers |
+| AC-003 | REQ-003 | T-003 | `docs/STATUS.md` lists hosted/manual blockers |
 | AC-004 | REQ-004 | T-004 | Current decision is `NO-GO` |
 | AC-005 | REQ-005 | T-001, T-004 | Sanitized records only; no launch approval |
 

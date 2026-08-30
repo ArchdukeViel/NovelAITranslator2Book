@@ -184,8 +184,8 @@ not represented by a brief.
 |---|---|---|
 | Canonical architecture and storage | `docs/ARCHITECTURE.md`, `docs/STORAGE.md`, `AGENTS.md`, `readme.md`, `storage/README.md` | Keep the R2/PostgreSQL/Redis ownership boundary authoritative; `storage/README.md` currently documents the disposable `data/runtime/` boundary |
 | Configuration/deployment/operations | `docs/CONFIGURATION.md`, `docs/DEPLOYMENT.md`, `docs/OPERATIONS.md` | Document R2 names, runtime-only disk, backup, reset, and restore gates |
-| Translation and work register | `docs/TRANSLATION.md`, `docs/WORK.md` | Document immutable references, selective invalidation, and evidence state |
-| Historical evidence | `docs/HISTORY.md`, `docs/PERFORMANCE_AUDIT.md`, `docs/PERFORMANCE_ACTION_PLAN.md` | Preserve past facts and label pre-cutover layouts |
+| Translation and work register | `docs/TRANSLATION.md`, `docs/STATUS.md` | Document immutable references, selective invalidation, and evidence state |
+| Historical evidence | `docs/EVIDENCE.md`, `docs/PERFORMANCE_AUDIT.md`, `docs/PERFORMANCE_ACTION_PLAN.md` | Preserve past facts and label pre-cutover layouts |
 | Public/admin design briefs | `docs/DESIGN.md`, `docs/design/**/*.md` | Revalidate links, routes, and storage-dependent behavior |
 | R2 migration plan | `docs/R2-Only Content Storage Rearchitecture-plan.md` | Keep the locked decisions, phased acceptance gates, and final completion criteria authoritative |
 | Security/tooling/other project docs | remaining Markdown | Run the terminology, link, and route audit without unrelated rewrites |

@@ -1,3 +1,29 @@
+---
+title: Verification and Delivery Evidence
+document_role: evidence
+authority: canonical
+scope: sanitized candidate-specific completed outcomes limitations provenance and follow-up
+audience:
+  - agents
+  - developers
+  - operators
+update_triggers:
+  - verified execution outcome
+  - evidence disposition change
+  - artifact or provenance correction
+owned_concerns:
+  - verified-completed-outcomes
+---
+# Verification and Delivery Evidence
+
+This document owns verified completed outcomes, sanitized provenance, limitations, and follow-up. It does not define architecture, procedures, current blockers, or production readiness.
+
+Current state: entries are append-oriented and preserve candidate-specific results; missing fields remain explicitly unavailable and `production_capacity_claim` remains `not_established` unless independent evidence proves otherwise.
+
+Related contracts: [`STATUS.md`](STATUS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`DEPLOYMENT.md`](DEPLOYMENT.md), and [`OPERATIONS.md`](OPERATIONS.md).
+
+Maintenance: append dated entries in reverse chronological order, preserve their meaning, never overwrite historical provenance, and keep secrets and raw provider data out of the record.
+
 ## 2026-08-30 CURRENT NON-PRODUCTION FOLLOW-UP CHECKPOINT
 
 The corrected test-only recovery workflow [33287970969](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33287970969)
@@ -403,10 +429,11 @@ dependency-safety decision and were not admitted after the 1k stop. The worker
 remains stopped and the original full queue remains paused; no unsupported
 production billing, quota, or capacity claim was added.
 
-The current plan handoffs are recorded in `docs/PERFORMANCE_ACTION_PLAN.md`
-and `docs/R2-Only Content Storage Rearchitecture-plan.md`, with supporting
-evidence under `artifacts/capacity/`. The earlier checkpoint below remains a
-historical record of the state before this continuation.
+The current successor handoff is recorded in
+`docs/plans/DOKUSHODO_COMPLETE_PUBLIC_HOSTED_EXECUTION_PLAN.md`, with supporting
+evidence under `artifacts/capacity/`. The former performance and R2 plan files
+are preserved as archived historical records. The earlier checkpoint below
+remains a historical record of the state before this continuation.
 
 ## 2026-08-24 PIPELINE ASYNC EXECUTION AND CAPACITY AUDIT CHECKPOINT
 
@@ -549,7 +576,7 @@ The evidence in this section predates the R2-only content rearchitecture. Its
 `storage/novel_library` prefix and active-pointer files describe the historical
 pre-cutover layout; they are not the current storage contract. Current
 requirements and implementation evidence live in [`STORAGE.md`](STORAGE.md)
-and [`R2-ONLY-CONFORMANCE.md`](R2-ONLY-CONFORMANCE.md).
+and this document.
 
 Executed minimal real staging fixture ingestion from 3 operator-supplied URLs, validated source adapter parsing, verified adult content isolation, and ran hosted performance benchmarking on candidate commit `8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23` on private staging instance (`https://laptop-akmalpellu.tail0b4e3e.ts.net`).
 
@@ -776,7 +803,7 @@ fixed in production code.
   (`changed_window_qa_failed`, `final_qa_failed`) sets `fresh_full_required=True`
   forcing `force_retranslate=True` on full fallback to bypass cache; benign
   pre-provider declines allow normal full cache lookup.
-- Docs: `docs/HISTORY.md` records this pass; `docs/TRANSLATION.md` already
+- Docs: `docs/EVIDENCE.md` records this pass; `docs/TRANSLATION.md` already
   documents the authoritative contract resolution.
 
 ### Test Evidence (all passing)
@@ -925,7 +952,7 @@ semantics, and translation-validity provenance semantics. Full backend suite
 ### Remaining
 
 Unchanged from the prior entry: hosted/manual acceptance gates per
-`WORK.md` (NO-GO) and the documented non-blocking debt list.
+`STATUS.md` (NO-GO) and the documented non-blocking debt list.
 
 ## 2026-08-07 PR-41 Final Correctness Pass — Production-Path Hardening Complete
 
@@ -1037,7 +1064,7 @@ No regressions on the merged `main` baseline.
   non-blocking debt (explicitly documented in `d60d7bd`).
 - Sections 5/10 full integration matrices (per-failure rollback /
   reorder permutations) not authored.
-- Hosted/manual acceptance gates per `WORK.md` unchanged (no-go).
+- Hosted/manual acceptance gates per `STATUS.md` unchanged (no-go).
 
 ### Operator acceptance
 
@@ -1045,7 +1072,7 @@ Branch `feat/pipeline-upgrade-phases-1-8` at HEAD `d60d7bd` is ready for
 operator review. All production-path correctness blockers from the PR-41
 audit are resolved with recorded test evidence. The branch is safe to
 merge; no unwaived launch blockers introduced. Remaining launch gates are
-unchanged from `WORK.md` (NO-GO; hosted/manual gates pending).
+unchanged from `STATUS.md` (NO-GO; hosted/manual gates pending).
 ## 2026-08-19 DEBT-079D STAGE A + FE-07 STAGE B LOCAL ACCEPTANCE
 
 Completed the hierarchy-persistence hardening and the docs-first public novel-detail redesign on branch `perf/debt-079d-public-path-hardening`. Evidence was collected at `2026-08-18T23:13:51Z` on the local Windows workspace; no production mutation, push, or merge was performed.
@@ -1059,7 +1086,7 @@ Completed the hierarchy-persistence hardening and the docs-first public novel-de
 
 ### Stage B Design and Implementation Evidence
 
-- Canonical docs updated: `docs/DESIGN.md`, `docs/design/public/novel-detail.md`, and `docs/WORK.md`. The page keeps Overview/Chapters/Reviews; Recommendations are deferred because there is no bounded related-novels public contract.
+- Canonical docs updated: `docs/DESIGN.md`, `docs/design/public/novel-detail.md`, and `docs/STATUS.md`. The page keeps Overview/Chapters/Reviews; Recommendations are deferred because there is no bounded related-novels public contract.
 - The implementation adds a reading-first hero, truthful persisted metadata, deterministic bookplate fallback, semantic URL tabs, real section grouping and source titles, honest availability labels, First unread/Latest anchors, closed request disclosure, quiet report link, language-aware taxonomy text, and guest/personalized CTA states. No fake popularity metrics, author routes, cover artwork, client catalog download, or new backend contract was added.
 - Validation: `frontend` typecheck and ESLint passed; `npx vitest run --reporter=verbose --no-file-parallelism --maxWorkers=1` passed 77 files / 856 tests; `npm run build` passed and generated 51 static pages; `graphify update . --no-cluster` completed with the known four zero-node configuration-file warning; `git diff --check`, router import guard, and AGENTS heading guard passed.
 - Local browser acceptance used the production frontend with same-origin `/api` rewrite and a combined local FastAPI app. At 1440, 390, and 320 CSS pixels, the page had no horizontal overflow, one H1, three semantic tabs, and no Recommendations text. Screenshots were captured under `output/playwright/`. The persisted local record had 0 translated of 148 chapters, so the page correctly showed unavailable chapter states rather than inventing a Start Reading target; the Novel18 route correctly rendered not found.

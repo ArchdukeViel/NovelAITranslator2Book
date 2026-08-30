@@ -1,5 +1,8 @@
 # Tasks: Workspace and Quality Hardening
 
+Status: Complete
+Evidence: `docs/EVIDENCE.md#2026-08-24-workspace-and-quality-hardening-completion`
+
 ## Phase 1: Workspace & Root Hygiene (R1–R5)
 - [ ] **1. Clean root stray file**
   - Delete empty `file` from repo root.
@@ -77,8 +80,8 @@
   - *Verification*: `npm --prefix frontend run typecheck; npm --prefix frontend run lint`
 
 - [ ] **19. Reconcile documentation and work registers**
-  - Verify `docs/WORK.md` and `docs/HISTORY.md` state.
-  - *Verification*: `powershell -NoProfile -Command "if (Test-Path 'docs/WORK.md') { exit 0 } else { exit 1 }"`
+  - Verify `docs/STATUS.md` and `docs/EVIDENCE.md` state.
+  - *Verification*: `powershell -NoProfile -Command "if (Test-Path 'docs/STATUS.md') { exit 0 } else { exit 1 }"`
 
 - [ ] **20. Synchronize knowledge graph index**
   - Run Graphify update to index all changes.

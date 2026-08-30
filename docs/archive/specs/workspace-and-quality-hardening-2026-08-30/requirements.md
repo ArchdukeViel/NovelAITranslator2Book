@@ -1,5 +1,8 @@
 # Requirements: Workspace and Quality Hardening
 
+Status: Complete
+Evidence: `docs/EVIDENCE.md#2026-08-24-workspace-and-quality-hardening-completion`
+
 ## Goal
 Comprehensive workspace, developer environment, VS Code integration, testing harness, and quality hardening covering all 20 audit recommendations across backend, frontend, tools, deployment, and repository governance.
 
@@ -30,7 +33,7 @@ Comprehensive workspace, developer environment, VS Code integration, testing har
 16. **R16**: Enforce `tools/ruff.ps1 format` pre-commit check routine on modified files.
 17. **R17**: Verify Frontend Next.js production build (`npm --prefix frontend run build`).
 18. **R18**: Verify Frontend TypeScript typecheck (`npm --prefix frontend run typecheck`) and ESLint (`npm --prefix frontend run lint`).
-19. **R19**: Reconcile active spec lifecycle with `docs/WORK.md` and `docs/HISTORY.md`.
+19. **R19**: Reconcile active spec lifecycle with `docs/STATUS.md` and `docs/EVIDENCE.md`.
 20. **R20**: Sync and verify knowledge graph index (`graphify update . --no-cluster`).
 
 ## Acceptance Criteria

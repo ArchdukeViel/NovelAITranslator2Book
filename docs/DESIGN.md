@@ -1,5 +1,19 @@
 ---
 name: Dokushodo
+title: Dokushodo Design System
+document_role: normative
+authority: canonical
+scope: visual identity tokens layout components accessibility page briefs and public/admin route design
+audience:
+  - agents
+  - designers
+  - developers
+update_triggers:
+  - design-token changes
+  - accessibility contract changes
+  - page-brief or route hierarchy changes
+owned_concerns:
+  - design-system-and-page-briefs
 colors:
   surface: '#fcf9f3'
   surface-dim: '#dcdad4'
@@ -114,6 +128,14 @@ spacing:
 
 # Dokushodo Design System
 
+This document owns the visual system, accessibility rules, shared interaction patterns, and route-brief index. It does not own backend contracts, release procedures, or page-specific implementation details.
+
+Current state: the design system and public/admin route briefs are maintained here and under `docs/design/`; page briefs inherit this contract and may not redefine global tokens.
+
+Related contracts: [`ARCHITECTURE.md`](ARCHITECTURE.md), [`STATUS.md`](STATUS.md), and the governed briefs under [`design/`](design/).
+
+Maintenance: update tokens and shared rules here, update route briefs only for route-specific composition, and record visual verification in [`EVIDENCE.md`](EVIDENCE.md).
+
 Canonical design authority for Dokushodo (読書道), a public reader for translated Japanese web novels with an owner-operated ingestion and translation control plane. This document is the single source of truth for visual identity, tokens, layout, components, states, accessibility, responsive behavior, motion, copy, and anti-slop rules. It supersedes all earlier design documents and is the reference for every page brief under `docs/design/`.
 
 ## 1. Purpose and Authority
@@ -134,8 +156,8 @@ When documents conflict, authority is resolved in this order:
 1. `docs/ARCHITECTURE.md`: technical boundaries, route ownership, security, and storage contracts.
 2. `docs/DESIGN.md`: this document, the canonical design authority.
 3. `docs/design/public/*.md` and `docs/design/admin/*.md`: standalone Stitch page briefs.
-4. `docs/WORK.md`: active unfinished work register.
-5. `docs/HISTORY.md`: completed implementation evidence.
+4. `docs/STATUS.md`: active unfinished work register.
+5. `docs/EVIDENCE.md`: completed implementation evidence.
 
 Design documents must not duplicate technical architecture, backend schemas, security boundaries, or operational procedures. Those belong in `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, and `docs/DEPLOYMENT.md`.
 
@@ -161,7 +183,7 @@ The frontend App Router overhaul (PR #38) is merged and describes the current im
 - Implemented current public contracts: ranking data is API-backed by distinct novel-detail views for Daily, Weekly, and Monthly periods; user contributions are API-backed through the unified encrypted provider-credential registry with explicit validation, consent, masking, lifecycle controls, quotas, and usage accounting. Profile editing, account deletion, and admin-curated featured rotation remain unavailable (the homepage spotlight is derived from catalog data, not owner curation).
 - Implemented current runtime contracts: crawl and translation submissions return durable activity identifiers and remain API-visible through pending, running, paused, completed, failed, retry, and unavailable states. Production provider execution belongs to the dedicated worker process; web shells do not imply that a request is still running, and activity records never expose idempotency keys, lease tokens, prompts, credentials, or provider secrets.
 - Deferred intentionally: related-novel Recommendations (no bounded public related-novels contract exists), extended locale support, WebGL graphics, and GSAP sequences.
-- Still manually unverified: screen-reader acceptance across NVDA/VoiceOver/TalkBack, forced-colors mode, and 200% zoom reflow. These are tracked as manual acceptance work in `docs/WORK.md` (DEBT-FE-01A). Do not claim hosted or manual visual validation that was not performed.
+- Still manually unverified: screen-reader acceptance across NVDA/VoiceOver/TalkBack, forced-colors mode, and 200% zoom reflow. These are tracked as manual acceptance work in `docs/STATUS.md` (DEBT-FE-01A). Do not claim hosted or manual visual validation that was not performed.
 
 ## 3. Design Read and Target Dials
 
@@ -734,7 +756,7 @@ WTR-Lab is recorded only as a domain reference for the reading experience.
 - Global change propagation: when this document changes a global rule, review the Global Visual Snapshot of every brief and update the shared snapshot wording.
 - Page review cadence: any merged change to a page's visual composition triggers a review of that page's brief in the same change.
 - Dead-file removal: when a route is deleted, delete its brief and remove it from the page index.
-- Manual visual review: expected for token, typography, shell, and page-composition changes; record results in `docs/HISTORY.md`.
+- Manual visual review: expected for token, typography, shell, and page-composition changes; record results in `docs/EVIDENCE.md`.
 - Documentation validation commands:
 
 ```powershell

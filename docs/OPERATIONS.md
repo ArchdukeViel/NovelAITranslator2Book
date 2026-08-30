@@ -1,4 +1,28 @@
+---
+title: Operations
+document_role: procedural
+authority: canonical
+scope: health queue control maintenance backup restore cleanup incident response and operational evidence procedure
+audience:
+  - agents
+  - operators
+  - developers
+update_triggers:
+  - runbook changes
+  - health or queue-control changes
+  - backup restore or cleanup procedure changes
+owned_concerns:
+  - operations-runbooks-and-recovery
+---
 # Operations
+
+This document owns authorized operational procedures, safety gates, health checks, queue control, backup/restore, cleanup, and incident coordination. It does not own deployment topology, application architecture, secret values, or dated result claims.
+
+Current state: destructive and recovery procedures are test-target guarded, fail closed on missing evidence, and require sanitized evidence capture; worker and full translation queue state remains independently controlled.
+
+Related contracts: [`DEPLOYMENT.md`](DEPLOYMENT.md), [`CONFIGURATION.md`](CONFIGURATION.md), [`STORAGE.md`](STORAGE.md), [`STATUS.md`](STATUS.md), and [`EVIDENCE.md`](EVIDENCE.md).
+
+Maintenance: every destructive procedure must retain target isolation, preconditions, abort conditions, cleanup, verification, and evidence requirements.
 
 Solo-owner runbook for health, maintenance, backup, recovery, incidents, and reader budgets. For topology, environment setup, and release procedures, see [`DEPLOYMENT.md`](DEPLOYMENT.md). Never record secret values in evidence.
 
@@ -455,7 +479,7 @@ storage failure, severe reader errors, or failed recovery without safe mitigatio
 - Provider credential encryption-key rotation requires re-encryption before old-key removal.
 - Rotate R2 application, snapshot-read, and backup-write tokens independently.
 - Owner bootstrap secret seeds only fresh owner state; never expose it.
-- Keep SMTP disabled (`noop`) until delivery readiness in `WORK.md` passes.
+- Keep SMTP disabled (`noop`) until delivery readiness in `STATUS.md` passes.
 
 ## SMTP Activation Gate
 
@@ -524,7 +548,7 @@ Then verify tooling resolves the venv (not a PATH shadow):
 Each `tools/*.ps1` wrapper refuses to run when `.venv\Scripts\python.exe`
 is missing. The readme at `tools/README.md` lists the canonical extras.
 
-Current unresolved operator gates live in [`WORK.md`](WORK.md).
+Current unresolved operator gates live in [`STATUS.md`](STATUS.md).
 
 ## Unified Provider Credential Operations
 
@@ -568,7 +592,7 @@ credential removal.
 Rotation requires a maintenance window: pause contributor work, re-encrypt
 stored credentials, verify fingerprints and validation state, switch the
 configured key, resume only after a masked read and validation check, and
-record the operator/evidence in `HISTORY.md`. If re-encryption cannot complete,
+record the operator/evidence in `EVIDENCE.md`. If re-encryption cannot complete,
 keep the old key available and fail closed rather than accepting new keys.
 
 ## Ranking and Anonymous Viewer Retention
@@ -664,7 +688,7 @@ retired historical evidence. They were superseded on 2026-08-29 by the
 Cloudflare-only reader gate described below. Keep the worker/full queue
 stopped/paused and preserve the remaining release-configuration, cross-source,
 provider/bulk, hosted pool/cache/analytics, CDN propagation, credential
-rotation, and dedicated-host gates in `docs/WORK.md`.
+rotation, and dedicated-host gates in `docs/STATUS.md`.
 
 ## Reader capacity and recovery runtime recheck - 2026-08-28
 

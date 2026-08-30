@@ -1,4 +1,28 @@
+---
+title: Deployment
+document_role: procedural
+authority: canonical
+scope: deployment topology build release migration verification rollback and GitHub controls
+audience:
+  - agents
+  - developers
+  - operators
+update_triggers:
+  - deployment topology changes
+  - release-control changes
+  - migration or rollback procedure changes
+owned_concerns:
+  - deployment-release-topology
+---
 # Deployment
+
+This document owns repeatable deployment, migration, verification, rollback, and release-control procedures. It does not own application architecture, secret values, incident detail, or dated deployment evidence.
+
+Current state: the canonical deployment topology is Compose with separate admin, reader, frontend, migration, worker, Redis, and recovery services behind Caddy, using external PostgreSQL and R2-only content storage.
+
+Related contracts: [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CONFIGURATION.md`](CONFIGURATION.md), [`OPERATIONS.md`](OPERATIONS.md), and [`STATUS.md`](STATUS.md).
+
+Maintenance: update procedures when deployable topology or release controls change; record each candidate result in [`EVIDENCE.md`](EVIDENCE.md).
 
 Canonical deployment topology, release, rollback, and GitHub-control contract. For runtime health probes, backup recovery, and incident runbooks, see [`OPERATIONS.md`](OPERATIONS.md).
 
@@ -92,7 +116,7 @@ the frontend, admin API, reader API, Redis, and their configuration together.
 
 Cloudflare-protected WSL/Docker Compose frontend and split backend,
 Supabase/managed PostgreSQL, R2 application and independent backup buckets,
-managed Redis, tested SMTP, and external monitoring. Must satisfy `WORK.md`
+managed Redis, tested SMTP, and external monitoring. Must satisfy `STATUS.md`
 operator gates; the current development tunnel does not by itself establish
 the production route.
 
@@ -363,7 +387,7 @@ above.
 
 No deployment is launch-ready until hosted auth/security, monitoring/alerts,
 recovery, accessibility, performance, SEO, legal propagation, and rollback gates
-in [`WORK.md`](WORK.md) pass without unwaived blockers.
+in [`STATUS.md`](STATUS.md) pass without unwaived blockers.
 
 ## Current Release Decision
 
@@ -391,7 +415,7 @@ candidate. The current worktree is dirty, current immutable image digests,
 production domains, and `PRODUCTION_BASE_URL` are not supplied, and the current
 production decision remains **NO-GO**.
 
-The historical worker/bulk-queue paragraphs in `WORK.md` are superseded by the
+The historical worker/bulk-queue paragraphs in `STATUS.md` are superseded by the
 2026-08-27 operational checkpoint: the dedicated worker is not admitted, the
 original full queue remains paused, and queue/writer safety is not independently
 observed. Local Compose health is not production readiness. The current

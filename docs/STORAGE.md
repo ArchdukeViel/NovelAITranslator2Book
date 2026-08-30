@@ -1,4 +1,28 @@
+---
+title: Storage
+document_role: normative
+authority: canonical
+scope: PostgreSQL R2 Redis object-key ownership retention immutability and restore invariants
+audience:
+  - agents
+  - developers
+  - operators
+update_triggers:
+  - storage ownership changes
+  - object-key or retention changes
+  - restore contract changes
+owned_concerns:
+  - storage-persistence-contract
+---
 # Storage
+
+This document owns persistence ownership, R2 object-key grammar, immutability, retention, garbage collection, and restore invariants. It does not own operational command sequences, environment values, or candidate-specific recovery results.
+
+Current state: PostgreSQL owns relational truth and exact artifact references, R2 is the sole canonical novel-content store, Redis/Valkey owns transient coordination, and local disk is disposable runtime state only.
+
+Related contracts: [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CONFIGURATION.md`](CONFIGURATION.md), [`OPERATIONS.md`](OPERATIONS.md), and [`EVIDENCE.md`](EVIDENCE.md).
+
+Maintenance: change this contract only with an approved schema or storage change and preserve reference-aware cleanup and independently restorable backup invariants.
 
 Canonical persistence, artifact, schema, and restore contract for the Cloudflare R2-only
 content cutover.

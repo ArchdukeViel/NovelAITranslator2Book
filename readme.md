@@ -10,7 +10,7 @@ novel content and independent recovery objects.
 Repository implementation is locally mature, but production launch remains
 **NO-GO**. Hosted security, monitoring, real alert delivery, current restore
 evidence, manual browser/network acceptance, rollback rehearsal, and named
-operators remain unresolved. [`docs/WORK.md`](docs/WORK.md) is the only current
+operators remain unresolved. [`docs/STATUS.md`](docs/STATUS.md) is the only current
 unfinished-work register; local tests or free previews do not replace hosted
 acceptance evidence.
 
@@ -172,12 +172,12 @@ docs/          Nine canonical project documents
 
 - [`ARCHITECTURE.md`](docs/ARCHITECTURE.md): system boundaries and non-negotiable contracts
 - [`DESIGN.md`](docs/DESIGN.md): frontend design index and subordinate authority map (`docs/design/`)
-- [`WORK.md`](docs/WORK.md): only unfinished/deferred/operator work
+- [`STATUS.md`](docs/STATUS.md): only unfinished/deferred/operator work
 - [`OPERATIONS.md`](docs/OPERATIONS.md): health, backup, restore, incident, rollback
 - [`DEPLOYMENT.md`](docs/DEPLOYMENT.md): topology, release, providers, GitHub controls
 - [`CONFIGURATION.md`](docs/CONFIGURATION.md): environment and settings groups
 - [`STORAGE.md`](docs/STORAGE.md): ownership, artifacts, schemas, restore order
 - [`TRANSLATION.md`](docs/TRANSLATION.md): prompt, glossary, QA, cache contracts
-- [`HISTORY.md`](docs/HISTORY.md): concise completed/cancelled spec history
+- [`EVIDENCE.md`](docs/EVIDENCE.md): concise completed/cancelled spec history
 
 AI-assistant operating rules: [`AGENTS.md`](AGENTS.md).

@@ -1,4 +1,28 @@
+---
+title: Configuration
+document_role: reference
+authority: canonical
+scope: configuration keys precedence validation secret classification and failure behavior
+audience:
+  - agents
+  - developers
+  - operators
+update_triggers:
+  - configuration key changes
+  - precedence changes
+  - secret classification changes
+owned_concerns:
+  - configuration-runtime-settings
+---
 # Configuration
+
+This document owns configuration meaning, precedence, validation, and secret classification. It does not own architecture decisions, release procedures, runtime evidence, or secret values.
+
+Current state: settings are loaded through the project configuration module, real environment files remain local and untracked, and examples expose only safe defaults or placeholders.
+
+Related contracts: [`ARCHITECTURE.md`](ARCHITECTURE.md), [`DEPLOYMENT.md`](DEPLOYMENT.md), [`STORAGE.md`](STORAGE.md), and [`OPERATIONS.md`](OPERATIONS.md).
+
+Maintenance: update this reference when a setting, bound, precedence rule, or failure behavior changes; record environment-specific verification in [`EVIDENCE.md`](EVIDENCE.md).
 
 Configuration contract. Exact fields/defaults live in
 `backend/src/novelai/config/settings.py`; examples live in `.env.example` and
@@ -337,7 +361,7 @@ Public OAuth/password registration creates users only.
 
 Email defaults to `AUTH_EMAIL_DELIVERY_MODE=noop`. SMTP requires host, port,
 credentials, sender, TLS/SSL choice, tested domain, operator recipient where
-alerts are enabled, and acceptance gates in `WORK.md`. With `noop`, signup and
+alerts are enabled, and acceptance gates in `STATUS.md`. With `noop`, signup and
 session testing remain available, but verification and password-reset emails
 are not delivered and the account remains unverified until delivery is
 configured and the verification flow is completed.

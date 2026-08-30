@@ -2,7 +2,7 @@
 
 Spec ID: reader-capacity-and-recovery-follow-up
 Version: 0.4.2
-Status: Approved
+Status: Blocked
 Updated: 2026-08-30
 
 Execution is dependency-ordered. Every task starts unchecked and remains
@@ -227,7 +227,7 @@ operation passed. The current operational dispositions are:
   - Depends on: T-011
   - State: complete
   - Authorization: Project-owner review of evidence and status wording; historical checkpoint paragraphs remain intact and are labeled historical where needed.
-  - Scope: Update only the affected sections of `docs/PERFORMANCE_ACTION_PLAN.md`, `docs/PERFORMANCE_AUDIT.md`, `docs/OPERATIONS.md`, `docs/WORK.md`, `docs/HISTORY.md`, and the R2 plan. Distinguish completed evidence, quantified blockers, unavailable hosted metrics, recovery ownership, and the still-paused worker/higher stages. Do not mark production capacity or billing ready.
+  - Scope: Update only the affected sections of `docs/OPERATIONS.md`, `docs/STATUS.md`, `docs/EVIDENCE.md`, and `docs/STORAGE.md`, plus the successor plan under `docs/plans/`. Distinguish completed evidence, quantified blockers, unavailable hosted metrics, recovery ownership, and the still-paused worker/higher stages. Do not mark production capacity or billing ready.
   - Verification: `graphify update . --no-cluster`
   - Expected: Canonical documents, evidence artifacts, this spec's task states, and the Graphify index agree on the current disposition; the final handoff names the independent SLO/telemetry/recovery statuses, next practical action, production-capacity non-claim, and safety stop where applicable.
   - Attempts: 2

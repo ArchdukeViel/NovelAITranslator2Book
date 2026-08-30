@@ -3006,7 +3006,7 @@ bounded evidence is not converted into a production-scale success claim.
 ```text
 Markdown files discovered: 87 in the recorded T-020 audit; not re-counted in this continuation
 Markdown files read before implementation: recorded by the T-019/T-020 documentation review; active specs and this plan reread in this continuation
-Markdown files changed: canonical architecture/configuration/operations/performance/work/history/R2 documents in the prior implementation; docs/HISTORY.md, docs/WORK.md, this plan, and the active task ledgers in this continuation
+Markdown files changed: canonical architecture/configuration/operations/performance/status/evidence/R2 documents in the prior implementation; docs/EVIDENCE.md, docs/STATUS.md, this plan, and the active task ledgers in this continuation
 Contradictions resolved: stale T-020 future-gate wording and an unsupported executable spec-validator claim were corrected
 Markdown files revalidated after implementation: targeted documentation, git diff check, and Graphify passed; the recorded link audit found 0 broken local links
 Remaining documentation conflicts: none found in the targeted current review; external gate decisions are recorded

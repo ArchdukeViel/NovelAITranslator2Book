@@ -2,7 +2,7 @@
 
 Spec ID: pipeline-resource-efficiency-audit
 Version: 0.2.0
-Status: Approved
+Status: Complete
 Updated: 2026-08-23
 
 Every task is bounded to the audit scope. Do not resume the worker, mutate
@@ -173,7 +173,7 @@ into a pass.
   - Expected: Documentation states actual measurements, completed work, config rationale, safety boundaries, operator-owned gates, and the ranked action list without obsolete claims
   - Attempts: 2
   - Last result: Affected active documentation, the spec acceptance matrix, and the R2 plan now reflect the fourth canary stop, the terminal bounded sample, the one-source/full-queue limitation, and the bounded per-source scale plan.
-  - Evidence: Updated `docs/R2-Only Content Storage Rearchitecture-plan.md`, `docs/PERFORMANCE_AUDIT.md`, `docs/PERFORMANCE_ACTION_PLAN.md`, `docs/WORK.md`, and the active requirements/task matrix with the operator egress report, Session Pooler route, payload projections, bounded one-job cache, current chapter counts, force-stop outcome, three completed sample activities, artifact readback, recovery evidence, and the distinction between DAU planning and queue throughput. Current text distinguishes cumulative query/resource indicators from billed Supabase egress, records the application-level lease-recovery requirement, and preserves historical checkpoints as historical. The current continuation records encrypted backup/restore, the independent R2 snapshot, the bounded canary, the private 1k stage, and the 10k/100k safety decision as complete evidence boundaries; cross-job caching remains an explicit retain decision.
+  - Evidence: Updated `docs/R2-Only Content Storage Rearchitecture-plan.md`, `docs/PERFORMANCE_AUDIT.md`, `docs/PERFORMANCE_ACTION_PLAN.md`, `docs/STATUS.md`, and the active requirements/task matrix with the operator egress report, Session Pooler route, payload projections, bounded one-job cache, current chapter counts, force-stop outcome, three completed sample activities, artifact readback, recovery evidence, and the distinction between DAU planning and queue throughput. Current text distinguishes cumulative query/resource indicators from billed Supabase egress, records the application-level lease-recovery requirement, and preserves historical checkpoints as historical. The current continuation records encrypted backup/restore, the independent R2 snapshot, the bounded canary, the private 1k stage, and the 10k/100k safety decision as complete evidence boundaries; cross-job caching remains an explicit retain decision.
 
 - [x] T-012 Perform final conformance review and handoff.
   - Maps to: REQ-001, REQ-009, REQ-010, REQ-013, AC-001, AC-009, AC-010

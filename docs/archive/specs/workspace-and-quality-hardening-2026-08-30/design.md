@@ -1,5 +1,8 @@
 # Design: Workspace and Quality Hardening
 
+Status: Complete
+Evidence: `docs/EVIDENCE.md#2026-08-24-workspace-and-quality-hardening-completion`
+
 ## Architecture & System Invariants
 
 ### 1. Root & Workspace Hygiene (R1–R5)
@@ -29,5 +32,5 @@
 - Frontend: `frontend/vitest.config.ts` runs single-fork jsdom test suite cleanly via `npm --prefix frontend run test`.
 - Backend: Alembic migrations under `backend/alembic/versions/` conform to SQLAlchemy ORM models and pass Pyright/Ruff.
 - Formatter: `tools/ruff.ps1 format` runs cleanly on modified files prior to commit staging.
-- Documentation & Work Tracking: `docs/WORK.md` and `docs/HISTORY.md` maintain single-source-of-truth status.
+- Documentation & Work Tracking: `docs/STATUS.md` and `docs/EVIDENCE.md` maintain single-source-of-truth status.
 - Graphify: AST graph index updated with 0 missing required symbols.

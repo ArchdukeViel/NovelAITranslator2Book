@@ -1,7 +1,31 @@
-# Work
+---
+title: Project Status and Active Work
+document_role: status
+authority: canonical
+scope: current decision blockers active work operator gates deferred work and ordered next actions
+audience:
+  - agents
+  - developers
+  - operators
+update_triggers:
+  - work-state change
+  - blocker or gate change
+  - candidate or decision change
+owned_concerns:
+  - current-project-status
+---
+# Project Status and Active Work
+
+This document owns the current decision, unresolved work, blockers, operator gates, deferred work, and ordered next actions. It does not own completed-work narratives, durable architecture, procedures, or historical evidence.
+
+Current state: implementation is locally advanced, but launch and production acceptance remain fail-closed until independent hosted, security, monitoring, recovery, and manual evidence is complete.
+
+Related contracts: [`ARCHITECTURE.md`](ARCHITECTURE.md), [`DEPLOYMENT.md`](DEPLOYMENT.md), [`OPERATIONS.md`](OPERATIONS.md), and [`EVIDENCE.md`](EVIDENCE.md).
+
+Maintenance: every item must have a stable ID, priority, state, scope, dependency, missing evidence, and acceptance condition; move verified outcomes to [`EVIDENCE.md`](EVIDENCE.md).
 
 Single source for unfinished, blocked, deferred, and operator-acceptance work.
-Resolved work belongs in [`HISTORY.md`](HISTORY.md), not this file.
+Resolved work belongs in [`EVIDENCE.md`](EVIDENCE.md), not this file.
 
 ## Current Decision
 
@@ -21,13 +45,13 @@ cutover evidence, and rollback/restore evidence remain incomplete.
   activation gate passes.
 - Every evidence record includes candidate commit, environment, UTC time,
   operator, exact command/URL, sanitized result, blocker, waiver, and expiry.
-- Work closes only after evidence is recorded in `HISTORY.md`; passing local
+- Work closes only after evidence is recorded in `EVIDENCE.md`; passing local
   tests never substitutes for hosted/manual evidence.
 
 ## R2-only Content Storage Cutover
 
 The approved hard cutover is implemented locally under
-[`R2-ONLY-CONFORMANCE.md`](R2-ONLY-CONFORMANCE.md). It replaces the historical
+[`STORAGE.md`](STORAGE.md) and the R2-only implementation contracts. It replaces the historical
 filesystem/S3-prefix content model with immutable R2 objects in `dokushodo`, exact
 PostgreSQL artifact references, Redis/Valkey coordination, and disposable local
 runtime state. It also includes incremental backup manifests, protected
@@ -155,7 +179,7 @@ stable ordering, and bounded work before it reaches the page.
 ## Launch Roadmap
 
 Dependency-ordered plan. Each row closes only when its "Done when" evidence
-exists and is recorded in `HISTORY.md`.
+exists and is recorded in `EVIDENCE.md`.
 
 | Order | ID | Work | Dependency | Done when |
 |---:|---|---|---|---|
@@ -262,6 +286,15 @@ equivalent review record is available; no ignore rule or repository secret was
 changed.
 
 ## Active Work
+
+### Plan A — Canonical documentation standardization
+
+`dokushodo-docs-standardization` is complete for the candidate on this branch:
+the nine-document layout, AGENTS governance, lifecycle routing, archive
+provenance, and deterministic documentation checker are validated. Plan B
+remains blocked until the committed hash-bound handoff at
+`artifacts/documentation-standardization/handoff.json` validates with
+`next_plan_ready=true`.
 
 ## Feature & Design Gaps / Deferred Work (Stitch Screen 1794eb02d11a407b9b6343d727670125)
 
@@ -959,6 +992,6 @@ and security burden without launch value.
 
 ## Closing Work
 
-Move completed item summary to `HISTORY.md`, remove its active spec when no
+Move completed item summary to `EVIDENCE.md`, remove its active spec when no
 future contract remains, update affected canonical docs, and attach exact test or
 operator evidence. Do not preserve resolved debt entries here.
