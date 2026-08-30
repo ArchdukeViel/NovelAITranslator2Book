@@ -156,7 +156,7 @@ jobs:
                 migration_class="database_permission"
               elif grep -Eqi 'ssl|tls|certificate' "$migration_log"; then
                 migration_class="database_ssl"
-              elif grep -Eqi 'invalid.*dsn|postgresql\\+psycopg|driver|unsupported scheme' "$migration_log"; then
+              elif grep -Eqi 'invalid.*dsn|postgresql\+psycopg|driver|unsupported scheme' "$migration_log"; then
                 migration_class="database_url_or_driver"
               elif grep -Eqi 'can.t locate revision|no such revision|not a valid revision|alembic' "$migration_log"; then
                 migration_class="migration_schema"
