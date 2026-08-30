@@ -484,3 +484,9 @@ configuration and were not rerouted. The reader and recovery workflows pin
 warning from the current workflow configuration. Runner registration,
 credentials, and workflow artifacts are disposable operational state and must
 not be recorded in repository documentation.
+
+The GitGuardian workflow now uses the same self-hosted label for its
+same-repository push and pull-request scans. Its fork guard remains in place,
+so the `GITGUARDIAN_API_KEY` is never exposed to fork code. This changes only
+the scan execution host; it does not reroute production deployment or
+monitoring workflows.
