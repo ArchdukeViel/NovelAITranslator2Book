@@ -12,6 +12,25 @@ This is one-run recovery evidence; recurring schedule/retention behavior,
 alert transition/delivery, production smoke, and production recovery readiness
 remain unverified, so `recovery_status=partial`.
 
+The latest self-hosted reader rerun [33293251855](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33293251855)
+completed the 60-cell matrix, controlled cold resets, and guarded cleanup on the
+disposable Ubuntu 24.04 runner. The isolated Cloudflare quick Tunnel reached
+the liveness endpoint, but the SLO-gate p95 values remained over budget for
+health (143.075/377.958 ms warm/cold), catalog (4578.523/5276.454 ms), detail
+(6763.523/7352.754 ms), and search (7558.691/8908.098 ms); both chapter cells
+were unavailable. All artifact validators passed, while the sanitized result
+remains `reader_slo_status=blocked`, `path_profile_status=blocked`,
+`telemetry_status=unavailable`, `recovery_status=not_assessed`,
+`overall_follow_up_disposition=complete_with_quantified_blocker`, and
+`production_capacity_claim=not_established`. Its artifact is
+`reader-capacity-nonproduction-33293251855`.
+
+The self-hosted GitGuardian push scan [33293250014](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33293250014)
+and same-repository pull-request scan [33293251844](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33293251844)
+both passed. This confirms the runner integration for the current branch; the
+sanitized incident/false-positive exercise remains a separate release-control
+requirement.
+
 The complete bounded reader workflow [33284596466](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33284596466)
 produced the sanitized artifact `reader-capacity-nonproduction-33284596466`.
 The Cloudflare SLO gate remained blocked by health, catalog, detail, and search

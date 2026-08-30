@@ -140,16 +140,19 @@ granularity. These provider limitations remain explicit unavailable evidence.
 
 ### Current reader workflow disposition - 2026-08-30
 
-The complete bounded reader workflow [33284596466](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33284596466)
-completed the 1k matrix and guarded cleanup at the candidate revision. Its
-Cloudflare SLO cells remained blocked: health p95 was 179.369 ms warm and
-350.074 ms cold, catalog p95 was 4241.234/6362.442 ms, detail p95 was
-6281.739/7985.510 ms, warm search p95 was 7293.396 ms, and chapter/cold-search
-cells were unavailable. The result is quantified non-production evidence with
+The latest complete bounded reader workflow [33293251855](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33293251855)
+completed the 1k matrix, controlled cold resets, and guarded cleanup at the
+candidate revision. The isolated Cloudflare quick Tunnel reached the liveness
+endpoint, but its SLO cells remained blocked: health p95 was 143.075/377.958
+ms warm/cold, catalog p95 was 4578.523/5276.454 ms, detail p95 was
+6763.523/7352.754 ms, search p95 was 7558.691/8908.098 ms, and chapter
+warm/cold cells were unavailable. All artifact validators passed, but the
+sanitized result remains quantified non-production evidence with
 `reader_slo_status=blocked`, `path_profile_status=blocked`,
-`telemetry_status=unavailable`, and `production_capacity_claim=not_established`.
+`telemetry_status=unavailable`, `recovery_status=not_assessed`, and
+`production_capacity_claim=not_established`.
 
-Later telemetry-enabled attempts [33286324252](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33286324252),
+Earlier telemetry-enabled attempts [33286324252](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33286324252),
 [33286713872](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33286713872),
 and [33287228638](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33287228638)
 stopped before a complete profile: one hit the Linux PowerShell telemetry

@@ -560,6 +560,20 @@ capacity admission. Therefore `reader_slo_status=blocked` and
 `recovery_status=partial`, `overall_follow_up_disposition=complete_with_quantified_blocker`,
 and `production_capacity_claim=not_established`.
 
+Latest self-hosted rerun — 2026-08-30:
+The bounded reader workflow [33293251855](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33293251855)
+completed its 60-cell matrix, controlled cold-reset evidence, and guarded
+cleanup on the disposable Ubuntu 24.04 runner. The isolated Cloudflare quick
+Tunnel reached `/health/live`, but the SLO-gate p95 values were still over
+budget for health (143.075/377.958 ms warm/cold), catalog (4578.523/5276.454
+ms), detail (6763.523/7352.754 ms), and search (7558.691/8908.098 ms); chapter
+warm/cold were unavailable. All artifact validators passed and the sanitized
+artifact is `reader-capacity-nonproduction-33293251855`; statuses remain
+`reader_slo_status=blocked`, `path_profile_status=blocked`,
+`telemetry_status=unavailable`, `recovery_status=not_assessed`,
+`overall_follow_up_disposition=complete_with_quantified_blocker`, and
+`production_capacity_claim=not_established`.
+
 Subsequent telemetry-enabled reader attempts [33286324252](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33286324252),
 [33286713872](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33286713872),
 and [33287228638](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33287228638)
@@ -600,13 +614,13 @@ remains unestablished.
 
 | Gate | Status | Required evidence |
 |---|---|---|
-| Reader capacity and recovery follow-up (current) | Blocked | Run [33284596466](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33284596466) completed the bounded matrix and cleanup but recorded over-budget Cloudflare cells and unavailable chapter/search cells; telemetry remains unavailable, queue/writer state remains unknown, and recurring recovery controls remain required. |
+| Reader capacity and recovery follow-up (current) | Blocked | Run [33293251855](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33293251855) completed the bounded matrix, controlled cold resets, and cleanup, but recorded over-budget Cloudflare health/catalog/detail/search cells and unavailable chapter cells; telemetry remains unavailable, queue/writer state remains unknown, and recurring recovery controls remain required. |
 | Hosted smoke and auth/security boundaries | Blocked | Candidate commit, domains, UTC time, commands/URLs, sanitized results. |
-| Secret scanning | Partial (hosted scans passed) | PR #12 proved successful GitGuardian push and same-repo PR checks. Still require protected required-check configuration and sanitized incident/false-positive triage evidence. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
+| Secret scanning | Partial (self-hosted scans passed) | GitGuardian push [33293250014](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33293250014) and same-repository PR [33293251844](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33293251844) checks passed on the approved non-production runner. The sanitized incident/false-positive triage exercise remains required; fork PRs are intentionally skipped (secrets not passed to untrusted code). |
 | Alerts and monitoring | Blocked (tooling complete) | Configure `PRODUCTION_BASE_URL`, prove scheduled external runs and real operator delivery, cooldown/redaction, dashboards, escalation, and ownership. |
 | Recovery | Partial (current test-only restore passed) | Test-only recovery workflow [33287970969](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33287970969) passed backup, freshness, manifest/checksum/reference, isolated restore, public-isolation, and cleanup checks against disposable targets; independent MCP checks found zero fixture rows and zero test objects. Recurring schedule/retention evidence, stale/failure alert transition and delivery, production smoke, and production recovery readiness remain required. |
 | Accessibility | Pass (COMPLETED 2026-08-17) | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast verified via automated test suite and operator physical device attestation. |
-| Performance | Partial / Fail (AUDITED 2026-08-17; retired private transport) | Catalog API p95 on the retired hosted staging path exceeded the hard budget (reader direct p95=1001.60ms, private HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + object-store metadata-list latency in the pre-cutover measurement). The latest disposable run proves quick-tunnel readiness but remains blocked: Cloudflare health p95 was 85.434/1129.843ms, catalog 11008.173/11761.447ms, detail 13060.920/16360.286ms, chapter warm/cold were unavailable, and search warm was unavailable while cold was 16608.013ms. |
+| Performance | Partial / Fail (AUDITED 2026-08-17; retired private transport) | Catalog API p95 on the retired hosted staging path exceeded the hard budget (reader direct p95=1001.60ms, private HTTPS p95=916.33ms vs <= 500ms budget; driven by cross-region Supabase pooler + object-store metadata-list latency in the pre-cutover measurement). The latest disposable run [33293251855](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33293251855) reached quick-tunnel readiness but remains blocked: Cloudflare health p95 was 143.075/377.958ms, catalog 4578.523/5276.454ms, detail 6763.523/7352.754ms, chapter warm/cold were unavailable, and search was 7558.691/8908.098ms. |
 | SEO | Staging Pass / Production Deferred (AUDITED 2026-08-17) | Staging robots.txt, sitemap.xml, Open Graph / Twitter metadata, canonical URLs verified on staging hostname; production domain SEO validation deferred until public domain cutover. |
 | Legal propagation | Pass (AUDITED 2026-08-17) | HTTP 451 legal takedown verified (Cache-Control: no-store, no private info leak); sitemap exclusion & 404 contracts verified; CDN purge deferred to public edge. |
 | Rollback | Blocked | Pause worker/scheduler, purge cache, disable reader, redeploy previous immutable version, rerun smoke. |
