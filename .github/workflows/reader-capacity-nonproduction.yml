@@ -274,33 +274,47 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --detach --name "$CLOUD_FLARED_CONTAINER" --network host \
-            "$CLOUDFLARED_IMAGE" tunnel --no-autoupdate \
-            --url http://127.0.0.1:18080 --http-host-header localhost \
-            > "$RUNNER_TEMP/reader-capacity-cloudflared-id"
-
           cloudflare_url=""
-          for _ in $(seq 1 60); do
-            cloudflare_url="$(docker logs "$CLOUD_FLARED_CONTAINER" 2>&1 \
-              | sed -nE 's/.*(https:\/\/[a-z0-9-]+\.trycloudflare\.com).*/\1/p' \
-              | head -n 1 || true)"
-            if [[ -n "$cloudflare_url" ]]; then break; fi
-            sleep 1
+          tunnel_ready=false
+          for tunnel_attempt in 1 2 3; do
+            docker rm --force "$CLOUD_FLARED_CONTAINER" > /dev/null 2>&1 || true
+            if ! docker run --detach --name "$CLOUD_FLARED_CONTAINER" --network host \
+              "$CLOUDFLARED_IMAGE" tunnel --no-autoupdate \
+              --url http://127.0.0.1:18080 --http-host-header localhost \
+              > "$RUNNER_TEMP/reader-capacity-cloudflared-id"; then
+              echo "::warning::Disposable Cloudflare quick tunnel attempt $tunnel_attempt failed to start."
+              continue
+            fi
+
+            cloudflare_url=""
+            for _ in $(seq 1 60); do
+              cloudflare_url="$(docker logs "$CLOUD_FLARED_CONTAINER" 2>&1 \
+                | sed -nE 's/.*(https:\/\/[a-z0-9-]+\.trycloudflare\.com).*/\1/p' \
+                | head -n 1 || true)"
+              if [[ -n "$cloudflare_url" ]]; then break; fi
+              sleep 1
+            done
+            if [[ -z "$cloudflare_url" ]]; then
+              echo "::warning::Disposable Cloudflare quick tunnel attempt $tunnel_attempt did not publish a URL."
+              continue
+            fi
+
+            tunnel_status=""
+            for _ in $(seq 1 60); do
+              tunnel_status="$(curl --silent --connect-timeout 5 --max-time 15 \
+                --output /dev/null --write-out '%{http_code}' \
+                "$cloudflare_url/health/live" 2>/dev/null || true)"
+              if [[ "$tunnel_status" == "200" ]]; then break; fi
+              sleep 1
+            done
+            if [[ "$tunnel_status" == "200" ]]; then
+              tunnel_ready=true
+              break
+            fi
+            echo "::warning::Disposable Cloudflare quick tunnel attempt $tunnel_attempt did not reach the isolated liveness endpoint."
           done
-          if [[ -z "$cloudflare_url" ]]; then
-            echo "::error::The disposable Cloudflare quick tunnel did not start."
-            exit 1
-          fi
-          tunnel_status=""
-          for _ in $(seq 1 60); do
-            tunnel_status="$(curl --silent --connect-timeout 5 --max-time 15 \
-              --output /dev/null --write-out '%{http_code}' \
-              "$cloudflare_url/health/live" 2>/dev/null || true)"
-            if [[ "$tunnel_status" == "200" ]]; then break; fi
-            sleep 1
-          done
-          if [[ "$tunnel_status" != "200" ]]; then
-            echo "::error::The disposable Cloudflare quick tunnel did not reach the isolated liveness endpoint."
+          if [[ "$tunnel_ready" != true ]]; then
+            echo "::error::The disposable Cloudflare quick tunnel did not reach the isolated liveness endpoint after bounded retries."
             exit 1
           fi
           echo "Disposable Cloudflare quick tunnel readiness reached HTTP 200."
