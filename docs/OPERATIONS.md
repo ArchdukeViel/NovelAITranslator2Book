@@ -35,9 +35,9 @@ verification workflow does not apply migrations automatically; this preserves
 stale-schema detection.
 
 When the candidate schema must be created or refreshed, run the manual
-confirmation-gated `managed-services-verification.yml` workflow with
+confirmation-gated `nonproduction-managed-services.yml` workflow with
 `migrate_test_database=true` and `confirm_test_database=true`. It calls
-`.github/workflows/managed-services-test-migrate.yml`, which runs Alembic once
+`.github/workflows/reusable-test-database-migration.yml`, which runs Alembic once
 with the privileged `MIGRATION_DATABASE_URL` variable and does not start an
 application or worker. After it succeeds, run the same verification workflow
 again with migration disabled for the observed database and R2 checks, then
@@ -54,19 +54,15 @@ or connection-string details into evidence.
 
 ## Managed non-production recovery verification
 
-`managed-services-recovery-verification.yml` is a manual, confirmation-gated
-development workflow for the disposable `testdatabase=dokushodo` project and
-the dedicated test R2 target. The candidate branch contains the workflow and
-the `Managed Services Verification` wrapper, but GitHub only exposes a manual
-workflow after its file is present on the default branch. On 2026-08-29 a direct
-dispatch therefore returned `404 workflow ... not found on the default branch`;
-no recovery write was performed in that attempt. Register the candidate workflow
-through the normal reviewed branch flow before relying on a new dispatch. The
-workflow creates a temporary backup-capable database role for the run, generates
-the database-backup encryption key in the runner, uses the existing
-`DatabaseBackupService`, and restores into an ephemeral local PostgreSQL
-service. The run uses a unique R2 prefix and removes the temporary role and
-test objects before recording sanitized evidence.
+`nonproduction-managed-services.yml` is the manual, confirmation-gated entry
+workflow for the disposable `testdatabase=dokushodo` project and the dedicated
+test R2 target. Its recovery job calls
+`.github/workflows/reusable-test-recovery.yml`, which creates a temporary
+backup-capable database role for the run, generates the database-backup
+encryption key in the runner, uses the existing `DatabaseBackupService`, and
+restores into an ephemeral local PostgreSQL service. The run uses a unique R2
+prefix and removes the temporary role and test objects before recording
+sanitized evidence.
 
 The recovery runner uses a pinned PostgreSQL 17 client container so the dump
 client matches the managed database major version. Its generated encryption
@@ -75,20 +71,9 @@ restore archive is mounted read-only into that client container. A failed
 restore records only a fixed diagnostic class and deletes raw client
 diagnostics before evidence publication.
 
-GitHub validates manual-dispatch inputs against the default-branch workflow
-copy. The candidate wrapper declares `confirm_test_recovery=true`, but that
-input is usable through the GitHub UI/API only after the wrapper revision is
-registered on the default branch. Until then, a branch-local run may use the
-temporary repository variable `MANAGED_SERVICE_RECOVERY_ENABLED=true` as the
-explicit confirmation, dispatch `Managed Services Verification` against the
-candidate branch, and delete the variable after the run. The variable is
-honored only for `workflow_dispatch`; it must not be left enabled.
-
-For a workflow revision that exposes the input, run it only with
-`confirm_test_recovery=true`. When the default-branch workflow copy does not
-yet expose that input, the documented temporary repository variable is the
-explicit confirmation and must be deleted after the run. The workflow refuses
-the canonical production bucket names and refuses a non-local restore target.
+Run the registered workflow only with `confirm_test_recovery=true`; there is no
+repository-variable fallback. The workflow refuses the canonical production
+bucket names and refuses a non-local restore target.
 Its success proves one current isolated backup/restore path and representative
 schema/public-isolation checks; it does not prove recurring production backup
 freshness, operator alert delivery, or production recovery readiness. Keep the
@@ -96,7 +81,7 @@ worker/full queue paused and leave `MANAGED_SERVICE_TESTS_ENABLED=false`.
 
 ## Disposable reader-capacity evidence
 
-`.github/workflows/reader-capacity-nonproduction.yml` is the confirmation-gated
+`.github/workflows/nonproduction-reader-evidence.yml` is the confirmation-gated
 path for the bounded reader-capacity follow-up. It uses the existing
 `MANAGED_DATABASE_TEST_URL` Supabase session-pooler secret and the test R2
 application credentials, while binding the application fixture to the dedicated
@@ -190,6 +175,68 @@ stopped/paused.
 The current workflow pins `actions/upload-artifact` to v7.0.1, so the earlier
 Node.js 20 deprecation warning belongs to the old run and is not a current
 workflow configuration issue.
+
+## B4 timing and authorization diagnostics
+
+Phase B4 uses the fixed internal timing contract in
+`backend/src/novelai/services/timing_contract.py`. It keeps application,
+database, R2, cache, proxy, and pipeline observations separate, records
+parent/child intervals, and subtracts child unions only when the same
+monotonic clock proves safe nesting. Public responses and public metrics do
+not expose these spans. Framework serialization and managed-pool checkout
+remain unavailable unless a measurement boundary can observe them without
+mislabeling server or network time.
+
+The local diagnostic command generates only sanitized evidence and performs no
+provider or runtime writes:
+
+```powershell
+python tools/capacity/run_b4_local_diagnostics.py
+python tools/capacity/validate_b4_diagnostics.py --self-test
+python tools/capacity/validate_b4_diagnostics.py
+```
+
+The required evidence files, including the machine-validated `checkpoint-B4.json`,
+are written under the ignored `artifacts/public-hosted-execution/` directory.
+The run contains the fixed
+guest/user/owner/runtime/migration/R2/MCP/workflow authorization matrix, the
+15 reader timing cells, four database cells, 18 native-R2 cells, and a
+fixture-only pipeline diagnostic with three warmups plus 30 measured
+two-chapter runs. The local pipeline uses a mock provider and in-memory
+objects only; it is not hosted capacity evidence. The worker is stopped and
+the full translation queue is paused in the evidence contract.
+
+The current B4 disposition is blocked: test database runtime-role reads and
+writes were not separately authorized, the protected R2 gateway was not
+authorized/configured for microprofiling, exact-window provider telemetry is
+unavailable, and four security cases require a separately authorized hosted
+identity probe. Do not apply a performance fix from this diagnostic alone.
+Promote the required test-only authorizations and isolated endpoints before
+running hosted microprofiles; keep production resources untouched.
+
+## B5 Dependency Reconciliation and Candidate Checkpoint - 2026-08-31
+
+The dependency reconciliation audited all 58 Dependabot proposals currently
+visible for the repository: 14 open, 44 closed, and 38 closed without a merge.
+Each proposal has a disposition in the sanitized
+`artifacts/public-hosted-execution/dependabot-ledger.json`; closed status was
+not treated as proof that an update had landed. The obsolete boto3/moto/S3
+proposals are classified as superseded by the hard R2-only cutover.
+
+The candidate uses the regenerated Python locks, frontend and Worker npm
+locks, Python 3.14.7, Node.js 26.8.1, immutable workflow action references,
+and immutable container image references. TypeScript 6.0.3 and ESLint 9.39.5
+remain explicit compatibility holds because their current peer constraints do
+not admit the next major releases. No provider, production resource, secret,
+or repository variable was changed. The Worker dry run is test-environment
+only, and the worker/full translation queue remains stopped/paused.
+
+The sanitized B5 evidence set is `dependency-validation.json`,
+`candidate-manifest.json`, and `publication-audit-candidate.json` alongside
+the Dependabot ledger (the validator uses the repository's established
+artifact names). The candidate is eligible for the next private hosted phase
+only after the exact candidate commit is verified; dependency changes after
+that point invalidate affected B4 evidence and return the work to B5.
 
 ## Health
 
@@ -534,7 +581,7 @@ upgrades, or accidental deletions:
 ```powershell
 py -3.14 -m venv .venv
 & .venv\Scripts\python.exe -m pip install --upgrade pip
-& uv sync --extra dev --extra db --extra auth --extra s3 --extra worker --extra gemini --extra test
+& uv sync --extra dev --extra db --extra auth --extra worker --extra gemini --extra test
 ```
 
 Then verify tooling resolves the venv (not a PATH shadow):
@@ -836,9 +883,10 @@ the result. Do not edit queue rows, runtime JSON, checkpoint files, R2 objects,
 or canonical content by hand. The current audit did not resume the worker or
 the original queues.
 
-The isolated R2 benchmark is unavailable when `TEST_R2_ENDPOINT` is absent.
-The source canary and reader stages are operator/hosted gates; missing hosted
-telemetry is an unavailable result, never a pass.
+The isolated R2 benchmark is unavailable when `TEST_R2_GATEWAY_URL` or the
+dedicated test Access identity is absent. The source canary and reader stages
+are operator/hosted gates; missing hosted telemetry is an unavailable result,
+never a pass.
 
 ## Cloudflare development tunnel operation - 2026-08-28
 

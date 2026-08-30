@@ -32,7 +32,7 @@ product scope. Recovery backups remain supported.
 ## Requirements
 
 - Python 3.14+
-- Node.js 26.7.x and npm for local, CI, and Docker development
+- Node.js 26.8.1 and npm for local, CI, and Docker development
 - PostgreSQL 18 or compatible managed PostgreSQL
 - Gemini API key for real translation
 - Docker Desktop when using Redis/Compose
@@ -40,8 +40,8 @@ product scope. Recovery backups remain supported.
 ## Install
 
 ```powershell
-uv venv .venv --python 3.14.6
-uv sync --locked --extra gemini --extra dev --extra db --extra worker --extra s3 --extra auth
+uv venv .venv --python 3.14.7
+uv sync --locked --extra gemini --extra dev --extra db --extra worker --extra auth
 npm install --prefix frontend
 Copy-Item ".env.example" ".env"
 ```

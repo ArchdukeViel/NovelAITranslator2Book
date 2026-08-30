@@ -34,6 +34,89 @@ implementation and its backend/static verification are in place, but hosted
 security, monitoring, alerting, browser/network acceptance, destructive
 cutover evidence, and rollback/restore evidence remain incomplete.
 
+### B3 R2 gateway cutover checkpoint
+
+The local R2-only cutover now uses the private versioned Worker gateway and
+distinct application/recovery Access identities. The fixed production classes
+are `dokushodo` and `dokushodo-backup`; the fixed non-production classes are
+`test-dokushodo` and `test-dokushodo-backup`. Native binding tests, gateway
+contract tests, backend R2 tests, type checking, and lockfile regeneration are
+complete. Live test-gateway and Access deployment evidence is unavailable
+because no protected test gateway deployment was authorized or configured;
+therefore hosted R2 read/write/cleanup evidence remains blocked and no
+provider write was attempted.
+
+### B4 authorization and preliminary timing checkpoint - 2026-08-31
+
+Status: `complete_with_quantified_blocker` for local diagnostics; hosted
+microprofiles remain blocked. The fixed timing contract now records bounded,
+monotonic internal spans for application, SQL, database commit, cache, native
+R2 gateway, and translation-pipeline boundaries. Request timing is internal
+only; public response schemas and public metrics remain unchanged. SQL
+statement contents, identities, URLs, object keys, credentials, request
+bodies, and provider responses have no representation in the contract.
+
+The strict B4 validator and local runner produced the required seven
+sanitized evidence artifacts plus the machine-validated `checkpoint-B4.json`:
+`authorization-matrix.json`, `timing-schema.json`,
+`latency-attribution-preliminary.json`, `database-microprofile.json`,
+`r2-microprofile.json`, `pipeline-timing-preliminary.json`, and
+`remediation-decision.json`. The local fixture pipeline completed three
+warmups plus 30 measured two-chapter runs with a mock provider and in-memory
+objects; its cleanup proof is zero rows, objects, and queue entries. It is
+diagnostic evidence only, not hosted capacity evidence.
+
+The current read-only MCP observations are sanitized as 0 security-advisor
+findings, 0 performance-advisor findings, 37/37 public tables with RLS, one
+security-definer function, 12 total and 1 active database activity, and
+`pg_stat_statements`/pool occupancy unavailable. The Cloudflare read path saw
+one named tunnel with zero active connections and one connector in the down
+state; exact-window analytics remain unavailable. No provider write or
+production action was attempted.
+
+The blocker is quantified: 15 reader topology/route cells, four database
+microprofile cells, and 18 native-R2 cells remain unavailable; four required
+security cases lack a separately authorized hosted identity probe. Pooler,
+serialization, provider-internal, and cross-system timing remain explicit
+unavailable values. `reader_slo_status`, `path_profile_status`, and
+`telemetry_status` remain blocked/unavailable; `recovery_status` is
+`not_assessed`; `production_capacity_claim` remains `not_established`. No
+remediation was applied because the evidence is unavailable or mixed.
+
+The B5 dependency-reconciliation checkpoint is now complete locally. Its
+hosted execution remains subject to the B6 private-runner and candidate
+verification gates below. Keep the worker and original full translation queue
+stopped/paused.
+
+### B5 dependency reconciliation checkpoint - 2026-08-31
+
+Status: `complete` for the dependency and candidate-local contract; hosted
+execution and public publication remain unperformed. The sanitized B5 evidence
+artifacts are `dependabot-ledger.json`, `dependency-validation.json`,
+`candidate-manifest.json`, and `publication-audit-candidate.json` under the
+ignored `artifacts/public-hosted-execution/` directory.
+
+The complete Dependabot audit covers 58 proposals: 14 open, 44 closed, and 38
+closed without a merge. The current candidate applies every compatible update
+identified at candidate time, regenerates the Python and npm lockfiles with
+repository tooling, and classifies the obsolete boto3/moto/S3 proposals as
+superseded by the hard R2-only cutover. TypeScript 6.0.3 and ESLint 9.39.5 are
+explicit compatibility holds because their current peer ranges do not admit
+the next major releases; they are not claimed to be latest.
+
+The candidate pins Node.js 26.8.1, Python 3.14.7, workflow actions, and
+container image digests. Worker dry-run validation selects only the test
+environment and the fixed test R2 bucket classes. Backend, frontend, Worker,
+lock, lint, type, build, audit, B4 diagnostic, and B5 artifact checks passed
+for the local candidate; no provider, production resource, secret, or
+repository variable was changed. The candidate manifest is the sole source of
+its exact hashes and becomes the admission record for B6.
+
+Next eligibility: B6 private hosted dry run and candidate verification. A
+dependency or workflow change after this checkpoint invalidates affected B4
+evidence and returns the work to B5. `production_capacity_claim` remains
+`not_established`.
+
 ## Execution Policy
 
 - Launch blockers: `DEBT-075`, `DEBT-079`, ownership, recovery, alerts,
@@ -52,7 +135,7 @@ cutover evidence, and rollback/restore evidence remain incomplete.
 
 The approved hard cutover is implemented locally under
 [`STORAGE.md`](STORAGE.md) and the R2-only implementation contracts. It replaces the historical
-filesystem/S3-prefix content model with immutable R2 objects in `dokushodo`, exact
+pre-cutover local-prefix content model with immutable R2 objects in `dokushodo`, exact
 PostgreSQL artifact references, Redis/Valkey coordination, and disposable local
 runtime state. It also includes incremental backup manifests, protected
 garbage collection, and an operator-confirmed reset/repopulation workflow for
@@ -62,8 +145,9 @@ The implementation item is closed locally, but live acceptance is still
 partial. At the 2026-08-22 checkpoint, the authorized Supabase migration and
 fully paginated reset of both R2 buckets were completed, and all three novels
 were repopulated under their existing identities through the authenticated R2
-path. The populated legacy S3-compatible application settings were migrated to
-the current `R2_*` names and validated for the root and production profiles.
+path. The populated pre-gateway application settings were replaced by the
+current private Worker gateway settings and validated for the root and
+production profiles.
 A follow-up writer-frozen namespace migration then moved the 538 live
 application objects to numeric `novels/<novel_id>/` prefixes, rewrote database
 and nested manifest references, verified logical hashes, and removed the old
@@ -130,8 +214,8 @@ foreign-key index was resolved by migration `c9d1e3f5a7b9`; remaining unused-
 index notices are informational. A Cloudflare control-plane audit independently
 confirmed that exactly `dokushodo` and `dokushodo-backup` exist with the
 intended lifecycle policies; recovery remains disabled by operator decision.
-The runtime storage factory now exposes only explicit R2 client names and no
-generic filesystem/S3 selection or compatibility alias remains.
+The runtime storage factory now exposes only the explicit R2 gateway client
+names and no generic local-storage selector remains.
 The earlier authorized attempt to create separate R2 snapshot credentials
 through the connected Cloudflare API returned `9109 Unauthorized`. The
 operator subsequently supplied separate source-read and backup-write
@@ -316,16 +400,17 @@ evidence; nothing below is completion evidence by itself.
 
 #### A. Managed-service verification
 
-Existing tooling: `.github/workflows/managed-services-verification.yml`,
+Existing tooling: `.github/workflows/nonproduction-managed-services.yml`,
 `backend/tests/integration/test_managed_postgres.py`,
 `backend/tests/integration/test_r2_backup_integration.py`.
 
-1. Configure isolated test DB, R2 source bucket/prefix, R2 backup target, and
-   separate least-privilege credentials in provider secret storage.
+1. Configure the isolated test DB, private R2 Worker gateway, exact
+   `test-dokushodo` and `test-dokushodo-backup` classes, and separate
+   application/recovery Access identities in provider secret storage.
 2. Set `MANAGED_SERVICE_TESTS_ENABLED=true`.
 3. Run the workflow against the candidate commit.
 4. Record workflow URL, commit, UTC time, sanitized counts, and any failures.
-5. Confirm source/app/backup credentials cannot perform each other's
+5. Confirm application and recovery identities cannot perform each other's
    prohibited operations (read/write/delete scope check).
 
 #### B. Current-head restore
@@ -402,7 +487,7 @@ paths, hosts, storage keys, traces, credentials, or private details.
 
 #### C. GitHub controls
 
-Existing tooling: `.github/workflows/ci.yml`, `.github/workflows/gitguardian.yaml`,
+Existing tooling: `.github/workflows/ci.yml`, `.github/workflows/secret-scan.yml`,
 `.github/workflows/production-monitor.yml`.
 
 1. Protect `main`: PR required, review, resolved conversations, required CI +
@@ -617,6 +702,21 @@ tunnel sessions; its read-only control-plane check independently found the
 durable development tunnel and proxied DNS route healthy. The worker and full
 translation queue remained stopped/paused, and queue/other-writer state remains
 unknown.
+
+Workflow rationalization checkpoint — 2026-08-30:
+The candidate CI surface was renamed to descriptive roles and hardened with
+hosted Ubuntu 24.04 runners, least-privilege workflow/job permissions, finite
+job timeouts, concurrency groups, immutable third-party action SHAs, trusted
+`workflow_run` guards, same-repository secret-scan guards, and a core
+documentation gate. The tracked `codeql.yml` workflow supplies explicit
+JavaScript/TypeScript and Python analysis because GitHub CodeQL default setup
+is disabled for this private repository. The owner-only draft
+`.github/workflows/ai-review.yml` remains outside the candidate review and was
+not changed. Local YAML, structural, Zizmor, formatting, and focused contract
+validation passed; GitHub required-check settings were not changed. The R2-only
+storage cutover and removal of the remaining legacy integration workflow are
+deferred to the next plan phase. No production resource, secret, or repository
+variable was changed.
 
 The corrected explicitly authorized test-only recovery run [33287970969](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33287970969)
 passed backup creation, healthy freshness, manifest/checksum/reference
@@ -835,8 +935,8 @@ terminal chapter counts are recorded.
 ### Completed: public performance Phase 4
 
 Readiness now uses a short configured TTL with single-flight refresh and a
-non-mutating storage reachability probe. Full storage write/read/delete and S3
-usage checks remain in owner diagnostics. Safe public catalog, summary, and
+non-mutating storage reachability probe. Full storage write/read/delete and
+provider-usage checks remain in owner diagnostics. Safe public catalog, summary, and
 chapter projections use bounded process-local TTL/LRU caching with
 version-aware keys and publish/reconciliation/takedown invalidation. Public
 and server analytics events use a sanitized bounded asynchronous writer with

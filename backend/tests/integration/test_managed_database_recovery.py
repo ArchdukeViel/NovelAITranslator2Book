@@ -2,8 +2,8 @@
 
 The source is the disposable managed test database only.  The backup role and
 encryption key are created for one test run, the restore target is an
-ephemeral local PostgreSQL service, and the R2 prefix is unique to the run.
-The test records only sanitized outcome metadata.
+ephemeral local PostgreSQL service, and the R2 gateway prefix is unique to the
+run. The test records only sanitized outcome metadata.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from sqlalchemy.engine import Engine, make_url
 
 from novelai.config.settings import settings
 from novelai.services.database_backup_service import DatabaseBackupService
+from novelai.storage.backends.r2_gateway import R2GatewayStorage
 
 pytestmark = pytest.mark.slow
 
@@ -108,15 +109,6 @@ def _drop_backup_role(engine: Engine, role_name: str) -> None:
         connection.exec_driver_sql(f"DROP ROLE IF EXISTS {role}")
 
 
-def _delete_prefix(client: Any, bucket: str, prefix: str) -> None:
-    paginator = client.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=bucket, Prefix=f"{prefix}/"):
-        for item in page.get("Contents", []):
-            key = str(item.get("Key", ""))
-            if key:
-                client.delete_object(Bucket=bucket, Key=key)
-
-
 def _write_evidence(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -135,18 +127,17 @@ def _restore_diagnostic_class() -> str | None:
 
 @pytest.mark.integration
 def test_managed_database_backup_and_isolated_restore(monkeypatch: pytest.MonkeyPatch) -> None:
-    boto3 = pytest.importorskip("boto3")
     source_uri = _required("MANAGED_DATABASE_TEST_URL")
-    endpoint = _required("TEST_R2_ENDPOINT")
-    target_bucket = _required("TEST_R2_TARGET_BUCKET")
-    backup_access_key = _required("TEST_R2_BACKUP_ACCESS_KEY_ID")
-    backup_secret_key = _required("TEST_R2_BACKUP_SECRET_ACCESS_KEY")
+    gateway_url = _required("TEST_R2_GATEWAY_URL")
+    target_bucket = _required("TEST_R2_BACKUP_BUCKET")
+    recovery_client_id = _required("TEST_R2_RECOVERY_CLIENT_ID")
+    recovery_client_secret = _required("TEST_R2_RECOVERY_CLIENT_SECRET")
     restore_uri = _required("DATABASE_RESTORE_TARGET_URL")
     restore_url = make_url(restore_uri)
     if restore_url.host not in {"127.0.0.1", "localhost"} or "restore" not in str(restore_url.database).lower():
         raise RuntimeError("restore target must be the ephemeral local restore database")
-    if target_bucket in _PRODUCTION_BUCKETS:
-        raise RuntimeError("managed recovery test cannot use a production R2 bucket")
+    if target_bucket != "test-dokushodo-backup" or target_bucket in _PRODUCTION_BUCKETS:
+        raise RuntimeError("managed recovery test requires the dedicated test R2 backup bucket")
 
     evidence_path = Path(
         os.environ.get(
@@ -180,12 +171,12 @@ def test_managed_database_backup_and_isolated_restore(monkeypatch: pytest.Monkey
     }
     source_engine = create_engine(_sqlalchemy_uri(source_uri), pool_pre_ping=True, isolation_level="AUTOCOMMIT")
     target_engine: Engine | None = None
-    target_client = boto3.client(
-        "s3",
-        endpoint_url=endpoint,
-        region_name=os.environ.get("TEST_R2_REGION", "auto"),
-        aws_access_key_id=backup_access_key,
-        aws_secret_access_key=backup_secret_key,
+    target_backend = R2GatewayStorage(
+        bucket=target_bucket,
+        bucket_class="backup",
+        gateway_url=gateway_url,
+        client_id=recovery_client_id,
+        client_secret=recovery_client_secret,
     )
     role_name = f"novelai_backup_{secrets.token_hex(8)}"
     role_created = False
@@ -212,7 +203,7 @@ def test_managed_database_backup_and_isolated_restore(monkeypatch: pytest.Monkey
         monkeypatch.setattr(settings, "DATABASE_RESTORE_TARGET_URL", SecretStr(restore_uri))
         monkeypatch.setattr(settings, "DATABASE_RESTORE_SSL_MODE", "disable")
 
-        service = DatabaseBackupService(target_client, target_bucket)
+        service = DatabaseBackupService(target_backend)
         failure_stage = "create_backup"
         backup_result = service.create_backup()
         if backup_result.get("status") != "succeeded":
@@ -296,7 +287,7 @@ def test_managed_database_backup_and_isolated_restore(monkeypatch: pytest.Monkey
         if target_engine is not None:
             target_engine.dispose()
         try:
-            _delete_prefix(target_client, target_bucket, prefix)
+            target_backend.delete_prefix(prefix)
             evidence["r2_cleanup_status"] = "passed"
         except Exception as exc:
             cleanup_errors.append(type(exc).__name__)
@@ -310,6 +301,7 @@ def test_managed_database_backup_and_isolated_restore(monkeypatch: pytest.Monkey
                 evidence["role_cleanup_status"] = "failed"
         else:
             evidence["role_cleanup_status"] = "not_created"
+        target_backend.close()
         source_engine.dispose()
         evidence["cleanup_status"] = "failed" if cleanup_errors else "passed"
         if cleanup_errors:

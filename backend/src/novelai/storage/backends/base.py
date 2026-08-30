@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Any, BinaryIO
 
 
 class R2StorageBackend(ABC):
@@ -13,14 +14,91 @@ class R2StorageBackend(ABC):
     ``novels/<novel_id>/chapters/<chapter_id>/<hash>.json.gz``).
     """
 
+    @property
     @abstractmethod
-    def save(self, path: str | Path, data: bytes) -> None:
+    def bucket(self) -> str:
+        """Return the fixed R2 bucket name represented by this client."""
+
+        raise NotImplementedError
+
+    @abstractmethod
+    def save(
+        self,
+        path: str | Path,
+        data: bytes,
+        *,
+        content_type: str | None = None,
+        content_encoding: str | None = None,
+        metadata: dict[str, str] | None = None,
+    ) -> None:
         """Write *data* to *path*, overwriting if it exists.
 
         Readers must not observe partial bytes. R2 implementations may provide atomic
         replacement or last-write-wins object semantics; multi-object
         transactions are outside this contract.
         """
+
+    def save_stream(
+        self,
+        path: str | Path,
+        source: BinaryIO,
+        *,
+        content_length: int | None = None,
+        content_type: str | None = None,
+        content_encoding: str | None = None,
+        metadata: dict[str, str] | None = None,
+    ) -> int:
+        """Write a bounded stream through the canonical R2 object contract."""
+
+        data = source.read()
+        if content_length is not None and len(data) != content_length:
+            raise ValueError("R2 gateway stream length mismatch")
+        self.save(
+            path,
+            data,
+            content_type=content_type,
+            content_encoding=content_encoding,
+            metadata=metadata,
+        )
+        return len(data)
+
+    def head(self, path: str | Path) -> Any:
+        """Return metadata for one exact key."""
+
+        raise NotImplementedError
+
+    def put_immutable(
+        self,
+        path: str | Path,
+        data: bytes,
+        *,
+        logical_sha256: str,
+        content_type: str = "application/json",
+        content_encoding: str | None = "gzip",
+    ) -> Any:
+        """Write an immutable content-addressed object."""
+
+        raise NotImplementedError
+
+    def list_objects(
+        self,
+        prefix: str | Path = "",
+        *,
+        recursive: bool = False,
+        cursor: str | None = None,
+        limit: int = 1000,
+    ) -> Any:
+        """Return one bounded, optionally paginated R2 listing page."""
+
+        raise NotImplementedError
+
+    def delete_prefix(self, prefix: str | Path) -> int:
+        """Delete only exact descendants of a virtual R2 prefix."""
+
+        keys = self.list_keys(prefix, recursive=True)
+        for key in keys:
+            self.delete(key)
+        return len(keys)
 
     def compare_and_swap(self, path: str | Path, expected: bytes | None, new_value: bytes) -> bool:
         """Atomically replace the object at *path* only when it currently

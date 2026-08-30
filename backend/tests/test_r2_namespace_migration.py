@@ -10,7 +10,7 @@ from novelai.db.base import Base
 from novelai.db.model_registry import register_database_models
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
-from novelai.storage.backends.r2 import InMemoryR2Storage
+from novelai.storage.backends.r2_gateway import InMemoryR2GatewayStorage
 from novelai.storage.content_addressing import canonical_json_bytes, deterministic_gzip, sha256_hex
 from novelai.storage.r2_namespace_migration import (
     R2NovelNamespaceMigrator,
@@ -18,14 +18,14 @@ from novelai.storage.r2_namespace_migration import (
 )
 
 
-def _put_json(storage: InMemoryR2Storage, key: str, payload: dict) -> tuple[str, str]:
+def _put_json(storage: InMemoryR2GatewayStorage, key: str, payload: dict) -> tuple[str, str]:
     logical = canonical_json_bytes(payload)
     digest = sha256_hex(logical)
     storage.put_immutable(key, deterministic_gzip(logical), logical_sha256=digest)
     return key, digest
 
 
-def _load_json(storage: InMemoryR2Storage, key: str) -> dict:
+def _load_json(storage: InMemoryR2GatewayStorage, key: str) -> dict:
     return json.loads(gzip.decompress(storage.load(key)).decode("utf-8"))
 
 
@@ -34,7 +34,7 @@ def test_namespace_migration_rekeys_nested_references_and_db_pointers() -> None:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine)()
-    storage = InMemoryR2Storage()
+    storage = InMemoryR2GatewayStorage()
     try:
         slug = "old-slug"
         prefix = f"novels/{slug}"

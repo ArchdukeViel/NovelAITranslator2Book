@@ -1,4 +1,4 @@
-name: Build and Push
+name: Container Publish
 
 on:
   # The same-repository, default-branch, successful-push guards below prevent
@@ -12,12 +12,13 @@ on:
 permissions: {}
 
 concurrency:
-  group: build-push-default-branch
+  group: container-publish-default-branch
   cancel-in-progress: false
 
 jobs:
   build-and-push:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     if: >-
       ${{
         github.event.workflow_run.conclusion == 'success' &&
@@ -49,7 +50,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
 
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -94,7 +95,7 @@ jobs:
         with:
           image-ref: ${{ steps.image-ref.outputs.ref }}
           format: table
-          exit-code: '1'
+          exit-code: "1"
           ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL,HIGH
@@ -115,7 +116,7 @@ jobs:
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
           WORKFLOW_REF: ${{ github.workflow_ref }}
           RUN_ID: ${{ github.run_id }}
-          CERTIFICATE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/build.yml@refs/heads/main
+          CERTIFICATE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/container-publish.yml@refs/heads/main
           CERTIFICATE_OIDC_ISSUER: https://token.actions.githubusercontent.com
         run: |
           set -euo pipefail
@@ -164,7 +165,8 @@ jobs:
 
   # A failed publication must not leave a misleading green workflow.
   build-done:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     needs: build-and-push
     if: >-
       ${{

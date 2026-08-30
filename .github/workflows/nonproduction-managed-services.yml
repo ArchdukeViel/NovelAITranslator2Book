@@ -1,4 +1,4 @@
-name: Managed Services Verification
+name: Non-production Managed Services
 
 on:
   schedule:
@@ -44,59 +44,83 @@ on:
     secrets:
       MANAGED_DATABASE_TEST_URL:
         required: false
+      TEST_R2_GATEWAY_URL:
+        required: false
+      TEST_R2_APP_CLIENT_ID:
+        required: false
+      TEST_R2_APP_CLIENT_SECRET:
+        required: false
+      TEST_R2_RECOVERY_CLIENT_ID:
+        required: false
+      TEST_R2_RECOVERY_CLIENT_SECRET:
+        required: false
 
-permissions:
-  contents: read
+permissions: {}
+
+concurrency:
+  group: nonproduction-managed-services-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   migrate-test-database:
     if: ${{ inputs.migrate_test_database == true && inputs.confirm_test_database == true }}
-    uses: ./.github/workflows/managed-services-test-migrate.yml
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-test-database-migration.yml
     with:
       confirm_test_database: ${{ inputs.confirm_test_database }}
     secrets:
       MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
 
   isolated-managed-recovery:
-    # The repository variable is a temporary branch-local dispatch fallback:
-    # GitHub validates workflow_dispatch inputs against the default-branch copy
-    # until this branch is merged. It is intentionally ignored by schedules
-    # and the production reusable-workflow call.
-    if: ${{ inputs.confirm_test_recovery == true || (github.event_name == 'workflow_dispatch' && vars.MANAGED_SERVICE_RECOVERY_ENABLED == 'true') }}
-    uses: ./.github/workflows/managed-services-recovery-verification.yml
+    if: ${{ inputs.confirm_test_recovery == true }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-test-recovery.yml
     with:
       confirm_test_recovery: true
     secrets:
       MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
-      TEST_R2_ENDPOINT: ${{ secrets.TEST_R2_ENDPOINT }}
-      TEST_R2_BACKUP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_BACKUP_ACCESS_KEY_ID }}
-      TEST_R2_BACKUP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_BACKUP_SECRET_ACCESS_KEY }}
+      TEST_R2_GATEWAY_URL: ${{ secrets.TEST_R2_GATEWAY_URL }}
+      TEST_R2_RECOVERY_CLIENT_ID: ${{ secrets.TEST_R2_RECOVERY_CLIENT_ID }}
+      TEST_R2_RECOVERY_CLIENT_SECRET: ${{ secrets.TEST_R2_RECOVERY_CLIENT_SECRET }}
 
   hosted-postgres-and-r2:
     if: ${{ inputs.migrate_test_database != true && (inputs.required || vars.MANAGED_SERVICE_TESTS_ENABLED == 'true') }}
-    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: read
+    environment: staging
     env:
       MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
-      TEST_R2_ENDPOINT: ${{ secrets.TEST_R2_ENDPOINT }}
-      TEST_R2_SOURCE_BUCKET: ${{ vars.TEST_R2_SOURCE_BUCKET }}
-      TEST_R2_TARGET_BUCKET: ${{ vars.TEST_R2_TARGET_BUCKET }}
-      TEST_R2_APP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_APP_ACCESS_KEY_ID }}
-      TEST_R2_APP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_APP_SECRET_ACCESS_KEY }}
-      TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY_ID: ${{ secrets.TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY_ID }}
-      TEST_R2_SNAPSHOT_SOURCE_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_SNAPSHOT_SOURCE_SECRET_ACCESS_KEY }}
-      TEST_R2_BACKUP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_BACKUP_ACCESS_KEY_ID }}
-      TEST_R2_BACKUP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_BACKUP_SECRET_ACCESS_KEY }}
+      TEST_R2_GATEWAY_URL: ${{ secrets.TEST_R2_GATEWAY_URL }}
+      TEST_R2_BUCKET: test-dokushodo
+      TEST_R2_BACKUP_BUCKET: test-dokushodo-backup
+      TEST_R2_APP_CLIENT_ID: ${{ secrets.TEST_R2_APP_CLIENT_ID }}
+      TEST_R2_APP_CLIENT_SECRET: ${{ secrets.TEST_R2_APP_CLIENT_SECRET }}
+      TEST_R2_RECOVERY_CLIENT_ID: ${{ secrets.TEST_R2_RECOVERY_CLIENT_ID }}
+      TEST_R2_RECOVERY_CLIENT_SECRET: ${{ secrets.TEST_R2_RECOVERY_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14.6"
+          python-version: "3.14.7"
       - run: pip install "uv==0.12.0"
       - run: >-
-          uv sync --locked --extra dev --extra test --extra s3 --extra auth
+          uv sync --locked --extra dev --extra test --extra auth
+      - name: Validate exact non-production resource classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${MANAGED_DATABASE_TEST_URL:-}" ]] || { echo "::error::Test database secret is unavailable."; exit 1; }
+          [[ "${TEST_R2_GATEWAY_URL:-}" == https://* ]] || { echo "::error::Test R2 gateway URL is unavailable or not HTTPS."; exit 1; }
+          [[ -n "${TEST_R2_APP_CLIENT_ID:-}" && -n "${TEST_R2_APP_CLIENT_SECRET:-}" ]] || { echo "::error::Test R2 application identity is unavailable."; exit 1; }
+          [[ -n "${TEST_R2_RECOVERY_CLIENT_ID:-}" && -n "${TEST_R2_RECOVERY_CLIENT_SECRET:-}" ]] || { echo "::error::Test R2 recovery identity is unavailable."; exit 1; }
+          [[ "${TEST_R2_BUCKET:-}" == "test-dokushodo" ]] || { echo "::error::Application bucket class mismatch."; exit 1; }
+          [[ "${TEST_R2_BACKUP_BUCKET:-}" == "test-dokushodo-backup" ]] || { echo "::error::Backup bucket class mismatch."; exit 1; }
       - name: Verify hosted PostgreSQL and isolated R2 prefixes
         run: >
           uv run --locked pytest -q -m integration

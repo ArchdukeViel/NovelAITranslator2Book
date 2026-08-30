@@ -16,16 +16,92 @@ from __future__ import annotations
 from collections.abc import Generator
 from contextlib import contextmanager
 from threading import Lock
+from time import perf_counter_ns
 from typing import Any
 
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import NullPool
 
 from novelai.config.settings import settings
+from novelai.services.timing_contract import record_internal_span, record_internal_unavailable_span
 
 _ENGINE_CACHE: dict[tuple[object, ...], Engine] = {}
 _ENGINE_CACHE_LOCK = Lock()
+
+
+def _install_timing_listeners(engine: Engine) -> None:
+    """Attach fixed-label SQL timing without retaining statement contents."""
+
+    @event.listens_for(engine, "before_cursor_execute")
+    def _before_cursor_execute(
+        connection: Any, cursor: Any, statement: Any, parameters: Any, context: Any, executemany: bool
+    ) -> None:
+        del connection, cursor, statement, parameters, executemany
+        context._novelai_sql_started_ns = perf_counter_ns()
+
+    @event.listens_for(engine, "after_cursor_execute")
+    def _after_cursor_execute(
+        connection: Any, cursor: Any, statement: Any, parameters: Any, context: Any, executemany: bool
+    ) -> None:
+        del connection, cursor, statement, parameters, executemany
+        started_ns = getattr(context, "_novelai_sql_started_ns", None)
+        if isinstance(started_ns, int):
+            record_internal_span(
+                "sql_execution",
+                source="database",
+                duration_ms=(perf_counter_ns() - started_ns) / 1_000_000,
+            )
+            context._novelai_sql_started_ns = None
+
+    @event.listens_for(engine, "handle_error")
+    def _handle_sql_error(exception_context: Any) -> None:
+        context = getattr(exception_context, "execution_context", None)
+        if context is None:
+            return
+        started_ns = getattr(context, "_novelai_sql_started_ns", None)
+        if isinstance(started_ns, int):
+            record_internal_span(
+                "sql_execution",
+                source="database",
+                duration_ms=(perf_counter_ns() - started_ns) / 1_000_000,
+            )
+            context._novelai_sql_started_ns = None
+
+    @event.listens_for(engine, "engine_connect")
+    def _engine_connect(connection: Any) -> None:
+        del connection
+        record_internal_unavailable_span(
+            "db_pool_checkout",
+            source="database",
+            reason="pooler_granularity_unavailable",
+        )
+
+
+@event.listens_for(Session, "before_commit")
+def _session_commit_started(session: Session) -> None:
+    session.info["_novelai_commit_started_ns"] = perf_counter_ns()
+
+
+@event.listens_for(Session, "after_commit")
+def _session_commit_finished(session: Session) -> None:
+    started_ns = session.info.pop("_novelai_commit_started_ns", None)
+    if isinstance(started_ns, int):
+        record_internal_span(
+            "database_commit",
+            source="database",
+            duration_ms=(perf_counter_ns() - started_ns) / 1_000_000,
+        )
+
+
+@event.listens_for(Session, "after_soft_rollback")
+def _session_rollback_finished(session: Session, previous_transaction: Any) -> None:
+    del previous_transaction
+    record_internal_unavailable_span(
+        "rollback",
+        source="database",
+        reason="span_not_instrumented",
+    )
 
 
 def _engine_key(db_url: str) -> tuple[object, ...]:
@@ -71,7 +147,9 @@ def _create_configured_engine(db_url: str) -> Engine:
                 pool_recycle=settings.DB_POOL_RECYCLE_SECONDS,
             )
         kwargs["connect_args"] = connect_args
-    return create_engine(db_url, **kwargs)
+    engine = create_engine(db_url, **kwargs)
+    _install_timing_listeners(engine)
+    return engine
 
 
 def get_engine(url: str | None = None) -> Engine:

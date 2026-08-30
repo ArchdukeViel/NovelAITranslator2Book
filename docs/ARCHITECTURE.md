@@ -126,7 +126,7 @@ The production topology is the target.
 
 ### Cloudflare-protected production target (WSL/Docker + split containers + managed PostgreSQL + R2)
 
-- **Frontend**: pinned Node.js 26.7.x Next.js container behind Caddy on the
+- **Frontend**: pinned Node.js 26.8.1 Next.js container behind Caddy on the
   WSL/Docker host, with explicit
   ``WEB_CORS_ORIGINS``, ``CSRF_TRUSTED_ORIGINS``, ``ALLOWED_HOSTS``, CSP,
   and HSTS. Operators reach the public site through the selected Cloudflare
@@ -161,11 +161,14 @@ The production topology is the target.
     ``authenticated`` execution. The helper is not application schema and is
     never Data API-callable by those roles; deployments without it are a
     no-op.
-- **Storage**: two separate R2 buckets with least-privilege credentials:
-  - **App bucket**: chapter content, novel assets, catalog projections.
-  - **Backup bucket**: encrypted dumps and snapshots. Backup-target
-    credentials write only there; separate snapshot-source credentials read
-    only the application bucket.
+- **Storage**: two separate R2 buckets behind a private, versioned Cloudflare
+  Worker gateway protected by distinct Cloudflare Access service identities:
+  - **App bucket**: chapter content, novel assets, catalog projections. The
+    application identity is limited to exact app reads, immutable writes, and
+    exact deletes required by guarded cleanup.
+  - **Backup bucket**: encrypted dumps and snapshots. The recovery identity is
+    separate from the application identity and is limited to recovery,
+    inventory, backup, and cleanup operations on the fixed backup class.
 - **Redis**: managed (Upstash / ElastiCache / managed Redis) for
   distributed rate limiting and the job queue in split mode.
 - **Networking**: explicit HTTPS termination at the selected edge/proxy,
@@ -185,10 +188,11 @@ The production topology is the target.
     objects reference-aware, while ``InterProcessFileLock`` protects scheduled
     backup and retention runs. The local runtime contains only the lock and
     other disposable state; it is never a backup archive.
-  - **R2 transfer boundary**: ``R2Storage.put_immutable()`` handles
-    content-addressed JSON writes, while ``R2Storage.save_stream()`` uses
-    bounded multipart transfer, provider SHA-256 checksums, and committed
-    length verification for larger binary artifacts.
+  - **R2 transfer boundary**: ``R2GatewayStorage.put_immutable()`` handles
+    content-addressed JSON writes, while ``R2GatewayStorage.save_stream()``
+    sends bounded HTTPS requests to the private Worker gateway. The Worker
+    performs native R2 binding operations, fixed metadata validation,
+    checksum handling, and committed-length verification.
 - **Scheduled maintenance**: PostgreSQL-side cron for internal cleanup
   (``private.cleanup_expired_scheduler_states()``); application-side
   scheduler loop checks ``scheduled_cron_log`` for pending backup and
@@ -557,6 +561,34 @@ unchanged.
 - Translation cache entries are disposable runtime data and are never used as
   canonical content. Durable translation lineage and active artifact
   references remain in PostgreSQL and R2.
+
+## Fixed timing and security-evidence contract
+
+Internal timing uses the fixed contract in
+`backend/src/novelai/services/timing_contract.py`. It records only bounded
+intervals from the process-local monotonic clock for client, proxy,
+application, database, native R2 gateway, and translation-pipeline boundaries.
+The contract has no representation for users, URLs, SQL, object keys,
+credentials, request bodies, or provider responses. Parent and child intervals
+are retained as intervals; exclusive and residual values subtract the union of
+children once and reject intervals that are not safely nested.
+
+`RequestTimingMiddleware` records an internal `application_total` span. The
+framework boundary does not expose pure serialization time without including
+server/network send time, so serialization remains an explicit unavailable
+span. SQLAlchemy records statement and commit timing without statement text;
+pool checkout granularity and rollback duration remain explicitly unavailable
+where the event boundary cannot measure them. Native R2 gateway operations and
+translation-pipeline stages use the same bounded fixed-label buffer. The buffer
+is internal-only and is not added to public response schemas or the public
+metrics payload.
+
+Security evidence is separate from timing evidence. Authenticated identity is
+derived from the session, roles are deny-by-default, cookie mutations require
+CSRF validation, and RLS/grant observations are recorded only as sanitized
+counts or case outcomes. Missing hosted identities, provider permissions, or
+cross-system joins remain blocked/unavailable rather than being inferred from
+local tests.
 
 ## Reader Contracts
 

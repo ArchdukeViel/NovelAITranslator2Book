@@ -8,16 +8,17 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "chore(deps)"
-  - package-ecosystem: "pip"
-    directory: "/backend"
+  - package-ecosystem: "npm"
+    directory: "/frontend"
     schedule:
       interval: "weekly"
     labels:
       - "dependencies"
+      - "javascript"
     commit-message:
       prefix: "chore(deps)"
   - package-ecosystem: "npm"
-    directory: "/frontend"
+    directory: "/workers/r2-gateway"
     schedule:
       interval: "weekly"
     labels:

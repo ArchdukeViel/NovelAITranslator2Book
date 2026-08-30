@@ -1,17 +1,6 @@
 name: Non-production Reader Capacity Evidence
 
 on:
-  pull_request:
-    branches: [main, develop]
-    types: [opened, synchronize, reopened]
-    paths:
-      - ".github/workflows/reader-capacity-nonproduction.yml"
-      - "backend/alembic/**"
-      - "backend/src/**"
-      - "backend/tests/run_phase6_acceptance.py"
-      - "deploy/**"
-      - "tools/capacity/**"
-      - ".agents/specs/reader-capacity-and-recovery-follow-up/**"
   workflow_dispatch:
     inputs:
       confirm_non_production:
@@ -20,33 +9,33 @@ on:
         type: boolean
         default: false
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
-  group: reader-capacity-nonproduction
+  group: reader-capacity-nonproduction-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   isolated-reader-capacity:
-    if: >-
-      ${{
-        (github.event_name == 'workflow_dispatch' && inputs.confirm_non_production == true) ||
-        (github.event_name == 'pull_request' &&
-         github.event.pull_request.head.repo.full_name == github.repository)
-      }}
-    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
+    if: ${{ inputs.confirm_non_production == true }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
+    permissions:
+      contents: read
+    environment: staging
     env:
       COMPOSE_PROJECT: reader-capacity-test-${{ github.run_id }}
       COMPOSE_FILE: deploy/compose.yml
       CLOUD_FLARED_CONTAINER: reader-capacity-test-${{ github.run_id }}-cloudflared
       CLOUDFLARED_IMAGE: cloudflare/cloudflared:2026.8.0@sha256:2535e54b16adf1d50630f99d0886471926c5ef3f6b328100ec6589f731c48969
       MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
-      TEST_R2_ENDPOINT: ${{ secrets.TEST_R2_ENDPOINT }}
-      TEST_R2_APP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_APP_ACCESS_KEY_ID }}
-      TEST_R2_APP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_APP_SECRET_ACCESS_KEY }}
+      TEST_R2_GATEWAY_URL: ${{ secrets.TEST_R2_GATEWAY_URL }}
+      TEST_R2_APP_CLIENT_ID: ${{ secrets.TEST_R2_APP_CLIENT_ID }}
+      TEST_R2_APP_CLIENT_SECRET: ${{ secrets.TEST_R2_APP_CLIENT_SECRET }}
+      TEST_R2_RECOVERY_CLIENT_ID: ${{ secrets.TEST_R2_RECOVERY_CLIENT_ID }}
+      TEST_R2_RECOVERY_CLIENT_SECRET: ${{ secrets.TEST_R2_RECOVERY_CLIENT_SECRET }}
       TEST_R2_APPLICATION_BUCKET: test-dokushodo
+      TEST_R2_BACKUP_BUCKET: test-dokushodo-backup
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -56,7 +45,7 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14.6"
+          python-version: "3.14.7"
 
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
@@ -66,7 +55,7 @@ jobs:
       - name: Install locked test tooling
         run: >-
           uv sync --locked --extra gemini --extra dev --extra test
-          --extra s3 --extra auth
+          --extra auth
 
       - name: Prepare guarded disposable runtime environment
         shell: bash
@@ -74,13 +63,19 @@ jobs:
           set -euo pipefail
           umask 077
 
-          if [[ -z "${MANAGED_DATABASE_TEST_URL:-}" || -z "${TEST_R2_ENDPOINT:-}" ||
-                -z "${TEST_R2_APP_ACCESS_KEY_ID:-}" || -z "${TEST_R2_APP_SECRET_ACCESS_KEY:-}" ||
-                -z "${TEST_R2_APPLICATION_BUCKET:-}" ]]; then
+          if [[ -z "${MANAGED_DATABASE_TEST_URL:-}" || -z "${TEST_R2_GATEWAY_URL:-}" ||
+                -z "${TEST_R2_APP_CLIENT_ID:-}" || -z "${TEST_R2_APP_CLIENT_SECRET:-}" ||
+                -z "${TEST_R2_RECOVERY_CLIENT_ID:-}" || -z "${TEST_R2_RECOVERY_CLIENT_SECRET:-}" ||
+                -z "${TEST_R2_APPLICATION_BUCKET:-}" || -z "${TEST_R2_BACKUP_BUCKET:-}" ]]; then
             echo "::error::The disposable managed database/R2 test secrets or application bucket are unavailable."
             exit 1
           fi
-          if [[ "$TEST_R2_APPLICATION_BUCKET" != "test-dokushodo" ]]; then
+          if [[ "$TEST_R2_GATEWAY_URL" != https://* ]]; then
+            echo "::error::The test R2 gateway must use HTTPS."
+            exit 1
+          fi
+          if [[ "$TEST_R2_APPLICATION_BUCKET" != "test-dokushodo" ||
+                "$TEST_R2_BACKUP_BUCKET" != "test-dokushodo-backup" ]]; then
             echo "::error::The reader fixture requires the dedicated test-dokushodo application bucket."
             exit 1
           fi
@@ -111,9 +106,11 @@ jobs:
             printf 'DB_POOL_SIZE=5\nDB_MAX_OVERFLOW=2\nDB_POOL_PROCESS_COUNT=2\nDB_CONNECTION_RESERVE=2\nDB_CONNECTION_BUDGET=32\n'
             printf 'DB_SSL_MODE=require\nDB_CONNECT_TIMEOUT_SECONDS=15\n'
             printf 'R2_BUCKET=%s\n' "$TEST_R2_APPLICATION_BUCKET"
-            printf 'R2_REGION=auto\nR2_ENDPOINT=%s\n' "$TEST_R2_ENDPOINT"
-            printf 'R2_ACCESS_KEY_ID=%s\nR2_SECRET_ACCESS_KEY=%s\n' "$TEST_R2_APP_ACCESS_KEY_ID" "$TEST_R2_APP_SECRET_ACCESS_KEY"
+            printf 'R2_GATEWAY_URL=%s\nR2_GATEWAY_CLIENT_ID=%s\nR2_GATEWAY_CLIENT_SECRET=%s\n' \
+              "$TEST_R2_GATEWAY_URL" "$TEST_R2_APP_CLIENT_ID" "$TEST_R2_APP_CLIENT_SECRET"
             printf 'R2_BACKUP_ENABLED=false\nR2_BACKUP_BUCKET=test-dokushodo-backup\n'
+            printf 'R2_RECOVERY_GATEWAY_URL=%s\nR2_RECOVERY_CLIENT_ID=%s\nR2_RECOVERY_CLIENT_SECRET=%s\n' \
+              "$TEST_R2_GATEWAY_URL" "$TEST_R2_RECOVERY_CLIENT_ID" "$TEST_R2_RECOVERY_CLIENT_SECRET"
             printf 'SESSION_SECRET_KEY=%s\nOWNER_BOOTSTRAP_SECRET=%s\n' "$session_secret" "$owner_secret"
             printf 'PUBLIC_FRONTEND_URL=https://reader-capacity-test.invalid\n'
             printf 'SITE_DOMAIN=localhost\nPUBLIC_BIND_ADDRESS=127.0.0.1\nPUBLIC_HTTP_PORT=18080\n'
@@ -229,7 +226,7 @@ jobs:
             case "$line" in
               *ValidationError*|*validation*|*pydantic*) validation=true ;;
               *database*|*Database*|*psycopg*|*"connection refused"*) database=true ;;
-              *R2*|*S3*|*botocore*) r2=true ;;
+              *R2*) r2=true ;;
               *Redis*|*redis*) redis=true ;;
               *Traceback*) traceback=true ;;
               *Permission*|*permission*) permission=true ;;
@@ -390,7 +387,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: reader-capacity-nonproduction-${{ github.run_id }}
+          name: nonproduction-reader-evidence-${{ github.run_id }}
           path: artifacts/operations/reader-capacity-follow-up/
           if-no-files-found: error
           include-hidden-files: false

@@ -1,8 +1,4 @@
-"""Canonical R2 storage factory.
-
-There is deliberately no filesystem/S3 backend selection. The S3 protocol is
-only the transport used by the explicit Cloudflare R2 client.
-"""
+"""Canonical Cloudflare R2 gateway storage factories."""
 
 from __future__ import annotations
 
@@ -17,21 +13,41 @@ _R2_STORAGE: R2StorageBackend | None = None
 
 
 def build_r2_storage() -> R2StorageBackend:
-    """Build a fresh R2 client for an explicitly supplied dependency scope."""
+    """Build the application client with the application Access identity."""
 
-    try:
-        from novelai.storage.backends.r2 import R2Storage
-    except ImportError as exc:
-        raise RuntimeError("R2 storage requires boto3. Install with: pip install novelai[s3]") from exc
+    from novelai.storage.backends.r2_gateway import R2GatewayStorage
 
-    access_key = settings.R2_ACCESS_KEY_ID.get_secret_value() if settings.R2_ACCESS_KEY_ID else None
-    secret_key = settings.R2_SECRET_ACCESS_KEY.get_secret_value() if settings.R2_SECRET_ACCESS_KEY else None
-    return R2Storage(
+    if not settings.R2_GATEWAY_URL or not settings.R2_GATEWAY_CLIENT_ID or not settings.R2_GATEWAY_CLIENT_SECRET:
+        raise RuntimeError("R2 application gateway identity is not configured")
+    return R2GatewayStorage(
         bucket=settings.R2_BUCKET,
-        region=settings.R2_REGION,
-        endpoint_url=settings.R2_ENDPOINT,
-        access_key_id=access_key,
-        secret_access_key=secret_key,
+        bucket_class="app",
+        gateway_url=settings.R2_GATEWAY_URL,
+        client_id=settings.R2_GATEWAY_CLIENT_ID,
+        client_secret=settings.R2_GATEWAY_CLIENT_SECRET.get_secret_value(),
+    )
+
+
+def build_r2_recovery_storage(*, bucket_class: str = "backup") -> R2StorageBackend:
+    """Build a recovery client using the separate recovery Access identity."""
+
+    from novelai.storage.backends.r2_gateway import R2GatewayStorage
+
+    if bucket_class not in {"app", "backup"}:
+        raise ValueError("R2 recovery bucket class is invalid")
+    if (
+        not settings.R2_RECOVERY_GATEWAY_URL
+        or not settings.R2_RECOVERY_CLIENT_ID
+        or not settings.R2_RECOVERY_CLIENT_SECRET
+    ):
+        raise RuntimeError("R2 recovery gateway identity is not configured")
+    bucket = settings.R2_BUCKET if bucket_class == "app" else settings.R2_BACKUP_BUCKET
+    return R2GatewayStorage(
+        bucket=bucket,
+        bucket_class=bucket_class,  # type: ignore[arg-type]
+        gateway_url=settings.R2_RECOVERY_GATEWAY_URL,
+        client_id=settings.R2_RECOVERY_CLIENT_ID,
+        client_secret=settings.R2_RECOVERY_CLIENT_SECRET.get_secret_value(),
     )
 
 

@@ -159,19 +159,9 @@ def _add_frontend_page_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def _build_backup_r2_storage():
-    from novelai.storage.backends.r2 import R2Storage
+    from novelai.storage.backends import build_r2_recovery_storage
 
-    return R2Storage(
-        bucket=settings.R2_BACKUP_BUCKET,
-        endpoint_url=settings.R2_BACKUP_ENDPOINT or settings.R2_ENDPOINT,
-        region=settings.R2_REGION,
-        access_key_id=(
-            settings.R2_BACKUP_ACCESS_KEY_ID.get_secret_value() if settings.R2_BACKUP_ACCESS_KEY_ID else None
-        ),
-        secret_access_key=(
-            settings.R2_BACKUP_SECRET_ACCESS_KEY.get_secret_value() if settings.R2_BACKUP_SECRET_ACCESS_KEY else None
-        ),
-    )
+    return build_r2_recovery_storage(bucket_class="backup")
 
 
 def _print_r2_inventory() -> None:

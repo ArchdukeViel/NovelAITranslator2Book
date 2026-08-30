@@ -1,19 +1,14 @@
-"""Opt-in real-R2 restore verification into an isolated prefix.
-
-The workflow supplies dedicated source and target test buckets. This test is
-never a production-bucket restore and does not claim hosted recovery success
-until the workflow itself runs at the candidate revision.
-"""
+"""Opt-in isolated R2 restore verification through the dedicated Worker."""
 
 from __future__ import annotations
 
 import hashlib
 import os
-import time
-from typing import Any
+import uuid
 
 import pytest
 
+from novelai.storage.backends.r2_gateway import R2GatewayStorage
 from novelai.storage.r2_backup import R2IncrementalBackupTarget
 
 pytestmark = pytest.mark.slow
@@ -27,97 +22,53 @@ def _required(name: str) -> str:
 
 
 @pytest.mark.integration
-def test_real_r2_restore_into_isolated_prefix() -> None:
-    boto3 = pytest.importorskip("boto3")
-    from botocore.exceptions import ClientError
+def test_r2_restore_isolated_under_test_prefix() -> None:
+    gateway_url = _required("TEST_R2_GATEWAY_URL")
+    source_bucket = _required("TEST_R2_BUCKET")
+    target_bucket = _required("TEST_R2_BACKUP_BUCKET")
+    client_id = _required("TEST_R2_RECOVERY_CLIENT_ID")
+    client_secret = _required("TEST_R2_RECOVERY_CLIENT_SECRET")
+    if source_bucket != "test-dokushodo" or target_bucket != "test-dokushodo-backup":
+        pytest.fail("R2 restore integration requires the exact dedicated test buckets")
 
-    endpoint = _required("TEST_R2_ENDPOINT")
-    source_bucket = _required("TEST_R2_SOURCE_BUCKET")
-    target_bucket = _required("TEST_R2_TARGET_BUCKET")
-    if source_bucket == target_bucket or {source_bucket, target_bucket} & {"dokushodo", "dokushodo-backup"}:
-        pytest.fail("Managed-services R2 integration requires dedicated non-production test buckets")
-    token = f"integration-{int(time.time())}-{os.urandom(4).hex()}"
-    payload = b'{"integration":true,"restore":"isolated-prefix"}'
-
-    def client(access_name: str, secret_name: str) -> Any:
-        return boto3.client(
-            "s3",
-            endpoint_url=endpoint,
-            region_name=os.environ.get("TEST_R2_REGION", "auto"),
-            aws_access_key_id=_required(access_name),
-            aws_secret_access_key=_required(secret_name),
-        )
-
-    application_client = client("TEST_R2_APP_ACCESS_KEY_ID", "TEST_R2_APP_SECRET_ACCESS_KEY")
-    source_client = client(
-        "TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY_ID",
-        "TEST_R2_SNAPSHOT_SOURCE_SECRET_ACCESS_KEY",
+    source = R2GatewayStorage(
+        bucket=source_bucket,
+        bucket_class="app",
+        gateway_url=gateway_url,
+        client_id=client_id,
+        client_secret=client_secret,
     )
-    target_client = client("TEST_R2_BACKUP_ACCESS_KEY_ID", "TEST_R2_BACKUP_SECRET_ACCESS_KEY")
-    source_key = f"novels/{token}/metadata.json"
-    restore_key = f"restore-verification/{token}/metadata.json"
-    backup_key = f"objects/{source_key}"
-    source_created = False
-    restore_created = False
-    backup_preexisting = False
+    target = R2GatewayStorage(
+        bucket=target_bucket,
+        bucket_class="backup",
+        gateway_url=gateway_url,
+        client_id=client_id,
+        client_secret=client_secret,
+    )
+    source_key = f"novels/recovery-{uuid.uuid4().hex}/metadata.json"
+    restore_key = f"objects/recovery-{uuid.uuid4().hex}/metadata.json"
+    payload = b'{"integration":true,"restore":"isolated"}'
+    source.save(source_key, payload, content_type="application/json")
     snapshot_id: str | None = None
-
+    backup_key: str | None = None
     try:
-        application_client.put_object(Bucket=source_bucket, Key=source_key, Body=payload)
-        source_created = True
-        try:
-            target_client.head_object(Bucket=target_bucket, Key=backup_key)
-            backup_preexisting = True
-        except ClientError:
-            backup_preexisting = False
-
-        backup = R2IncrementalBackupTarget(
-            source_bucket=source_bucket,
-            target_bucket=target_bucket,
-            target_prefix="snapshots",
-            endpoint_url=endpoint,
-            region=os.environ.get("TEST_R2_REGION", "auto"),
-            source_access_key_id=None,
-            source_secret_access_key=None,
-            target_access_key_id=None,
-            target_secret_access_key=None,
-            source_client=source_client,
-            target_client=target_client,
-        )
+        backup = R2IncrementalBackupTarget(source_backend=source, target_backend=target)
         result = backup.create_snapshot()
         snapshot_id = result.snapshot_id
         manifest = backup._load_manifest(snapshot_id)
-        entry = next(
-            (candidate for candidate in manifest["objects"] if candidate.get("key") == source_key),
-            None,
-        )
-        assert entry is not None
-        assert result.verified is True
-        assert backup.verify_snapshot(snapshot_id).verified is True
-
-        response = target_client.get_object(Bucket=target_bucket, Key=str(entry["backup_key"]))
-        body = response["Body"]
-        try:
-            restored_bytes = body.read()
-        finally:
-            body.close()
-        assert len(restored_bytes) == int(entry["size_bytes"])
-        assert hashlib.sha256(restored_bytes).hexdigest() == str(entry["sha256"])
-
-        target_client.put_object(Bucket=target_bucket, Key=restore_key, Body=restored_bytes)
-        restore_created = True
-        restored_response = target_client.get_object(Bucket=target_bucket, Key=restore_key)
-        restored_body = restored_response["Body"]
-        try:
-            assert restored_body.read() == payload
-        finally:
-            restored_body.close()
+        entry = next(candidate for candidate in manifest["objects"] if candidate["key"] == source_key)
+        backup_key = str(entry["backup_key"])
+        restored = target.load(backup_key)
+        assert len(restored) == int(entry["size_bytes"])
+        assert hashlib.sha256(restored).hexdigest() == str(entry["sha256"])
+        target.save(restore_key, restored, content_type="application/json")
+        assert target.load(restore_key) == payload
     finally:
-        if restore_created:
-            target_client.delete_object(Bucket=target_bucket, Key=restore_key)
+        source.delete(source_key)
+        target.delete(restore_key)
         if snapshot_id is not None:
-            target_client.delete_object(Bucket=target_bucket, Key=f"snapshots/{snapshot_id}/manifest.json")
-        if not backup_preexisting:
-            target_client.delete_object(Bucket=target_bucket, Key=backup_key)
-        if source_created:
-            application_client.delete_object(Bucket=source_bucket, Key=source_key)
+            target.delete(f"snapshots/{snapshot_id}/manifest.json")
+        if backup_key is not None:
+            target.delete(backup_key)
+        source.close()
+        target.close()

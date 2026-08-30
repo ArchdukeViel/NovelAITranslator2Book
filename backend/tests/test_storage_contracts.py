@@ -12,7 +12,7 @@ from novelai.db.engine import session_scope
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
 from novelai.storage.artifacts import R2ArtifactRepository
-from novelai.storage.backends.r2 import InMemoryR2Storage
+from novelai.storage.backends.r2_gateway import InMemoryR2GatewayStorage
 from novelai.storage.content_addressing import canonical_json_bytes, deterministic_gzip
 from novelai.storage.service import StorageService
 
@@ -51,7 +51,7 @@ def test_metadata_is_mutable_postgres_truth_not_an_r2_metadata_object(storage: S
 
 
 def test_immutable_artifacts_are_idempotent_and_conflict_on_same_key_changes() -> None:
-    backend = InMemoryR2Storage()
+    backend = InMemoryR2GatewayStorage()
     repository = R2ArtifactRepository(backend)
     first = repository.put_json(
         storage_novel_id="1",

@@ -14,28 +14,20 @@ from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.orchestration.crawler import _scrape_chapters_r2_impl
-from novelai.storage.backends.r2 import R2Storage
+from novelai.storage.backends.r2_gateway import InMemoryR2GatewayStorage
 from novelai.storage.service import StorageService
-
-boto3 = pytest.importorskip("boto3")
-pytest.importorskip("moto")
 
 
 @pytest.fixture()
 def r2_catalog(tmp_path, monkeypatch):
-    from moto import mock_aws
-
     register_database_models()
     database_url = f"sqlite:///{tmp_path / 'r2-catalog.db'}"
     monkeypatch.setattr(settings, "DATABASE_URL", database_url)
     dispose_engines()
     engine = create_engine(database_url)
     Base.metadata.create_all(engine)
-    with mock_aws():
-        client = boto3.client("s3", region_name="us-east-1")
-        client.create_bucket(Bucket="dokushodo")
-        backend = R2Storage(bucket="dokushodo", endpoint_url=None, client=client)
-        yield StorageService(backend=backend), client
+    backend = InMemoryR2GatewayStorage("test-dokushodo")
+    yield StorageService(backend=backend), backend
     dispose_engines()
     Base.metadata.drop_all(engine)
     engine.dispose()
@@ -91,8 +83,7 @@ def test_r2_dispatch_stores_catalog_and_exact_artifacts(r2_catalog) -> None:
     assert storage.load_translated_chapter("novel-r2", "c1")["text"] == "translated text"
     assert storage.load_metadata("novel-r2")["chapters"][0]["id"] == "c1"
 
-    keys = client.list_objects_v2(Bucket="dokushodo").get("Contents", [])
-    object_keys = [item["Key"] for item in keys]
+    object_keys = client.list_keys("", recursive=True)
     assert object_keys
     storage_novel_id = storage.resolve_storage_novel_id("novel-r2")
     assert all(key.startswith(f"novels/{storage_novel_id}/") for key in object_keys)
@@ -138,7 +129,7 @@ def test_r2_crawler_activates_db_generation_without_pointer_object(r2_catalog) -
 
     assert result["succeeded"] == 1
     assert result["failed"] == 0
-    object_count_after_first = len(client.list_objects_v2(Bucket="dokushodo").get("Contents", []))
+    object_count_after_first = len(client.list_keys("", recursive=True))
     with session_scope() as session:
         novel = session.query(Novel).filter_by(slug="novel-r2").one()
         chapter = session.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id="c1").one()
@@ -161,9 +152,9 @@ def test_r2_crawler_activates_db_generation_without_pointer_object(r2_catalog) -
     )
     assert second_result["no_op"] is True
     assert second_result["generation_id"] == result["generation_id"]
-    assert len(client.list_objects_v2(Bucket="dokushodo").get("Contents", [])) == object_count_after_first
+    assert len(client.list_keys("", recursive=True)) == object_count_after_first
 
-    object_keys = [item["Key"] for item in client.list_objects_v2(Bucket="dokushodo").get("Contents", [])]
+    object_keys = client.list_keys("", recursive=True)
     assert any("/generations/" in key for key in object_keys)
     assert not any(key.endswith("active_generation.json") for key in object_keys)
 
@@ -211,7 +202,7 @@ def test_r2_document_import_activates_immutable_generation(r2_catalog) -> None:
         assert chapter.raw_storage_key and chapter.raw_storage_key.startswith(f"novels/{novel.id}/chapters/part-1/")
         assert chapter.media_storage_key and chapter.media_storage_key.startswith(f"novels/{novel.id}/media/part-1/")
 
-    object_keys = [item["Key"] for item in client.list_objects_v2(Bucket="dokushodo").get("Contents", [])]
+    object_keys = client.list_keys("", recursive=True)
     assert any("/generations/" in key for key in object_keys)
     assert not any(key.endswith("metadata.json") or key.endswith("active_generation.json") for key in object_keys)
 
@@ -225,7 +216,7 @@ def test_r2_runtime_state_stays_outside_the_application_bucket(r2_catalog, tmp_p
 
     assert saved["job_id"] == "job-1"
     assert (runtime_root / "traceability" / "scheduler_states.json").exists()
-    object_keys = [item["Key"] for item in client.list_objects_v2(Bucket="dokushodo").get("Contents", [])]
+    object_keys = client.list_keys("", recursive=True)
     assert not any(key.startswith("runtime/") for key in object_keys)
 
 
@@ -243,5 +234,5 @@ def test_r2_glossary_api_uses_postgresql_not_an_object(r2_catalog) -> None:
     assert entries[0]["source"] == "勇者"
     assert entries[0]["target"] == "hero"
     assert entries[0]["status"] == "approved"
-    object_keys = [item["Key"] for item in client.list_objects_v2(Bucket="dokushodo").get("Contents", [])]
+    object_keys = client.list_keys("", recursive=True)
     assert not any("glossary" in key for key in object_keys)

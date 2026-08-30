@@ -1,13 +1,13 @@
-"""Opt-in real-R2 incremental backup verification with isolated test objects."""
+"""Opt-in incremental backup verification through the dedicated R2 Worker."""
 
 from __future__ import annotations
 
 import os
-import time
-from typing import Any
+import uuid
 
 import pytest
 
+from novelai.storage.backends.r2_gateway import R2GatewayStorage
 from novelai.storage.r2_backup import R2IncrementalBackupTarget
 
 pytestmark = pytest.mark.slow
@@ -21,51 +21,35 @@ def _required(name: str) -> str:
 
 
 @pytest.mark.integration
-def test_real_r2_backup_credential_split() -> None:
-    boto3 = pytest.importorskip("boto3")
-    from botocore.exceptions import ClientError
+def test_r2_backup_uses_separate_recovery_identity() -> None:
+    gateway_url = _required("TEST_R2_GATEWAY_URL")
+    source_bucket = _required("TEST_R2_BUCKET")
+    target_bucket = _required("TEST_R2_BACKUP_BUCKET")
+    client_id = _required("TEST_R2_RECOVERY_CLIENT_ID")
+    client_secret = _required("TEST_R2_RECOVERY_CLIENT_SECRET")
+    if source_bucket != "test-dokushodo" or target_bucket != "test-dokushodo-backup":
+        pytest.fail("R2 recovery integration requires the exact dedicated test buckets")
 
-    endpoint = _required("TEST_R2_ENDPOINT")
-    source_bucket = _required("TEST_R2_SOURCE_BUCKET")
-    target_bucket = _required("TEST_R2_TARGET_BUCKET")
-    if source_bucket == target_bucket or {source_bucket, target_bucket} & {"dokushodo", "dokushodo-backup"}:
-        pytest.fail("Managed-services R2 integration requires dedicated non-production test buckets")
-    token = f"integration-{int(time.time())}-{os.urandom(4).hex()}"
-
-    def client(access_name: str, secret_name: str) -> Any:
-        return boto3.client(
-            "s3",
-            endpoint_url=endpoint,
-            region_name=os.environ.get("TEST_R2_REGION", "auto"),
-            aws_access_key_id=_required(access_name),
-            aws_secret_access_key=_required(secret_name),
-        )
-
-    application_client = client("TEST_R2_APP_ACCESS_KEY_ID", "TEST_R2_APP_SECRET_ACCESS_KEY")
-    source_client = client(
-        "TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY_ID",
-        "TEST_R2_SNAPSHOT_SOURCE_SECRET_ACCESS_KEY",
+    source = R2GatewayStorage(
+        bucket=source_bucket,
+        bucket_class="app",
+        gateway_url=gateway_url,
+        client_id=client_id,
+        client_secret=client_secret,
     )
-    target_client = client("TEST_R2_BACKUP_ACCESS_KEY_ID", "TEST_R2_BACKUP_SECRET_ACCESS_KEY")
-    source_key = f"novels/{token}/metadata.json"
-    application_client.put_object(Bucket=source_bucket, Key=source_key, Body=b'{"integration":true}')
-    backup: R2IncrementalBackupTarget | None = None
+    target = R2GatewayStorage(
+        bucket=target_bucket,
+        bucket_class="backup",
+        gateway_url=gateway_url,
+        client_id=client_id,
+        client_secret=client_secret,
+    )
+    source_key = f"novels/recovery-{uuid.uuid4().hex}/metadata.json"
+    source.save(source_key, b'{"integration":true}')
     snapshot_id: str | None = None
     backup_key: str | None = None
     try:
-        backup = R2IncrementalBackupTarget(
-            source_bucket=source_bucket,
-            target_bucket=target_bucket,
-            target_prefix="snapshots",
-            endpoint_url=endpoint,
-            region=os.environ.get("TEST_R2_REGION", "auto"),
-            source_access_key_id=None,
-            source_secret_access_key=None,
-            target_access_key_id=None,
-            target_secret_access_key=None,
-            source_client=source_client,
-            target_client=target_client,
-        )
+        backup = R2IncrementalBackupTarget(source_backend=source, target_backend=target)
         result = backup.create_snapshot()
         snapshot_id = result.snapshot_id
         manifest = backup._load_manifest(snapshot_id)
@@ -73,13 +57,11 @@ def test_real_r2_backup_credential_split() -> None:
         assert result.verified is True
         assert result.files_count == 1
         assert backup.verify_snapshot(result.snapshot_id).verified is True
-        with pytest.raises(ClientError):
-            source_client.put_object(Bucket=source_bucket, Key=f"{source_key}.forbidden", Body=b"x")
-        with pytest.raises(ClientError):
-            target_client.get_object(Bucket=source_bucket, Key=source_key)
     finally:
-        application_client.delete_object(Bucket=source_bucket, Key=source_key)
+        source.delete(source_key)
         if snapshot_id is not None:
-            target_client.delete_object(Bucket=target_bucket, Key=f"snapshots/{snapshot_id}/manifest.json")
+            target.delete(f"snapshots/{snapshot_id}/manifest.json")
         if backup_key is not None:
-            target_client.delete_object(Bucket=target_bucket, Key=backup_key)
+            target.delete(backup_key)
+        source.close()
+        target.close()

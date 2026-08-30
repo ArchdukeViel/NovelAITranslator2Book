@@ -7,7 +7,8 @@ import json
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from novelai.storage.backends.r2 import ImmutableWriteResult, R2Storage
+from novelai.storage.backends.base import R2StorageBackend
+from novelai.storage.backends.r2_gateway import ImmutableWriteResult
 from novelai.storage.content_addressing import asset_key, generation_key, prepare_json_artifact, sha256_hex
 
 ArtifactKind = Literal["chapters", "translations", "media", "generations"]
@@ -22,13 +23,13 @@ class StoredArtifact:
 
 
 class R2ArtifactRepository:
-    """Small policy layer above R2Storage.
+    """Small policy layer above the canonical R2 gateway contract.
 
     This class owns key construction and immutable JSON metadata. It never
     lists an object prefix; callers must provide exact keys for reads.
     """
 
-    def __init__(self, storage: R2Storage) -> None:
+    def __init__(self, storage: R2StorageBackend) -> None:
         self.storage = storage
 
     def put_json(

@@ -1247,3 +1247,34 @@ Validation evidence:
 The follow-up risk audit normalized the 80 pre-existing backend formatter-drift
 files as an exact path set. The broad Ruff check is clean, and the existing
 dirty worktree—including the user-owned backend edit—was preserved.
+
+## 2026-08-31 DEPENDENCY RECONCILIATION AND CANDIDATE CHECKPOINT
+
+The B5 dependency reconciliation audited the complete sanitized Dependabot
+inventory: 58 proposals, consisting of 14 open, 44 closed, and 38 closed
+without a merge. Every proposal has a current-manifest comparison and a
+candidate disposition in the ignored
+`artifacts/public-hosted-execution/dependabot-ledger.json`. The obsolete
+boto3/moto/S3 proposals are superseded by the hard R2-only storage contract;
+no compatibility branch was restored. TypeScript 6.0.3 and ESLint 9.39.5 are
+explicit compatibility holds because the current peer ranges do not admit the
+next major releases.
+
+Repository tooling regenerated the Python lockfiles and the frontend/Worker
+npm lockfiles. The candidate pins Python 3.14.7, Node.js 26.8.1, immutable
+workflow action references, and immutable container image references. Worker
+tests, binding tests, type checking, test-only deployment dry run, frontend
+install/typecheck/lint/test/build/audit, affected backend checks, the full
+backend suite (`2,976 passed, 13 skipped`), Ruff, Pyright, B4 diagnostics, B5
+artifact generation, and strict artifact validation passed. The local project
+venv reported Python 3.14.6 while the candidate CI and image pins are 3.14.7;
+the repository requires Python 3.14 or newer and the local version difference
+did not alter the candidate lock contract.
+
+The four sanitized B5 artifacts are `dependabot-ledger.json`,
+`dependency-validation.json`, `candidate-manifest.json`, and
+`publication-audit-candidate.json`. Candidate immutability is admitted only
+after the exact change set is committed and its hashes are regenerated. No
+provider, production resource, secret, or repository variable was changed;
+hosted reader, telemetry, recovery, and public-publication gates remain
+separate and `production_capacity_claim=not_established`.

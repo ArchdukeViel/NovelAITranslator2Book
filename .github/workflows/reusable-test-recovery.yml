@@ -1,4 +1,4 @@
-name: Managed Services Recovery Verification
+name: Reusable Test Recovery
 
 on:
   workflow_dispatch:
@@ -17,15 +17,14 @@ on:
     secrets:
       MANAGED_DATABASE_TEST_URL:
         required: true
-      TEST_R2_ENDPOINT:
+      TEST_R2_GATEWAY_URL:
         required: true
-      TEST_R2_BACKUP_ACCESS_KEY_ID:
+      TEST_R2_RECOVERY_CLIENT_ID:
         required: true
-      TEST_R2_BACKUP_SECRET_ACCESS_KEY:
+      TEST_R2_RECOVERY_CLIENT_SECRET:
         required: true
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: managed-test-recovery
@@ -34,8 +33,11 @@ concurrency:
 jobs:
   isolated-managed-recovery:
     if: ${{ inputs.confirm_test_recovery == true }}
-    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+    environment: staging
     services:
       restore-db:
         image: postgres:18.6-alpine@sha256:432b3b824c0769275ec9b0947736ef8b376d6997bcaa9de29818f613819c2feb
@@ -54,11 +56,11 @@ jobs:
       MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
       DATABASE_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
       DATABASE_RESTORE_TARGET_URL: postgresql+psycopg://novelai_restore@127.0.0.1:5432/novelai_restore_verify
-      TEST_R2_ENDPOINT: ${{ secrets.TEST_R2_ENDPOINT }}
-      TEST_R2_TARGET_BUCKET: test-dokushodo-backup
-      TEST_R2_BACKUP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_BACKUP_ACCESS_KEY_ID }}
-      TEST_R2_BACKUP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_BACKUP_SECRET_ACCESS_KEY }}
-      TEST_R2_REGION: auto
+      TEST_R2_GATEWAY_URL: ${{ secrets.TEST_R2_GATEWAY_URL }}
+      TEST_R2_BUCKET: test-dokushodo
+      TEST_R2_BACKUP_BUCKET: test-dokushodo-backup
+      TEST_R2_RECOVERY_CLIENT_ID: ${{ secrets.TEST_R2_RECOVERY_CLIENT_ID }}
+      TEST_R2_RECOVERY_CLIENT_SECRET: ${{ secrets.TEST_R2_RECOVERY_CLIENT_SECRET }}
       DATABASE_BACKUP_ENABLED: "true"
       DATABASE_BACKUP_PREFIX: recovery-${{ github.run_id }}
       DATABASE_BACKUP_MIN_SUCCESSFUL_TO_KEEP: "1"
@@ -71,10 +73,10 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14.6"
+          python-version: "3.14.7"
       - run: pip install "uv==0.12.0"
       - run: >-
-          uv sync --locked --extra dev --extra test --extra s3 --extra auth
+          uv sync --locked --extra dev --extra test --extra auth
       - name: Prepare pinned PostgreSQL 17 client container
         run: |
           set -euo pipefail

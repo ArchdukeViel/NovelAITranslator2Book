@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
-from novelai.storage.backends.r2 import R2ObjectMetadata, R2Storage
+from novelai.storage.backends.base import R2StorageBackend
+from novelai.storage.backends.r2_gateway import R2ObjectMetadata
 from novelai.storage.content_addressing import (
     ArtifactKind,
     artifact_key,
@@ -124,7 +125,7 @@ def _rewrite_content_hash_fields(value: Any, content_hash_mapping: dict[str, str
     return value
 
 
-def _load_json_payload(storage: R2Storage, key: str) -> dict[str, Any]:
+def _load_json_payload(storage: R2StorageBackend, key: str) -> dict[str, Any]:
     try:
         payload = json.loads(gzip.decompress(storage.load(key)).decode("utf-8"))
     except (FileNotFoundError, OSError, gzip.BadGzipFile, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -134,7 +135,7 @@ def _load_json_payload(storage: R2Storage, key: str) -> dict[str, Any]:
     return payload
 
 
-def _parse_record(storage: R2Storage, key: str, source_prefix: str) -> _ObjectRecord:
+def _parse_record(storage: R2StorageBackend, key: str, source_prefix: str) -> _ObjectRecord:
     prefix = f"{source_prefix}/"
     if not key.startswith(prefix):
         raise RuntimeError(f"R2 key is outside the requested namespace: {key}")
@@ -296,7 +297,7 @@ def _rewrite_db_references(
 class R2NovelNamespaceMigrator:
     """Rekey one or more slug namespaces with dry-run and commit separation."""
 
-    def __init__(self, *, storage: R2Storage, db_session: Session) -> None:
+    def __init__(self, *, storage: R2StorageBackend, db_session: Session) -> None:
         self.storage = storage
         self.db_session = db_session
 
@@ -434,7 +435,7 @@ class R2NovelNamespaceMigrator:
         )
 
 
-def delete_migrated_source_namespace(storage: R2Storage, result: R2NamespaceMigrationResult) -> int:
+def delete_migrated_source_namespace(storage: R2StorageBackend, result: R2NamespaceMigrationResult) -> int:
     """Delete old objects only after the caller has committed PostgreSQL."""
 
     if result.dry_run:

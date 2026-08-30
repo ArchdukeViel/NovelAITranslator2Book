@@ -10,6 +10,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from novelai.api.error_handlers import add_error_handlers
 from novelai.api.middleware.security import RequestBodyEnforcementMiddleware, SecurityHeadersMiddleware
+from novelai.api.middleware.timing import RequestTimingMiddleware
 from novelai.api.routers import (
     activity,
     admin,
@@ -59,8 +60,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await runtime_telemetry.start()
     if settings.JOB_WORKER_ENABLED:
         await container.activity_runner.start()
+    scheduler_started = False
     if settings.BACKUP_ENABLED or settings.MAINTENANCE_ENABLED or settings.DATABASE_BACKUP_ENABLED:
         container.scheduler_service.start()
+        scheduler_started = True
     try:
         yield
     finally:
@@ -69,7 +72,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         shutdown_analytics_writer()
         if container.activity_runner.is_running():
             await container.activity_runner.stop()
-        if container.scheduler_service.is_running:
+        if scheduler_started and container.scheduler_service.is_running:
             await container.scheduler_service.stop()
         from novelai.infrastructure.http.fetch_service import get_default_fetch_service
 
@@ -103,6 +106,7 @@ def create_app() -> FastAPI:
     # RequestBody enforcement must be registered before CORS so CORS sits outer,
     # ensuring CORS headers appear on 413/415 responses.
     app.add_middleware(RequestBodyEnforcementMiddleware)
+    app.add_middleware(RequestTimingMiddleware)
 
     # CORS: restrict to configured origins (empty list = nothing allowed)
     if settings.WEB_CORS_ORIGINS:
