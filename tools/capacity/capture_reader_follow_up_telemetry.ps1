@@ -82,6 +82,9 @@ $payload = [ordered]@{ schema_version = 1; campaign_id = $campaignId; snapshots 
 $payload | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $OutputPath -Encoding utf8
 
 $validator = Join-Path $PSScriptRoot "validate_reader_follow_up.ps1"
-& powershell -NoProfile -ExecutionPolicy Bypass -File $validator -Kind hosted-telemetry -Path $OutputPath
+$validatorShell = Get-Command pwsh -ErrorAction SilentlyContinue
+if ($null -eq $validatorShell) { $validatorShell = Get-Command powershell -ErrorAction SilentlyContinue }
+if ($null -eq $validatorShell) { throw "PowerShell runtime is required to validate hosted telemetry." }
+& $validatorShell.Source -NoProfile -ExecutionPolicy Bypass -File $validator -Kind hosted-telemetry -Path $OutputPath
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Telemetry matrix recorded as explicit unavailable evidence: $OutputPath" -ForegroundColor Yellow

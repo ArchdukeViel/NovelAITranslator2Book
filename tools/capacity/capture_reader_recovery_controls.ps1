@@ -54,6 +54,9 @@ $payload = [ordered]@{ schema_version = 1; campaign_id = [string]$baseline.campa
 $payload | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $OutputPath -Encoding utf8
 
 $validator = Join-Path $PSScriptRoot "validate_reader_follow_up.ps1"
-& powershell -NoProfile -ExecutionPolicy Bypass -File $validator -Kind backup-controls -Path $OutputPath
+$validatorShell = Get-Command pwsh -ErrorAction SilentlyContinue
+if ($null -eq $validatorShell) { $validatorShell = Get-Command powershell -ErrorAction SilentlyContinue }
+if ($null -eq $validatorShell) { throw "PowerShell runtime is required to validate recovery controls." }
+& $validatorShell.Source -NoProfile -ExecutionPolicy Bypass -File $validator -Kind backup-controls -Path $OutputPath
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Recovery controls recorded with explicit unavailable status: $OutputPath" -ForegroundColor Yellow
