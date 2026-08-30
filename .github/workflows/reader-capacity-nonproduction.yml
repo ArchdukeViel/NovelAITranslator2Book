@@ -35,7 +35,7 @@ jobs:
         (github.event_name == 'pull_request' &&
          github.event.pull_request.head.repo.full_name == github.repository)
       }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
     timeout-minutes: 60
     env:
       COMPOSE_PROJECT: reader-capacity-test-${{ github.run_id }}
@@ -144,7 +144,29 @@ jobs:
           status=$?
           set -e
           if [[ "$status" -ne 0 ]]; then
-            echo "::error::Disposable database migration failed; see the sanitized job outcome."
+            migration_class="migration_log_unavailable"
+            migration_log="$RUNNER_TEMP/reader-capacity-migrate.log"
+            if [[ -r "$migration_log" ]]; then
+              migration_class="migration_failed_unclassified"
+              if grep -Eqi 'password authentication failed|authentication failed|invalid password|role .* does not exist' "$migration_log"; then
+                migration_class="database_authentication"
+              elif grep -Eqi 'connection refused|could not connect|connection timed out|timeout expired|network is unreachable|temporary failure' "$migration_log"; then
+                migration_class="database_connectivity"
+              elif grep -Eqi 'permission denied|must be owner|insufficient privilege|not authorized' "$migration_log"; then
+                migration_class="database_permission"
+              elif grep -Eqi 'ssl|tls|certificate' "$migration_log"; then
+                migration_class="database_ssl"
+              elif grep -Eqi 'invalid.*dsn|postgresql\+psycopg|driver|unsupported scheme' "$migration_log"; then
+                migration_class="database_url_or_driver"
+              elif grep -Eqi 'can.t locate revision|no such revision|not a valid revision|alembic' "$migration_log"; then
+                migration_class="migration_schema"
+              elif grep -Eqi 'docker|compose|service|image|daemon' "$migration_log"; then
+                migration_class="compose_runtime"
+              fi
+            fi
+            printf '{"schema_version":"1","status":"migration_failed","error_class":"%s","raw_log_emitted":false}\n' "$migration_class" \
+              > artifacts/operations/reader-capacity-follow-up/migration-diagnostic.json
+            echo "::error::Disposable database migration failed; sanitized error class: $migration_class"
             exit "$status"
           fi
 
@@ -252,37 +274,62 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --detach --name "$CLOUD_FLARED_CONTAINER" --network host \
-            "$CLOUDFLARED_IMAGE" tunnel --no-autoupdate \
-            --url http://127.0.0.1:18080 --http-host-header localhost \
-            > "$RUNNER_TEMP/reader-capacity-cloudflared-id"
-
           cloudflare_url=""
-          for _ in $(seq 1 60); do
-            cloudflare_url="$(docker logs "$CLOUD_FLARED_CONTAINER" 2>&1 \
-              | sed -nE 's/.*(https:\/\/[a-z0-9-]+\.trycloudflare\.com).*/\1/p' \
-              | head -n 1 || true)"
-            if [[ -n "$cloudflare_url" ]]; then break; fi
-            sleep 1
+          tunnel_ready=false
+          for tunnel_attempt in 1 2 3; do
+            docker rm --force "$CLOUD_FLARED_CONTAINER" > /dev/null 2>&1 || true
+            if ! docker run --detach --name "$CLOUD_FLARED_CONTAINER" --network host \
+              "$CLOUDFLARED_IMAGE" tunnel --no-autoupdate \
+              --url http://127.0.0.1:18080 --http-host-header localhost \
+              > "$RUNNER_TEMP/reader-capacity-cloudflared-id"; then
+              echo "::warning::Disposable Cloudflare quick tunnel attempt $tunnel_attempt failed to start."
+              continue
+            fi
+
+            cloudflare_url=""
+            for _ in $(seq 1 60); do
+              cloudflare_url="$(docker logs "$CLOUD_FLARED_CONTAINER" 2>&1 \
+                | sed -nE 's/.*(https:\/\/[a-z0-9-]+\.trycloudflare\.com).*/\1/p' \
+                | head -n 1 || true)"
+              if [[ -n "$cloudflare_url" ]]; then break; fi
+              sleep 1
+            done
+            if [[ -z "$cloudflare_url" ]]; then
+              echo "::warning::Disposable Cloudflare quick tunnel attempt $tunnel_attempt did not publish a URL."
+              continue
+            fi
+
+            tunnel_status=""
+            for _ in $(seq 1 60); do
+              tunnel_status="$(curl --silent --connect-timeout 5 --max-time 15 \
+                --output /dev/null --write-out '%{http_code}' \
+                "$cloudflare_url/health/live" 2>/dev/null || true)"
+              if [[ "$tunnel_status" == "200" ]]; then break; fi
+              sleep 1
+            done
+            if [[ "$tunnel_status" == "200" ]]; then
+              tunnel_ready=true
+              break
+            fi
+            echo "::warning::Disposable Cloudflare quick tunnel attempt $tunnel_attempt did not reach the isolated liveness endpoint."
           done
-          if [[ -z "$cloudflare_url" ]]; then
-            echo "::error::The disposable Cloudflare quick tunnel did not start."
-            exit 1
-          fi
-          tunnel_status=""
-          for _ in $(seq 1 60); do
-            tunnel_status="$(curl --silent --connect-timeout 5 --max-time 15 \
-              --output /dev/null --write-out '%{http_code}' \
-              "$cloudflare_url/health/live" 2>/dev/null || true)"
-            if [[ "$tunnel_status" == "200" ]]; then break; fi
-            sleep 1
-          done
-          if [[ "$tunnel_status" != "200" ]]; then
-            echo "::error::The disposable Cloudflare quick tunnel did not reach the isolated liveness endpoint."
+          if [[ "$tunnel_ready" != true ]]; then
+            echo "::error::The disposable Cloudflare quick tunnel did not reach the isolated liveness endpoint after bounded retries."
             exit 1
           fi
           echo "Disposable Cloudflare quick tunnel readiness reached HTTP 200."
           printf 'READER_CLOUDFLARE_BASE_URL=%s\n' "$cloudflare_url" >> "$GITHUB_ENV"
+
+      - name: Capture sanitized hosted telemetry boundary
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File tools/capacity/capture_reader_follow_up_telemetry.ps1 `
+            -BaselinePath artifacts/operations/reader-capacity-follow-up/baseline.json `
+            -OutputPath artifacts/operations/reader-capacity-follow-up/hosted-telemetry.json `
+            -Phase pre_remediation `
+            -ReaderRunId "reader-${{ github.run_id }}" `
+            -Revision "${{ github.sha }}" `
+            -Topology cloudflare_tunnel
 
       - name: Run the bounded Cloudflare reader profile
         shell: pwsh
@@ -341,7 +388,7 @@ jobs:
 
       - name: Upload sanitized reader evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: reader-capacity-nonproduction-${{ github.run_id }}
           path: artifacts/operations/reader-capacity-follow-up/

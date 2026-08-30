@@ -8,7 +8,7 @@ permissions:
 jobs:
   scanning:
     name: GitGuardian scan
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: Checkout

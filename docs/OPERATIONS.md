@@ -107,7 +107,7 @@ valid blocked report is non-production evidence: it does not change the named
 `dev.dokushodo.online` tunnel, prove hosted billing/queue telemetry, or establish
 production reader capacity.
 
-### Latest disposable profile checkpoint - 2026-08-29
+### Prior disposable profile checkpoint - 2026-08-29
 
 The follow-up rerun [33259176327](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33259176327)
 completed after the workflow added a tunnel-readiness smoke check and a
@@ -137,6 +137,35 @@ The Supabase test-project advisor and aggregate SQL checks were read-only. The
 Cloudflare zone analytics call was unavailable, zone latency had no usable
 payload, and account-level R2 metrics lacked exact test-bucket/window
 granularity. These provider limitations remain explicit unavailable evidence.
+
+### Current reader workflow disposition - 2026-08-30
+
+The latest complete bounded reader workflow [33293251855](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33293251855)
+completed the 1k matrix, controlled cold resets, and guarded cleanup at the
+candidate revision. The isolated Cloudflare quick Tunnel reached the liveness
+endpoint, but its SLO cells remained blocked: health p95 was 143.075/377.958
+ms warm/cold, catalog p95 was 4578.523/5276.454 ms, detail p95 was
+6763.523/7352.754 ms, search p95 was 7558.691/8908.098 ms, and chapter
+warm/cold cells were unavailable. All artifact validators passed, but the
+sanitized result remains quantified non-production evidence with
+`reader_slo_status=blocked`, `path_profile_status=blocked`,
+`telemetry_status=unavailable`, `recovery_status=not_assessed`, and
+`production_capacity_claim=not_established`.
+
+Earlier telemetry-enabled attempts [33286324252](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33286324252),
+[33286713872](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33286713872),
+and [33287228638](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33287228638)
+stopped before a complete profile: one hit the Linux PowerShell telemetry
+boundary and two exhausted bounded anonymous quick-tunnel readiness retries.
+The Cloudflare MCP can verify the durable named development tunnel and DNS
+route, but it cannot repair an anonymous quick-tunnel session. Do not replace
+the required isolated quick tunnel with the durable route or treat readiness as
+capacity evidence. Keep the worker and original full translation queue
+stopped/paused.
+
+The current workflow pins `actions/upload-artifact` to v7.0.1, so the earlier
+Node.js 20 deprecation warning belongs to the old run and is not a current
+workflow configuration issue.
 
 ## Health
 
@@ -702,10 +731,64 @@ revocation. Its application fixture tables remain empty and the security
 advisor reports no lints. This does not change the scope of the recovery run
 above or establish reader-fixture, production, or capacity readiness.
 
-This is current non-production recovery evidence for one isolated path. It
-does not establish recurring production backup freshness, alert delivery,
-production smoke, reader capacity, hosted telemetry, or production recovery
-readiness. Keep the worker and original full queue stopped/paused.
+At the 2026-08-28 checkpoint, this was current non-production recovery
+evidence for one isolated path. It did not establish recurring production
+backup freshness, alert delivery, production smoke, reader capacity, hosted
+telemetry, or production recovery readiness. Keep the worker and original full
+queue stopped/paused.
+
+## Managed non-production recovery rerun - 2026-08-30 (prior candidate run)
+
+The explicitly authorized test-only recovery workflow
+[`33270802038`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33270802038)
+completed successfully in 1m51s at merged `main` commit
+`01f106ade3700405f3f4a998a1c708ed7113505b`. It used only the disposable
+managed test database, `test-dokushodo` for application R2,
+`test-dokushodo-backup` for recovery material, and an ephemeral local
+PostgreSQL restore target. The sanitized artifact is
+`managed-database-recovery-evidence-33270802038`.
+
+Backup creation, healthy freshness, manifest/checksum verification, isolated
+restore, representative queries, Alembic-head verification, public isolation,
+R2 cleanup, temporary-role cleanup, and overall cleanup passed. The restored
+target contained 37 public tables, all 37 with RLS enabled, zero invalid
+constraints, and `production_mutation=none`.
+
+Independent Supabase MCP SQL confirmed zero fixture novel rows and zero
+fixture chapter rows. Cloudflare MCP read-only listings confirmed zero objects
+under `novels/123/` in `test-dokushodo` and zero `recovery-` objects in
+`test-dokushodo-backup`. The recovery status is `partial`, because recurring
+schedule history, retention behavior, stale/failure alert transition and
+delivery, production smoke, and production recovery readiness remain
+unverified. No production resource, secret, or repository variable changed;
+keep the worker and original full queue stopped/paused.
+
+## Managed non-production recovery checkpoint - 2026-08-30 (corrected target)
+
+The corrected explicitly authorized test-only recovery workflow
+[`33287970969`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33287970969)
+ran from the candidate branch after the recovery target was pinned to
+`test-dokushodo-backup`. It used only the disposable managed test database,
+`test-dokushodo` for application R2, `test-dokushodo-backup` for recovery
+material, and an ephemeral local PostgreSQL restore database. The sanitized
+artifact is `managed-database-recovery-evidence-33287970969`.
+
+Backup creation, healthy freshness, manifest/checksum/reference verification,
+isolated restore, representative queries, public isolation, temporary-role
+cleanup, R2 cleanup, and overall cleanup all passed, with
+`production_mutation=none`. The preceding candidate run
+[`33287685641`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33287685641)
+was correctly stopped at backup creation after the application bucket rejected
+the recovery target; it made no production mutation. Independent Supabase MCP
+SQL now confirms zero fixture novel/chapter rows, and Cloudflare MCP confirms
+zero objects under `novels/123/` and `recovery-` in the two approved test
+buckets.
+
+This is one-run test-only recovery evidence. Set `recovery_status=partial`
+until recurring schedule/retention history, stale/failure alert transition and
+delivery, production smoke, and production recovery readiness are independently
+verified. Leave `MANAGED_SERVICE_TESTS_ENABLED=false` and keep the worker/full
+queue stopped/paused.
 
 ## Pipeline async execution and capacity runbook checkpoint - 2026-08-24
 

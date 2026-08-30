@@ -468,3 +468,25 @@ it also samples the same Caddy listener through loopback as diagnostic
 comparison evidence. It always removes the synthetic fixture, test runtime,
 and quick tunnel. See [`OPERATIONS.md`](OPERATIONS.md) for the evidence and
 cold-cache reset contract.
+
+### Non-production workflow runner checkpoint - 2026-08-30
+
+The authorized branch exercise ran the non-production reader, managed-service,
+static-analysis, dependency-review, and CI jobs on one disposable Ubuntu 24.04
+WSL2 self-hosted runner carrying the label
+`dokushodo-nonprod-linux-x64`. The runner was used only for candidate-branch
+workflows and was not a production deployment target. With one runner, eligible
+jobs serialize while it is registered; removing it after the run is required.
+
+Production-facing workflows remain on their existing hosted runner
+configuration and were not rerouted. The reader and recovery workflows pin
+`actions/upload-artifact` to v7.0.1, eliminating the earlier Node.js 20 action
+warning from the current workflow configuration. Runner registration,
+credentials, and workflow artifacts are disposable operational state and must
+not be recorded in repository documentation.
+
+The GitGuardian workflow now uses the same self-hosted label for its
+same-repository push and pull-request scans. Its fork guard remains in place,
+so the `GITGUARDIAN_API_KEY` is never exposed to fork code. This changes only
+the scan execution host; it does not reroute production deployment or
+monitoring workflows.

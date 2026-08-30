@@ -22,7 +22,7 @@ jobs:
   # its inputs actually changed. Push runs on main/develop stay authoritative
   # and always execute the full matrix.
   changes:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
@@ -53,7 +53,7 @@ jobs:
               - '.github/workflows/**'
 
   backend-lint:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -88,7 +88,7 @@ jobs:
           echo "No router layer violations found."
 
   backend-tests:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
     needs: changes
     if: >-
       ${{
@@ -141,7 +141,7 @@ jobs:
 
   migration-smoke:
     name: Migration smoke test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
     needs: changes
     if: >-
       ${{
@@ -209,7 +209,7 @@ jobs:
 
   backend-extended:
     name: Backend extended tests (${{ matrix.shard }})
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
     needs: changes
     if: >-
       ${{
@@ -268,7 +268,7 @@ jobs:
           --tb=short -q ${{ matrix.test_files }}
 
   frontend-check:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
     needs: changes
     if: >-
       ${{
@@ -296,7 +296,7 @@ jobs:
       - run: npm test
 
   docker-build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
     # PRs and develop pushes validate image builds; on main the images are
     # built authoritatively by the Build and Push workflow (build.yml) after
     # CI succeeds, so the non-push duplicate build is skipped there.
@@ -358,7 +358,7 @@ jobs:
           cache-from: type=gha,scope=frontend
 
   e2e-tests:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

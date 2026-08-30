@@ -1,3 +1,85 @@
+## 2026-08-30 CURRENT NON-PRODUCTION FOLLOW-UP CHECKPOINT
+
+The corrected test-only recovery workflow [33287970969](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33287970969)
+passed backup creation, healthy freshness, manifest/checksum/reference
+verification, isolated PostgreSQL restore, representative reads, public
+isolation, and cleanup using only the disposable managed test database,
+`test-dokushodo`, `test-dokushodo-backup`, and an ephemeral restore target. Its
+sanitized artifact is `managed-database-recovery-evidence-33287970969` and it
+records `production_mutation=none`. Independent Supabase and Cloudflare MCP
+checks found zero fixture rows and zero objects under the exact test prefixes.
+This is one-run recovery evidence; recurring schedule/retention behavior,
+alert transition/delivery, production smoke, and production recovery readiness
+remain unverified, so `recovery_status=partial`.
+
+The latest self-hosted reader rerun [33293251855](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33293251855)
+completed the 60-cell matrix, controlled cold resets, and guarded cleanup on the
+disposable Ubuntu 24.04 runner. The isolated Cloudflare quick Tunnel reached
+the liveness endpoint, but the SLO-gate p95 values remained over budget for
+health (143.075/377.958 ms warm/cold), catalog (4578.523/5276.454 ms), detail
+(6763.523/7352.754 ms), and search (7558.691/8908.098 ms); both chapter cells
+were unavailable. All artifact validators passed, while the sanitized result
+remains `reader_slo_status=blocked`, `path_profile_status=blocked`,
+`telemetry_status=unavailable`, `recovery_status=not_assessed`,
+`overall_follow_up_disposition=complete_with_quantified_blocker`, and
+`production_capacity_claim=not_established`. Its artifact is
+`reader-capacity-nonproduction-33293251855`.
+
+The self-hosted GitGuardian push scan [33293250014](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33293250014)
+and same-repository pull-request scan [33293251844](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33293251844)
+both passed. This confirms the runner integration for the current branch; the
+sanitized incident/false-positive exercise remains a separate release-control
+requirement.
+
+The complete bounded reader workflow [33284596466](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33284596466)
+produced the sanitized artifact `reader-capacity-nonproduction-33284596466`.
+The Cloudflare SLO gate remained blocked by health, catalog, detail, and search
+latencies above budget plus unavailable chapter/cold-search cells; all required
+reader statuses remain fail-closed and `production_capacity_claim` remains
+`not_established`. Later telemetry-enabled attempts [33286324252](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33286324252),
+[33286713872](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33286713872),
+and [33287228638](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33287228638)
+stopped before a complete profile at the Linux PowerShell or anonymous quick
+tunnel readiness boundary. Cloudflare MCP confirmed the durable development
+tunnel/DNS control plane separately; it cannot repair an anonymous quick-tunnel
+edge session, and the durable route was not substituted for the required
+isolated test path.
+
+The authorized candidate workflows ran on one disposable Ubuntu 24.04 WSL2
+self-hosted runner labeled `dokushodo-nonprod-linux-x64`; production workflows
+were not rerouted. Reader/recovery artifact uploads now pin `actions/upload-artifact`
+to v7.0.1, so the earlier Node.js 20 deprecation warning is historical rather
+than current configuration. The worker and original full translation queue
+remained stopped/paused throughout.
+
+## 2026-08-30 TEST-ONLY MANAGED DATABASE RECOVERY RERUN
+
+The explicitly authorized test-only recovery workflow [run
+33270802038](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33270802038)
+completed successfully in 1m51s at merged `main` commit
+`01f106ade3700405f3f4a998a1c708ed7113505b`. It used only the disposable
+managed test database, `test-dokushodo` for application R2, and
+`test-dokushodo-backup` for recovery material, with an ephemeral local
+PostgreSQL restore target. The sanitized uploaded artifact is
+`managed-database-recovery-evidence-33270802038`.
+
+The artifact reports successful backup creation, healthy freshness,
+manifest/checksum verification, isolated restore, representative queries,
+Alembic-head verification, public isolation, R2 cleanup, temporary-role
+cleanup, and overall cleanup. The restored target contained 37 public tables,
+all 37 had RLS enabled, and there were zero invalid constraints. It records
+`production_mutation=none`.
+
+Independent post-run Supabase MCP SQL found zero fixture novel rows and zero
+fixture chapter rows. Cloudflare MCP read-only listings found zero objects
+under `novels/123/` in `test-dokushodo` and zero `recovery-` objects in
+`test-dokushodo-backup`. This changes the current recovery disposition to
+`partial`: recurring schedule history, retention behavior, stale/failure alert
+transition and delivery, production smoke, and production recovery readiness
+remain unverified. Reader SLO/path remain blocked, hosted telemetry remains
+unavailable, and `production_capacity_claim=not_established`. No production
+resource, secret, or repository variable was changed.
+
 ## 2026-08-29 NON-PRODUCTION CLOUDFLARE READER FOLLOW-UP RERUN
 
 The confirmation-gated non-production reader workflow [run

@@ -191,6 +191,7 @@ def test_gitguardian_workflow_contract() -> None:
     assert "pull_request" in source
     assert re.search(r"(?m)^permissions:\s*$", source)
     assert "contents: read" in source
+    assert "dokushodo-nonprod-linux-x64" in source
     assert "fetch-depth: 0" in source
     assert "secrets.GITGUARDIAN_API_KEY" in source
     for line in source.splitlines():
@@ -358,7 +359,7 @@ def test_managed_recovery_workflow_is_confirmation_gated_and_isolated() -> None:
     assert "missing_extension" in source
     assert 'echo "::add-mask::$BACKUP_KEY"' in source
     assert "ephemeral" in source.lower()
-    assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in source
+    assert "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a" in source
     assert "TEST_R2_BACKUP_ACCESS_KEY_ID:" in source
     assert "TEST_R2_BACKUP_SECRET_ACCESS_KEY:" in source
 

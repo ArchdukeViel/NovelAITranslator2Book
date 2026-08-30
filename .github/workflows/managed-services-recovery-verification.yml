@@ -34,7 +34,7 @@ concurrency:
 jobs:
   isolated-managed-recovery:
     if: ${{ inputs.confirm_test_recovery == true }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
     timeout-minutes: 30
     services:
       restore-db:
@@ -55,7 +55,7 @@ jobs:
       DATABASE_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
       DATABASE_RESTORE_TARGET_URL: postgresql+psycopg://novelai_restore@127.0.0.1:5432/novelai_restore_verify
       TEST_R2_ENDPOINT: ${{ secrets.TEST_R2_ENDPOINT }}
-      TEST_R2_TARGET_BUCKET: ${{ vars.TEST_R2_TARGET_BUCKET }}
+      TEST_R2_TARGET_BUCKET: test-dokushodo-backup
       TEST_R2_BACKUP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_BACKUP_ACCESS_KEY_ID }}
       TEST_R2_BACKUP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_BACKUP_SECRET_ACCESS_KEY }}
       TEST_R2_REGION: auto
@@ -172,7 +172,7 @@ jobs:
             echo 'Recovery evidence file was not produced.' >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: managed-database-recovery-evidence-${{ github.run_id }}

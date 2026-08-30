@@ -2,15 +2,16 @@
 
 Spec ID: reader-capacity-and-recovery-follow-up
 Task: T-009
-Observed UTC: 2026-08-25
+Observed UTC: 2026-08-29 (latest hosted run)
 
 ## Result
 
-The original 2026-08-25 record below was blocked because no operator-authorized
-isolated hosted target had been supplied. A fresh 2026-08-28 confirmation-gated
-run now proves the managed PostgreSQL backup/restore path for the disposable
-test project and dedicated non-production R2 target. It does not establish
-production recovery readiness.
+The original 2026-08-25 record was blocked because no operator-authorized
+isolated hosted target had been supplied. Confirmation-gated test-only runs on
+2026-08-28 and 2026-08-29 now prove the managed PostgreSQL/R2 backup and
+isolated-restore path for the disposable test project and dedicated
+non-production R2 targets. They do not establish production recovery
+readiness.
 
 ## Evidence boundary
 
@@ -32,7 +33,7 @@ production recovery readiness.
 
 ## Current non-production recovery checkpoint - 2026-08-28
 
-The confirmation-gated run
+The earlier confirmation-gated run
 [`33182847311`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33182847311)
 passed backup creation, manifest/checksum verification, backup freshness,
 isolated restore, Alembic-head verification, representative queries, public
@@ -48,3 +49,26 @@ readiness remain open.
 
 Production database, canonical R2 content, and public production routes remain
 untouched.
+
+## Latest non-production recovery checkpoint - 2026-08-29 UTC
+
+The explicitly authorized test-only recovery workflow
+[`33270802038`](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33270802038)
+completed successfully in 1m51s at merged `main` commit
+`01f106ade3700405f3f4a998a1c708ed7113505b`. Its sanitized artifact is
+`managed-database-recovery-evidence-33270802038`.
+
+The artifact reports successful backup creation, healthy freshness,
+manifest/checksum verification, isolated restore, representative queries,
+Alembic-head verification, public isolation, R2 cleanup, temporary-role
+cleanup, and overall cleanup. It records 37 public tables, 37 RLS tables, zero
+invalid constraints, and `production_mutation=none`. Independent Supabase MCP
+SQL found zero fixture novel rows and zero fixture chapter rows. Cloudflare MCP
+read-only listings found zero objects under `novels/123/` in `test-dokushodo`
+and zero `recovery-` objects in `test-dokushodo-backup`.
+
+This is current non-production restore evidence and changes the recovery
+disposition to `partial`, not `complete`: recurring schedule/retention
+evidence, stale/failure alert transition and delivery, production smoke, and
+production recovery readiness remain open. No production database, canonical
+R2 content, public route, secret, or repository variable was changed.
