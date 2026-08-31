@@ -176,6 +176,12 @@ explicitly selected and authorized protected test R2 gateway, independent
 queue/writer proof, observed isolated runtime, and ready disposable Quick
 Tunnel. production_capacity_claim remains not_established.
 
+Candidate 7d5d7b8 is pushed to PR #136. Its current CI, CodeQL, Security Static
+Analysis, Dependency Review, and Secret Scan runs all completed before runner
+assignment with zero executed steps and no runner name; the exact run links are
+recorded in EVIDENCE.md. The PR remains merge-blocked, and these failures do
+not represent application, capacity, or production-readiness results.
+
 ### B7 read-only MCP preflight checkpoint - 2026-08-31
 
 Status: `blocked` before any fixture write. The exact candidate matched the
