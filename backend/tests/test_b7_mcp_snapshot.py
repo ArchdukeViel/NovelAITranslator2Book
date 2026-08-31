@@ -69,6 +69,7 @@ def test_snapshot_is_sanitized_and_fail_closed() -> None:
         "collision": False,
     }
     assert payload["cloudflare"]["r2"]["application_prefix_objects"] == 0
+    assert payload["cloudflare"]["tunnel"]["status"] == "down"
     assert payload["safety"]["profile_eligible"] is False
     blocker_ids = {item["blocker_id"] for item in payload["safety"]["blockers"]}
     assert {"blk-b7-writer-state", "blk-b7-tunnel", "blk-b7-r2-analytics"} <= blocker_ids

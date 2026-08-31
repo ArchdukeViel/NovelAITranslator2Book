@@ -161,7 +161,7 @@ def build_snapshot(
     writer_state = _state(values, "other_writers_state", "unknown")
     queue_state = _state(values, "original_queue_state", "unknown")
     worker_state = _state(values, "worker_state", "unknown")
-    tunnel_state = _state(values, "tunnel_state")
+    tunnel_state = _state(values, "tunnel_status")
     reader_runtime_state = _state(values, "reader_runtime_state")
     r2_window_state = _state(values, "r2_exact_window_status")
     ruleset_state = _state(values, "ruleset_status")
