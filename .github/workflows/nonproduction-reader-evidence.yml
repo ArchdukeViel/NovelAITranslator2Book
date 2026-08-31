@@ -63,11 +63,20 @@ jobs:
           set -euo pipefail
           umask 077
 
-          if [[ -z "${MANAGED_DATABASE_TEST_URL:-}" || -z "${TEST_R2_GATEWAY_URL:-}" ||
-                -z "${TEST_R2_APP_CLIENT_ID:-}" || -z "${TEST_R2_APP_CLIENT_SECRET:-}" ||
-                -z "${TEST_R2_RECOVERY_CLIENT_ID:-}" || -z "${TEST_R2_RECOVERY_CLIENT_SECRET:-}" ||
-                -z "${TEST_R2_APPLICATION_BUCKET:-}" || -z "${TEST_R2_BACKUP_BUCKET:-}" ]]; then
-            echo "::error::The disposable managed database/R2 test secrets or application bucket are unavailable."
+          missing_names=()
+          [[ -n "${MANAGED_DATABASE_TEST_URL:-}" ]] || missing_names+=("MANAGED_DATABASE_TEST_URL")
+          [[ -n "${TEST_R2_GATEWAY_URL:-}" ]] || missing_names+=("TEST_R2_GATEWAY_URL")
+          [[ -n "${TEST_R2_APP_CLIENT_ID:-}" ]] || missing_names+=("TEST_R2_APP_CLIENT_ID")
+          [[ -n "${TEST_R2_APP_CLIENT_SECRET:-}" ]] || missing_names+=("TEST_R2_APP_CLIENT_SECRET")
+          [[ -n "${TEST_R2_RECOVERY_CLIENT_ID:-}" ]] || missing_names+=("TEST_R2_RECOVERY_CLIENT_ID")
+          [[ -n "${TEST_R2_RECOVERY_CLIENT_SECRET:-}" ]] || missing_names+=("TEST_R2_RECOVERY_CLIENT_SECRET")
+          [[ -n "${TEST_R2_APPLICATION_BUCKET:-}" ]] || missing_names+=("TEST_R2_APPLICATION_BUCKET")
+          [[ -n "${TEST_R2_BACKUP_BUCKET:-}" ]] || missing_names+=("TEST_R2_BACKUP_BUCKET")
+          if ((${#missing_names[@]} > 0)); then
+            mkdir -p artifacts/operations/reader-capacity-follow-up
+            printf '{"schema_version":1,"status":"blocked","missing_names":"%s","secrets_emitted":false}\n' \
+              "${missing_names[*]}" > artifacts/operations/reader-capacity-follow-up/runtime-secret-preflight.json
+            echo "::error::The disposable managed database/R2 test inputs are unavailable; missing names: ${missing_names[*]}"
             exit 1
           fi
           if [[ "$TEST_R2_GATEWAY_URL" != https://* ]]; then
