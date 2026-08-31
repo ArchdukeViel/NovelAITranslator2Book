@@ -33,9 +33,10 @@ candidate SHA, workflow URLs, job metadata, and settings provenance without raw
 logs or provider data.
 
 The five required candidate workflows returned one run each: CI, CodeQL, Secret
-Scan, Security Static Analysis, and Dependency Review. Their 16 jobs all failed
-before runner assignment, executed zero steps, and consumed zero billable runner
-time. The repository runner inventory was empty. This is a GitHub-hosted runner
+Scan, Security Static Analysis, and Dependency Review. Their 16 jobs included 10
+failures before runner assignment and 6 dependent jobs skipped as a consequence;
+all 16 had zero executed steps and consumed zero billable runner time. The
+repository runner inventory was empty. This is a GitHub-hosted runner
 availability blocker, not a workflow-pass, application, reader-capacity, or
 production-readiness result. The independent GitGuardian check passed, while
 Supabase Preview was skipped because no preview branch was associated.

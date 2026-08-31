@@ -528,11 +528,12 @@ monitoring workflows.
 
 The current candidate workflow contract targets GitHub-hosted Ubuntu and forbids
 persistent self-hosted execution. The repository runner inventory is currently
-empty. The five required candidate workflows were returned by GitHub, but all
-16 jobs failed before runner assignment with zero executed steps and zero
-billable runner time; this is a hosted-runner availability blocker rather than a
-successful CI or capacity result. The exact candidate SHA, run URLs, timings,
-and bounded job metadata are retained in the validated B6 evidence artifacts.
+empty. The five required candidate workflows were returned by GitHub with 16 job
+records: 10 failed before runner assignment and 6 dependent jobs were skipped;
+all 16 had zero executed steps and zero billable runner time. This is a
+hosted-runner availability blocker rather than a successful CI or capacity
+result. The exact candidate SHA, run URLs, timings, and bounded job metadata are
+retained in the validated B6 evidence artifacts.
 
 The repository remains private. No visibility transition, public-main rerun,
 external-fork proof, GitHub settings change, provider operation, production

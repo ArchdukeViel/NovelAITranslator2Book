@@ -127,9 +127,10 @@ in the validated B6 artifacts.
 
 The five required candidate workflows returned one run each: CI, CodeQL, Secret
 Scan, Security Static Analysis, and Dependency Review. They collectively exposed
-16 jobs, but every job failed before runner assignment, executed zero steps, and
-consumed zero billable runner time. The repository runner inventory reported zero
-registered runners. The exact run URLs and job metadata are retained in
+16 jobs: 10 failed before runner assignment and 6 were skipped as dependent jobs;
+all 16 had zero executed steps and consumed zero billable runner time. The
+repository runner inventory reported zero registered runners. The exact run URLs
+and job metadata are retained in
 `private-hosted-runs.json`. This is a GitHub-hosted runner availability failure,
 not application or capacity evidence. The independent GitGuardian check passed;
 Supabase Preview was skipped because no preview branch was associated.
