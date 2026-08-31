@@ -48,16 +48,14 @@ Tunnel, hosted reader, frontend, recovery, and cleanup evidence remain
 unavailable or blocked. The current blocked bundle records these conditions and
 keeps production_capacity_claim=not_established.
 
-The pushed candidate 7d5d7b8 triggered the current PR #136 checks:
-[CI](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33357588192),
-[CodeQL](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33357588186),
-[Security Static Analysis](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33357588198),
-[Dependency Review](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33357588176),
-and [Secret Scan](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33357588146).
-All five completed with failure before runner assignment, zero executed steps,
-and no runner name; CI had six dependent jobs skipped. PR #136 therefore
-remains merge-blocked. These are runner-allocation evidence, not code, test,
-capacity, or production-readiness evidence.
+The current pushed candidate triggered the checks attached to [PR
+#136](https://github.com/ArchdukeViel/NovelAITranslator2Book/pull/136). CI,
+CodeQL, Security Static Analysis, Dependency Review, and Secret Scan all
+completed with failure before runner assignment, zero executed steps, and no
+runner name; CI had six dependent jobs skipped. PR #136 therefore remains
+merge-blocked. These are runner-allocation evidence, not code, test, capacity,
+or production-readiness evidence; the exact run URLs are preserved in the
+remote check history and final handoff report.
 
 ## 2026-08-31 B7 READ-ONLY MCP PREFLIGHT CHECKPOINT
 

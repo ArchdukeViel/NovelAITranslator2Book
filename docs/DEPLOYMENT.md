@@ -559,10 +559,10 @@ self-hosted runner to satisfy the GitHub-hosted execution gate.
 
 ### Current hosted runner allocation result - 2026-08-31
 
-Candidate 7d5d7b8 is pushed to PR #136. The current CI, CodeQL, Secret Scan,
-Security Static Analysis, and Dependency Review runs all completed before runner
-assignment with zero executed steps and no runner name; the repository runner
-inventory remains empty. This is an external GitHub-hosted runner-allocation
+The current candidate is pushed to PR #136. Its CI, CodeQL, Secret Scan,
+Security Static Analysis, and Dependency Review runs all completed before
+runner assignment with zero executed steps and no runner name; the repository
+runner inventory remains empty. This is an external GitHub-hosted runner-allocation
 failure, not a deployment, application, or capacity result. The PR remains
 merge-blocked. Do not switch these workflows to the historical self-hosted
 label, and do not change repository visibility or provider resources to bypass
