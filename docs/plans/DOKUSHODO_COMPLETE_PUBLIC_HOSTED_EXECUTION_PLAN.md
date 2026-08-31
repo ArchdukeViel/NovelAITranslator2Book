@@ -4,8 +4,8 @@ plan_version: 2.1.0
 document_kind: execution_plan
 canonical_truth: false
 plan_role: execution
-work_state: active
-blocked_reason: ""
+work_state: blocked
+blocked_reason: "B7/B8 hard stops: GitHub-hosted runner allocation unavailable; active specification metadata requires owner approval; queue/writer/runtime/Tunnel readiness is unproven; exact provider telemetry is unavailable."
 predecessor: dokushodo-docs-standardization
 predecessor_version: 2.1.0
 predecessor_path: docs/plans/DOKUSHODO_AGENTS_AND_CANONICAL_DOCUMENTATION_STANDARDIZATION_PLAN.md
@@ -49,6 +49,26 @@ plan retains their useful publication, workflow, timing, frontend, security,
 telemetry, recovery, and validation detail only after reconciling it with
 Plan A, the current repository, the R2-only end state, and the explicit
 non-production/fail-closed boundaries below.
+
+## Current execution checkpoint - 2026-08-31
+
+Plan A remains complete and its hash-bound handoff is valid. Plan B is blocked
+before any new fixture write: the dedicated Supabase test project and both
+approved test R2 bucket classes were proven read-only, with zero fixture rows
+and zero guarded-prefix objects, but the isolated reader runtime, original
+queue, other-writer state, and disposable Quick Tunnel were not independently
+ready. The current GitHub-hosted Ubuntu jobs fail before runner assignment;
+the repository has no registered self-hosted runner, and the plan forbids
+using the historical self-hosted label as a substitute.
+
+The candidate-bound B7 MCP snapshot, route/stage profile, complete blocked
+bundle, validators, and canonical checkpoint records are retained under
+`artifacts/operations/reader-capacity-follow-up/`. They prove artifact
+completeness and fail-closed disposition only. B7 hosted reader/frontend/
+pipeline/data-path/recovery execution and B8 remote closeout remain unadmitted;
+`production_capacity_claim=not_established`. Resume only after hosted runner
+allocation is restored, the owner resolves the active-spec metadata mismatch,
+and the queue/writer/runtime/Tunnel gates are independently proven.
 
 ## Program outcome
 
