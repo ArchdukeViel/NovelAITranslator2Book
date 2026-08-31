@@ -180,7 +180,31 @@ jobs:
           status=$?
           set -e
           if [[ "$status" -ne 0 ]]; then
-            echo "::error::Disposable reader fixture seeding failed; no reader profile was run."
+            seed_class="seed_failed_unclassified"
+            seed_log="$RUNNER_TEMP/reader-capacity-seed.log"
+            if [[ -r "$seed_log" ]]; then
+              if grep -Eqi '401|403|unauthorized|forbidden|cf-access|access identity|r2 gateway' "$seed_log"; then
+                seed_class="r2_gateway_authentication"
+              elif grep -Eqi 'r2|object storage|http_error|bucket' "$seed_log"; then
+                seed_class="r2_gateway_request"
+              elif grep -Eqi 'password authentication failed|authentication failed|invalid password|role .* does not exist' "$seed_log"; then
+                seed_class="database_authentication"
+              elif grep -Eqi 'unique constraint|duplicate key|already exists|collision|different database id' "$seed_log"; then
+                seed_class="fixture_collision"
+              elif grep -Eqi 'connection refused|could not connect|connection timed out|timeout expired|network is unreachable|temporary failure' "$seed_log"; then
+                seed_class="database_connectivity"
+              elif grep -Eqi 'not configured|must be set|unsupported scheme|ENV=' "$seed_log"; then
+                seed_class="runtime_configuration"
+              elif grep -Eqi 'no module named|cannot import|modulenotfound' "$seed_log"; then
+                seed_class="container_package"
+              elif grep -Eqi 'docker|compose|service|image|daemon' "$seed_log"; then
+                seed_class="compose_runtime"
+              fi
+            fi
+            printf '{"schema_version":1,"status":"seed_failed","error_class":"%s","raw_log_emitted":false}\n' "$seed_class" \
+              > artifacts/operations/reader-capacity-follow-up/fixture-seed-diagnostic.json
+            echo "::error::Disposable reader fixture seeding failed; sanitized error class: $seed_class"
+            echo "::error::No reader profile was run."
             exit "$status"
           fi
 
@@ -370,8 +394,30 @@ jobs:
             printf '{"schema_version":1,"status":"cleanup_completed","target_class":"isolated_non_production_reader_runtime","operation":"guarded_fixture_and_exact_r2_namespace_cleanup"}\n' \
               > artifacts/operations/reader-capacity-follow-up/fixture-cleanup.json
           else
+            cleanup_class="cleanup_failed_unclassified"
+            cleanup_log="$RUNNER_TEMP/reader-capacity-cleanup.log"
+            if [[ -r "$cleanup_log" ]]; then
+              if grep -Eqi '401|403|unauthorized|forbidden|cf-access|access identity|r2 gateway' "$cleanup_log"; then
+                cleanup_class="r2_gateway_authentication"
+              elif grep -Eqi 'r2|object storage|http_error|bucket' "$cleanup_log"; then
+                cleanup_class="r2_gateway_request"
+              elif grep -Eqi 'password authentication failed|authentication failed|invalid password|role .* does not exist' "$cleanup_log"; then
+                cleanup_class="database_authentication"
+              elif grep -Eqi 'connection refused|could not connect|connection timed out|timeout expired|network is unreachable|temporary failure' "$cleanup_log"; then
+                cleanup_class="database_connectivity"
+              elif grep -Eqi 'not configured|must be set|unsupported scheme|ENV=' "$cleanup_log"; then
+                cleanup_class="runtime_configuration"
+              elif grep -Eqi 'no module named|cannot import|modulenotfound' "$cleanup_log"; then
+                cleanup_class="container_package"
+              elif grep -Eqi 'docker|compose|service|image|daemon' "$cleanup_log"; then
+                cleanup_class="compose_runtime"
+              fi
+            fi
             printf '{"schema_version":1,"status":"cleanup_failed","target_class":"isolated_non_production_reader_runtime","operation":"guarded_fixture_and_exact_r2_namespace_cleanup"}\n' \
               > artifacts/operations/reader-capacity-follow-up/fixture-cleanup.json
+            printf '{"schema_version":1,"status":"cleanup_failed","error_class":"%s","raw_log_emitted":false}\n' "$cleanup_class" \
+              > artifacts/operations/reader-capacity-follow-up/fixture-cleanup-diagnostic.json
+            echo "::error::Disposable fixture cleanup failed; sanitized error class: $cleanup_class"
           fi
           docker rm --force "$CLOUD_FLARED_CONTAINER" > "$RUNNER_TEMP/reader-capacity-tunnel-cleanup.log" 2>&1
           docker compose --project-name "$COMPOSE_PROJECT" --env-file deploy/.env \
