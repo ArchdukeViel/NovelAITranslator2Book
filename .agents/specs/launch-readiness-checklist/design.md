@@ -7,11 +7,11 @@ Updated: 2026-08-30
 
 ## Source of truth mapping
 
-- `docs/WORK.md` is the live status and decision record.
+- `docs/STATUS.md` is the live status and decision record.
 - `docs/OPERATIONS.md` owns operator procedures, health, backup, and recovery
   details.
 - `docs/DEPLOYMENT.md` owns topology, release, and rollback procedures.
-- `docs/HISTORY.md` owns completed historical evidence.
+- `docs/EVIDENCE.md` owns completed historical evidence.
 - `.agents/specs/launch-readiness-checklist/` owns this contract and its
   traceability; it does not override the canonical operational register.
 
@@ -19,7 +19,7 @@ Updated: 2026-08-30
 
 The launch decision is a documentation-and-evidence workflow. The operator
 freezes the candidate, gathers sanitized evidence for each gate, records the
-result in `docs/WORK.md`, and makes a final decision. Local tests may validate
+result in `docs/STATUS.md`, and makes a final decision. Local tests may validate
 implementation but cannot substitute for hosted or manual acceptance.
 
 ## Data contracts and schemas

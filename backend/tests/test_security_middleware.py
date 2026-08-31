@@ -402,7 +402,13 @@ class TestIsAllowedHost:
 
 
 class TestHostedAppSecurity:
+    @staticmethod
+    def _disable_external_runtime_services(monkeypatch):
+        for setting_name in ("BACKUP_ENABLED", "MAINTENANCE_ENABLED", "DATABASE_BACKUP_ENABLED"):
+            monkeypatch.setattr(settings, setting_name, False)
+
     def test_create_app_enforces_configured_allowed_hosts(self, monkeypatch):
+        self._disable_external_runtime_services(monkeypatch)
         monkeypatch.setattr(settings, "ALLOWED_HOSTS", ["preview.example"])
         app = create_app()
 
@@ -411,6 +417,7 @@ class TestHostedAppSecurity:
             assert client.get("/health/live", headers={"Host": "evil.example"}).status_code == 400
 
     def test_preview_can_force_secure_session_cookie(self, monkeypatch):
+        self._disable_external_runtime_services(monkeypatch)
         monkeypatch.setattr(settings, "ENV", "preview")
         monkeypatch.setattr(settings, "SESSION_COOKIE_SECURE", True)
         monkeypatch.setattr(settings, "ALLOWED_HOSTS", ["preview.example"])

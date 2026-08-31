@@ -1,4 +1,4 @@
-"""Encrypted logical PostgreSQL backups committed to S3-compatible storage."""
+"""Encrypted logical PostgreSQL backups committed through the R2 gateway."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 from novelai.config.settings import settings
+from novelai.storage.backends.r2_gateway import R2ObjectMetadata
 
 _MAGIC = b"NADB1"
 _CHUNK_SIZE = 1024 * 1024
@@ -115,10 +116,17 @@ def _is_backup_stale(modified: datetime | None, max_age_hours: int) -> bool:
 
 
 class DatabaseBackupService:
-    def __init__(self, client: Any, bucket: str) -> None:
-        self._client = client
-        self._bucket = bucket
+    def __init__(self, backend: Any) -> None:
+        self._backend = backend
+        self._bucket = backend.bucket
         self._prefix = settings.DATABASE_BACKUP_PREFIX.strip("/")
+
+    def _manifest_objects(self) -> list[R2ObjectMetadata]:
+        return [
+            item
+            for item in self._backend.list_objects(self._prefix, recursive=True).objects
+            if item.key.endswith("/manifest.json")
+        ]
 
     def create_backup(self) -> dict[str, Any]:
         if not settings.DATABASE_URL:
@@ -152,8 +160,8 @@ class DatabaseBackupService:
                     raise RuntimeError(f"pg_dump failed ({len(stderr)} diagnostic bytes)")
             assert encrypted_path is not None
             with encrypted_path.open("rb") as body:
-                self._client.upload_fileobj(body, self._bucket, object_key)
-            encrypted_size = encrypted_path.stat().st_size
+                encrypted_size = encrypted_path.stat().st_size
+                self._backend.save_stream(object_key, body, content_length=encrypted_size)
             manifest = {
                 "schema_version": 1,
                 "backup_id": backup_id,
@@ -167,51 +175,39 @@ class DatabaseBackupService:
                 "encrypted_bytes": encrypted_size,
                 "alembic_head": self._alembic_head(database_uri),
             }
-            self._client.put_object(
-                Bucket=self._bucket,
-                Key=manifest_key,
-                Body=json.dumps(manifest, sort_keys=True).encode(),
-                ContentType="application/octet-stream",
+            self._backend.save(
+                manifest_key,
+                json.dumps(manifest, sort_keys=True).encode(),
+                content_type="application/json",
             )
             self.apply_retention()
             return {"status": "succeeded", "backup_id": backup_id, "manifest_key": manifest_key}
         except Exception:
             with contextlib.suppress(Exception):
-                self._client.delete_object(Bucket=self._bucket, Key=object_key)
+                self._backend.delete(object_key)
             raise
         finally:
             if encrypted_path is not None:
                 encrypted_path.unlink(missing_ok=True)
 
     def apply_retention(self) -> None:
-        paginator = self._client.get_paginator("list_objects_v2")
-        manifests: list[dict[str, Any]] = []
-        for page in paginator.paginate(Bucket=self._bucket, Prefix=f"{self._prefix}/"):
-            manifests.extend(
-                item for item in page.get("Contents", []) if str(item.get("Key", "")).endswith("/manifest.json")
-            )
-        manifests.sort(key=lambda item: str(item.get("LastModified", "")), reverse=True)
+        manifests = self._manifest_objects()
+        manifests.sort(key=lambda item: item.last_modified or datetime.min.replace(tzinfo=UTC), reverse=True)
         cutoff = datetime.now(UTC) - timedelta(days=settings.DATABASE_BACKUP_RETENTION_DAYS)
         for item in manifests[settings.DATABASE_BACKUP_MIN_SUCCESSFUL_TO_KEEP :]:
-            modified = item.get("LastModified")
+            modified = item.last_modified
             if modified is None or modified >= cutoff:
                 continue
-            root = str(item["Key"]).rsplit("/", 1)[0]
-            page = self._client.list_objects_v2(Bucket=self._bucket, Prefix=f"{root}/")
-            for child in page.get("Contents", []):
-                self._client.delete_object(Bucket=self._bucket, Key=child["Key"])
+            root = item.key.rsplit("/", 1)[0]
+            for child in self._backend.list_keys(root, recursive=True):
+                self._backend.delete(child)
 
     def get_backup_health(self) -> dict[str, Any]:
-        paginator = self._client.get_paginator("list_objects_v2")
-        manifests: list[dict[str, Any]] = []
-        for page in paginator.paginate(Bucket=self._bucket, Prefix=f"{self._prefix}/"):
-            manifests.extend(
-                item for item in page.get("Contents", []) if str(item.get("Key", "")).endswith("/manifest.json")
-            )
+        manifests = self._manifest_objects()
         if not manifests:
             return {"status": "unhealthy", "message": "No committed database backup exists"}
-        latest = max(manifests, key=lambda item: item.get("LastModified", datetime.min.replace(tzinfo=UTC)))
-        modified = latest.get("LastModified")
+        latest = max(manifests, key=lambda item: item.last_modified or datetime.min.replace(tzinfo=UTC))
+        modified = latest.last_modified
         if _is_backup_stale(modified, settings.OPERATOR_ALERT_STALE_BACKUP_HOURS):
             return {
                 "status": "unhealthy",
@@ -240,7 +236,7 @@ class DatabaseBackupService:
         try:
             with tempfile.NamedTemporaryFile(prefix="novelai-restore-", suffix=".aesgcm", delete=False) as encrypted:
                 encrypted_path = Path(encrypted.name)
-                self._client.download_fileobj(self._bucket, manifest["object_key"], encrypted)
+                encrypted.write(self._backend.load(str(manifest["object_key"])))
             with tempfile.NamedTemporaryFile(prefix="novelai-restore-", suffix=".custom", delete=False) as plaintext:
                 plaintext_path = Path(plaintext.name)
                 with encrypted_path.open("rb") as encrypted:
@@ -278,17 +274,11 @@ class DatabaseBackupService:
                 encrypted_path.unlink(missing_ok=True)
 
     def _latest_manifest(self) -> dict[str, Any]:
-        paginator = self._client.get_paginator("list_objects_v2")
-        manifests: list[dict[str, Any]] = []
-        for page in paginator.paginate(Bucket=self._bucket, Prefix=f"{self._prefix}/"):
-            manifests.extend(
-                item for item in page.get("Contents", []) if str(item.get("Key", "")).endswith("/manifest.json")
-            )
+        manifests = self._manifest_objects()
         if not manifests:
             raise RuntimeError("No committed database backup exists")
-        latest = max(manifests, key=lambda item: item.get("LastModified", datetime.min.replace(tzinfo=UTC)))
-        response = self._client.get_object(Bucket=self._bucket, Key=latest["Key"])
-        return json.loads(response["Body"].read())
+        latest = max(manifests, key=lambda item: item.last_modified or datetime.min.replace(tzinfo=UTC))
+        return json.loads(self._backend.load(latest.key))
 
     @staticmethod
     def _alembic_head(database_uri: str) -> str:

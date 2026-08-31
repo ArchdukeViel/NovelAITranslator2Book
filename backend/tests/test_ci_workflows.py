@@ -62,21 +62,20 @@ def test_ci_setup_uv_pin_is_consistent() -> None:
     assert set(pins) == {"20cfd1bf945f4377ade1205e4dbc17946fc9a30d"}
 
 
-def test_s3_integration_has_execution_policy() -> None:
-    """The real S3 integration suite must have an automated execution policy.
+def test_r2_worker_integration_has_bounded_execution_policy() -> None:
+    """The native Worker contract has scheduled and manual local coverage."""
+    source = _workflow("r2-worker-integration.yml")
 
-    The file is marked ``slow``/``integration`` and therefore intentionally
-    excluded from the normal core/extended runs; this contract keeps it wired
-    to the scheduled MinIO workflow so it cannot silently become manual-only.
-    """
-    source = _workflow("s3-integration.yml")
-
-    assert "test_s3_integration.py" in source
+    assert "workers/r2-gateway" in source
+    assert "npm run test:bindings" in source
+    assert "npm run deploy:dry-run" in source
     assert "schedule" in source
     assert "workflow_dispatch" in source
-    assert "TEST_R2_ENDPOINT" in source
-    assert "TEST_R2_BUCKET" in source
-    assert "minio" in source
+    assert "ubuntu-24.04" in source
+    assert "timeout-minutes: 20" in source
+    assert "secrets." not in source
+    assert "minio" not in source.lower()
+    assert "boto" not in source.lower()
 
 
 def test_workflow_actions_are_pinned_to_full_commit_shas() -> None:
@@ -93,10 +92,19 @@ def test_workflow_actions_are_pinned_to_full_commit_shas() -> None:
 
 
 def test_nonproduction_reader_capacity_workflow_is_isolated_and_cleanup_gated() -> None:
-    source = _workflow("reader-capacity-nonproduction.yml")
+    source = _workflow("nonproduction-reader-evidence.yml")
 
     assert "MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}" in source
+    for name in (
+        "TEST_R2_GATEWAY_URL",
+        "TEST_R2_APP_CLIENT_ID",
+        "TEST_R2_APP_CLIENT_SECRET",
+        "TEST_R2_RECOVERY_CLIENT_ID",
+        "TEST_R2_RECOVERY_CLIENT_SECRET",
+    ):
+        assert name in source
     assert "TEST_R2_APPLICATION_BUCKET: test-dokushodo" in source
+    assert "TEST_R2_BACKUP_BUCKET: test-dokushodo-backup" in source
     assert "R2_BACKUP_ENABLED=false" in source
     assert "R2_BACKUP_BUCKET=test-dokushodo-backup" in source
     assert "READER_CAPACITY_FIXTURE_TARGET=non-production" in source
@@ -117,7 +125,7 @@ def test_nonproduction_reader_capacity_workflow_is_isolated_and_cleanup_gated() 
 
 
 def test_build_summary_fails_unless_publication_succeeds() -> None:
-    source = _workflow("build.yml")
+    source = _workflow("container-publish.yml")
 
     assert "ref: ${{ github.event.workflow_run.head_sha }}" in source
     assert "BUILD_RESULT: ${{ needs.build-and-push.result }}" in source
@@ -183,15 +191,18 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     assert 'CURRENT_LINK="/opt/novelai/current"' in source
 
 
-def test_gitguardian_workflow_contract() -> None:
-    source = _workflow("gitguardian.yaml")
+def test_secret_scan_workflow_contract() -> None:
+    source = _workflow("secret-scan.yml")
 
     assert "pull_request_target" not in source
     assert "push" in source
     assert "pull_request" in source
-    assert re.search(r"(?m)^permissions:\s*$", source)
+    assert "permissions: {}" in source
+    assert "name: GitGuardian scan" in source
     assert "contents: read" in source
-    assert "dokushodo-nonprod-linux-x64" in source
+    assert "ubuntu-24.04" in source
+    assert "self-hosted" not in source
+    assert "timeout-minutes: 15" in source
     assert "fetch-depth: 0" in source
     assert "secrets.GITGUARDIAN_API_KEY" in source
     for line in source.splitlines():
@@ -204,14 +215,13 @@ def test_gitguardian_workflow_contract() -> None:
     assert "github.event_name" in source
 
 
-def test_secret_backed_opencode_workflow_restricts_commenters() -> None:
-    source = _workflow("opencode.yml")
-
-    assert 'fromJSON(\'["OWNER", "MEMBER", "COLLABORATOR"]\')' in source
-    assert "github.event.comment.author_association" in source
-    assert "timeout-minutes: 15" in source
-    assert "npx --yes opencode-ai@1.18.18 github run" in source
-    assert "anomalyco/opencode/github@" not in source
+def test_comment_triggered_secret_workflow_is_removed() -> None:
+    assert not (WORKFLOWS_DIR / "opencode.yml").exists()
+    assert not any(
+        "issue_comment" in path.read_text(encoding="utf-8")
+        for path in WORKFLOWS_DIR.glob("*.y*ml")
+        if path.name != "ai-review.yml"
+    )
 
 
 def test_ci_e2e_filter_includes_all_required_inputs() -> None:
@@ -296,29 +306,30 @@ def test_dependency_review_least_privilege() -> None:
 
 
 def test_uv_locked_contract_in_ci_and_managed_verification() -> None:
-    for name in ("ci.yml", "managed-services-verification.yml", "managed-services-test-migrate.yml"):
+    for name in ("ci.yml", "nonproduction-managed-services.yml", "reusable-test-database-migration.yml"):
         source = _workflow(name)
         assert "--frozen" not in source, f"--frozen found in {name}"
         assert "--locked" in source, f"--locked missing in {name}"
 
 
 def test_managed_services_verification_uses_current_restore_contract() -> None:
-    source = _workflow("managed-services-verification.yml")
+    source = _workflow("nonproduction-managed-services.yml")
 
     assert "backend/tests/integration/test_r2_backup_integration.py" in source
     assert "backend/tests/integration/test_r2_restore_integration.py" in source
     assert "test_r2_snapshot_integration.py" not in source
     for name in (
-        "TEST_R2_APP_ACCESS_KEY_ID",
-        "TEST_R2_APP_SECRET_ACCESS_KEY",
-        "TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY_ID",
-        "TEST_R2_SNAPSHOT_SOURCE_SECRET_ACCESS_KEY",
-        "TEST_R2_BACKUP_ACCESS_KEY_ID",
-        "TEST_R2_BACKUP_SECRET_ACCESS_KEY",
+        "TEST_R2_GATEWAY_URL",
+        "TEST_R2_BUCKET: test-dokushodo",
+        "TEST_R2_BACKUP_BUCKET: test-dokushodo-backup",
+        "TEST_R2_APP_CLIENT_ID",
+        "TEST_R2_APP_CLIENT_SECRET",
+        "TEST_R2_RECOVERY_CLIENT_ID",
+        "TEST_R2_RECOVERY_CLIENT_SECRET",
     ):
         assert name in source
-    assert "TEST_R2_APP_ACCESS_KEY:" not in source
-    assert "TEST_R2_BACKUP_ACCESS_KEY:" not in source
+    for legacy in ("TEST_R2_ENDPOINT", "ACCESS_KEY_ID", "SECRET_ACCESS_KEY", "SNAPSHOT_SOURCE"):
+        assert legacy not in source
 
     managed_postgres = (Path(__file__).parent / "integration" / "test_managed_postgres.py").read_text(encoding="utf-8")
     assert 'EXPECTED_ALEMBIC_HEAD = "f8a2c4e6b0d1"' in managed_postgres
@@ -326,7 +337,7 @@ def test_managed_services_verification_uses_current_restore_contract() -> None:
 
 
 def test_managed_test_database_migration_is_confirmation_gated() -> None:
-    source = _workflow("managed-services-test-migrate.yml")
+    source = _workflow("reusable-test-database-migration.yml")
 
     assert "workflow_dispatch:" in source
     assert "workflow_call:" in source
@@ -336,13 +347,13 @@ def test_managed_test_database_migration_is_confirmation_gated() -> None:
 
 
 def test_managed_recovery_workflow_is_confirmation_gated_and_isolated() -> None:
-    source = _workflow("managed-services-recovery-verification.yml")
+    source = _workflow("reusable-test-recovery.yml")
 
     assert "workflow_dispatch:" in source
     assert "workflow_call:" in source
     assert "confirm_test_recovery == true" in source
     assert "MANAGED_DATABASE_TEST_URL" in source
-    assert "TEST_R2_TARGET_BUCKET" in source
+    assert "TEST_R2_BACKUP_BUCKET" in source
     assert "DATABASE_RESTORE_TARGET_URL" in source
     assert "postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94" in source
     assert "docker_args=(" in source
@@ -360,27 +371,28 @@ def test_managed_recovery_workflow_is_confirmation_gated_and_isolated() -> None:
     assert 'echo "::add-mask::$BACKUP_KEY"' in source
     assert "ephemeral" in source.lower()
     assert "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a" in source
-    assert "TEST_R2_BACKUP_ACCESS_KEY_ID:" in source
-    assert "TEST_R2_BACKUP_SECRET_ACCESS_KEY:" in source
+    assert "TEST_R2_RECOVERY_CLIENT_ID:" in source
+    assert "TEST_R2_RECOVERY_CLIENT_SECRET:" in source
 
 
 def test_managed_verification_dispatches_recovery_with_explicit_confirmation() -> None:
-    source = _workflow("managed-services-verification.yml")
+    source = _workflow("nonproduction-managed-services.yml")
 
     assert "confirm_test_recovery:" in source
-    assert "if: ${{ inputs.confirm_test_recovery == true ||" in source
-    assert "MANAGED_SERVICE_RECOVERY_ENABLED" in source
-    assert "github.event_name == 'workflow_dispatch'" in source
-    assert "uses: ./.github/workflows/managed-services-recovery-verification.yml" in source
+    assert "if: ${{ inputs.confirm_test_recovery == true }}" in source
+    assert "MANAGED_SERVICE_RECOVERY_ENABLED" not in source
+    assert "uses: ./.github/workflows/reusable-test-recovery.yml" in source
     assert "MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}" in source
-    assert "TEST_R2_ENDPOINT: ${{ secrets.TEST_R2_ENDPOINT }}" in source
-    assert "TEST_R2_BACKUP_ACCESS_KEY_ID: ${{ secrets.TEST_R2_BACKUP_ACCESS_KEY_ID }}" in source
-    assert "TEST_R2_BACKUP_SECRET_ACCESS_KEY: ${{ secrets.TEST_R2_BACKUP_SECRET_ACCESS_KEY }}" in source
+    assert "TEST_R2_GATEWAY_URL: ${{ secrets.TEST_R2_GATEWAY_URL }}" in source
+    assert "TEST_R2_RECOVERY_CLIENT_ID: ${{ secrets.TEST_R2_RECOVERY_CLIENT_ID }}" in source
+    assert "TEST_R2_RECOVERY_CLIENT_SECRET: ${{ secrets.TEST_R2_RECOVERY_CLIENT_SECRET }}" in source
 
     recovery_test = (Path(__file__).parent / "integration" / "test_managed_database_recovery.py").read_text(
         encoding="utf-8"
     )
     assert "DatabaseBackupService" in recovery_test
+    assert "R2GatewayStorage" in recovery_test
+    assert "boto3" not in recovery_test
     assert '"CREATE ROLE' in recovery_test
     assert '"REVOKE ALL PRIVILEGES ON DATABASE' in recovery_test
     assert '"REVOKE ALL PRIVILEGES ON ALL TABLES' in recovery_test
@@ -390,14 +402,14 @@ def test_managed_verification_dispatches_recovery_with_explicit_confirmation() -
 
 
 def test_build_workflow_run_trust_guards_and_concurrency() -> None:
-    source = _workflow("build.yml")
+    source = _workflow("container-publish.yml")
     assert "concurrency:" in source
-    assert "group: build-push-default-branch" in source
+    assert "group: container-publish-default-branch" in source
     assert "github.event.workflow_run.event == 'push'" in source
     assert "github.event.workflow_run.head_branch == github.event.repository.default_branch" in source
     assert "github.event.workflow_run.head_repository.full_name == github.repository" in source
     assert "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25" in source
-    assert "exit-code: '1'" in source
+    assert 'exit-code: "1"' in source
     assert "zizmor: ignore[dangerous-triggers]" in source
     assert 'IMAGE_NAME="ghcr.io/${REPOSITORY,,}/${IMAGE}"' in source
     assert "image-ref: ${{ steps.image-ref.outputs.ref }}" in source
@@ -420,10 +432,10 @@ def test_node_version_alignment() -> None:
     package_json = (WORKFLOWS_DIR.parent.parent / "frontend" / "package.json").read_text(encoding="utf-8")
     dockerfile = (WORKFLOWS_DIR.parent.parent / "deploy" / "frontend.Dockerfile").read_text(encoding="utf-8")
 
-    assert nvmrc == "26.7.0"
+    assert nvmrc == "26.8.1"
     assert '"node": ">=26 <27"' in package_json
-    assert "node:26.7.0-alpine" in dockerfile
-    assert "sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019" in dockerfile
+    assert "node:26.8.1-alpine" in dockerfile
+    assert "sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3" in dockerfile
     assert "/usr/local/lib/node_modules/npm" in dockerfile
     assert "/usr/local/bin/npm" in dockerfile
 
@@ -480,11 +492,12 @@ def test_caddy_internal_proxy_and_staging_cookie_contract() -> None:
 
 def test_ci_and_static_analysis_security_contracts() -> None:
     ci = _workflow("ci.yml")
-    assert "contents: read\n  pull-requests: read" in ci
+    assert "permissions: {}" in ci
+    assert "pull-requests: read" in ci
     assert ci.count("dorny/paths-filter@") == 2
     assert ci.count("persist-credentials: false") >= 7
 
-    static = _workflow("static-analysis.yml")
+    static = _workflow("security-static-analysis.yml")
     for job_name in ("Analyze (actions)", "Analyze (python)", "Analyze (javascript-typescript)"):
         assert f"name: {job_name}" in static
     assert "zizmor==1.29.0" in static
@@ -492,7 +505,7 @@ def test_ci_and_static_analysis_security_contracts() -> None:
     assert "--format=github" in static
     assert "--min-severity=medium" in static
     assert "S102,S307,S324,S501,S506,S602,S605,S608,S609" in static
-    assert "node-version: 26.7.0" in static
+    assert "node-version: 26.8.1" in static
     assert "npm ci" in static
 
 

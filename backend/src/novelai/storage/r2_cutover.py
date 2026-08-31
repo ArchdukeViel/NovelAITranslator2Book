@@ -6,7 +6,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from novelai.storage.backends.r2 import R2ObjectMetadata, R2Storage
+from novelai.storage.backends.base import R2StorageBackend
+from novelai.storage.backends.r2_gateway import R2ObjectMetadata
 
 APPLICATION_BUCKET = "dokushodo"
 BACKUP_BUCKET = "dokushodo-backup"
@@ -37,7 +38,7 @@ class R2GarbageCollectionResult:
     deleted: tuple[str, ...]
 
 
-def inventory_bucket(storage: R2Storage) -> R2Inventory:
+def inventory_bucket(storage: R2StorageBackend) -> R2Inventory:
     """Inventory every object, including all paginated list results."""
 
     keys = tuple(storage.list_keys("", recursive=True))
@@ -55,7 +56,7 @@ def inventory_bucket(storage: R2Storage) -> R2Inventory:
 class R2CutoverService:
     """Plan or execute the explicitly-confirmed two-bucket clean cutover."""
 
-    def __init__(self, *, application: R2Storage, backup: R2Storage) -> None:
+    def __init__(self, *, application: R2StorageBackend, backup: R2StorageBackend) -> None:
         self.application = application
         self.backup = backup
         if application.bucket != APPLICATION_BUCKET or backup.bucket != BACKUP_BUCKET:
@@ -101,7 +102,7 @@ class R2CutoverService:
 class R2GarbageCollector:
     """Mark-and-sweep immutable objects with a mandatory grace period."""
 
-    def __init__(self, storage: R2Storage) -> None:
+    def __init__(self, storage: R2StorageBackend) -> None:
         self.storage = storage
 
     def collect(

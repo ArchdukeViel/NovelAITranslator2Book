@@ -31,6 +31,7 @@ from novelai.core.chapter_state import TranslationState
 from novelai.db.engine import session_scope
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
+from novelai.storage.backends import build_r2_recovery_storage
 from novelai.storage.service import StorageService
 
 FIXTURE_SLUG = "test-novel"
@@ -64,8 +65,14 @@ def _assert_disposable_target() -> None:
         raise RuntimeError("reader fixture writes are forbidden for canonical R2 buckets")
     if not settings.DATABASE_URL:
         raise RuntimeError("reader fixture writes require DATABASE_URL")
-    if not settings.R2_ENDPOINT or not settings.R2_ACCESS_KEY_ID or not settings.R2_SECRET_ACCESS_KEY:
-        raise RuntimeError("reader fixture writes require the test R2 application credentials")
+    if not settings.R2_GATEWAY_URL or not settings.R2_GATEWAY_CLIENT_ID or not settings.R2_GATEWAY_CLIENT_SECRET:
+        raise RuntimeError("reader fixture writes require the test R2 application gateway identity")
+    if (
+        not settings.R2_RECOVERY_GATEWAY_URL
+        or not settings.R2_RECOVERY_CLIENT_ID
+        or not settings.R2_RECOVERY_CLIENT_SECRET
+    ):
+        raise RuntimeError("reader fixture cleanup requires the separate test R2 recovery gateway identity")
 
 
 def _chapter_text(chapter_id: int, *, translated: bool) -> str:
@@ -163,8 +170,8 @@ def _cleanup_database() -> dict[str, int]:
 def _cleanup() -> dict[str, int]:
     _assert_disposable_target()
     _existing_novel()
-    storage = StorageService()
-    deleted_objects = storage.r2_backend.delete_prefix(f"novels/{FIXTURE_NOVEL_ID}")
+    recovery_storage = build_r2_recovery_storage(bucket_class="app")
+    deleted_objects = recovery_storage.delete_prefix(f"novels/{FIXTURE_NOVEL_ID}")
     result = _cleanup_database()
     result["r2_objects"] = int(deleted_objects)
     return result
@@ -267,7 +274,7 @@ def _seed() -> dict[str, Any]:
             db.flush()
     except Exception:
         with suppress(Exception):
-            storage.r2_backend.delete_prefix(f"novels/{FIXTURE_NOVEL_ID}")
+            build_r2_recovery_storage(bucket_class="app").delete_prefix(f"novels/{FIXTURE_NOVEL_ID}")
         with suppress(Exception):
             _cleanup_database()
         raise

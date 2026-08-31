@@ -53,6 +53,12 @@ async def test_pipeline_stage_event_contains_bounded_timing_fields() -> None:
         "activity_state_update": "activity state timing is exposed by the activity database metrics",
         "r2_transfer": "R2 operation counters are not attached to this pipeline context",
     }
+    spans = result.metadata["pipeline_timing_spans"]
+    assert isinstance(spans, list)
+    assert spans[0]["name"] == "parsing"
+    assert spans[0]["source"] == "pipeline"
+    assert spans[0]["clock"] == "monotonic_ns"
+    assert spans[0]["critical_path"] is True
     assert "chapter_url" not in completed
 
 

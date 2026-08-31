@@ -64,7 +64,7 @@ describe("admin settings safety", () => {
     await userEvent.click(clearButton);
 
     expect(await screen.findByRole("heading", { name: /clear runtime state/i })).toBeInTheDocument();
-    
+
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveTextContent(/test_state/i);
 

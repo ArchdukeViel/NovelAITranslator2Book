@@ -2,7 +2,7 @@
 
 Spec ID: reader-capacity-and-recovery-follow-up
 Version: 0.4.2
-Status: Approved
+Status: Blocked
 Updated: 2026-08-30
 
 ## Source of Truth Mapping
@@ -10,10 +10,10 @@ Updated: 2026-08-30
 - Primary architecture: `AGENTS.md` and `docs/ARCHITECTURE.md`.
 - Operational contracts: `docs/OPERATIONS.md`, `docs/CONFIGURATION.md`, and
   `docs/DEPLOYMENT.md`.
-- Performance budgets and prior method: `docs/PERFORMANCE_AUDIT.md` and
-  `docs/PERFORMANCE_ACTION_PLAN.md`.
-- R2 and recovery boundaries: `docs/STORAGE.md`, `docs/R2-ONLY-CONFORMANCE.md`,
-  and `docs/R2-Only Content Storage Rearchitecture-plan.md`.
+- Performance budgets and prior method: `docs/EVIDENCE.md` and the successor
+  plan under `docs/plans/`.
+- R2 and recovery boundaries: `docs/STORAGE.md`, `docs/OPERATIONS.md`, and
+  `docs/EVIDENCE.md`.
 - Existing implementation inputs: `backend/tests/run_phase6_acceptance.py`,
   `backend/tests/capacity_harness.py`, `tools/capacity/run_reader_load.ps1`,
   `novelai.services.runtime_telemetry`,
@@ -23,10 +23,9 @@ Updated: 2026-08-30
   the spec-owned evidence validator under `tools/capacity/`, plus the
   managed-services verification workflow (whose referenced test paths must be
   checked at the candidate revision before its result is accepted).
-- Related approved specs used for boundary context only:
-  `.agents/specs/pipeline-async-execution-and-capacity/` and
-  `.agents/specs/pipeline-resource-efficiency-audit/`. Their historical
-  completion records do not satisfy this new spec's tasks.
+- Related completed specs used for boundary context only are preserved under
+  `docs/archive/specs/`. Their historical completion records do not satisfy
+  this spec's tasks.
 
 Architecture wins if any source conflicts. This design does not authorize a
 production deployment, secret mutation, schema migration, bucket operation,

@@ -5,22 +5,22 @@ on:
     - cron: "*/5 * * * *"
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}
+
+concurrency:
+  group: production-external-monitor
+  cancel-in-progress: false
 
 jobs:
   public-health-and-seo:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
     # Repository variable (not secret): set PRODUCTION_MONITOR_ENABLED=true
     # only once a real production domain exists, so the scheduled run does
     # not allocate runners to announce a missing secret.
     if: ${{ vars.PRODUCTION_MONITOR_ENABLED == 'true' }}
-    concurrency:
-      group: production-external-monitor
-      # Never cancel an in-progress run: during an incident a slow run may be
-      # the very one about to report the red result. Newer runs queue instead.
-      cancel-in-progress: false
     env:
       PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
 

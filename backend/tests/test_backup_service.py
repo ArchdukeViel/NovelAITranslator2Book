@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -9,6 +10,7 @@ import pytest
 from novelai.config.settings import settings
 from novelai.services.backup_service import BackupService
 from novelai.services.database_backup_service import DatabaseBackupService
+from novelai.storage.backends.r2_gateway import InMemoryR2GatewayStorage
 from novelai.storage.snapshots import SnapshotResult
 
 
@@ -94,17 +96,12 @@ def test_offsite_backup_health_enforces_freshness(
 
 @pytest.mark.parametrize(("hours", "status"), [(-1, "healthy"), (-37, "unhealthy")])
 def test_database_backup_health_enforces_freshness(hours: int, status: str) -> None:
-    client = MagicMock()
-    paginator = client.get_paginator.return_value
-    paginator.paginate.return_value = [
-        {
-            "Contents": [
-                {"Key": "database/backup/manifest.json", "LastModified": datetime.now(UTC) + timedelta(hours=hours)}
-            ]
-        }
-    ]
+    backend = InMemoryR2GatewayStorage("test-dokushodo-backup")
+    backend.save("database/backup/manifest.json", b"{}")
+    record = backend._objects["database/backup/manifest.json"]
+    record.metadata = replace(record.metadata, last_modified=datetime.now(UTC) + timedelta(hours=hours))
 
-    assert DatabaseBackupService(client, "backup-bucket").get_backup_health()["status"] == status
+    assert DatabaseBackupService(backend).get_backup_health()["status"] == status
 
 
 def test_restore_target_prepares_all_application_policy_roles(monkeypatch: pytest.MonkeyPatch) -> None:

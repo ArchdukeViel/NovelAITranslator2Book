@@ -2,7 +2,7 @@
 
 Spec ID: reader-capacity-and-recovery-follow-up
 Version: 0.4.2
-Status: Approved
+Status: Blocked
 Updated: 2026-08-30
 Requester: Project owner
 Owner: Project owner with implementation agent

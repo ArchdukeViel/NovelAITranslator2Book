@@ -32,4 +32,4 @@
 ## Docs
 
 - [ ] `docs/` updated when behavior, storage, config, or deployment changed.
-- [ ] `docs/HISTORY.md` updated when work is completed.
+- [ ] `docs/EVIDENCE.md` updated when work is completed.

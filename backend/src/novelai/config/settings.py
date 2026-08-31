@@ -64,16 +64,15 @@ class AppSettings(BaseSettings):
         default="dokushodo",
         description="Canonical Cloudflare R2 application bucket.",
     )
-    R2_REGION: str = Field(
-        default="auto",
-        description="Cloudflare R2 signing region.",
-    )
-    R2_ENDPOINT: str | None = Field(
+    R2_GATEWAY_URL: str | None = Field(
         default=None,
-        description="Cloudflare R2 account endpoint.",
+        description="Private versioned Cloudflare Worker gateway for application R2 operations.",
     )
-    R2_ACCESS_KEY_ID: SecretStr | None = Field(default=None)
-    R2_SECRET_ACCESS_KEY: SecretStr | None = Field(default=None)
+    R2_GATEWAY_CLIENT_ID: str | None = Field(
+        default=None,
+        description="Cloudflare Access service-token client id for reader application operations.",
+    )
+    R2_GATEWAY_CLIENT_SECRET: SecretStr | None = Field(default=None)
     R2_STORAGE_LIMIT_GB: float = Field(
         default=9.5,
         description="R2 application bucket soft limit in GB.",
@@ -82,11 +81,15 @@ class AppSettings(BaseSettings):
         default="dokushodo-backup",
         description="Independent Cloudflare R2 recovery bucket.",
     )
-    R2_BACKUP_ENDPOINT: str | None = Field(default=None)
-    R2_BACKUP_ACCESS_KEY_ID: SecretStr | None = Field(default=None)
-    R2_BACKUP_SECRET_ACCESS_KEY: SecretStr | None = Field(default=None)
-    R2_SOURCE_ACCESS_KEY_ID: SecretStr | None = Field(default=None)
-    R2_SOURCE_SECRET_ACCESS_KEY: SecretStr | None = Field(default=None)
+    R2_RECOVERY_GATEWAY_URL: str | None = Field(
+        default=None,
+        description="Private versioned Cloudflare Worker gateway for recovery operations.",
+    )
+    R2_RECOVERY_CLIENT_ID: str | None = Field(
+        default=None,
+        description="Separate Cloudflare Access service-token client id for recovery operations.",
+    )
+    R2_RECOVERY_CLIENT_SECRET: SecretStr | None = Field(default=None)
     RUNTIME_DIR: Path = Field(default_factory=_default_runtime_dir)
 
     @field_validator("RUNTIME_DIR", mode="after")

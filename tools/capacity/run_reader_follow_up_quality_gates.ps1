@@ -116,8 +116,8 @@ function Invoke-GraphifyChecked() {
 }
 
 try {
-    Invoke-Checked "spec-validator" "python C:\\Users\\AKMALSAFARIPELLU\\.agents\\skills\\create-spec\\scripts\\validate_spec.py $SpecPath" {
-        & python C:\Users\AKMALSAFARIPELLU\.agents\skills\create-spec\scripts\validate_spec.py $SpecPath
+    Invoke-Checked "spec-validator" ".venv\\Scripts\\python.exe C:\\Users\\AKMALSAFARIPELLU\\.agents\\skills\\create-spec\\scripts\\validate_spec.py $SpecPath" {
+        & .venv\Scripts\python.exe C:\Users\AKMALSAFARIPELLU\.agents\skills\create-spec\scripts\validate_spec.py $SpecPath
     }
     Invoke-Checked "pyright" "tools/pyright.ps1" {
         & powershell -NoProfile -ExecutionPolicy Bypass -File tools/pyright.ps1
@@ -151,11 +151,25 @@ try {
             "$ArtifactPath/route-profile.json",
             "$ArtifactPath/latency-attribution.json",
             "$ArtifactPath/hosted-telemetry.json",
+            "$ArtifactPath/b7-mcp-snapshot.json",
+            "$ArtifactPath/load-generator.json",
+            "$ArtifactPath/frontend-profile.json",
+            "$ArtifactPath/pipeline-timing.json",
+            "$ArtifactPath/database-microprofile.json",
+            "$ArtifactPath/r2-microprofile.json",
+            "$ArtifactPath/security-boundary.json",
+            "$ArtifactPath/writer-state-before.json",
+            "$ArtifactPath/writer-state-after.json",
+            "$ArtifactPath/recovery-manifest.json",
             "$ArtifactPath/backup-controls.json",
+            "$ArtifactPath/cleanup.json",
+            "$ArtifactPath/final-validation.json",
+            "$ArtifactPath/artifact-manifest.json",
             "$ArtifactPath/remediation-decision.md",
             "$ArtifactPath/restore-verification.md",
             "$ArtifactPath/recovery-owner-and-rotation.md",
-            "$ArtifactPath/handoff.md"
+            "$ArtifactPath/handoff.md",
+            "$ArtifactPath/handoff.json"
         )
         foreach ($requiredPath in $requiredPaths) {
             if (-not (Test-Path -LiteralPath $requiredPath)) { throw "required documentation or evidence path is missing: $requiredPath" }
@@ -194,6 +208,19 @@ try {
         Invoke-Checked $label $display {
             & powershell -NoProfile -ExecutionPolicy Bypass -File $validator -Kind $kind -Path $path
         }
+    }
+    $b7McpSnapshotPath = Join-Path $ArtifactPath "b7-mcp-snapshot.json"
+    if (Test-Path -LiteralPath $b7McpSnapshotPath -PathType Leaf) {
+        Invoke-Checked "artifact-b7-mcp-snapshot" ".venv\\Scripts\\python.exe tools/capacity/validate_b7_mcp_snapshot.py $b7McpSnapshotPath" {
+            & .venv\\Scripts\\python.exe tools/capacity/validate_b7_mcp_snapshot.py $b7McpSnapshotPath
+        }
+    }
+    else {
+        Add-OperationalBlocker "blk-b7-mcp-snapshot-missing" "b7-mcp-snapshot.json" "B7 MCP snapshot is missing" "capture the sanitized read-only MCP snapshot before closing the B7 evidence bundle" "runtime_state_unavailable" "do not treat the existing provider posture artifacts as the current B7 MCP snapshot"
+        Add-Record "artifact-b7-mcp-snapshot" ".venv\\Scripts\\python.exe tools/capacity/validate_b7_mcp_snapshot.py $b7McpSnapshotPath" 1 "missing artifact" 0 "blocked"
+    }
+    Invoke-Checked "artifact-b7-blocked-bundle" ".venv\\Scripts\\python.exe tools/capacity/validate_b7_blocked_bundle.py --root $ArtifactPath" {
+        & .venv\Scripts\python.exe tools/capacity/validate_b7_blocked_bundle.py --root $ArtifactPath
     }
     foreach ($check in @(
         @("remediation-decision", "$ArtifactPath/remediation-decision.md"),

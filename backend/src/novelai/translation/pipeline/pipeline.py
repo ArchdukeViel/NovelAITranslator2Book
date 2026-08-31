@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from novelai.config.settings import settings
+from novelai.services.timing_contract import PIPELINE_TIMING_STAGES, TimingSpan
 from novelai.translation.pipeline.context import PipelineState
 from novelai.translation.pipeline.stages.base import PipelineStage
 
@@ -73,6 +74,16 @@ _PIPELINE_TIMING_UNAVAILABLE = {
     "r2_transfer": "R2 operation counters are not attached to this pipeline context",
 }
 
+_PIPELINE_STAGE_BY_CLASS = {
+    "FetchStage": "source_fetch",
+    "ParseStage": "parsing",
+    "SmartSegmentStage": "parsing",
+    "TranslateStage": "translation",
+    "TranslationQAStage": "qa",
+    "CacheFlushStage": "qa",
+    "PostProcessStage": "translation",
+}
+
 
 def _text_bytes(value: str | None) -> int:
     return len(value.encode("utf-8")) if isinstance(value, str) else 0
@@ -114,6 +125,30 @@ def _stage_io_bytes(stage_name: str, before: dict[str, int], after: dict[str, in
         "PostProcessStage": (before["translated_bytes"], after["final_bytes"]),
     }
     return mapping.get(stage_name, (None, None))
+
+
+def _append_pipeline_timing_span(
+    context: PipelineState,
+    *,
+    stage_name: str,
+    pipeline_started_ns: int,
+    stage_started_ns: int,
+    stage_finished_ns: int,
+) -> None:
+    fixed_stage = _PIPELINE_STAGE_BY_CLASS.get(stage_name)
+    if fixed_stage not in PIPELINE_TIMING_STAGES:
+        return
+    span = TimingSpan(
+        name=fixed_stage,
+        source="pipeline",
+        start_offset_ms=round((stage_started_ns - pipeline_started_ns) / 1_000_000, 3),
+        duration_ms=round((stage_finished_ns - stage_started_ns) / 1_000_000, 3),
+        sample_count=1,
+        critical_path=True,
+    )
+    spans = context.metadata.setdefault("pipeline_timing_spans", [])
+    if isinstance(spans, list):
+        spans.append(span.to_dict())
 
 
 def _timing_fields(
@@ -160,13 +195,14 @@ class TranslationPipeline:
         )
         context.metadata.setdefault("pipeline_timing_schema_version", 1)
         context.metadata.setdefault("pipeline_timing_unavailable", dict(_PIPELINE_TIMING_UNAVAILABLE))
+        pipeline_started_ns = time.perf_counter_ns()
 
         for stage in self.stages:
             stage_name = stage.__class__.__name__
             status_before = context.current_stage
             context.current_stage = stage_name
             timing_before = _timing_snapshot(context)
-            stage_started = time.perf_counter()
+            stage_started_ns = time.perf_counter_ns()
             _append_event(
                 context,
                 context.trace_event(
@@ -189,6 +225,14 @@ class TranslationPipeline:
                             context = await translate_stage.run(context)
                         context = await stage.run(context)
             except Exception as exc:
+                stage_finished_ns = time.perf_counter_ns()
+                _append_pipeline_timing_span(
+                    context,
+                    stage_name=stage_name,
+                    pipeline_started_ns=pipeline_started_ns,
+                    stage_started_ns=stage_started_ns,
+                    stage_finished_ns=stage_finished_ns,
+                )
                 error = {
                     "stage_name": stage_name,
                     "error_code": _event_code_from_exception(exc),
@@ -209,7 +253,7 @@ class TranslationPipeline:
                             context,
                             stage_name=stage_name,
                             before=timing_before,
-                            duration_ms=(time.perf_counter() - stage_started) * 1000,
+                            duration_ms=(stage_finished_ns - stage_started_ns) / 1_000_000,
                         ),
                     ),
                 )
@@ -219,6 +263,14 @@ class TranslationPipeline:
                     pipeline_events=list(context.pipeline_events),
                     failed_stage_name=stage_name,
                 ) from exc
+            stage_finished_ns = time.perf_counter_ns()
+            _append_pipeline_timing_span(
+                context,
+                stage_name=stage_name,
+                pipeline_started_ns=pipeline_started_ns,
+                stage_started_ns=stage_started_ns,
+                stage_finished_ns=stage_finished_ns,
+            )
             context.current_stage = stage_name
             _append_event(
                 context,
@@ -231,7 +283,7 @@ class TranslationPipeline:
                         context,
                         stage_name=stage_name,
                         before=timing_before,
-                        duration_ms=(time.perf_counter() - stage_started) * 1000,
+                        duration_ms=(stage_finished_ns - stage_started_ns) / 1_000_000,
                     ),
                 ),
             )

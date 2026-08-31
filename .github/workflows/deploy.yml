@@ -14,9 +14,7 @@ on:
           - staging
           - production
 
-permissions:
-  contents: read
-  packages: read
+permissions: {}
 
 # Only one deployment per environment at a time, and never cancel a
 # deployment that is mid-migration or compose start (cancel-in-progress:
@@ -31,10 +29,18 @@ jobs:
   # verification fails. Skipped for staging.
   managed-services-check:
     if: ${{ inputs.environment == 'production' }}
-    uses: ./.github/workflows/managed-services-verification.yml
+    permissions:
+      contents: read
+    uses: ./.github/workflows/nonproduction-managed-services.yml
     with:
       required: true
-    secrets: inherit
+    secrets:
+      MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
+      TEST_R2_GATEWAY_URL: ${{ secrets.TEST_R2_GATEWAY_URL }}
+      TEST_R2_APP_CLIENT_ID: ${{ secrets.TEST_R2_APP_CLIENT_ID }}
+      TEST_R2_APP_CLIENT_SECRET: ${{ secrets.TEST_R2_APP_CLIENT_SECRET }}
+      TEST_R2_RECOVERY_CLIENT_ID: ${{ secrets.TEST_R2_RECOVERY_CLIENT_ID }}
+      TEST_R2_RECOVERY_CLIENT_SECRET: ${{ secrets.TEST_R2_RECOVERY_CLIENT_SECRET }}
 
   deploy:
     needs: managed-services-check
@@ -46,8 +52,11 @@ jobs:
           needs.managed-services-check.result == 'success'
         )
       }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
     environment: ${{ inputs.environment }}
     # Deploy credentials are environment-scoped, never repo-level, so a
     # workflow running on a fork or a lower-trust context cannot read them.
@@ -104,7 +113,7 @@ jobs:
       - name: Verify provenance attestation
         shell: bash
         env:
-          CERTIFICATE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/build.yml@refs/heads/main
+          CERTIFICATE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/container-publish.yml@refs/heads/main
           CERTIFICATE_OIDC_ISSUER: https://token.actions.githubusercontent.com
         run: |
           set -euo pipefail
@@ -112,7 +121,7 @@ jobs:
           # Resolve exact OCI index digests and verify the Sigstore provenance
           # attached to each digest. A missing or mismatched attestation fails
           # closed before any SSH credential is used.
-          echo "Verifying build attestations for images tagged '$VERSION'..."
+          echo "Verifying build attestations for images tagged '$VERSION'."
           # OCI registry references must be lowercase; buildx pushes the GHCR
           # repository path in lowercase even when the GitHub owner/repo names
           # contain uppercase characters.
@@ -315,7 +324,6 @@ jobs:
             done
             echo "::error::Caddy readiness gate failed: $READY_URL"
             exit 1
-
 
       # Deployment reports success only after the post-deploy smoke gate
       # passes. Production smoke is fail-closed: if the acceptance secrets

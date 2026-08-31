@@ -1,4 +1,28 @@
+---
+title: Deployment
+document_role: procedural
+authority: canonical
+scope: deployment topology build release migration verification rollback and GitHub controls
+audience:
+  - agents
+  - developers
+  - operators
+update_triggers:
+  - deployment topology changes
+  - release-control changes
+  - migration or rollback procedure changes
+owned_concerns:
+  - deployment-release-topology
+---
 # Deployment
+
+This document owns repeatable deployment, migration, verification, rollback, and release-control procedures. It does not own application architecture, secret values, incident detail, or dated deployment evidence.
+
+Current state: the canonical deployment topology is Compose with separate admin, reader, frontend, migration, worker, Redis, and recovery services behind Caddy, using external PostgreSQL and R2-only content storage.
+
+Related contracts: [`ARCHITECTURE.md`](ARCHITECTURE.md), [`CONFIGURATION.md`](CONFIGURATION.md), [`OPERATIONS.md`](OPERATIONS.md), and [`STATUS.md`](STATUS.md).
+
+Maintenance: update procedures when deployable topology or release controls change; record each candidate result in [`EVIDENCE.md`](EVIDENCE.md).
 
 Canonical deployment topology, release, rollback, and GitHub-control contract. For runtime health probes, backup recovery, and incident runbooks, see [`OPERATIONS.md`](OPERATIONS.md).
 
@@ -92,7 +116,7 @@ the frontend, admin API, reader API, Redis, and their configuration together.
 
 Cloudflare-protected WSL/Docker Compose frontend and split backend,
 Supabase/managed PostgreSQL, R2 application and independent backup buckets,
-managed Redis, tested SMTP, and external monitoring. Must satisfy `WORK.md`
+managed Redis, tested SMTP, and external monitoring. Must satisfy `STATUS.md`
 operator gates; the current development tunnel does not by itself establish
 the production route.
 
@@ -104,10 +128,10 @@ Startup fails closed for fatal production defects. Validate:
 - HTTPS public URL and OAuth callback;
 - explicit CORS, CSRF origins, and allowed hosts;
 - Redis backend/URL for multi-instance deployment;
-- R2-only application bucket `dokushodo`, exact `R2_*` credentials, and no
-  local content volume;
-- independent `dokushodo-backup` bucket and split least-privilege source/read
-  and backup/write credentials;
+- R2-only application bucket `dokushodo`, private HTTPS gateway, and separate
+  application Access identity; no local content volume;
+- independent `dokushodo-backup` bucket, recovery gateway, and separate
+  recovery Access identity;
 - TLS DB connection and reviewed per-process connection budget;
 - backup encryption, SMTP/recipient when alerts enabled;
 - worker/scheduler settings consistent with topology.
@@ -162,11 +186,11 @@ Hardening contract:
   contains a non-empty `DATABASE_RESTORE_PASSWORD` required by the
   `restore-db` (recovery) profile.
 - **Cryptographic Provenance Verification.** GitHub artifact attestations are
-  unavailable for this user-owned private repository, so `build.yml` creates
+  unavailable for this user-owned private repository, so `container-publish.yml` creates
   keyless Sigstore SLSA provenance in the GHCR OCI referrer graph with Cosign.
   Before remote deployment begins, the workflow resolves the exact OCI index
   digest for `novelai-admin`, `novelai-reader`, and `novelai-frontend` and runs
-  `cosign verify-attestation` with the protected `build.yml` workflow identity
+  `cosign verify-attestation` with the protected `container-publish.yml` workflow identity
   and GitHub OIDC issuer. Deployment fails closed if provenance is missing or
   invalid.
 - **Migration-head parity.** Before SSH, the workflow compares the checked-out
@@ -248,12 +272,14 @@ Owner-operated settings should match tracked workflow expectations:
 
 - Protect `main`: PR required, conversations resolved, required status checks
   (`docker-build`, `e2e-tests`, `Analyze (actions)`,
-  `Analyze (javascript-typescript)`, `Analyze (python)`, `GitGuardian scan`,
+  `Analyze (javascript-typescript)`, `Analyze (python)`,
+  `CodeQL (javascript-typescript)`, `CodeQL (python)`, `GitGuardian scan`,
   and `dependency-review`), no force push/deletion, owner-only bypass. The
   replacement `Analyze (...)` jobs use Zizmor, locked Ruff security rules, and
-  Node/ESLint/TypeScript checks. `dependency-review` uses read-only Trivy
-  lockfile and misconfiguration scanning because GitHub Dependency Review and
-  CodeQL are unavailable without GitHub Code Security on this private repo.
+  Node/ESLint/TypeScript checks. The tracked `codeql.yml` workflow supplies the
+  CodeQL checks because GitHub Code Security default setup is disabled for this
+  private repository. `dependency-review` uses read-only Trivy lockfile and
+  misconfiguration scanning because GitHub Dependency Review is unavailable.
   No approving-review requirement is currently configured because this is a
   single-operator repository and GitHub forbids PR authors from approving their
   own pull request. Re-enable review requirements if a second write-access
@@ -262,15 +288,22 @@ Owner-operated settings should match tracked workflow expectations:
   approved solo-operator waiver with expiry and mitigation.
 - Keep default `GITHUB_TOKEN` read-only; grant write only per job.
 - Python CI dependencies are installed from `uv.lock` via `uv sync --locked --extra ...` and executed via `uv run --locked <cmd>`. `--locked` fails CI if `uv.lock` is stale relative to `pyproject.toml`.
-- Local, CI, and Docker Node is pinned to 26.7.x in `frontend/.nvmrc`, `frontend/package.json`, the CI setup, and production `frontend.Dockerfile`.
-- Container image provenance is generated by `build.yml` via keyless Cosign/Sigstore SLSA attestations for default-branch GHCR publications. The deploy workflow verifies the exact digest, certificate identity, and GitHub OIDC issuer with `cosign verify-attestation`; GitHub artifact-attestation APIs are not used because this is a user-owned private repository.
+- Local, CI, and Docker Node is pinned to 26.8.1 in `frontend/.nvmrc`, `frontend/package.json`, the CI setup, and production `frontend.Dockerfile`.
+- Python CI and Docker images are pinned to 3.14.7. Python dependencies are
+  resolved from `uv.lock`; generated requirements locks must be regenerated by
+  `deploy/update-lockfiles.ps1`. Frontend and R2 Worker dependencies are
+  resolved from their committed npm lockfiles.
+- The R2 Worker validation command is `npm run deploy:dry-run`, whose script
+  explicitly selects the non-production `test` environment. A dry run must
+  never resolve the production bucket classes.
+- Container image provenance is generated by `container-publish.yml` via keyless Cosign/Sigstore SLSA attestations for default-branch GHCR publications. The deploy workflow verifies the exact digest, certificate identity, and GitHub OIDC issuer with `cosign verify-attestation`; GitHub artifact-attestation APIs are not used because this is a user-owned private repository.
 - Pin third-party actions to immutable SHAs.
 - Enable dependency graph, Dependabot security updates, secret scanning, push
-  protection, and validity checks. If GitHub Code Security is later enabled,
-  add CodeQL only through a separate protected change; it is not assumed by
-  this private-repository release.
+  protection, and validity checks. The tracked CodeQL workflow is the explicit
+  code-scanning control; its required-check names must be registered in branch
+  protection after the workflow is merged.
 - Keep deployment secrets in GitHub environments/provider secret stores, never files.
-- Run `.github/workflows/gitguardian.yaml` (ggshield v1.53.0 pinned) on push and
+- Run `.github/workflows/secret-scan.yml` (ggshield v1.54.0 pinned) on push and
   same-repository PR; `GITGUARDIAN_API_KEY` repo secret, read-only token, no
   `pull_request_target`. Fork PRs are skipped — secrets are not exposed to
   untrusted fork code. Fork owners should enable GitGuardian's native public-repo
@@ -289,7 +322,7 @@ Required deployment configuration:
   - `DEPLOY_SSH_KEY`
   - `NOVELAI_SMOKE_SESSION_COOKIE`
 - Managed-service verification variables and credentials use the scopes
-  documented by `managed-services-verification.yml`.
+  documented by `nonproduction-managed-services.yml`.
 
 `DEPLOY_HOST` is a stable host or public DNS name reachable by the GitHub
 runner over the configured SSH port. It must not be a private-mesh-only
@@ -363,7 +396,7 @@ above.
 
 No deployment is launch-ready until hosted auth/security, monitoring/alerts,
 recovery, accessibility, performance, SEO, legal propagation, and rollback gates
-in [`WORK.md`](WORK.md) pass without unwaived blockers.
+in [`STATUS.md`](STATUS.md) pass without unwaived blockers.
 
 ## Current Release Decision
 
@@ -391,7 +424,7 @@ candidate. The current worktree is dirty, current immutable image digests,
 production domains, and `PRODUCTION_BASE_URL` are not supplied, and the current
 production decision remains **NO-GO**.
 
-The historical worker/bulk-queue paragraphs in `WORK.md` are superseded by the
+The historical worker/bulk-queue paragraphs in `STATUS.md` are superseded by the
 2026-08-27 operational checkpoint: the dedicated worker is not admitted, the
 original full queue remains paused, and queue/writer safety is not independently
 observed. Local Compose health is not production readiness. The current
@@ -459,7 +492,7 @@ and are not current access instructions.
 
 The named development tunnel is not repurposed for disposable capacity runs.
 The confirmation-gated
-`.github/workflows/reader-capacity-nonproduction.yml` workflow builds an
+`.github/workflows/nonproduction-reader-evidence.yml` workflow builds an
 isolated Compose project against the managed test database and the dedicated
 `test-dokushodo` R2 application bucket, then uses an ephemeral Cloudflare quick
 tunnel to reach that project's Caddy listener. Before profiling, the workflow
@@ -469,9 +502,9 @@ comparison evidence. It always removes the synthetic fixture, test runtime,
 and quick tunnel. See [`OPERATIONS.md`](OPERATIONS.md) for the evidence and
 cold-cache reset contract.
 
-### Non-production workflow runner checkpoint - 2026-08-30
+### Historical non-production workflow runner checkpoint - 2026-08-30
 
-The authorized branch exercise ran the non-production reader, managed-service,
+The historical authorized branch exercise ran the non-production reader, managed-service,
 static-analysis, dependency-review, and CI jobs on one disposable Ubuntu 24.04
 WSL2 self-hosted runner carrying the label
 `dokushodo-nonprod-linux-x64`. The runner was used only for candidate-branch
@@ -490,3 +523,47 @@ same-repository push and pull-request scans. Its fork guard remains in place,
 so the `GITGUARDIAN_API_KEY` is never exposed to fork code. This changes only
 the scan execution host; it does not reroute production deployment or
 monitoring workflows.
+
+### Current B6 private hosted checkpoint - 2026-08-31
+
+The current candidate workflow contract targets GitHub-hosted Ubuntu and forbids
+persistent self-hosted execution. The repository runner inventory is currently
+empty. The five required candidate workflows were returned by GitHub with 16 job
+records: 10 failed before runner assignment and 6 dependent jobs were skipped;
+all 16 had zero executed steps and zero billable runner time. This is a
+hosted-runner availability blocker rather than a successful CI or capacity
+result. The exact candidate SHA, run URLs, timings, and bounded job metadata are
+retained in the validated B6 evidence artifacts.
+
+The repository remains private. No visibility transition, public-main rerun,
+external-fork proof, GitHub settings change, provider operation, production
+mutation, secret change, or repository-variable change was attempted. Branch
+protection was readable before the gate; unsupported settings endpoints remain
+explicitly `unavailable`. Do not reactivate the historical WSL2/self-hosted
+label to satisfy this gate, and do not treat local runner shutdown as proof of
+hosted workflow eligibility.
+
+### Current hosted recheck after B7 capture fix - 2026-08-31
+
+The recheck used capture-fix candidate
+`5d410bd62949d70d31a70f9e88b98de3c707b266`. All tracked candidate workflows
+continue to target GitHub-hosted Ubuntu 24.04. The CI, CodeQL, Secret
+Scan, Security Static Analysis, and Dependency Review runs remain blocked: the
+required jobs completed with no runner assignment, no executed steps, and no
+billable runner time, while the repository runner inventory remains empty.
+Actions is enabled and no repository settings, visibility, secrets, variables,
+provider resources, or production targets were changed. The pre-existing
+untracked `ai-review.yml` self-hosted reference is outside this candidate
+closeout and remains untouched. Do not use it or a newly registered
+self-hosted runner to satisfy the GitHub-hosted execution gate.
+
+### Current hosted runner allocation result - 2026-08-31
+
+The current candidate is pushed to PR #136. Its CI, CodeQL, Secret Scan,
+Security Static Analysis, and Dependency Review runs all completed before
+runner assignment with zero executed steps and no runner name; the repository
+runner inventory remains empty. This is an external GitHub-hosted runner-allocation
+failure, not a deployment, application, or capacity result. The PR remains
+merge-blocked. Do not switch these workflows to the historical self-hosted
+label, and do not change repository visibility or provider resources to bypass
+the allocation failure.

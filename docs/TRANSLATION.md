@@ -1,4 +1,28 @@
+---
+title: Translation and Glossary
+document_role: normative
+authority: canonical
+scope: translation quality prompts glossary cache identity lineage quotas and bounded provider execution
+audience:
+  - agents
+  - developers
+  - operators
+update_triggers:
+  - prompt or quality-policy changes
+  - glossary or lineage changes
+  - provider quota or retry-contract changes
+owned_concerns:
+  - translation-quality-and-lineage
+---
 # Translation and Glossary
+
+This document owns translation quality, prompt and glossary lifecycle, cache identity, artifact lineage, provider bounds, and quota semantics. It does not own deployment, storage ownership, operational execution, or dated capacity results.
+
+Current state: translation output is lineage-bound to immutable source artifacts, prompt and glossary identity, QA policy, and bounded provider execution; rejected attempts cannot become accepted cache entries.
+
+Related contracts: [`ARCHITECTURE.md`](ARCHITECTURE.md), [`STORAGE.md`](STORAGE.md), [`CONFIGURATION.md`](CONFIGURATION.md), and [`OPERATIONS.md`](OPERATIONS.md).
+
+Maintenance: version any output-shaping or lineage-affecting contract, invalidate affected cache identity, and record execution outcomes in [`EVIDENCE.md`](EVIDENCE.md).
 
 Canonical translation quality, prompt, glossary, and cache identity contract.
 
@@ -364,7 +388,7 @@ auto-publish findings.
 - Bump `qa_policy_fingerprint` and `prompt_template_version` together with
   any output-shaping change.
 
-Deferred semantic-cache and broader advisory-QA work lives in [`WORK.md`](WORK.md).
+Deferred semantic-cache and broader advisory-QA work lives in [`STATUS.md`](STATUS.md).
 
 ## Contributor Credential Selection and Usage Accounting
 

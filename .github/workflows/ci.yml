@@ -6,14 +6,12 @@ on:
   pull_request:
     branches: [main, develop]
 
-permissions:
-  contents: read
-  pull-requests: read
+permissions: {}
 
 concurrency:
   # Cancel superseded PR runs (they only consume runner time), but never
   # cancel branch runs on main/develop: those are the authoritative CI
-  # signals that build.yml waits on before publishing images.
+  # signals that container-publish.yml waits on before publishing images.
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -22,7 +20,11 @@ jobs:
   # its inputs actually changed. Push runs on main/develop stay authoritative
   # and always execute the full matrix.
   changes:
-    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
@@ -53,7 +55,10 @@ jobs:
               - '.github/workflows/**'
 
   backend-lint:
-    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -61,7 +66,7 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14.6"
+          python-version: "3.14.7"
 
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
@@ -70,7 +75,16 @@ jobs:
 
       - run: >-
           uv sync --locked --extra gemini --extra dev
-          --extra test --extra s3 --extra auth
+          --extra test --extra auth
+      - name: Run canonical pre-commit hooks
+        run: uv run --locked pre-commit run --all-files
+      - name: Verify pre-commit left a clean checkout
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Pre-commit modified the checkout."
+            exit 1
+          fi
       - run: uv run --locked ruff check .
       - run: uv run --locked pyright
 
@@ -88,7 +102,10 @@ jobs:
           echo "No router layer violations found."
 
   backend-tests:
-    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
     needs: changes
     if: >-
       ${{
@@ -106,7 +123,7 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14.6"
+          python-version: "3.14.7"
 
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
@@ -115,7 +132,7 @@ jobs:
 
       - run: >-
           uv sync --locked --extra gemini --extra dev
-          --extra test --extra s3 --extra auth
+          --extra test --extra auth
 
       - name: Run unit tests
         run: >
@@ -141,7 +158,10 @@ jobs:
 
   migration-smoke:
     name: Migration smoke test
-    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
     needs: changes
     if: >-
       ${{
@@ -175,7 +195,7 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14.6"
+          python-version: "3.14.7"
 
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
@@ -184,7 +204,7 @@ jobs:
 
       - run: >-
           uv sync --locked --extra gemini --extra dev
-          --extra test --extra s3 --extra auth
+          --extra test --extra auth
 
       - name: Bootstrap Supabase auth signature on vanilla PostgreSQL
         env:
@@ -209,7 +229,9 @@ jobs:
 
   backend-extended:
     name: Backend extended tests (${{ matrix.shard }})
-    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     needs: changes
     if: >-
       ${{
@@ -253,7 +275,7 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14.6"
+          python-version: "3.14.7"
 
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
@@ -262,13 +284,16 @@ jobs:
 
       - run: >-
           uv sync --locked --extra gemini --extra dev
-          --extra test --extra s3 --extra auth
+          --extra test --extra auth
       - run: >-
           uv run --locked pytest -n 2 --dist loadfile --basetemp=backend/tests/.tmp/pytest-${{ matrix.shard }}
           --tb=short -q ${{ matrix.test_files }}
 
   frontend-check:
-    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
     needs: changes
     if: >-
       ${{
@@ -295,14 +320,43 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  docs-gate:
+    name: Documentation contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14.7"
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.0"
+          enable-cache: true
+
+      - run: >-
+          uv sync --locked --extra gemini --extra dev
+          --extra test --extra auth
+      - name: Validate canonical documentation
+        run: uv run --locked python tools/docs_check.py --root .
+
   docker-build:
-    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
     # PRs and develop pushes validate image builds; on main the images are
-    # built authoritatively by the Build and Push workflow (build.yml) after
+    # built authoritatively by the Container Publish workflow after
     # CI succeeds, so the non-push duplicate build is skipped there.
     # Validation builds only READ the gha cache (cache-from): exporting
     # cache-to on every PR run re-uploads ~50s of layers and competes with
-    # build.yml as a cache producer. build.yml (mode=max) is the single
+    # container-publish.yml as a cache producer. container-publish.yml (mode=max) is the single
     # authoritative producer.
     # Path-aware on PRs: only build when an image input changed, but still
     # only after every relevant test job has not failed.
@@ -320,15 +374,26 @@ jobs:
         needs.migration-smoke.result != 'failure' &&
         needs.backend-extended.result != 'failure' &&
         needs.frontend-check.result != 'failure' &&
-        needs.e2e-tests.result != 'failure'
+        needs.e2e-tests.result != 'failure' &&
+        needs.docs-gate.result != 'failure'
       }}
-    needs: [changes, backend-lint, backend-tests, migration-smoke, backend-extended, frontend-check, e2e-tests]
+    needs:
+      [
+        changes,
+        backend-lint,
+        backend-tests,
+        migration-smoke,
+        backend-extended,
+        frontend-check,
+        e2e-tests,
+        docs-gate,
+      ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Build admin image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -358,7 +423,11 @@ jobs:
           cache-from: type=gha,scope=frontend
 
   e2e-tests:
-    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: changes
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -383,7 +452,7 @@ jobs:
       - if: steps.filter.outputs.relevant == 'true'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14.6"
+          python-version: "3.14.7"
 
       - if: steps.filter.outputs.relevant == 'true'
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -394,7 +463,7 @@ jobs:
       - if: steps.filter.outputs.relevant == 'true'
         run: >-
           uv sync --locked --extra gemini --extra dev
-          --extra test --extra s3 --extra auth
+          --extra test --extra auth
 
       - if: steps.filter.outputs.relevant == 'true'
         run: >-

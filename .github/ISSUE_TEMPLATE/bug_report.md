@@ -27,7 +27,7 @@ or credential fragments. -->
 
 - Branch / commit:
 - Python version: (default 3.14)
-- Storage backend: filesystem / s3
+- Storage boundary: Cloudflare R2 gateway
 - Deployment: local / preview / production
 
 ## Logs

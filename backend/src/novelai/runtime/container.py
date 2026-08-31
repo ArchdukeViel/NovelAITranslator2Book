@@ -200,6 +200,7 @@ class Container:
     @property
     def backup_service(self) -> BackupService:
         if self._backup_service is None:
+            from novelai.storage.backends import build_r2_recovery_storage
             from novelai.storage.r2_backup import R2IncrementalBackupTarget
 
             snapshot_target = None
@@ -207,31 +208,9 @@ class Container:
                 if not settings.R2_BUCKET or not settings.R2_BACKUP_BUCKET:
                     raise RuntimeError("Application and backup R2 buckets must be configured")
                 snapshot_target = R2IncrementalBackupTarget(
-                    source_bucket=settings.R2_BUCKET,
-                    target_bucket=settings.R2_BACKUP_BUCKET,
+                    source_backend=build_r2_recovery_storage(bucket_class="app"),
+                    target_backend=build_r2_recovery_storage(bucket_class="backup"),
                     target_prefix=settings.R2_BACKUP_PREFIX,
-                    endpoint_url=settings.R2_BACKUP_ENDPOINT or settings.R2_ENDPOINT,
-                    region=settings.R2_REGION,
-                    source_access_key_id=(
-                        settings.R2_SOURCE_ACCESS_KEY_ID.get_secret_value()
-                        if settings.R2_SOURCE_ACCESS_KEY_ID
-                        else None
-                    ),
-                    source_secret_access_key=(
-                        settings.R2_SOURCE_SECRET_ACCESS_KEY.get_secret_value()
-                        if settings.R2_SOURCE_SECRET_ACCESS_KEY
-                        else None
-                    ),
-                    target_access_key_id=(
-                        settings.R2_BACKUP_ACCESS_KEY_ID.get_secret_value()
-                        if settings.R2_BACKUP_ACCESS_KEY_ID
-                        else None
-                    ),
-                    target_secret_access_key=(
-                        settings.R2_BACKUP_SECRET_ACCESS_KEY.get_secret_value()
-                        if settings.R2_BACKUP_SECRET_ACCESS_KEY
-                        else None
-                    ),
                 )
             self._backup_service = BackupService(
                 runtime_dir=settings.RUNTIME_DIR,
@@ -291,18 +270,10 @@ class Container:
         if self._database_backup_service is None:
             if not settings.R2_BACKUP_BUCKET:
                 raise RuntimeError("Database backup bucket is not configured")
-            import boto3
+            from novelai.storage.backends import build_r2_recovery_storage
 
-            client_kwargs: dict[str, object] = {"region_name": settings.R2_REGION}
-            if settings.R2_BACKUP_ENDPOINT or settings.R2_ENDPOINT:
-                client_kwargs["endpoint_url"] = settings.R2_BACKUP_ENDPOINT or settings.R2_ENDPOINT
-            if settings.R2_BACKUP_ACCESS_KEY_ID:
-                client_kwargs["aws_access_key_id"] = settings.R2_BACKUP_ACCESS_KEY_ID.get_secret_value()
-            if settings.R2_BACKUP_SECRET_ACCESS_KEY:
-                client_kwargs["aws_secret_access_key"] = settings.R2_BACKUP_SECRET_ACCESS_KEY.get_secret_value()
             self._database_backup_service = DatabaseBackupService(
-                boto3.client("s3", **client_kwargs),
-                settings.R2_BACKUP_BUCKET,
+                build_r2_recovery_storage(bucket_class="backup"),
             )
         return self._database_backup_service
 
@@ -327,8 +298,8 @@ class Container:
             self._health_service = HealthService(
                 storage=self.storage,
                 activity_runner=self.activity_runner,
-                backup_service=self.backup_service,
-                database_backup_service=self.database_backup_service,
+                backup_service=self.backup_service if settings.BACKUP_ENABLED else None,
+                database_backup_service=self.database_backup_service if settings.DATABASE_BACKUP_ENABLED else None,
                 operator_alert_service=self.operator_alert_service,
             )
         return self._health_service

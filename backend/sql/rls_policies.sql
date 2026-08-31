@@ -4,7 +4,7 @@
 -- cannot drift into a second schema-management path.
 /*
 -- Row Level Security (RLS) Policies for NovelAI
--- 
+--
 -- Role model (backend-enforced):
 --   guest - unauthenticated; read public catalog/chapters only
 --   user  - authenticated; library, progress, ratings, requests (own data only)
@@ -42,7 +42,7 @@ RETURNS integer
 LANGUAGE sql
 STABLE
 AS $$
-  SELECT id FROM public.users 
+  SELECT id FROM public.users
   WHERE auth_provider_subject = auth.uid()::text
   LIMIT 1;
 $$;
@@ -54,7 +54,7 @@ LANGUAGE sql
 STABLE
 AS $$
   SELECT EXISTS (
-    SELECT 1 FROM public.users 
+    SELECT 1 FROM public.users
     WHERE auth_provider_subject = auth.uid()::text
     AND role = 'owner'
   );

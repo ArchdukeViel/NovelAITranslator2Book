@@ -36,7 +36,7 @@ def test_default_settings() -> None:
     assert s.TRANSLATION_TARGET_LANGUAGE == "English"
     assert s.RUNTIME_DIR.is_absolute() or bool(s.RUNTIME_DIR.anchor)
     assert s.R2_BUCKET == "dokushodo"
-    assert s.R2_REGION == "auto"
+    assert s.R2_GATEWAY_URL is None
     assert s.R2_BACKUP_BUCKET == "dokushodo-backup"
     assert s.MIGRATION_DATABASE_URL is None
 

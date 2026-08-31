@@ -86,7 +86,7 @@ describe("admin dashboard safety", () => {
     await userEvent.click(stopButton);
 
     expect(await screen.findByRole("heading", { name: /stop worker/i })).toBeInTheDocument();
-    
+
     // Check dialog contains the warning text (using getAllByText since it appears twice in dialog)
     const warningTexts = screen.getAllByText(/pause all pending translation and crawl jobs/i);
     expect(warningTexts.length).toBeGreaterThan(0);

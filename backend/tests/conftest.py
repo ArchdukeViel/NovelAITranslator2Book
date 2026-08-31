@@ -62,6 +62,10 @@ def pytest_configure() -> None:
     settings.PROVIDER_DEFAULT = "dummy"
     settings.PROVIDER_GEMINI_API_KEY = None
     settings.DATABASE_URL = None
+    settings.BACKUP_ENABLED = False
+    settings.R2_BACKUP_ENABLED = False
+    settings.MAINTENANCE_ENABLED = False
+    settings.DATABASE_BACKUP_ENABLED = False
 
 
 def pytest_collection_modifyitems(items) -> None:

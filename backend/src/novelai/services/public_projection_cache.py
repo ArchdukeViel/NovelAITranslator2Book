@@ -6,10 +6,11 @@ from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass
 from threading import RLock
-from time import monotonic
+from time import monotonic, perf_counter
 from typing import Any
 
 from novelai.config.settings import settings
+from novelai.services.timing_contract import record_internal_span
 
 type PublicProjectionCacheKey = tuple[str, ...]
 
@@ -44,17 +45,25 @@ class PublicProjectionCache:
         self._lock = RLock()
 
     def get(self, key: PublicProjectionCacheKey) -> Any | None:
-        now = monotonic()
-        with self._lock:
-            entry = self._entries.get(key)
-            if entry is None or entry.expires_at <= now:
-                if entry is not None:
-                    self._entries.pop(key, None)
-                self._misses += 1
-                return None
-            self._entries.move_to_end(key)
-            self._hits += 1
-            return deepcopy(entry.value)
+        started = perf_counter()
+        try:
+            now = monotonic()
+            with self._lock:
+                entry = self._entries.get(key)
+                if entry is None or entry.expires_at <= now:
+                    if entry is not None:
+                        self._entries.pop(key, None)
+                    self._misses += 1
+                    return None
+                self._entries.move_to_end(key)
+                self._hits += 1
+                return deepcopy(entry.value)
+        finally:
+            record_internal_span(
+                "cache_or_fallback",
+                source="application",
+                duration_ms=(perf_counter() - started) * 1000,
+            )
 
     def set(self, key: PublicProjectionCacheKey, value: Any) -> None:
         if not settings.PUBLIC_PROJECTION_CACHE_ENABLED:

@@ -1,0 +1,43 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "dokushodo-r2-gateway",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-30",
+  "vars": {
+    "GATEWAY_VERSION": "v1",
+    "MAX_OBJECT_BYTES": "268435456",
+    "APP_CLIENT_ID": "configure-in-cloudflare-access",
+    "RECOVERY_CLIENT_ID": "configure-in-cloudflare-access"
+  },
+  "r2_buckets": [
+    {
+      "binding": "R2_APP",
+      "bucket_name": "dokushodo"
+    },
+    {
+      "binding": "R2_BACKUP",
+      "bucket_name": "dokushodo-backup"
+    }
+  ],
+  "env": {
+    "test": {
+      "name": "dokushodo-r2-gateway-test",
+      "vars": {
+        "GATEWAY_VERSION": "v1",
+        "MAX_OBJECT_BYTES": "268435456",
+        "APP_CLIENT_ID": "test-app-client",
+        "RECOVERY_CLIENT_ID": "test-recovery-client"
+      },
+      "r2_buckets": [
+        {
+          "binding": "R2_APP",
+          "bucket_name": "test-dokushodo"
+        },
+        {
+          "binding": "R2_BACKUP",
+          "bucket_name": "test-dokushodo-backup"
+        }
+      ]
+    }
+  }
+}

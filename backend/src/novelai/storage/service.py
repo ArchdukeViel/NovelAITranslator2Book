@@ -320,13 +320,13 @@ class StorageService:
             # Tests use the same R2 semantics as production, with an isolated
             # in-memory object store. The path remains a logical test root for
             # runtime helper services and is never used as canonical storage.
-            from novelai.storage.backends.r2 import InMemoryR2Storage
+            from novelai.storage.backends.r2_gateway import InMemoryR2GatewayStorage
 
-            self._backend = InMemoryR2Storage()
+            self._backend = InMemoryR2GatewayStorage()
         elif settings.ENV == "test":
-            from novelai.storage.backends.r2 import InMemoryR2Storage
+            from novelai.storage.backends.r2_gateway import InMemoryR2GatewayStorage
 
-            self._backend = InMemoryR2Storage()
+            self._backend = InMemoryR2GatewayStorage()
         else:
             from novelai.storage.backends import get_r2_storage
 
@@ -495,9 +495,8 @@ class StorageService:
 
     def _r2_artifacts(self) -> Any:
         from novelai.storage.artifacts import R2ArtifactRepository
-        from novelai.storage.backends.r2 import R2Storage
 
-        if not isinstance(self._backend, R2Storage):
+        if getattr(self._backend, "_BACKING", None) != "r2":
             raise RuntimeError("Immutable artifact methods require the R2 backend")
         return R2ArtifactRepository(self._backend)
 
@@ -510,9 +509,7 @@ class StorageService:
     def r2_backend(self) -> Any:
         """Return the canonical R2 backend for storage-domain services."""
 
-        from novelai.storage.backends.r2 import R2Storage
-
-        if not isinstance(self._backend, R2Storage):
+        if getattr(self._backend, "_BACKING", None) != "r2":
             raise RuntimeError("This operation requires the canonical R2 backend")
         return self._backend
 

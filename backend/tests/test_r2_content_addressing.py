@@ -1,15 +1,10 @@
-"""Focused R2-only storage and deterministic artifact contract tests."""
-
 from __future__ import annotations
 
-from collections.abc import Iterator
 from io import BytesIO
-from typing import Any
-from unittest.mock import patch
 
 import pytest
 
-from novelai.storage.backends.r2 import R2Storage
+from novelai.storage.backends.r2_gateway import InMemoryR2GatewayStorage
 from novelai.storage.content_addressing import (
     ArtifactConflictError,
     artifact_key,
@@ -44,20 +39,14 @@ def test_application_keys_have_no_legacy_prefix() -> None:
     assert "v1/" not in key
 
 
-@pytest.fixture()
-def r2() -> Iterator[R2Storage]:
-    pytest.importorskip("moto")
-    from moto import mock_aws
-
-    with mock_aws():
-        import boto3
-
-        client = boto3.client("s3", region_name="us-east-1")
-        client.create_bucket(Bucket="dokushodo")
-        yield R2Storage(bucket="dokushodo", region="auto", endpoint_url=None, client=client)
+@pytest.fixture
+def r2() -> InMemoryR2GatewayStorage:
+    return InMemoryR2GatewayStorage("test-dokushodo")
 
 
-def test_immutable_write_is_idempotent_and_rejects_changed_bytes(r2: R2Storage) -> None:
+def test_immutable_write_is_idempotent_and_rejects_changed_bytes(
+    r2: InMemoryR2GatewayStorage,
+) -> None:
     artifact = prepare_json_artifact(
         {"chapter_id": "1", "text": "hello"},
         novel_id="1",
@@ -72,71 +61,24 @@ def test_immutable_write_is_idempotent_and_rejects_changed_bytes(r2: R2Storage) 
         r2.put_immutable(artifact.key, b"different", logical_sha256=artifact.logical_hash)
 
 
-def test_recursive_and_nonrecursive_listing_are_paginated(r2: R2Storage) -> None:
+def test_recursive_and_nonrecursive_listing_are_complete(r2: InMemoryR2GatewayStorage) -> None:
     for index in range(1105):
         r2.save(f"novels/n1/chapters/{index}/body.json.gz", b"x")
     recursive = r2.list_keys("novels/n1", recursive=True)
     assert len(recursive) == 1105
     immediate = r2.list_keys("novels/n1", recursive=False)
-    assert len(immediate) == 1
     assert immediate == ["novels/n1/chapters/"]
 
 
-def test_delete_prefix_removes_all_pages(r2: R2Storage) -> None:
+def test_delete_prefix_removes_every_object(r2: InMemoryR2GatewayStorage) -> None:
     for index in range(1105):
         r2.save(f"novels/n1/assets/{index}.jpg", b"x")
     assert r2.delete_prefix("novels/n1/assets") == 1105
     assert r2.list_keys("novels/n1/assets", recursive=True) == []
 
 
-def test_delete_prefix_snapshots_keys_before_mutating_listing(r2: R2Storage) -> None:
-    for index in range(1105):
-        r2.save(f"novels/n1/assets/{index}.jpg", b"x")
-    all_keys = [f"novels/n1/assets/{index}.jpg" for index in range(1105)]
-    state = {"delete_started": False}
-    original_delete_objects = r2._client.delete_objects
-
-    class MutatingPaginator:
-        def paginate(self, **_: Any) -> Iterator[dict[str, Any]]:
-            yield {"Contents": [{"Key": key} for key in all_keys[:1000]]}
-            remaining = [] if state["delete_started"] else all_keys[1000:]
-            yield {"Contents": [{"Key": key} for key in remaining]}
-
-    def delete_objects(*args: Any, **kwargs: Any) -> Any:
-        state["delete_started"] = True
-        return original_delete_objects(*args, **kwargs)
-
-    with (
-        patch.object(r2._client, "get_paginator", return_value=MutatingPaginator()),
-        patch.object(r2._client, "delete_objects", side_effect=delete_objects),
-    ):
-        assert r2.delete_prefix("novels/n1/assets") == 1105
-    assert r2.list_keys("novels/n1/assets", recursive=True) == []
-
-
-def test_stream_upload_uses_multipart_transfer_and_provider_checksum(r2: R2Storage) -> None:
-    data = b"streamed-artifact" * 600_000
-    with (
-        patch.object(r2._client, "create_multipart_upload", wraps=r2._client.create_multipart_upload) as multipart,
-        patch.object(r2._client, "upload_fileobj", wraps=r2._client.upload_fileobj) as upload,
-    ):
-        written = r2.save_stream(
-            "novels/n1/assets/large.bin",
-            BytesIO(data),
-            content_length=len(data),
-            content_type="application/octet-stream",
-        )
-
-    assert written == len(data)
-    assert multipart.called
-    assert upload.call_args is not None
-    assert upload.call_args.kwargs["ExtraArgs"]["ChecksumAlgorithm"] == "SHA256"
-    assert upload.call_args.kwargs["Config"].multipart_threshold == R2Storage._MULTIPART_THRESHOLD_BYTES
-    assert r2.head("novels/n1/assets/large.bin").size_bytes == len(data)
-
-
-def test_stream_upload_cleans_object_when_declared_length_is_wrong(r2: R2Storage) -> None:
+def test_stream_upload_checks_declared_length(r2: InMemoryR2GatewayStorage) -> None:
+    assert r2.save_stream("novels/n1/assets/large.bin", BytesIO(b"payload"), content_length=7) == 7
     with pytest.raises(ValueError, match="stream length mismatch"):
         r2.save_stream("novels/n1/assets/wrong.bin", BytesIO(b"three"), content_length=2)
-
     assert not r2.exists("novels/n1/assets/wrong.bin")

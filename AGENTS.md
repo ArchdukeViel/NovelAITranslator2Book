@@ -1,325 +1,247 @@
 # AGENTS.md
 
-Project-specific instructions for coding assistants. Primaries follow configured delegation and acceptance policy; this file defines repository facts, contracts, and verification.
+## Purpose
 
-## Sources of Truth
+This file is the compact repository constitution and routing index for Codex
+and other coding assistants. It defines safety, authority, boundaries, and
+verification. It does not replace the architecture, active specifications, or
+implemented source.
 
-Use sources in this order:
+## Authority and conflict resolution
 
-1. `docs/ARCHITECTURE.md` — architecture, contracts, security boundaries, dependency direction.
-2. Active specification under `.agents/specs/<spec-name>/`.
-3. Existing production code and tests.
-4. `docs/WORK.md` — active, blocked, deferred, and operator-acceptance work.
+Use this order:
 
-Architecture wins over other documentation. An active approved specification wins over archived specifications. Report conflicts before implementation; never silently choose one interpretation.
+1. The current explicit owner instruction defines authorized scope.
+2. This file defines repository safety and working rules.
+3. `docs/ARCHITECTURE.md` defines current architecture and trust boundaries.
+4. An approved active specification defines an intended scoped delta.
+5. The canonical document that owns a concern defines its stable detail.
+6. Source, tests, manifests, migrations, and workflows prove implementation.
+7. `docs/STATUS.md` records current work and unresolved decisions.
+8. `docs/EVIDENCE.md` records verified historical outcomes.
+9. `docs/archive/` is provenance only and is never active authority.
 
-Do not preload every document. Load canonical detail only when relevant:
+Report material conflicts; do not silently choose the easiest implementation.
+Do not treat a plan, checked task box, passing workflow, or historical note as
+proof that an intended change is implemented. Active plans live under
+`docs/plans/`, are non-canonical, and never override this hierarchy.
 
-| Need | Canonical source |
+`docs/STATUS.md` is the current unfinished-work and operator-gate register.
+`docs/EVIDENCE.md` is the current completed-evidence and historical record.
+That transition is temporary; after it completes, only the future names are
+active.
+
+## Read-on-demand documentation map
+
+| Need | Read first |
 | --- | --- |
-| Architecture or security | `docs/ARCHITECTURE.md` |
-| Global frontend design index | `docs/DESIGN.md` |
-| Public page design | `docs/design/public/...` |
-| Admin page design | `docs/design/admin/...` |
-| Shared design, system & accessibility rules | `docs/DESIGN.md` |
-| Configuration | `docs/CONFIGURATION.md` |
-| CI or deployment procedure | `docs/DEPLOYMENT.md` |
-| Operator runbook, health, or backup procedure | `docs/OPERATIONS.md` |
-| Translation quality policy & prompt lifecycle | `docs/TRANSLATION.md` |
-| Unfinished work | `docs/WORK.md` |
-| Completed evidence | `docs/HISTORY.md` |
+| architecture, security, boundaries | `docs/ARCHITECTURE.md` |
+| configuration and secret classification | `docs/CONFIGURATION.md` |
+| CI, release, deployment, rollback | `docs/DEPLOYMENT.md` |
+| global UI system and route briefs | `docs/DESIGN.md`, `docs/design/` |
+| operational, health, queue, backup, restore runbooks | `docs/OPERATIONS.md` |
+| storage ownership, keys, retention, recovery invariants | `docs/STORAGE.md` |
+| translation, prompts, glossary, QA, quotas | `docs/TRANSLATION.md` |
+| active work and gates | `docs/STATUS.md` |
+| completed verification | `docs/EVIDENCE.md` |
+| intended feature work | the applicable `.agents/specs/<name>/` |
+| active execution order | `docs/plans/` |
 
-## Working Principles
+Read `docs/ARCHITECTURE.md` before making an architecture or security change.
+Read the relevant active specification before implementing its intended delta.
+Do not preload unrelated documentation.
 
-- **Stay within scope.** Act only on the user's stated request. If you discover an unrelated defect or improvement, surface it as a finding and stop; do not fix it without explicit authorization.
-- **Clarify before acting on ambiguity.** If the user's request is ambiguous in a way that affects scope, behavior, or contracts, ask before acting. Never resolve ambiguity by picking the cheaper interpretation.
+## Repository working rules
 
-## Project Venv
+### Scope and dirty-worktree preservation
 
-The project virtualenv at `.venv/` is the canonical interpreter. Python
-version: ≥ 3.14. PATH-precedence mistakes cannot poison results when the
-wrapper resolves to `.venv\Scripts\python.exe` explicitly. Always invoke
-backend tooling through the wrappers in `tools/`:
+- Begin with `git status --short`, branch, and `git rev-parse HEAD`.
+- Treat all existing modified and untracked paths as owner-owned.
+- Preserve unrelated changes; do not reset, clean, stash, overwrite, or
+  reformat them.
+- Make the smallest coherent change in the existing architecture.
+- Use `apply_patch` for local file edits. Use repository-native commands for
+  generated files and explicitly authorized renames.
+- Do not delete, rename, migrate data, or change contracts unless the request
+  or an approved active specification requires it.
+- After every repository edit, run `graphify update . --no-cluster`.
 
-- `tools/pytest.ps1` — runs the backend test suite.
-- `tools/pyright.ps1` — runs pyright.
-- `tools/ruff.ps1` — runs ruff check / format.
+### Side-effect authorization
 
-Each script refuses to run when `.venv\Scripts\python.exe` is missing.
-The CI workflow installs `.[documents,gemini,dev,test,s3,auth]`
-into the venv before invoking tooling. Bare `python` / `pytest` /
-`ruff` / `pyright` invocations outside the wrappers fall through to
-the system interpreter and lose the venv pinning.
+- Local edits require explicit implementation scope.
+- Commit, push, pull request, merge, visibility, GitHub settings, workflow
+  dispatch, provider calls, deployment, and data mutation each need their own
+  authorization.
+- Never infer production authorization from test authorization.
+- Test-only database, R2, Redis, or Worker operations require an exact target
+  and operation-specific authorization.
+- A read-only audit must not modify repository or external state.
 
-## Verification
+### External-service safety
 
-Run smallest check proving changed behavior, from repository root unless command explicitly changes directory. Order: focused lint or architecture guard, type checking, focused tests, then broader checks only when justified.
+- Never access or mutate production resources without explicit authorization;
+  plans in this repository never authorize production mutation.
+- Resolve non-production identities immutably before any write and reject
+  ambiguous or production-like targets.
+- Never print, store, commit, or return secrets, tokens, cookies, connection
+  strings, private keys, raw provider responses, SQL text, row contents, or
+  request bodies.
+- Record only sanitized classes, counts, timestamps, fixed reasons, and
+  artifact paths.
+- Preserve fail-closed states: `blocked`, `partial`, `unavailable`, and
+  `not_established` are not passes.
 
-| Command | Purpose |
-| --- | --- |
-| `tools/ruff.ps1 check .` | Backend lint; do not fix unrelated pre-existing errors. |
-| `tools/pyright.ps1` | Backend type checking for `backend/src` and `backend/tests`. |
-| `tools/pytest.ps1 backend/tests/test_<name>.py` | Focused backend test file. |
-| `tools/pytest.ps1 backend/tests/e2e/` | Backend E2E tests; slower and fixture-dependent. |
-| `cd frontend; npm run typecheck` | Frontend TypeScript check. |
-| `cd frontend; npm run test` | Frontend Vitest suite. |
-| `cd frontend; npm run lint` | Frontend ESLint. |
-| `cd frontend; npx vitest run <file>` | Focused frontend test file(s). |
-| `cd frontend; npm run build` | Production frontend build. |
-| `alembic -c alembic.ini upgrade head` | Apply migrations from repository root; requires `DATABASE_URL`. |
+## Tooling and environment
 
-The `tools/*.ps1` wrappers resolve to `.venv\Scripts\python.exe`
-automatically; see *Project Venv* above.
+### Python wrappers
 
-Router-layer guard must return no matches:
+- `.venv\Scripts\python.exe` is the canonical interpreter (Python >= 3.14).
+- Use `tools\pytest.ps1`, `tools\pyright.ps1`, and `tools\ruff.ps1`.
+- Never use bare `python`, `pytest`, `ruff`, or `pyright` for backend work.
+- If the venv is missing, follow `docs/OPERATIONS.md` or `readme.md` to
+  recover it; do not silently use another interpreter.
+- `pyproject.toml` is authoritative. Generated lockfiles are updated only by
+  `deploy\update-lockfiles.ps1` after an authorized dependency change.
 
-```powershell
-rg -n "^from novelai\.(db\.models|storage\.service|sources\.)" backend/src/novelai/api/routers/ --glob "!dependencies.py"
-```
+### Frontend commands
 
-Canonical-doc heading uniqueness guard must return no matches (fails if any `## ` heading appears more than once in `AGENTS.md`):
+From `frontend/`, use `npm run lint`, `npm run typecheck`, `npm run test`, and
+`npm run build` as applicable. Server state uses React Query, client-only state
+uses Zustand, and components use existing hooks and shared utilities. Do not
+call `fetch()` directly from components or add Redux, CSS modules, or styled
+components.
 
-```powershell
-Get-Content AGENTS.md | Where-Object { $_ -match '^## ' } | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name }
-```
+### Windows and shell rules
 
-### Commit workflow
+- Use PowerShell-compatible commands and quote paths containing spaces.
+- Chain dependent commands with `; if ($?) { ... }` when needed.
+- Use `rg` or `rg --files` for search.
+- Do not expose environment values while checking variable names.
+- Do not assume console scripts are on `PATH`.
 
-1. Run formatters before staging: `tools\ruff.ps1 format <every file in the diff>`. The pre-commit hook reformats all staged files (including previously committed ones), so an unformatted file anywhere in the staged set will be modified by the hook; `ruff check` enforces B905, so `zip()` calls need explicit `strict=`.
-2. Run affected lint, type checks, and focused tests.
-3. Stage exact intended paths; run `git diff --cached --check`.
-4. Commit with hooks enabled. Never use `--no-verify`.
-5. If hooks modify files, preserve output, compare working tree with index, prove changes expected, restage exact paths, rerun affected checks, and retry once.
-
-After every edit, including documentation edits, run:
-
-```powershell
-tools/pyright.ps1   # only when Python source changed
-graphify update . --no-cluster   # always (standalone binary; python -m graphify is unavailable in .venv)
-```
-
-Record raw validation command, timeout when relevant, exit code, result count, and exact paths. Never claim a check passed unless run successfully.
-
-## Repository Layout and Entry Points
-
-### Backend
-
-- Package: `backend/src/novelai/`
-- Tests: `backend/tests/`
-- Migrations: `backend/alembic/versions/`
-- Explicit database-policy SQL: `backend/sql/`
-- Default app: `novelai.api.app:app`
-- Admin/control plane: `novelai.main_admin:app`, port 8000
-- Public reader: `novelai.main_reader:app`, port 8001
-- CLI: `novelaibook` (`web`, `worker`, `doctor`, `create-user`, `adminweb`, `publicweb`)
-
-`DEPLOY_MODE=split` runs admin and reader separately. Admin supports sessions; cookie-authenticated admin and public-user mutations require CSRF protection. Reader has no admin session.
-
-### Frontend
-
-- Package: `frontend/`; read framework version from `frontend/package.json`.
-- Admin routes: `frontend/app/(admin)/admin/*`.
-- Public routes: `frontend/app/(public)/*`.
-- Admin API access: `frontend/lib/api.ts`.
-- Public API access: `frontend/lib/public-api.ts`.
-
-Do not move behavior across route-group boundaries without an explicit architecture change. Components must not call `fetch()` directly.
-
-### Deployment
-
-- Canonical Compose: `deploy/compose.yml`.
-- Development overlay: `deploy/compose.dev.yml`.
-- Images: `deploy/admin.Dockerfile`, `deploy/reader.Dockerfile`, `deploy/frontend.Dockerfile`.
-- Reverse proxy: Caddy.
-
-## Architecture Boundaries
-
-Dependency direction:
-
-```text
-api
-  → services
-    → domain modules
-→ storage / db / providers / sources
-```
-
-- Keep routers thin; use `services/` or `services/orchestration/` for use cases.
-- Put source parsing in `sources/`.
-- Put outbound HTTP, SSRF protection, retries, and fetch caching in `infrastructure/http/`.
-- Put provider integration in `providers/`, prompts in `prompts/`, persistence in `storage/` and `db/`.
-- Keep scheduler policy in backend translation, service, or job layers, never React.
-- Lower layers must not import API routers or frontend concepts.
-- Routers must not directly import `novelai.db.models.*`, `novelai.storage.service.*`, or `novelai.sources.*`; only `api/routers/dependencies.py` may construct those dependencies.
-
-Canonical identifiers:
-
-```text
-source_key, source_novel_id, source_url, novel_id, chapter_id, paragraph_id,
-chunk_id, bundle_id, provider_key, provider_model, activity_id, job_id,
-request_id, credential_id, requesting_user_id, credential_owner_user_id,
-prompt_version, glossary_hash
-```
-
-When directly changed code uses an ambiguous legacy alias, replace it with the applicable canonical name and update affected callers, types, tests, and docs. Do not perform unrelated repository-wide renames.
-
-## Backend Rules
-
-- Use SQLAlchemy for application persistence.
-- Raw SQL is allowed only in Alembic migrations and explicit policy scripts under `backend/sql/`; never in routers, services, orchestration, or domain code.
-- Read settings through `novelai.config.settings.settings`; do not read `os.environ` elsewhere.
-- Configure logging through `novelai.logging_config.configure_logging()`; do not scatter `logging.basicConfig()`.
-- Schema changes require a new migration. Never edit an already committed migration.
-- Use `httpx` for outbound HTTP and preserve SSRF protections.
-- Keep provider-specific behavior behind provider interfaces and storage differences behind storage abstractions.
-- Use `asyncio.Semaphore` for bounded async concurrency. For independent fan-out where partial failure is intended, use `asyncio.gather(..., return_exceptions=True)`.
-- Validate API inputs with Pydantic; never pass unvalidated request dictionaries into use-case code.
-
-## Frontend Rules
-
-- Use `@tanstack/react-query` for server state and `zustand` for client-only state; do not add Redux.
-- Use Tailwind CSS and `cn()` from `frontend/lib/utils.ts`; do not add CSS modules or styled-components.
-- Keep business and data-flow logic in hooks, not components.
-- Shared components belong in `frontend/components/`; route-local components stay under their route.
-- Mask credentials through `frontend/lib/mask-token.ts`; never render complete credentials or secrets.
-
-## Operational Contracts
-
-Full architecture and operator detail belongs in canonical docs. Preserve these easy-to-break invariants:
-
-### Health
-
-- `GET /health/live`: unauthenticated process-only liveness, no DB/storage/worker calls, always 200.
-- `GET /health/ready`: public-safe DB/storage/worker/disk readiness, 503 when unhealthy, no paths, hosts, credentials, or traces.
-- `GET /api/admin/health`: owner-only detailed diagnostics via `require_role("owner")`, still redacted.
-- Probe states are `healthy`, `degraded`, `unhealthy`; honor `HEALTH_PROBE_TIMEOUT_MS` and `HEALTH_TOTAL_TIMEOUT_MS`.
-- Implementations live in `backend/src/novelai/services/health_service.py` and `backend/src/novelai/api/routers/health.py`.
-
-### Storage and scheduling
-
-- `novelai.storage.file_lock.InterProcessFileLock` is canonical cross-platform process lock. It uses atomic `O_CREAT | O_EXCL`, bounded retries, Windows PID liveness checks, and stale-lock reclamation. Use it for conflicting writes or cleanup.
-- `SchedulerRuntimeState` plus `SchedulerRuntimeStateService` is durable cross-restart scheduler state. `scheduler_states.json` remains an in-process per-job model cache; transitions write both. Never rely on memory alone.
-- `R2IncrementalBackupTarget.apply_retention()` preserves newest successful
-  manifests and `BACKUP_MIN_SUCCESSFUL_TO_KEEP`, under
-  `InterProcessFileLock`; shared objects also honor
-  `BACKUP_SAFETY_GRACE_DAYS`.
-- `MaintenanceService` runs allowlisted cleanup with dry-run and path-safety checks; reject blank, root, project-root, and symlink-escape paths.
-- `SchedulerService` uses a lightweight asyncio loop and `scheduled_cron_log`; do not reintroduce APScheduler. Migration-defined cleanup is active only after applied migrations and live scheduler state are verified.
-- Preserve raw scraped chapters and historical generated artifacts. Generated reader downloads remain out of scope; novel imports accept source URLs only.
-
-### Deployment and object storage
-
-- Migrations run in one-shot Compose `migrate` service before backend startup, never inside long-running backend containers.
-- Caddy routes `/api/admin/*`, `/api/auth/*`, `/api/user/*`, and `/health/*` to admin on 8000; `/api/public/*` to reader on 8001; remaining routes to frontend on 3000.
-- Compose healthcheck uses `python -c "import urllib.request; ..."` for image portability.
-- `DATABASE_URL` uses `postgresql+psycopg://`, not `postgresql://`.
-- Novel content is R2-only: `dokushodo` stores immutable artifacts and
-  `dokushodo-backup` stores independent recovery material. PostgreSQL owns
-  exact artifact references; Redis/Valkey owns transient coordination. The
-  local runtime directory is disposable. R2 directories are virtual prefixes:
-  use exact-key reads and paginated listing only in inventory/backup/GC jobs;
-  never use host `Path.exists()` or `Path.is_dir()` as content truth.
-- Object-store lifecycle rules are not backups. Claim backup coverage only with an independently restorable copy and verified restore procedure.
-- Split or multi-instance mode requires Redis for shared rate limits and distributed jobs. Canonical environment variable is `ENV`, not `APP_ENV`.
-
-## Testing
-
-- Shared fixtures: `backend/tests/conftest.py`.
-- `TestFixture` supplies isolated storage, mock providers, mock sources, and dependency container.
-- Unit DB tests use SQLite in memory unless explicitly marked otherwise.
-- E2E fixtures: `backend/tests/e2e/conftest.py`.
-- Scratch fixture root: `backend/tests/.tmp/fixtures`.
-- Scratch runtime root: `backend/tests/.tmp/runtime`.
-- Register ORM models through `register_database_models()` in `novelai/db/model_registry.py`; do not import individual ORM modules for side effects.
-- Source tests use offline fixtures and never access live novel websites.
-- Pytest configuration supplies `backend/src` and `backend` python paths, disables cache provider, and defines `e2e`.
-- Add or update tests directly proving changed behavior. Run closest focused test first, then affected language type checking. Run broader checks only for cross-subsystem changes.
-- One-line changes still require one runnable verification command.
-- File-backed SQLite test databases should enable `PRAGMA journal_mode=WAL`; default-journal commits measure 16–66 ms each on Windows (WAL ≈ 4 ms) and synchronous commits serialize the event loop in async tests.
-- Avoid absolute wall-clock timing bounds in tests; prefer overhead-invariant metrics (e.g., total-overlap sums) that hold on slow machines and loaded CI.
-
-## Dependencies and Lockfiles
-
-- `pyproject.toml` is authoritative; there is intentionally no `requirements.txt`.
-- Standard editable development install: `pip install -e ".[dev]"`.
-- Available extras include `auth`, `db`, `dev`, `documents`, `gemini`, `openai`, `s3`, `test`, `worker`.
-- Lockfiles: `requirements.lock`, `requirements-dev.lock`, `uv.lock`.
-- After dependency changes run `deploy/update-lockfiles.ps1`; never edit generated lockfiles manually.
-- Do not add a dependency when standard library or an installed dependency adequately solves the need.
-
-## Security and Secrets
-
-- Never read, print, log, paste, commit, or return secrets, connection strings, credential fragments, `.env`, `deploy/.env`, or `deploy/.env.production` contents.
-- Never expose raw paths, internal DB keys, storage keys, complete credential values, hostnames, or stack traces in public API responses.
-- Mask backend credentials with existing masking code and frontend values through `frontend/lib/mask-token.ts`.
-- `SESSION_SECRET_KEY` fails closed at its default. `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` is required before storing provider API keys. `OWNER_BOOTSTRAP_SECRET` is sole owner-seeding mechanism and must never be exposed.
-- Public Google OAuth and email/password registration create `role="user"` only. Public auth must never create or promote an owner.
-- Cookie-authenticated state-changing endpoints require CSRF protection. Never bypass auth or CSRF for tests.
-- Derive identity from authenticated session; never accept client-supplied `user_id` as authenticated identity.
-- The configured runtime directory must never be served directly as static
-  files. Do not delete immutable R2 artifacts without a verified reference,
-  backup/grace-period check, and an explicit GC/migration operation.
-- Production `WEB_CORS_ORIGINS` must be explicit, never `*`.
-- Contributor credentials are enabled only through the documented consent,
-  encryption, validation, quota, isolation, and revocation contract in
-  `docs/ARCHITECTURE.md`.
-- Do not mutate production secrets, schema, data, functions, storage, or deployment without explicit target/action authorization.
-
-## Code Intelligence
+## Code intelligence
 
 ### CodeGraph
 
-When `.codegraph/` exists, use CodeGraph before broad file searches for current source questions. It locates symbols, current source, callers/callees, dynamic dispatch, blast radius, and affected tests:
-
-```powershell
-python -m codegraph explore "<symbol names or question>"
-```
-
-After results, read only decisive source locations. CodeGraph does not replace source verification, diff inspection, lint, type checks, migrations, tests, builds, or runtime checks. Do not initialize or edit `.codegraph/` during ordinary tasks.
+When `.codegraph/` exists and the question concerns current symbols, callers,
+dependencies, or blast radius, use CodeGraph before broad search. Verify its
+results against source, tests, and configuration. Do not initialize or edit
+`.codegraph/` during routine work.
 
 ### Graphify
 
-Graphify covers architecture, docs, config, SQL, storage, specifications, and cross-artifact context. Prefer scoped commands:
+When architecture, documentation, or cross-artifact relationships matter,
+use the configured Graphify graph with focused `graphify query`, `graphify
+path`, or `graphify explain` calls. Use `graphify-out/wiki/index.md` for
+navigation and read `GRAPH_REPORT.md` only when scoped queries are insufficient.
+After every edit run `graphify update . --no-cluster`; do not run semantic
+extraction or clustering as a routine refresh.
 
-```powershell
-graphify query "<question>"
-graphify path "<A>" "<B>"
-graphify explain "<concept>"
-```
+## Project invariants
 
-Use `graphify-out/wiki/index.md` for broad navigation when present. Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review or when scoped queries are insufficient. Do not use CodeGraph and Graphify for the same question unless first leaves a documented gap.
+### Backend boundaries
 
-`graphify check-update .` checks only pending non-code semantic extraction; silence does not prove source freshness. Run `graphify update . --no-cluster` after every edit, including docs. Never run semantic extraction, clustering, or labeling without explicit approval and budget controls. Do not edit generated `.codegraph/` contents.
+Dependency direction is `api -> services -> domain -> storage/db/providers`.
+Keep routers thin; source parsing belongs in `sources/`, outbound HTTP and SSRF
+protection in `infrastructure/http/`, providers behind provider interfaces,
+and persistence in `storage/` and `db/`. Use SQLAlchemy for application
+persistence and raw SQL only in migrations or explicit policy scripts under
+`backend/sql/`. Read settings through `novelai.config.settings.settings`.
 
-## Windows and GitHub
+### Frontend boundaries
 
-- Use PowerShell-compatible commands.
-- Chain dependent commands with `first-command; if ($?) { second-command }`; Windows PowerShell 5.1 does not support `&&`.
-- Run Python tools as `python -m <tool>` and do not assume console scripts are on `PATH`.
-- Use `rg`, not Unix `grep`.
-- Quote paths containing spaces; avoid interactive or TTY-dependent commands.
-- `gh pr merge --squash` can report local failure after a successful merge. Verify with `gh pr view --json state`.
-- Complex `gh --jq` filters can break in PowerShell; pipe JSON to `ConvertFrom-Json`.
-- GitHub Actions log archives may not exist while a job is active. Inspect `gh run view <id> --json status,conclusion,jobs`; fetch logs only after completion.
-- Never create, modify, close, or merge a PR without explicit authorization.
-- After task-branch work, return this workspace to clean local `main` tracking `origin/main` unless the user explicitly asks to remain on another branch. Preserve task branches and uncommitted changes; never discard work merely to switch branches.
+Admin routes remain under `frontend/app/(admin)/admin/*`; public routes remain
+under `frontend/app/(public)/*`. Admin API access uses `frontend/lib/api.ts` and
+public access uses `frontend/lib/public-api.ts`. Do not move behavior across
+route groups without an explicit architecture decision.
 
-## Documentation and Specifications
+### Identity and security
 
-- `docs/ARCHITECTURE.md` remains authoritative.
-- `docs/WORK.md` is single unfinished-work register. Move completed work to `docs/HISTORY.md` in same change.
-- Update canonical docs when behavior, configuration, contracts, deployment, security, or operator procedure changes; do not create duplicates.
-- Do not edit anything under `.agents/` without owner approval. Never treat archived specifications as active requirements.
-- `.opencode/` is local and gitignored; never commit it. Do not commit `.codegraph/`, `.vscode/`, secrets, session exports, test scratch data, or unrelated working-tree changes.
+- Public registration creates users only; it cannot create or promote owners.
+- Derive identity from the authenticated session, never a client-supplied ID.
+- Cookie-authenticated state changes require CSRF protection.
+- `GET /health/live` is unauthenticated process liveness and performs no
+  database, storage, or worker calls.
+- `GET /health/ready` is redacted public-safe readiness; detailed admin health
+  is owner-only and remains redacted.
+- Credentials are masked with existing backend/frontend masking utilities.
 
-## Final Evidence
+### Storage and deployment
 
-Before completion, reconcile requirements, focused diff, validation, independent review, Graphify refresh, documentation, and Git state. Report:
+- Novel content is R2-only: PostgreSQL owns relational state and exact object
+  references; R2 owns immutable artifacts; Redis/Valkey owns transient
+  coordination; local runtime storage is disposable.
+- R2 directories are virtual prefixes. Use exact-key reads and paginated
+  listing only for inventory, backup, migration, or garbage collection.
+- Do not add compatibility aliases, filesystem fallbacks, dual writes, or
+  alternate storage backends.
+- Migrations run in the one-shot Compose `migrate` service before backends.
+- Caddy routes admin/auth/user/health to admin, public API to reader, and
+  remaining routes to the frontend. Split mode requires shared Redis.
+- Do not serve runtime directories as static files or delete immutable objects
+  without reference, backup/grace-period, and explicit GC proof.
 
-- files changed and behavior or documentation outcome;
-- exact commands, timeouts, exit codes, result counts, and paths;
-- review findings and resolutions;
-- Graphify result;
-- Git/PR/CI state requested by task;
-- remaining risks, unverified assumptions, or concrete blockers.
+## Verification ladder
 
-Never claim completion from worker prose, an unverified diff, or a local commit when requested stopping point is remote merge.
+Run the smallest decisive check first, then broaden for changed scope:
+
+1. focused architecture, path, documentation, or security guard;
+2. affected lint/type check through repository wrappers;
+3. focused tests;
+4. affected integration, frontend, build, workflow, or evidence validation;
+5. broader checks only when cross-subsystem impact requires them.
+
+Record the exact command, timeout when relevant, exit code, result count, and
+paths. A skipped or unavailable command is recorded as `not_run` or
+`unavailable`, never as passed.
+
+Required repository guards include the router import guard, AGENTS heading
+uniqueness guard, documentation/path checker, and Graphify refresh when their
+scope is affected.
+
+## Git and commit rules
+
+- Never use `--no-verify`.
+- Before staging, format only affected source files with the repository
+  formatter and run affected checks.
+- Stage exact intended paths and run `git diff --cached --check`.
+- Commit only authorized changes; do not absorb pre-existing owner changes.
+- Verify the resulting commit tree and remote state after authorized remote
+  operations. Never force-push, rewrite history, or directly push protected
+  branches without explicit authorization.
+- A task branch normally returns to the repository's requested base state only
+  after preserving all task branches and uncommitted owner work.
+
+## Documentation and specification lifecycle
+
+- `docs/ARCHITECTURE.md` remains authoritative for architecture and security.
+- Canonical documents own one concern each; cross-link instead of duplicating
+  normative prose.
+- `docs/STATUS.md` contains current unresolved work, decisions, dependencies,
+  and acceptance gates; it contains no completed-work narrative.
+- `docs/EVIDENCE.md` contains sanitized, dated verification and limitations;
+  it does not redefine policy.
+- Active specifications remain under `.agents/specs/`; do not archive one from
+  checkboxes alone. Archive only after evidence and unresolved work are routed.
+- Plans under `docs/plans/` are non-canonical execution instructions.
+- Archives preserve provenance and never become active authority.
+- Update canonical documentation whenever implementation changes behavior,
+  configuration, storage, deployment, security, operations, or testing.
+
+## Final evidence contract
+
+Before declaring completion:
+
+1. Reconcile the request, specification, implementation, tests, evidence, and
+   documentation ownership.
+2. Review the focused diff and distinguish task changes from owner changes.
+3. Validate artifacts for candidate identity, sanitization, disposition, and
+   cleanup; never manufacture missing provider or production evidence.
+4. Run required checks and record exact results.
+5. Run `git status --short` and report remaining uncertainty or blockers.
+
+Use only truthful dispositions: `passed`, `failed`, `blocked`, `partial`,
+`unavailable`, and `not_run`. Keep `production_capacity_claim` as
+`not_established` unless an independently authorized evidence program proves
+otherwise. A successful workflow, local test, worker absence, or historical
+staging result does not establish production capacity.

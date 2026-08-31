@@ -40,10 +40,8 @@ _REDACTED_KEYS = frozenset(
         "db_url",
         "database_url",
         "smtp_password",
-        "s3_secret",
-        "s3_access_key",
-        "r2_secret",
-        "r2_access_key",
+        "r2_gateway_client_id",
+        "r2_gateway_client_secret",
         "github_token",
         "github_pat",
         "signed_url",
@@ -73,8 +71,8 @@ _REDACTED_VALUE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"ghp_[A-Za-z0-9]{20,}"),
     re.compile(r"xox[bpars]-[A-Za-z0-9\-]{10,}"),
     re.compile(r"Bearer\s+[A-Za-z0-9._\-]{20,}", re.IGNORECASE),
-    # Signed S3/R2 URLs
-    re.compile(r"https?://[^\s]*\?[^\s]*(?:X-Amz-Signature|Signature=|X-Goog-Signature=)[^\s]+", re.IGNORECASE),
+    # Signed storage-gateway URLs
+    re.compile(r"https?://[^\s]*\?[^\s]*(?:Signature=|X-Goog-Signature=)[^\s]+", re.IGNORECASE),
     # Provider-style prompts (rough heuristic for long system-prompt dumps)
     re.compile(r"(?ms)You are a translator[^\"]{0,500}"),
     # Absolute filesystem paths leaked into free-form strings

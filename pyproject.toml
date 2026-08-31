@@ -16,31 +16,30 @@ license = {text = "GPL-3.0-or-later"}
 dependencies = [
   "argon2-cffi>=25.1.0",
   "fastapi>=0.141.1",
-  "uvicorn[standard]>=0.52.3",
-  "pydantic>=2.13.4",
+  "uvicorn[standard]>=0.52.4",
+  "pydantic>=2.13.5",
   "pydantic-settings>=2.15.0",
-  "python-dotenv>=1.2.2",
+  "python-dotenv>=1.2.3",
   "httpx>=0.28.1",
   "beautifulsoup4>=4.15.0",
-  "lxml>=6.1.1",
-  "cryptography>=50.0.0",
+  "lxml>=6.1.2",
+  "cryptography>=50.0.1",
   "croniter>=6.2.4",
   "email-validator>=2.3.0",
-  "google-genai>=2.18.1",
+  "google-genai>=2.20.0",
 ]
 
 [project.optional-dependencies]
 gemini = [
-  "google-genai>=2.18.1",
+  "google-genai>=2.20.0",
 ]
 test = [
-  "httpx2>=2.10.0",
+  "httpx2>=2.12.0",
   "pytest>=9.1.1",
   "pytest-asyncio>=1.4.0",
   "pytest-xdist>=3.8.0",
   "aiosqlite>=0.22.1",
-  "hypothesis>=6.165.9",
-  "moto[s3]>=5.2.2",
+  "hypothesis>=6.167.1",
 ]
 db = [
   "sqlalchemy>=2.0.52",
@@ -48,36 +47,32 @@ db = [
   "psycopg[binary]>=3.3.4",
 ]
 worker = [
-  "rq>=2.10.0",
+  "rq>=2.12.0",
   "redis>=8.1.0",
 ]
 auth = [
   "argon2-cffi>=25.1.0",
   "itsdangerous>=2.2.0",
 ]
-s3 = [
-  "boto3>=1.43.72",
-]
 dev = [
   "aiosqlite>=0.22.1",
   "argon2-cffi>=25.1.0",
-  "cryptography>=50.0.0",
+  "cryptography>=50.0.1",
   "croniter>=6.2.4",
-  "google-genai>=2.18.1",
-  "hypothesis>=6.165.9",
-  "httpx2>=2.10.0",
+  "google-genai>=2.20.0",
+  "hypothesis>=6.167.1",
+  "httpx2>=2.12.0",
   "itsdangerous>=2.2.0",
-  "moto[s3]>=5.2.2",
   "pip-tools>=7.6.1",
   "pyright[nodejs]>=1.1.411",
   "pytest>=9.1.1",
   "pytest-asyncio>=1.4.0",
   "pytest-xdist>=3.8.0",
-  "ruff>=0.16.3",
+  "ruff>=0.16.5",
   "sqlalchemy>=2.0.52",
   "alembic>=1.19.1",
   "psycopg[binary]>=3.3.4",
-  "rq>=2.10.0",
+  "rq>=2.12.0",
   "redis>=8.1.0",
   "fakeredis>=2.37.0",
   "pre-commit>=4.6.2",
@@ -98,14 +93,14 @@ novelai = "novelai.__main__:main"
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
 addopts = "-p no:cacheprovider"
-pythonpath = ["backend/src", "backend"]
+pythonpath = [".", "backend/src", "backend"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 tmp_path_retention_policy = "none"
 markers = [
     "e2e: end-to-end integration tests (full pipeline, slower, requires fixtures)",
-    "integration: integration tests against external services (S3/R2, Redis, etc.)",
+    "integration: integration tests against external services (R2 gateway, Redis, etc.)",
     "slow: tests that require database, network, or are particularly slow",
 ]
 

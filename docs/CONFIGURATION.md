@@ -1,4 +1,28 @@
+---
+title: Configuration
+document_role: reference
+authority: canonical
+scope: configuration keys precedence validation secret classification and failure behavior
+audience:
+  - agents
+  - developers
+  - operators
+update_triggers:
+  - configuration key changes
+  - precedence changes
+  - secret classification changes
+owned_concerns:
+  - configuration-runtime-settings
+---
 # Configuration
+
+This document owns configuration meaning, precedence, validation, and secret classification. It does not own architecture decisions, release procedures, runtime evidence, or secret values.
+
+Current state: settings are loaded through the project configuration module, real environment files remain local and untracked, and examples expose only safe defaults or placeholders.
+
+Related contracts: [`ARCHITECTURE.md`](ARCHITECTURE.md), [`DEPLOYMENT.md`](DEPLOYMENT.md), [`STORAGE.md`](STORAGE.md), and [`OPERATIONS.md`](OPERATIONS.md).
+
+Maintenance: update this reference when a setting, bound, precedence rule, or failure behavior changes; record environment-specific verification in [`EVIDENCE.md`](EVIDENCE.md).
 
 Configuration contract. Exact fields/defaults live in
 `backend/src/novelai/config/settings.py`; examples live in `.env.example` and
@@ -41,18 +65,15 @@ application pairs. The root and deployment templates also share one ordered
 |---|---|---|
 | Locally generated or derived | `SESSION_SECRET_KEY`, `OWNER_BOOTSTRAP_SECRET`, `PROVIDER_CREDENTIAL_ENCRYPTION_KEY`, `DATABASE_BACKUP_ENCRYPTION_KEY` | Generate with a cryptographically secure local tool such as `secrets.token_hex`; store and rotate through the operator's secret store, never derive from a URL or password |
 | Build/runtime generated | `VERSION`, local `RUNTIME_HOST_DIR`, local Compose `REDIS_URL`, `GOOGLE_OAUTH_REDIRECT_URI` | Git/CI, Compose defaults, or derivation from the confirmed public URL; the operator still reviews the result before deployment |
-| External service values | `DATABASE_URL`, `MIGRATION_DATABASE_URL`, `DATABASE_BACKUP_URL`, `DATABASE_RESTORE_TARGET_URL`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BACKUP_*`, `R2_SOURCE_*`, `PROVIDER_GEMINI_API_KEY`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `SMTP_*` | Issued by Supabase/PostgreSQL, Cloudflare R2, Google AI/OAuth, or the selected SMTP provider; never fabricate or reuse across scopes |
+| External service values | `DATABASE_URL`, `MIGRATION_DATABASE_URL`, `DATABASE_BACKUP_URL`, `DATABASE_RESTORE_TARGET_URL`, `R2_GATEWAY_URL`, `R2_GATEWAY_CLIENT_ID`, `R2_GATEWAY_CLIENT_SECRET`, `R2_RECOVERY_GATEWAY_URL`, `R2_RECOVERY_CLIENT_ID`, `R2_RECOVERY_CLIENT_SECRET`, `PROVIDER_GEMINI_API_KEY`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `SMTP_*` | Issued by Supabase/PostgreSQL, the private Cloudflare Worker/Access boundary, Google AI/OAuth, or the selected SMTP provider; never fabricate or reuse across scopes |
 | Operator decisions | `ENV`, `DEPLOY_MODE`, domains/origins/hosts, `R2_BACKUP_ENABLED`, backup/restore/maintenance flags, quotas, schedules, pool sizes, `PROVIDER_DEFAULT`, model, target language, and retention values including `BACKUP_SAFETY_GRACE_DAYS` | Chosen and approved for the target environment; safe defaults may be supplied by the examples, but production activation is an operator decision |
 
 Optional external/operator values may remain absent. SMTP settings and the
 production migration URL remain unset where no approved source value exists.
-The earlier Cloudflare account/user R2-token creation attempt returned `9109
-Unauthorized`; the operator has since supplied separate source-read and
-backup-write credentials in the ignored active backend environment files. The
-root `.env` now matches `deploy/.env` for the six application/source/backup R2
-credential assignments. Example templates and frontend environment files were
-left secret-free, and `R2_BACKUP_ENABLED` remains false until recovery is
-explicitly authorized and tested.
+Gateway URLs and Access identities are supplied only through ignored runtime
+environment files or an approved secret store. Example templates and frontend
+environment files remain secret-free, and `R2_BACKUP_ENABLED` remains false
+until recovery is explicitly authorized and tested.
 
 List-valued `NoDecode` settings use comma-separated values, not JSON-array
 syntax. For example, use `ALLOWED_HOSTS=localhost,127.0.0.1` and leave an
@@ -68,6 +89,24 @@ venv explicitly so a PATH-precedence mistake cannot poison results. Bare
 `python` / `pytest` / `ruff` / `pyright` invocations outside the wrappers
 fall through to the system interpreter. To rebuild the venv after schema or
 dependency changes, follow the entry in [`OPERATIONS.md`](OPERATIONS.md).
+
+## Dependency and Runtime Pins
+
+The root `pyproject.toml` and `uv.lock` are authoritative for Python
+dependencies. `requirements.lock` and `requirements-dev.lock` are generated
+deployment and CI artifacts and must be regenerated with
+`deploy/update-lockfiles.ps1`; never edit either generated lock manually.
+Frontend and Worker dependencies are independently locked by their respective
+`package-lock.json` files. Local, CI, and Docker JavaScript runtime is pinned
+to Node.js 26.8.1, and Python CI/runtime images are pinned to Python 3.14.7.
+
+At the current candidate, TypeScript 6.0.3 and ESLint 9.39.5 remain explicit
+compatibility holds because the installed TypeScript-ESLint and import/React
+plugin peer ranges do not admit their current major releases. They are not
+reported as latest until those peer constraints are resolved with a focused
+migration. The R2 Worker safety script is `npm run deploy:dry-run`; it always
+targets the non-production `test` environment and must not default to a
+production binding.
 
 ## Minimum Local Configuration
 
@@ -93,7 +132,7 @@ Generate secrets with `python -c "import secrets; print(secrets.token_hex(32))"`
 | Origins | Explicit `WEB_CORS_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, `ALLOWED_HOSTS`; no wildcard with credentials. |
 | Provider | Gemini key/model configuration; production never uses dummy provider. |
 | Credentials | `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` before storing provider keys. |
-| Storage | R2-only: `R2_BUCKET=dokushodo`, `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`; no filesystem content backend. |
+| Storage | R2-only: `R2_BUCKET=dokushodo`, private HTTPS `R2_GATEWAY_URL`, application Access identity, fixed `R2_BACKUP_BUCKET=dokushodo-backup`, and separate recovery gateway identity; no filesystem content backend. |
 | Distributed runtime | Redis URL and Redis rate limiter for split/multi-instance mode. |
 
 ## Cloudflare HTTPS Staging
@@ -129,23 +168,24 @@ The reader-capacity follow-up uses this Cloudflare origin as its selected
 
 ## Storage and Recovery Groups
 
-Application R2 uses `R2_*` and the fixed bucket `dokushodo`. Independent object
-snapshots use `R2_BACKUP_*` and separate read-only `R2_SOURCE_*` credentials;
-the backup bucket is fixed to `dokushodo-backup`. Application and backup
-credentials must not collapse into one unrestricted scope. Application keys
-begin directly with `novels/`; there is no key-prefix setting.
+Application R2 uses the private `R2_GATEWAY_*` boundary and the fixed bucket
+`dokushodo`. Independent object snapshots use the separate
+`R2_RECOVERY_GATEWAY_*` boundary and fixed bucket `dokushodo-backup`.
+Application and recovery identities must not collapse into one unrestricted
+scope. Application keys begin directly with `novels/`; there is no key-prefix
+setting.
 
 Required R2 settings:
 
 | Setting | Meaning |
 |---|---|
 | `R2_BUCKET` | Application bucket; production must be `dokushodo`. |
-| `R2_ENDPOINT` | Cloudflare account endpoint, for example `https://<account>.r2.cloudflarestorage.com`. |
-| `R2_REGION` | `auto` for Cloudflare R2. |
-| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Application least-privilege token. |
+| `R2_GATEWAY_URL` | Private versioned Worker HTTPS endpoint for application R2 operations. |
+| `R2_GATEWAY_CLIENT_ID` / `R2_GATEWAY_CLIENT_SECRET` | Application Cloudflare Access service identity. |
 | `R2_BACKUP_BUCKET` | Independent recovery bucket; production must be `dokushodo-backup`. |
-| `R2_BACKUP_ENDPOINT` / `R2_BACKUP_ACCESS_KEY_ID` / `R2_BACKUP_SECRET_ACCESS_KEY` | Backup-target write credentials. |
-| `R2_SOURCE_ACCESS_KEY_ID` / `R2_SOURCE_SECRET_ACCESS_KEY` | Source-read credentials for backup/inventory jobs only. |
+| `R2_RECOVERY_GATEWAY_URL` | Private versioned Worker HTTPS endpoint for recovery operations. |
+| `R2_RECOVERY_CLIENT_ID` / `R2_RECOVERY_CLIENT_SECRET` | Separate recovery Cloudflare Access service identity. |
+| `R2_BACKUP_PREFIX` | Fixed snapshot namespace under the recovery bucket. |
 | `RUNTIME_DIR` | Disposable local cache/checkpoint/log/scratch root. It is not a content library. |
 | `RUNTIME_HOST_DIR` | Compose-only host directory mounted to `RUNTIME_DIR`; use `../data/runtime` for local Windows Compose and a provisioned writable path such as `/opt/novelai/shared/data/runtime` in production. It must contain only disposable runtime state. |
 
@@ -155,19 +195,19 @@ against an isolated bucket before a production cutover.
 
 ### Isolated R2 integration tests
 
-The opt-in real-R2 integration suite uses `TEST_R2_ENDPOINT` and
-`TEST_R2_BUCKET` with dedicated test credentials. Its canonical local credential
-names are `TEST_R2_ACCESS_KEY_ID` and `TEST_R2_SECRET_ACCESS_KEY`.
-Generated objects use a unique prefix and must be removed and confirmed absent
-by a final paginated sweep.
+The opt-in R2 Worker integration suite uses `TEST_R2_GATEWAY_URL`, the exact
+`TEST_R2_BUCKET=test-dokushodo` and `TEST_R2_BACKUP_BUCKET=test-dokushodo-backup`
+classes, and dedicated application/recovery Access identities. Generated
+objects use a unique prefix and must be removed and confirmed absent by a
+final paginated sweep.
 
-The real backup integration is a separate gate. It requires dedicated
-`TEST_R2_SOURCE_BUCKET` and `TEST_R2_TARGET_BUCKET` values plus separate
-`*_ACCESS_KEY_ID` / `*_SECRET_ACCESS_KEY` application, snapshot-source, and
-backup credential groups. Do not reuse the application or production backup
-bucket credentials for that test. Keep all test values in ignored local
-environment files or an approved secret store; the committed examples contain
-placeholders only.
+The backup and restore integrations are separate gates. They use the exact test
+bucket classes with `TEST_R2_RECOVERY_CLIENT_ID` and
+`TEST_R2_RECOVERY_CLIENT_SECRET`; the recovery identity may read the app class
+only for a verified restore flow and writes only to the backup or isolated
+restore namespace. Do not reuse production identities for that test. Keep all
+test values in ignored local environment files or an approved secret store; the
+committed examples contain placeholders only.
 
 `BACKUP_ENABLED` controls object snapshots. `BACKUP_RETENTION_COUNT`,
 `BACKUP_MIN_SUCCESSFUL_TO_KEEP`, and `BACKUP_MAX_AGE_DAYS` bound committed
@@ -249,7 +289,7 @@ duration and renewal; do not tune lease below realistic job duration without tes
   best-effort five-minute external HTTPS monitor. Set in GitHub secrets, never
   in `.env` files.
 - `GITGUARDIAN_API_KEY`: GitHub Actions secret (not a process env var) supplying
-  `.github/workflows/gitguardian.yaml`. Set in GitHub secrets, never in `.env` files.
+  `.github/workflows/secret-scan.yml`. Set in GitHub secrets, never in `.env` files.
 
 Use source defaults unless measured behavior justifies change.
 
@@ -337,7 +377,7 @@ Public OAuth/password registration creates users only.
 
 Email defaults to `AUTH_EMAIL_DELIVERY_MODE=noop`. SMTP requires host, port,
 credentials, sender, TLS/SSL choice, tested domain, operator recipient where
-alerts are enabled, and acceptance gates in `WORK.md`. With `noop`, signup and
+alerts are enabled, and acceptance gates in `STATUS.md`. With `noop`, signup and
 session testing remain available, but verification and password-reset emails
 are not delivered and the account remains unverified until delivery is
 configured and the verification flow is completed.

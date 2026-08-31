@@ -12,10 +12,10 @@ const MIN_MIDDLE_LENGTH_FOR_MASK = 1;
 /**
  * Masks a token value, revealing at most a short prefix and suffix.
  * The middle is replaced with asterisks.
- * 
+ *
  * @param value - The token string to mask
  * @returns The masked token (e.g., "AIza****wXyz")
- * 
+ *
  * Examples:
  * - "verylongtoken" -> "very****oken"
  * - "AIzaSyD..." -> "AIza****..."
@@ -54,7 +54,7 @@ export function maskToken(value: string | null | undefined): string {
  */
 export function containsSecret(text: string | null | undefined): boolean {
   if (!text) return false;
-  
+
   // Check for common secret patterns
   const secretPatterns = [
     /Bearer\s+[A-Za-z0-9\-._~+/]+=*/i,

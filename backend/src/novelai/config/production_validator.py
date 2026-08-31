@@ -264,12 +264,10 @@ def validate_production_config(settings: AppSettings) -> ValidationResult:
     # --- R2-only content storage
     if settings.R2_BUCKET != "dokushodo":
         result.add(Severity.FATAL, "storage", "R2_BUCKET must be dokushodo in production.")
-    if settings.R2_REGION != "auto":
-        result.add(Severity.FATAL, "storage", "R2_REGION must be auto for Cloudflare R2.")
-    if not settings.R2_ENDPOINT:
-        result.add(Severity.FATAL, "storage", "R2_ENDPOINT is required in production.")
-    if not settings.R2_ACCESS_KEY_ID or not settings.R2_SECRET_ACCESS_KEY:
-        result.add(Severity.FATAL, "storage", "R2 application credentials are required in production.")
+    if not _is_https_url(settings.R2_GATEWAY_URL):
+        result.add(Severity.FATAL, "storage", "R2_GATEWAY_URL must be an HTTPS gateway URL in production.")
+    if not settings.R2_GATEWAY_CLIENT_ID or not settings.R2_GATEWAY_CLIENT_SECRET:
+        result.add(Severity.FATAL, "storage", "R2 application Access identity is required in production.")
     if settings.R2_BACKUP_BUCKET != "dokushodo-backup":
         result.add(Severity.FATAL, "storage", "R2_BACKUP_BUCKET must be dokushodo-backup in production.")
 
@@ -338,32 +336,25 @@ def validate_production_config(settings: AppSettings) -> ValidationResult:
                 "backup",
                 "R2_BACKUP_BUCKET must differ from R2_BUCKET.",
             )
-        if not settings.R2_BACKUP_ENDPOINT:
+        if not _is_https_url(settings.R2_RECOVERY_GATEWAY_URL):
             result.add(
                 Severity.FATAL,
                 "backup",
-                "R2_BACKUP_ENDPOINT is required for recovery writes.",
+                "R2_RECOVERY_GATEWAY_URL is required for recovery writes.",
             )
-        if not settings.R2_BACKUP_ACCESS_KEY_ID or not settings.R2_BACKUP_SECRET_ACCESS_KEY:
+        if not settings.R2_RECOVERY_CLIENT_ID or not settings.R2_RECOVERY_CLIENT_SECRET:
             result.add(
                 Severity.FATAL,
                 "backup",
-                "R2 backup-write credentials are required.",
+                "R2 recovery Access identity is required.",
             )
-        if not settings.R2_SOURCE_ACCESS_KEY_ID or not settings.R2_SOURCE_SECRET_ACCESS_KEY:
+        application_client_id = _secret_value(settings.R2_GATEWAY_CLIENT_ID)
+        recovery_client_id = _secret_value(settings.R2_RECOVERY_CLIENT_ID)
+        if application_client_id and application_client_id == recovery_client_id:
             result.add(
                 Severity.FATAL,
                 "backup",
-                "R2 source-read credentials are required for backups.",
-            )
-        source_access_key = _secret_value(settings.R2_SOURCE_ACCESS_KEY_ID)
-        target_access_key = _secret_value(settings.R2_BACKUP_ACCESS_KEY_ID)
-        application_access_key = _secret_value(settings.R2_ACCESS_KEY_ID)
-        if source_access_key and source_access_key in {target_access_key, application_access_key}:
-            result.add(
-                Severity.FATAL,
-                "backup",
-                "R2 source-read credentials must differ from application and backup credentials.",
+                "R2 recovery Access identity must differ from the application identity.",
             )
         if not _valid_schedule(settings.BACKUP_SCHEDULE_CRON, settings.BACKUP_TIMEZONE):
             result.add(Severity.FATAL, "backup", "BACKUP_SCHEDULE_CRON or BACKUP_TIMEZONE is invalid.")

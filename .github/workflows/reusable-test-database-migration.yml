@@ -1,0 +1,49 @@
+name: Reusable Test Database Migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_test_database:
+        description: "Confirm this targets the disposable testdatabase=dokushodo Supabase project"
+        required: true
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      confirm_test_database:
+        description: "Confirm this targets the disposable testdatabase=dokushodo Supabase project"
+        required: true
+        type: boolean
+    secrets:
+      MANAGED_DATABASE_TEST_URL:
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: managed-test-database-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate-test-database:
+    if: ${{ inputs.confirm_test_database == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    environment: staging
+    env:
+      MIGRATION_DATABASE_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14.7"
+      - run: pip install "uv==0.12.0"
+      - run: >-
+          uv sync --locked --extra dev --extra test --extra auth
+      - name: Apply candidate migrations to isolated test database
+        working-directory: backend
+        run: uv run --locked alembic -c alembic.ini upgrade head
