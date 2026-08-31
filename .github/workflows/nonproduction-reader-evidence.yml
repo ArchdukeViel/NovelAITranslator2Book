@@ -167,6 +167,55 @@ jobs:
             exit "$status"
           fi
 
+      - name: Verify protected test R2 gateway identities
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          classify_status() {
+            case "$1" in
+              200) printf 'http_200' ;;
+              401) printf 'unauthorized' ;;
+              403) printf 'forbidden' ;;
+              000) printf 'transport_error' ;;
+              *) printf 'unexpected_http_status' ;;
+            esac
+          }
+
+          gateway_health_url="${TEST_R2_GATEWAY_URL%/}/v1/health"
+          set +e
+          app_status="$(curl --silent --show-error --connect-timeout 5 --max-time 20 \
+            --output /dev/null --write-out '%{http_code}' \
+            -H "CF-Access-Client-Id: $TEST_R2_APP_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $TEST_R2_APP_CLIENT_SECRET" \
+            "$gateway_health_url" \
+            2>"$RUNNER_TEMP/reader-capacity-r2-app-health.log")"
+          app_exit=$?
+          recovery_status="$(curl --silent --show-error --connect-timeout 5 --max-time 20 \
+            --output /dev/null --write-out '%{http_code}' \
+            -H "CF-Access-Client-Id: $TEST_R2_RECOVERY_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $TEST_R2_RECOVERY_CLIENT_SECRET" \
+            "$gateway_health_url" \
+            2>"$RUNNER_TEMP/reader-capacity-r2-recovery-health.log")"
+          recovery_exit=$?
+          set -e
+
+          [[ "$app_exit" -eq 0 ]] || app_status="000"
+          [[ "$recovery_exit" -eq 0 ]] || recovery_status="000"
+          app_class="$(classify_status "$app_status")"
+          recovery_class="$(classify_status "$recovery_status")"
+          preflight_status="passed"
+          if [[ "$app_class" != "http_200" || "$recovery_class" != "http_200" ]]; then
+            preflight_status="blocked"
+          fi
+          printf '{"schema_version":1,"status":"%s","application_health":"%s","recovery_health":"%s","secrets_emitted":false}\n' \
+            "$preflight_status" "$app_class" "$recovery_class" \
+            > artifacts/operations/reader-capacity-follow-up/r2-gateway-preflight.json
+          if [[ "$preflight_status" != "passed" ]]; then
+            echo "::error::Protected test R2 gateway preflight failed; HTTP classes: application=$app_class recovery=$recovery_class"
+            exit 1
+          fi
+
       - name: Seed the explicit synthetic reader fixture
         shell: bash
         run: |
