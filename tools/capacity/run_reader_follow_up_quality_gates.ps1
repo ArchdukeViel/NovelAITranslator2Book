@@ -116,8 +116,8 @@ function Invoke-GraphifyChecked() {
 }
 
 try {
-    Invoke-Checked "spec-validator" "python C:\\Users\\AKMALSAFARIPELLU\\.agents\\skills\\create-spec\\scripts\\validate_spec.py $SpecPath" {
-        & python C:\Users\AKMALSAFARIPELLU\.agents\skills\create-spec\scripts\validate_spec.py $SpecPath
+    Invoke-Checked "spec-validator" ".venv\\Scripts\\python.exe C:\\Users\\AKMALSAFARIPELLU\\.agents\\skills\\create-spec\\scripts\\validate_spec.py $SpecPath" {
+        & .venv\Scripts\python.exe C:\Users\AKMALSAFARIPELLU\.agents\skills\create-spec\scripts\validate_spec.py $SpecPath
     }
     Invoke-Checked "pyright" "tools/pyright.ps1" {
         & powershell -NoProfile -ExecutionPolicy Bypass -File tools/pyright.ps1
