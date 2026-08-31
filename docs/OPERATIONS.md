@@ -129,8 +129,9 @@ performance advisor counts, RLS/activity aggregates, DNS/TLS/tunnel posture,
 and bounded R2 prefix counts remain distinct from reader timing and billing.
 Unavailable MCP permissions or provider granularity are recorded as
 `unavailable`; they never become zero measurements or a capacity pass. The
-current snapshot is blocked until queue/writer state, isolated runtime, and
-the disposable quick-tunnel liveness gate are independently proven.
+The current snapshot is blocked until the protected test R2 gateway is configured,
+queue/writer state and isolated runtime are independently proven, and the
+disposable quick-tunnel liveness gate is ready.
 
 ### B7 blocked-evidence completeness
 
@@ -163,7 +164,7 @@ production reader capacity.
 
 After correcting the B7 tunnel-status argument binding, recapture the baseline
 and MCP bridge at one frozen candidate before accepting any evidence. The
-the capture-fix candidate used for this recheck was
+capture-fix candidate used for this recheck was
 `5d410bd62949d70d31a70f9e88b98de3c707b266`; the focused capture regression
 passed. The read-only MCP refresh observed the dedicated
 test project and both approved test R2 bucket classes, zero fixture/prefix
@@ -177,12 +178,21 @@ window, and the ruleset read is unavailable; preserve those dimensions as
 The profile wrapper therefore generated no reader traffic and a validated
 blocked route/stage artifact. The provider-free bundle generator and validator
 produce the complete B7/B8 artifact shape, but neither replaces the required
-hosted run nor proves capacity or recovery. The current GitHub-hosted Ubuntu
-jobs fail before runner assignment while the repository has zero registered
-runners. Do not reactivate the historical self-hosted label or infer queue and
-writer safety from local worker absence. Obtain independent queue/writer proof,
-an observed isolated runtime, a ready disposable Quick Tunnel, and usable
-hosted-runner allocation before starting any fixture write.
+hosted run nor proves capacity or recovery. The active specification validator
+and strict documentation checker now pass. The latest GitHub-hosted Ubuntu
+jobs still fail before runner assignment while the repository has zero
+registered runners; GitHub service status was operational at the check. Do not
+reactivate the historical self-hosted label or infer queue and writer safety
+from local worker absence.
+
+Cloudflare Access is disabled and the required protected test R2 gateway URL
+and separate application/recovery identity secrets are absent from repository
+and staging secret inventories. No provider mutation was attempted. The local
+Docker engine is unavailable, so independent queue/writer proof, an observed
+isolated runtime, and a ready disposable Quick Tunnel remain required before
+starting any fixture write. Configure only an explicitly selected,
+non-production Access/gateway target and never reuse legacy S3-compatible
+credentials.
 
 ### Prior disposable profile checkpoint - 2026-08-29
 

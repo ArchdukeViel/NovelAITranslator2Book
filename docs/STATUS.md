@@ -148,6 +148,34 @@ The next eligible work is B7 preparation and, when a GitHub-hosted Ubuntu runner
 is available, its private hosted execution; neither this checkpoint nor the
 GitGuardian result establishes reader capacity or production readiness.
 
+### B7 current reconciliation checkpoint - 2026-08-31
+
+Status remains blocked before any new fixture write. The owner-authorized
+active specification metadata reconciliation is complete: the strict
+specification validator, strict documentation checker, and git diff --check
+pass. This corrects the earlier same-day checkpoint's active-spec mismatch; no
+production resource, secret, repository variable, or provider resource was
+changed.
+
+The latest bounded reruns of the required GitHub-hosted Ubuntu checks still
+fail before runner assignment with zero executed steps and no runner name. The
+repository has zero registered runners, and the historical self-hosted label is
+not an allowed substitute. GitHub service status was operational at the check,
+so the remaining runner-allocation failure is external to the repository.
+
+Cloudflare Access is disabled, so no protected test R2 gateway or non-production
+Access organization/auth domain was selected or deployed. The required gateway
+URL and separate application/recovery identity secrets are absent from both
+repository and staging secret inventories; no provider mutation was attempted.
+The local Docker engine is unavailable, and queue/writer state, isolated reader
+runtime, and disposable Quick Tunnel readiness remain unproven. Exact-window
+provider telemetry remains unavailable.
+
+The next eligible B7 attempt requires restored hosted-runner allocation, an
+explicitly selected and authorized protected test R2 gateway, independent
+queue/writer proof, observed isolated runtime, and ready disposable Quick
+Tunnel. production_capacity_claim remains not_established.
+
 ### B7 read-only MCP preflight checkpoint - 2026-08-31
 
 Status: `blocked` before any fixture write. The exact candidate matched the

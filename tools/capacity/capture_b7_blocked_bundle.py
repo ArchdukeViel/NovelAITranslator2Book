@@ -585,7 +585,7 @@ def _final_validation(baseline: dict[str, Any], candidate_sha: str, run_id: str,
             "checks": [],
             "blockers": [
                 "hosted_runner_unavailable",
-                "active_spec_invalid",
+                "test_r2_gateway_unavailable",
                 "writer_state_unverified",
                 "isolated_reader_runtime_unavailable",
             ],
@@ -624,7 +624,7 @@ def _handoff(baseline: dict[str, Any], candidate_sha: str, run_id: str, captured
             "artifact_names": [],
             "blocker_ids": [
                 "blk-hosted-runner-unavailable",
-                "blk-active-spec-invalid",
+                "blk-b7-test-r2-gateway",
                 "blk-b7-writer-state",
                 "blk-b7-queue-state",
                 "blk-b7-tunnel",
@@ -632,7 +632,7 @@ def _handoff(baseline: dict[str, Any], candidate_sha: str, run_id: str, captured
                 "blk-b7-r2-analytics",
                 "blk-b7-cloudflare-rulesets",
             ],
-            "next_action": "restore hosted runner availability and obtain owner-approved active-spec correction before rerunning B7",
+            "next_action": "restore hosted runner availability and configure an authorized protected test R2 gateway through Cloudflare Access before rerunning B7",
         }
     )
     return payload
@@ -672,7 +672,7 @@ def _handoff_markdown(baseline: dict[str, Any], candidate_sha: str, run_id: str,
             "",
             "## Required next action",
             "",
-            "Restore hosted runner availability and obtain owner-approved correction of the active specification metadata, then rerun the exact B7 preflight and hosted workflow.",
+            "Restore hosted runner availability and configure an authorized protected test R2 gateway through Cloudflare Access, then rerun the exact B7 preflight and hosted workflow.",
             "",
         ]
     )

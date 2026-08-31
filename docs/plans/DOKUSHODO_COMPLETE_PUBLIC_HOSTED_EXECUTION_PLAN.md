@@ -5,7 +5,7 @@ document_kind: execution_plan
 canonical_truth: false
 plan_role: execution
 work_state: blocked
-blocked_reason: "B7/B8 hard stops: GitHub-hosted runner allocation unavailable; active specification metadata requires owner approval; queue/writer/runtime/Tunnel readiness is unproven; exact provider telemetry is unavailable."
+blocked_reason: "B7/B8 hard stops: GitHub-hosted runner allocation unavailable; protected test R2 gateway unavailable because Cloudflare Access is disabled and the required gateway secrets are absent; queue/writer/runtime/Tunnel readiness is unproven; exact provider telemetry is unavailable."
 predecessor: dokushodo-docs-standardization
 predecessor_version: 2.1.0
 predecessor_path: docs/plans/DOKUSHODO_AGENTS_AND_CANONICAL_DOCUMENTATION_STANDARDIZATION_PLAN.md
@@ -57,9 +57,23 @@ before any new fixture write: the dedicated Supabase test project and both
 approved test R2 bucket classes were proven read-only, with zero fixture rows
 and zero guarded-prefix objects, but the isolated reader runtime, original
 queue, other-writer state, and disposable Quick Tunnel were not independently
-ready. The current GitHub-hosted Ubuntu jobs fail before runner assignment;
-the repository has no registered self-hosted runner, and the plan forbids
-using the historical self-hosted label as a substitute.
+ready. The active specification validator and strict documentation checker now
+pass.
+
+The latest bounded reruns of the required GitHub-hosted Ubuntu checks still
+fail before runner assignment, with zero executed steps and no runner name; the
+repository has no registered self-hosted runner. GitHub's status page was
+operational at the check, so repository changes cannot repair this account-level
+runner-allocation failure. The plan forbids using the historical self-hosted
+label as a substitute.
+
+The protected test R2 gateway is not currently admissible: Cloudflare Access is
+disabled, no non-production Access organization/auth domain or test gateway
+deployment was selected or attempted, and the required gateway URL/client
+identity secrets are absent from both the repository and staging environment.
+No Cloudflare provider mutation was made. Local Docker is also unavailable, so
+queue/writer state, the isolated reader runtime, and disposable Quick Tunnel
+readiness remain unproven. Exact-window provider telemetry remains unavailable.
 
 The candidate-bound B7 MCP snapshot, route/stage profile, complete blocked
 bundle, validators, and canonical checkpoint records are retained under
@@ -67,7 +81,8 @@ bundle, validators, and canonical checkpoint records are retained under
 completeness and fail-closed disposition only. B7 hosted reader/frontend/
 pipeline/data-path/recovery execution and B8 remote closeout remain unadmitted;
 `production_capacity_claim=not_established`. Resume only after hosted runner
-allocation is restored, the owner resolves the active-spec metadata mismatch,
+runner allocation is restored, an explicitly selected and authorized protected
+test R2 gateway is configured without reusing legacy S3-compatible credentials,
 and the queue/writer/runtime/Tunnel gates are independently proven.
 
 ## Program outcome

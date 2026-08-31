@@ -24,6 +24,30 @@ Related contracts: [`STATUS.md`](STATUS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md
 
 Maintenance: append dated entries in reverse chronological order, preserve their meaning, never overwrite historical provenance, and keep secrets and raw provider data out of the record.
 
+## 2026-08-31 B7 CURRENT RECONCILIATION CHECKPOINT
+
+This is the current status of the candidate-bound B7 follow-up and supersedes
+the earlier same-day note that the active specification metadata validator was
+failing. The active specification validator, strict documentation checker, and
+git diff --check now pass after the owner-authorized metadata reconciliation;
+no production resource, secret, repository variable, or provider resource was
+changed.
+
+The latest bounded reruns of the required GitHub-hosted Ubuntu checks still
+failed before runner assignment, with zero steps and no runner name. The
+repository runner inventory remains empty; no persistent self-hosted runner or
+historical self-hosted label was used. GitHub service status was operational at
+the time of the check, so this remains an external runner-allocation blocker.
+
+Cloudflare read-only checks show that Access is disabled. The protected test R2
+gateway has therefore not been deployed, and the required gateway URL and
+separate application/recovery identity secrets are absent from repository and
+staging secret inventories. No Cloudflare write was attempted. The local Docker
+engine was unavailable, so isolated runtime, queue/writer, disposable Quick
+Tunnel, hosted reader, frontend, recovery, and cleanup evidence remain
+unavailable or blocked. The current blocked bundle records these conditions and
+keeps production_capacity_claim=not_established.
+
 ## 2026-08-31 B7 READ-ONLY MCP PREFLIGHT CHECKPOINT
 
 The exact candidate matched the safety baseline before any fixture write. The
