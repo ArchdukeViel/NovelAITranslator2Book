@@ -37,7 +37,16 @@
           "binding": "R2_BACKUP",
           "bucket_name": "test-dokushodo-backup"
         }
-      ]
+      ],
+      "access": {
+        "dev": {
+          "aud": "r2-gateway-test",
+          "identity": {
+            "common_name": "test-app-client",
+            "sub": ""
+          }
+        }
+      }
     }
   }
 }
