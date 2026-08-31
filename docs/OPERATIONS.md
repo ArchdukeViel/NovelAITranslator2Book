@@ -132,6 +132,27 @@ Unavailable MCP permissions or provider granularity are recorded as
 current snapshot is blocked until queue/writer state, isolated runtime, and
 the disposable quick-tunnel liveness gate are independently proven.
 
+### B7 blocked-evidence completeness
+
+When B7 stops before fixture creation because its safety or hosted-runtime
+prerequisites are unavailable, create the complete local, candidate-bound
+blocked bundle with:
+
+```powershell
+\.venv\Scripts\python.exe tools\capacity\capture_b7_blocked_bundle.py
+\.venv\Scripts\python.exe tools\capacity\validate_b7_blocked_bundle.py --root artifacts\operations\reader-capacity-follow-up
+```
+
+The generator is provider-free and write-free. It emits explicit zero-attempt,
+unavailable, or not-run records for the frontend, load generator, pipeline,
+database/R2 microprofiles, security lane, writer state, recovery, cleanup,
+final validation, artifact manifest, and JSON handoff. It binds every record to
+the current baseline campaign and candidate revision, retains the exact reader
+and frontend arithmetic, and keeps `production_capacity_claim` at
+`not_established`. This bundle is completeness evidence only; it does not
+replace the hosted B7 run or prove capacity, recovery, billing, or production
+readiness.
+
 The uploaded artifact is retained for seven days and contains sanitized route,
 cache-state, reset-proof, and disposition data only. A successful workflow or
 valid blocked report is non-production evidence: it does not change the named

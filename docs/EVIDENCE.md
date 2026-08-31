@@ -53,6 +53,23 @@ reader runtime, tunnel non-readiness, and unavailable exact-window/provider
 posture dimensions. This is current non-production control evidence only;
 `production_capacity_claim=not_established`.
 
+## 2026-08-31 B7 BLOCKED BUNDLE COMPLETENESS CHECKPOINT
+
+The provider-free B7 blocked-bundle generator emitted the complete required
+artifact shape under `artifacts/operations/reader-capacity-follow-up/` and its
+semantic validator passed. The bundle is bound to the current baseline
+campaign and candidate revision and records zero counted reader/frontend
+attempts, a blocked protected-UI lane, unavailable pipeline/database/R2
+timings, unknown writer state, recovery `not_run`, and cleanup not run because
+no resource was created. It includes the load-generator arithmetic of 1,000
+Cloudflare-gate attempts plus 500 direct and 500 Caddy diagnostic attempts,
+and the 140 anonymous plus 84 separately protected frontend-navigation plan.
+
+This closes the local evidence-shape gap without claiming that any hosted cell
+ran. The hosted runner, isolated runtime, queue/writer proof, and ready Quick
+Tunnel remain required before B7 can execute. `production_capacity_claim`
+remains `not_established`.
+
 ## 2026-08-31 B6 PRIVATE HOSTED CANDIDATE CHECKPOINT
 
 The private candidate audit for [PR #136](https://github.com/ArchdukeViel/NovelAITranslator2Book/pull/136)

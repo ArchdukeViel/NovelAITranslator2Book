@@ -181,6 +181,13 @@ blockers remain open, and `production_capacity_claim` remains
 an observed isolated runtime, a ready disposable quick tunnel, and then the
 exact B7 reader/frontend/data-path/recovery workflow.
 
+The subsequent provider-free blocked-bundle capture completed the required B7
+artifact shape without creating a fixture or contacting a provider. Its
+validator passed for the load-generator, frontend, pipeline, database/R2,
+security, writer-state, recovery, cleanup, final-validation, manifest, and
+JSON handoff records. All execution-dependent records remain explicitly
+blocked, unavailable, or not run; this is not a hosted capacity result.
+
 ## Execution Policy
 
 - Launch blockers: `DEBT-075`, `DEBT-079`, ownership, recovery, alerts,
