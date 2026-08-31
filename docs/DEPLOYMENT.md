@@ -545,9 +545,9 @@ hosted workflow eligibility.
 
 ### Current hosted recheck after B7 capture fix - 2026-08-31
 
-The candidate branch now points to
+The recheck used capture-fix candidate
 `5d410bd62949d70d31a70f9e88b98de3c707b266`. All tracked candidate workflows
-continue to target GitHub-hosted Ubuntu 24.04. The current CI, CodeQL, Secret
+continue to target GitHub-hosted Ubuntu 24.04. The CI, CodeQL, Secret
 Scan, Security Static Analysis, and Dependency Review runs remain blocked: the
 required jobs completed with no runner assignment, no executed steps, and no
 billable runner time, while the repository runner inventory remains empty.

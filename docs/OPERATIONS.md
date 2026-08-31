@@ -163,8 +163,9 @@ production reader capacity.
 
 After correcting the B7 tunnel-status argument binding, recapture the baseline
 and MCP bridge at one frozen candidate before accepting any evidence. The
-current candidate is `5d410bd62949d70d31a70f9e88b98de3c707b266`; the focused
-capture regression passed. The read-only MCP refresh observed the dedicated
+the capture-fix candidate used for this recheck was
+`5d410bd62949d70d31a70f9e88b98de3c707b266`; the focused capture regression
+passed. The read-only MCP refresh observed the dedicated
 test project and both approved test R2 bucket classes, zero fixture/prefix
 collisions, active zone posture, and a down named tunnel with zero connectors.
 The fresh `pg_stat_statements` values are cumulative database telemetry and
