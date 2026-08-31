@@ -238,6 +238,39 @@ artifact names). The candidate is eligible for the next private hosted phase
 only after the exact candidate commit is verified; dependency changes after
 that point invalidate affected B4 evidence and return the work to B5.
 
+## B6 Private Hosted Audit and Publication Gate - 2026-08-31
+
+The private hosted audit is a read-only GitHub-control and candidate-run
+evidence step. It queries the exact candidate SHA for required workflow runs,
+job/step timing, branch protection, rulesets, Actions policy, runner inventory,
+fork approval, environments, Pages/packages, OIDC, Apps, hooks, and deployment
+inventory. The audit stores only bounded statuses, counts, booleans, labels,
+durations, and URLs; command failures and raw provider responses are discarded.
+
+Generate and validate the sanitized set from the repository root:
+
+```powershell
+& .venv\Scripts\python.exe tools\capacity\run_b6_private_hosted_audit.py `
+  --repo ArchdukeViel/NovelAITranslator2Book `
+  --pr <private-candidate-pr> `
+  --candidate-sha <exact-candidate-sha>
+& .venv\Scripts\python.exe tools\capacity\validate_b6_private_hosted_audit.py --self-test
+& .venv\Scripts\python.exe tools\capacity\validate_b6_private_hosted_audit.py
+```
+
+The required candidate workflows must execute on GitHub-hosted Ubuntu. A run
+that fails before runner assignment or has zero steps is blocked evidence, not a
+workflow pass. A zero registered self-hosted runner count is recorded separately
+and does not prove hosted availability. Do not reroute these workflows to a
+persistent self-hosted runner.
+
+Keep the repository private unless a separate visibility authorization names this
+repository and authorizes the transition. Without that authority, leave the
+visibility transition, protection-after verification, public-main reruns, and
+external-fork proof as `not_run`; do not use a green independent security scan
+as a substitute. The B6 gate does not establish reader capacity, hosted
+telemetry, recovery completeness, or production readiness.
+
 ## Health
 
 | Endpoint | Expected behavior |

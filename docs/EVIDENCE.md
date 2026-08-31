@@ -24,6 +24,32 @@ Related contracts: [`STATUS.md`](STATUS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md
 
 Maintenance: append dated entries in reverse chronological order, preserve their meaning, never overwrite historical provenance, and keep secrets and raw provider data out of the record.
 
+## 2026-08-31 B6 PRIVATE HOSTED CANDIDATE CHECKPOINT
+
+The private candidate audit for [PR #136](https://github.com/ArchdukeViel/NovelAITranslator2Book/pull/136)
+was captured against one exact candidate SHA after the branch was synchronized
+with `origin/main` by a non-rewriting merge. The sanitized artifact retains the
+candidate SHA, workflow URLs, job metadata, and settings provenance without raw
+logs or provider data.
+
+The five required candidate workflows returned one run each: CI, CodeQL, Secret
+Scan, Security Static Analysis, and Dependency Review. Their 16 jobs all failed
+before runner assignment, executed zero steps, and consumed zero billable runner
+time. The repository runner inventory was empty. This is a GitHub-hosted runner
+availability blocker, not a workflow-pass, application, reader-capacity, or
+production-readiness result. The independent GitGuardian check passed, while
+Supabase Preview was skipped because no preview branch was associated.
+
+The seven sanitized artifacts are `private-hosted-runs.json`,
+`workflow-timing.json`, `protection-before.json`, `visibility-transition.json`,
+`protection-after.json`, `fork-safety.json`, and `public-main-runs.json` under
+the ignored `artifacts/public-hosted-execution/` directory. The B6 validator and
+focused tests passed. Branch protection and repository privacy were readable;
+unsupported settings endpoints are represented as `unavailable`, not inferred.
+No visibility transition, public-main run, external-fork run, provider change,
+production mutation, secret change, or repository-variable change was attempted.
+`public_repository_status=blocked` and `production_capacity_claim=not_established`.
+
 ## 2026-08-30 CURRENT NON-PRODUCTION FOLLOW-UP CHECKPOINT
 
 The corrected test-only recovery workflow [33287970969](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33287970969)

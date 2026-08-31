@@ -112,10 +112,43 @@ for the local candidate; no provider, production resource, secret, or
 repository variable was changed. The candidate manifest is the sole source of
 its exact hashes and becomes the admission record for B6.
 
-Next eligibility: B6 private hosted dry run and candidate verification. A
+The candidate was admitted to the B6 private hosted checkpoint below. A
 dependency or workflow change after this checkpoint invalidates affected B4
 evidence and returns the work to B5. `production_capacity_claim` remains
 `not_established`.
+
+### B6 private hosted candidate checkpoint - 2026-08-31
+
+Status: `complete_with_quantified_blocker` for the private hosted control audit;
+hosted workflow execution is `blocked`. Authorized PR #136 contains the exact
+candidate tree and is mergeable after a non-rewriting merge of the current
+`origin/main`; the exact candidate SHA and all bounded run metadata are recorded
+in the validated B6 artifacts.
+
+The five required candidate workflows returned one run each: CI, CodeQL, Secret
+Scan, Security Static Analysis, and Dependency Review. They collectively exposed
+16 jobs, but every job failed before runner assignment, executed zero steps, and
+consumed zero billable runner time. The repository runner inventory reported zero
+registered runners. The exact run URLs and job metadata are retained in
+`private-hosted-runs.json`. This is a GitHub-hosted runner availability failure,
+not application or capacity evidence. The independent GitGuardian check passed;
+Supabase Preview was skipped because no preview branch was associated.
+
+The sanitized B6 evidence set is `private-hosted-runs.json`,
+`workflow-timing.json`, `protection-before.json`, `visibility-transition.json`,
+`protection-after.json`, `fork-safety.json`, and `public-main-runs.json` under
+the ignored `artifacts/public-hosted-execution/` directory; the B6 validator
+passes. The protection snapshot confirms the repository remains private and the
+main-branch protection endpoint is readable. Unsupported settings endpoints are
+recorded as bounded `unavailable` values rather than inferred. No visibility,
+provider, production, secret, or repository-variable mutation was attempted.
+
+Because visibility authority was not granted, `public_repository_status=blocked`;
+the visibility transition, public-main reruns, and external-fork proof remain
+`not_run`. Keep the worker and original full translation queue stopped/paused.
+The next eligible work is B7 preparation and, when a GitHub-hosted Ubuntu runner
+is available, its private hosted execution; neither this checkpoint nor the
+GitGuardian result establishes reader capacity or production readiness.
 
 ## Execution Policy
 

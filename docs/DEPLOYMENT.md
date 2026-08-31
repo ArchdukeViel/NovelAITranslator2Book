@@ -502,9 +502,9 @@ comparison evidence. It always removes the synthetic fixture, test runtime,
 and quick tunnel. See [`OPERATIONS.md`](OPERATIONS.md) for the evidence and
 cold-cache reset contract.
 
-### Non-production workflow runner checkpoint - 2026-08-30
+### Historical non-production workflow runner checkpoint - 2026-08-30
 
-The authorized branch exercise ran the non-production reader, managed-service,
+The historical authorized branch exercise ran the non-production reader, managed-service,
 static-analysis, dependency-review, and CI jobs on one disposable Ubuntu 24.04
 WSL2 self-hosted runner carrying the label
 `dokushodo-nonprod-linux-x64`. The runner was used only for candidate-branch
@@ -523,3 +523,21 @@ same-repository push and pull-request scans. Its fork guard remains in place,
 so the `GITGUARDIAN_API_KEY` is never exposed to fork code. This changes only
 the scan execution host; it does not reroute production deployment or
 monitoring workflows.
+
+### Current B6 private hosted checkpoint - 2026-08-31
+
+The current candidate workflow contract targets GitHub-hosted Ubuntu and forbids
+persistent self-hosted execution. The repository runner inventory is currently
+empty. The five required candidate workflows were returned by GitHub, but all
+16 jobs failed before runner assignment with zero executed steps and zero
+billable runner time; this is a hosted-runner availability blocker rather than a
+successful CI or capacity result. The exact candidate SHA, run URLs, timings,
+and bounded job metadata are retained in the validated B6 evidence artifacts.
+
+The repository remains private. No visibility transition, public-main rerun,
+external-fork proof, GitHub settings change, provider operation, production
+mutation, secret change, or repository-variable change was attempted. Branch
+protection was readable before the gate; unsupported settings endpoints remain
+explicitly `unavailable`. Do not reactivate the historical WSL2/self-hosted
+label to satisfy this gate, and do not treat local runner shutdown as proof of
+hosted workflow eligibility.
