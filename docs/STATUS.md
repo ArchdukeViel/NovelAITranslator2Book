@@ -188,6 +188,40 @@ security, writer-state, recovery, cleanup, final-validation, manifest, and
 JSON handoff records. All execution-dependent records remain explicitly
 blocked, unavailable, or not run; this is not a hosted capacity result.
 
+### B7 candidate refresh checkpoint - 2026-08-31
+
+The B7 capture-key correction and focused regression were committed as
+`5d410bd62949d70d31a70f9e88b98de3c707b266` and pushed to the feature branch.
+The fresh safety baseline and sanitized MCP snapshot are joined to that exact
+candidate. The test Supabase project is active; its read-only observations are
+zero matching fixture rows, security advisors `0`, performance advisors `101`,
+37/37 public tables with RLS, one security-definer function, 12 aggregate
+sessions (1 active, 4 idle, 7 without a state value), and cumulative
+`pg_stat_statements` counters of 2,732 statements, 81,428 calls, 26,017.214 ms
+execution time, and 198,120 rows. These cumulative counters are database
+telemetry, not billing or pool-capacity evidence; pool occupancy remains
+unavailable.
+
+The read-only Cloudflare refresh found the active zone, three proxied DNS
+records, no CAA record, DNSSEC disabled, minimum TLS 1.0, full origin mode,
+and the named development tunnel down with zero connectors and two configured
+ingress entries. The two approved test R2 bucket classes exist and both
+approved prefixes are empty. The R2 metrics endpoint is reachable but cannot
+bind counters to the exact test bucket and UTC window; the ruleset and exact
+test-window analytics evidence therefore remain unavailable. No provider or
+production mutation was attempted.
+
+The bounded profile wrapper produced a validated fail-closed route/stage
+record with 30 blockers and zero traffic because the runtime/tunnel/queue
+gates were not eligible. The complete provider-free blocked bundle is bound to
+the same campaign and candidate and validates. Local quality gates passed
+except the active-spec metadata validator, which still fails on the
+owner-controlled `.agents` version/status/date mismatch. PR #136 remains open
+and blocked: current required jobs fail before runner assignment with no
+runner name, zero steps, and zero billable runner time; the repository runner
+inventory is empty. This refresh does not establish hosted execution, reader
+capacity, recovery completeness, or production readiness.
+
 ## Execution Policy
 
 - Launch blockers: `DEBT-075`, `DEBT-079`, ownership, recovery, alerts,

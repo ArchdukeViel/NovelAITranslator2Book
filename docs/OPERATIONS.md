@@ -159,6 +159,30 @@ valid blocked report is non-production evidence: it does not change the named
 `dev.dokushodo.online` tunnel, prove hosted billing/queue telemetry, or establish
 production reader capacity.
 
+### Current B7 candidate refresh - 2026-08-31
+
+After correcting the B7 tunnel-status argument binding, recapture the baseline
+and MCP bridge at one frozen candidate before accepting any evidence. The
+current candidate is `5d410bd62949d70d31a70f9e88b98de3c707b266`; the focused
+capture regression passed. The read-only MCP refresh observed the dedicated
+test project and both approved test R2 bucket classes, zero fixture/prefix
+collisions, active zone posture, and a down named tunnel with zero connectors.
+The fresh `pg_stat_statements` values are cumulative database telemetry and
+must not be used as request timing, billing, or pool occupancy. The R2 metrics
+endpoint and zone analytics do not provide an exact approved-bucket/test-run
+window, and the ruleset read is unavailable; preserve those dimensions as
+`unavailable`.
+
+The profile wrapper therefore generated no reader traffic and a validated
+blocked route/stage artifact. The provider-free bundle generator and validator
+produce the complete B7/B8 artifact shape, but neither replaces the required
+hosted run nor proves capacity or recovery. The current GitHub-hosted Ubuntu
+jobs fail before runner assignment while the repository has zero registered
+runners. Do not reactivate the historical self-hosted label or infer queue and
+writer safety from local worker absence. Obtain independent queue/writer proof,
+an observed isolated runtime, a ready disposable Quick Tunnel, and usable
+hosted-runner allocation before starting any fixture write.
+
 ### Prior disposable profile checkpoint - 2026-08-29
 
 The follow-up rerun [33259176327](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33259176327)

@@ -542,3 +542,17 @@ protection was readable before the gate; unsupported settings endpoints remain
 explicitly `unavailable`. Do not reactivate the historical WSL2/self-hosted
 label to satisfy this gate, and do not treat local runner shutdown as proof of
 hosted workflow eligibility.
+
+### Current hosted recheck after B7 capture fix - 2026-08-31
+
+The candidate branch now points to
+`5d410bd62949d70d31a70f9e88b98de3c707b266`. All tracked candidate workflows
+continue to target GitHub-hosted Ubuntu 24.04. The current CI, CodeQL, Secret
+Scan, Security Static Analysis, and Dependency Review runs remain blocked: the
+required jobs completed with no runner assignment, no executed steps, and no
+billable runner time, while the repository runner inventory remains empty.
+Actions is enabled and no repository settings, visibility, secrets, variables,
+provider resources, or production targets were changed. The pre-existing
+untracked `ai-review.yml` self-hosted reference is outside this candidate
+closeout and remains untouched. Do not use it or a newly registered
+self-hosted runner to satisfy the GitHub-hosted execution gate.

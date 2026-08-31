@@ -70,6 +70,44 @@ ran. The hosted runner, isolated runtime, queue/writer proof, and ready Quick
 Tunnel remain required before B7 can execute. `production_capacity_claim`
 remains `not_established`.
 
+## 2026-08-31 B7 CANDIDATE REFRESH CHECKPOINT
+
+The B7 tunnel-status capture defect was corrected and covered by a focused
+three-test regression. Commit
+`5d410bd62949d70d31a70f9e88b98de3c707b266` is pushed to the feature branch;
+the fresh baseline, MCP snapshot, route profile, and blocked bundle are bound
+to that candidate. The MCP snapshot validator passes and records no fixture
+collision: the dedicated Supabase test project has zero matching novel rows
+and zero matching chapter rows, while the approved application and recovery
+R2 prefixes each have zero objects.
+
+Fresh Supabase aggregates recorded zero security-advisor findings, 101
+performance-advisor findings, 37/37 public tables with RLS, one
+security-definer function, 12 sessions (1 active, 4 idle, 7 null-state), and
+the cumulative `pg_stat_statements` values 2,732 statements, 81,428 calls,
+26,017.214 ms execution time, and 198,120 rows. Pool occupancy remains
+unavailable. The counters are labeled database-cumulative and are not
+interpreted as billing, request latency, or managed-pool capacity.
+
+Fresh Cloudflare reads found an active zone, three proxied DNS records, no CAA
+record, DNSSEC disabled, minimum TLS 1.0, full origin mode, and the named
+development tunnel down with zero connectors and two ingress entries. Both
+approved test bucket classes were present and both guarded prefixes were
+empty. The account R2 metrics endpoint responded but does not expose the
+approved bucket plus exact-window binding; the zone ruleset read and exact
+test-window dashboard evidence remain unavailable. No provider or production
+resource was changed.
+
+The bounded route wrapper generated a validated blocked profile with zero
+requests and 30 blockers because isolated runtime, tunnel readiness, and
+queue/writer gates were not proven. The complete provider-free B7/B8 blocked
+bundle validates, including all required timing, frontend, security, recovery,
+cleanup, manifest, and handoff shapes. PR #136's current required jobs again
+failed before runner assignment with zero steps and no runner name; the
+repository runner inventory is empty. Local gates passed except the
+owner-controlled active-spec metadata validator. These records are blocked or
+unavailable evidence only; `production_capacity_claim=not_established`.
+
 ## 2026-08-31 B6 PRIVATE HOSTED CANDIDATE CHECKPOINT
 
 The private candidate audit for [PR #136](https://github.com/ArchdukeViel/NovelAITranslator2Book/pull/136)
