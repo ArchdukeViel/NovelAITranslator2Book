@@ -168,7 +168,7 @@ $baseline = [ordered]@{
         max_p95_chapter_ms = 750
         max_p95_search_ms = 500
     }
-    configuration_keys = @("APP_ENV", "DATABASE_URL", "REDIS_URL", "R2_BUCKET", "HEALTH_PROBE_TIMEOUT_MS", "HEALTH_TOTAL_TIMEOUT_MS", "READER_CADDY_HOST_HEADER", "READER_CLOUDFLARE_BASE_URL")
+    configuration_keys = @("ENV", "DATABASE_URL", "REDIS_URL", "R2_BUCKET", "HEALTH_PROBE_TIMEOUT_MS", "HEALTH_TOTAL_TIMEOUT_MS", "READER_CADDY_HOST_HEADER", "READER_CLOUDFLARE_BASE_URL")
     target_binding_contract = [ordered]@{
         direct_service = "diagnostic_only; host-published reader service or approved internal source"
         caddy_loopback = "diagnostic_only; requires an explicit Host binding"

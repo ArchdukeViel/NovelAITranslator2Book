@@ -151,6 +151,7 @@ try {
             "$ArtifactPath/route-profile.json",
             "$ArtifactPath/latency-attribution.json",
             "$ArtifactPath/hosted-telemetry.json",
+            "$ArtifactPath/b7-mcp-snapshot.json",
             "$ArtifactPath/backup-controls.json",
             "$ArtifactPath/remediation-decision.md",
             "$ArtifactPath/restore-verification.md",
@@ -194,6 +195,16 @@ try {
         Invoke-Checked $label $display {
             & powershell -NoProfile -ExecutionPolicy Bypass -File $validator -Kind $kind -Path $path
         }
+    }
+    $b7McpSnapshotPath = Join-Path $ArtifactPath "b7-mcp-snapshot.json"
+    if (Test-Path -LiteralPath $b7McpSnapshotPath -PathType Leaf) {
+        Invoke-Checked "artifact-b7-mcp-snapshot" ".venv\\Scripts\\python.exe tools/capacity/validate_b7_mcp_snapshot.py $b7McpSnapshotPath" {
+            & .venv\\Scripts\\python.exe tools/capacity/validate_b7_mcp_snapshot.py $b7McpSnapshotPath
+        }
+    }
+    else {
+        Add-OperationalBlocker "blk-b7-mcp-snapshot-missing" "b7-mcp-snapshot.json" "B7 MCP snapshot is missing" "capture the sanitized read-only MCP snapshot before closing the B7 evidence bundle" "runtime_state_unavailable" "do not treat the existing provider posture artifacts as the current B7 MCP snapshot"
+        Add-Record "artifact-b7-mcp-snapshot" ".venv\\Scripts\\python.exe tools/capacity/validate_b7_mcp_snapshot.py $b7McpSnapshotPath" 1 "missing artifact" 0 "blocked"
     }
     foreach ($check in @(
         @("remediation-decision", "$ArtifactPath/remediation-decision.md"),
