@@ -66,13 +66,10 @@ warmups plus 30 measured two-chapter runs with a mock provider and in-memory
 objects; its cleanup proof is zero rows, objects, and queue entries. It is
 diagnostic evidence only, not hosted capacity evidence.
 
-The current read-only MCP observations are sanitized as 0 security-advisor
-findings, 0 performance-advisor findings, 37/37 public tables with RLS, one
-security-definer function, 12 total and 1 active database activity, and
-`pg_stat_statements`/pool occupancy unavailable. The Cloudflare read path saw
-one named tunnel with zero active connections and one connector in the down
-state; exact-window analytics remain unavailable. No provider write or
-production action was attempted.
+The B4 capture recorded the then-available read-only MCP observations. The
+superseding B7 MCP preflight is the current provider observation and is
+recorded above; it reports 101 performance-advisor findings and retains the
+same fail-closed database/pool and Cloudflare analytics boundaries.
 
 The blocker is quantified: 15 reader topology/route cells, four database
 microprofile cells, and 18 native-R2 cells remain unavailable; four required
@@ -150,6 +147,39 @@ the visibility transition, public-main reruns, and external-fork proof remain
 The next eligible work is B7 preparation and, when a GitHub-hosted Ubuntu runner
 is available, its private hosted execution; neither this checkpoint nor the
 GitGuardian result establishes reader capacity or production readiness.
+
+### B7 read-only MCP preflight checkpoint - 2026-08-31
+
+Status: `blocked` before any fixture write. The exact candidate matched the
+safety baseline, and the sanitized MCP bridge artifact
+`artifacts/operations/reader-capacity-follow-up/b7-mcp-snapshot.json` passed
+its validator. The snapshot used only the dedicated Supabase test project and
+the two dedicated test R2 bucket classes; no provider mutation or production
+data-plane mutation was attempted.
+
+Supabase read-only observations were: security advisors `0` findings,
+performance advisors `101` findings, zero matching fixture novel/chapter rows,
+one migration marker row, 37/37 public tables with RLS, one security-definer
+function, and aggregate activity of 12 sessions (1 active, 4 idle, 7 without a
+state value). `pg_stat_statements` and pool occupancy were unavailable in this
+capture; no cumulative database counter was substituted for a billing or pool
+measurement.
+
+Cloudflare read-only observations were: active zone, three DNS records all
+proxied, DNSSEC disabled, minimum TLS 1.0, full origin mode, and the named
+development tunnel down with zero connections. Its route configuration was
+readable with two ingress entries, but it is not a ready reader target. The two
+approved test bucket classes were present; `novels/123/` and `recovery-` each
+contained zero objects. Exact test-bucket/window R2 metrics and the ruleset
+posture endpoint were unavailable.
+
+The worker was stopped, but the original queue and other-writer state remained
+unknown; local disposable Compose observation and the isolated reader runtime
+were unavailable. Therefore the bounded profile was not eligible, the six
+blockers remain open, and `production_capacity_claim` remains
+`not_established`. Next eligibility requires independent queue/writer proof,
+an observed isolated runtime, a ready disposable quick tunnel, and then the
+exact B7 reader/frontend/data-path/recovery workflow.
 
 ## Execution Policy
 

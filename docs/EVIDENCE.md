@@ -24,6 +24,35 @@ Related contracts: [`STATUS.md`](STATUS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md
 
 Maintenance: append dated entries in reverse chronological order, preserve their meaning, never overwrite historical provenance, and keep secrets and raw provider data out of the record.
 
+## 2026-08-31 B7 READ-ONLY MCP PREFLIGHT CHECKPOINT
+
+The exact candidate matched the safety baseline before any fixture write. The
+sanitized bridge artifact
+`artifacts/operations/reader-capacity-follow-up/b7-mcp-snapshot.json` passed
+its semantic validator and records only bounded aggregate observations from
+the dedicated Supabase test project and dedicated test R2 bucket classes.
+No provider mutation, production data-plane mutation, fixture seed, or reader
+profile was attempted.
+
+The Supabase MCP observations were zero security-advisor findings, 101
+performance-advisor findings, zero matching fixture novel/chapter rows, one
+migration marker row, 37/37 public tables with RLS, one security-definer
+function, and 12 aggregate sessions (1 active, 4 idle, 7 without a state
+value). `pg_stat_statements` and pool occupancy were unavailable; no billing or
+pool value was inferred.
+
+Cloudflare MCP observations were an active zone with three proxied DNS records,
+DNSSEC disabled, minimum TLS 1.0, full origin mode, and a down named tunnel
+with zero connections. The route configuration was readable with two ingress
+entries. Both approved test bucket classes existed and the application
+`novels/123/` and recovery `recovery-` prefixes were empty. Exact test
+bucket/window R2 analytics and the ruleset posture endpoint were unavailable.
+
+The snapshot remains blocked by unknown queue/writer state, unavailable local
+reader runtime, tunnel non-readiness, and unavailable exact-window/provider
+posture dimensions. This is current non-production control evidence only;
+`production_capacity_claim=not_established`.
+
 ## 2026-08-31 B6 PRIVATE HOSTED CANDIDATE CHECKPOINT
 
 The private candidate audit for [PR #136](https://github.com/ArchdukeViel/NovelAITranslator2Book/pull/136)

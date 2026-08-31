@@ -110,6 +110,28 @@ Each route cell also records coarse sanitized error-class counts (`connect`,
 exposes an error name. These counts are diagnostic only; they never convert an
 unavailable or incomplete Cloudflare gate cell into a passing result.
 
+### B7 MCP observation boundary
+
+The external Supabase and Cloudflare MCP servers are read-only observation
+surfaces for B7. After calling the approved MCP endpoints, pass only bounded
+scalar results to:
+
+```powershell
+\.venv\Scripts\python.exe tools\capacity\capture_b7_mcp_snapshot.py ...
+\.venv\Scripts\python.exe tools\capacity\validate_b7_mcp_snapshot.py artifacts\operations\reader-capacity-follow-up\b7-mcp-snapshot.json
+```
+
+The bridge requires the exact candidate/baseline join, zero fixture rows,
+zero objects under the approved application and recovery prefixes, and both
+test bucket classes. It stores no project or tunnel identifiers, URLs, SQL,
+object names, provider responses, credentials, or request data. Security and
+performance advisor counts, RLS/activity aggregates, DNS/TLS/tunnel posture,
+and bounded R2 prefix counts remain distinct from reader timing and billing.
+Unavailable MCP permissions or provider granularity are recorded as
+`unavailable`; they never become zero measurements or a capacity pass. The
+current snapshot is blocked until queue/writer state, isolated runtime, and
+the disposable quick-tunnel liveness gate are independently proven.
+
 The uploaded artifact is retained for seven days and contains sanitized route,
 cache-state, reset-proof, and disposition data only. A successful workflow or
 valid blocked report is non-production evidence: it does not change the named
