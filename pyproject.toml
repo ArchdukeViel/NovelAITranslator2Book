@@ -93,7 +93,7 @@ novelai = "novelai.__main__:main"
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
 addopts = "-p no:cacheprovider"
-pythonpath = ["backend/src", "backend"]
+pythonpath = [".", "backend/src", "backend"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
