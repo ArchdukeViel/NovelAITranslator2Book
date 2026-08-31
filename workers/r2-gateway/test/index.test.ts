@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import worker, { type Env } from "../src/index";
+import worker from "../src/index";
 
 type Stored = {
   body: Uint8Array;
@@ -92,7 +92,16 @@ function object(key: string, stored: Stored): any {
   };
 }
 
-function environment(app = new FakeBucket(), backup = new FakeBucket()): Env {
+type TestEnv = {
+  R2_APP: R2Bucket;
+  R2_BACKUP: R2Bucket;
+  GATEWAY_VERSION: string;
+  MAX_OBJECT_BYTES: string;
+  APP_CLIENT_ID: string;
+  RECOVERY_CLIENT_ID: string;
+};
+
+function environment(app = new FakeBucket(), backup = new FakeBucket()): TestEnv {
   return {
     R2_APP: app as unknown as R2Bucket,
     R2_BACKUP: backup as unknown as R2Bucket,
@@ -103,6 +112,21 @@ function environment(app = new FakeBucket(), backup = new FakeBucket()): Env {
   };
 }
 
+function accessContext(commonName?: string): ExecutionContext {
+  return {
+    access: commonName
+      ? {
+          aud: "r2-gateway-test",
+          getIdentity: async () => ({ common_name: commonName, sub: "" }),
+        }
+      : undefined,
+  } as ExecutionContext;
+}
+
+function fetchWorker(request: Request, env: TestEnv, commonName?: string): Promise<Response> {
+  return worker.fetch(request, env as unknown as Env, accessContext(commonName));
+}
+
 function objectUrl(bucketClass: string, key: string): string {
   return `https://gateway.test/v1/${bucketClass}/objects/${encodeURIComponent(key)}`;
 }
@@ -110,14 +134,23 @@ function objectUrl(bucketClass: string, key: string): string {
 describe("R2 gateway contract", () => {
   it("requires Access authentication and never exposes a bucket selector", async () => {
     const env = environment();
-    const unauthenticated = await worker.fetch(new Request("https://gateway.test/v1/app/objects/novels%2F1%2Fa"), env);
+    const unauthenticated = await fetchWorker(new Request("https://gateway.test/v1/app/objects/novels%2F1%2Fa"), env);
     expect(unauthenticated.status).toBe(401);
 
-    const arbitrary = await worker.fetch(
+    const headerOnly = await fetchWorker(
+      new Request("https://gateway.test/v1/app/objects/novels%2F1%2Fa", {
+        headers: { "CF-Access-Client-Id": "app-client" },
+      }),
+      env,
+    );
+    expect(headerOnly.status).toBe(401);
+
+    const arbitrary = await fetchWorker(
       new Request("https://gateway.test/v1/not-a-bucket/objects/novels%2F1%2Fa", {
         headers: { "CF-Access-Client-Id": "app-client" },
       }),
       env,
+      "app-client",
     );
     expect(arbitrary.status).toBe(404);
   });
@@ -125,7 +158,7 @@ describe("R2 gateway contract", () => {
   it("allows application exact writes and reads only in the novels namespace", async () => {
     const env = environment();
     const url = objectUrl("app", "novels/1/chapter.json.gz");
-    const put = await worker.fetch(new Request(url, {
+    const put = await fetchWorker(new Request(url, {
       method: "PUT",
       headers: {
         "CF-Access-Client-Id": "app-client",
@@ -135,34 +168,34 @@ describe("R2 gateway contract", () => {
         "X-R2-Checksum-Sha256": "checksum",
       },
       body: "hello",
-    }), env);
+    }), env, "app-client");
     expect(put.status).toBe(201);
 
-    const get = await worker.fetch(new Request(url, { headers: { "CF-Access-Client-Id": "app-client" } }), env);
+    const get = await fetchWorker(new Request(url, { headers: { "CF-Access-Client-Id": "app-client" } }), env, "app-client");
     expect(get.status).toBe(200);
     expect(await get.text()).toBe("hello");
     expect(get.headers.get("x-r2-meta-logical-sha256")).toBe("digest");
     expect(get.headers.get("x-r2-checksum-sha256")).toBe("checksum");
 
-    const forbidden = await worker.fetch(new Request(objectUrl("app", "runtime/cache"), {
+    const forbidden = await fetchWorker(new Request(objectUrl("app", "runtime/cache"), {
       headers: { "CF-Access-Client-Id": "app-client" },
-    }), env);
+    }), env, "app-client");
     expect(forbidden.status).toBe(403);
   });
 
   it("returns bounded byte ranges with a 206 response", async () => {
     const env = environment();
     const url = objectUrl("app", "novels/1/range.txt");
-    const put = await worker.fetch(new Request(url, {
+    const put = await fetchWorker(new Request(url, {
       method: "PUT",
       headers: { "CF-Access-Client-Id": "app-client", "Content-Length": "6" },
       body: "abcdef",
-    }), env);
+    }), env, "app-client");
     expect(put.status).toBe(201);
 
-    const ranged = await worker.fetch(new Request(url, {
+    const ranged = await fetchWorker(new Request(url, {
       headers: { "CF-Access-Client-Id": "app-client", Range: "bytes=1-3" },
-    }), env);
+    }), env, "app-client");
     expect(ranged.status).toBe(206);
     expect(ranged.headers.get("content-length")).toBe("3");
     expect(ranged.headers.get("content-range")).toBe("bytes 1-3/*");
@@ -171,64 +204,66 @@ describe("R2 gateway contract", () => {
 
   it("keeps listing and backup writes on the recovery identity", async () => {
     const env = environment();
-    const listAsApp = await worker.fetch(
+    const listAsApp = await fetchWorker(
       new Request("https://gateway.test/v1/app/list?prefix=novels%2F", {
         headers: { "CF-Access-Client-Id": "app-client" },
       }),
       env,
+      "app-client",
     );
     expect(listAsApp.status).toBe(403);
 
-    const listAsRecovery = await worker.fetch(
+    const listAsRecovery = await fetchWorker(
       new Request("https://gateway.test/v1/app/list?prefix=novels%2F", {
         headers: { "CF-Access-Client-Id": "recovery-client" },
       }),
       env,
+      "recovery-client",
     );
     expect(listAsRecovery.status).toBe(200);
 
-    const backupPut = await worker.fetch(new Request(objectUrl("backup", "snapshots/run/manifest.json"), {
+    const backupPut = await fetchWorker(new Request(objectUrl("backup", "snapshots/run/manifest.json"), {
       method: "PUT",
       headers: {
         "CF-Access-Client-Id": "recovery-client",
         "Content-Length": "2",
       },
       body: "{}",
-    }), env);
+    }), env, "recovery-client");
     expect(backupPut.status).toBe(201);
 
-    const backupAsApp = await worker.fetch(new Request(objectUrl("backup", "snapshots/run/manifest.json"), {
+    const backupAsApp = await fetchWorker(new Request(objectUrl("backup", "snapshots/run/manifest.json"), {
       headers: { "CF-Access-Client-Id": "app-client" },
-    }), env);
+    }), env, "app-client");
     expect(backupAsApp.status).toBe(403);
   });
 
   it("rejects traversal, oversized, and failed immutable writes", async () => {
     const env = environment();
-    const traversal = await worker.fetch(new Request(objectUrl("app", "novels/../secret"), {
+    const traversal = await fetchWorker(new Request(objectUrl("app", "novels/../secret"), {
       headers: { "CF-Access-Client-Id": "app-client" },
-    }), env);
+    }), env, "app-client");
     expect(traversal.status).toBe(400);
 
-    const oversized = await worker.fetch(new Request(objectUrl("app", "novels/1/large"), {
+    const oversized = await fetchWorker(new Request(objectUrl("app", "novels/1/large"), {
       method: "PUT",
       headers: { "CF-Access-Client-Id": "app-client", "Content-Length": "2048" },
       body: "x".repeat(2048),
-    }), env);
+    }), env, "app-client");
     expect(oversized.status).toBe(413);
 
     const url = objectUrl("app", "novels/1/immutable");
-    const first = await worker.fetch(new Request(url, {
+    const first = await fetchWorker(new Request(url, {
       method: "PUT",
       headers: { "CF-Access-Client-Id": "app-client", "Content-Length": "1", "If-None-Match": "*" },
       body: "a",
-    }), env);
+    }), env, "app-client");
     expect(first.status).toBe(201);
-    const second = await worker.fetch(new Request(url, {
+    const second = await fetchWorker(new Request(url, {
       method: "PUT",
       headers: { "CF-Access-Client-Id": "app-client", "Content-Length": "1", "If-None-Match": "*" },
       body: "b",
-    }), env);
+    }), env, "app-client");
     expect(second.status).toBe(412);
   });
 });

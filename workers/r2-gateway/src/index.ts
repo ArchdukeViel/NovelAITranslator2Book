@@ -1,14 +1,5 @@
-export interface Env {
-  R2_APP: R2Bucket;
-  R2_BACKUP: R2Bucket;
-  GATEWAY_VERSION: string;
-  MAX_OBJECT_BYTES: string;
-  APP_CLIENT_ID: string;
-  RECOVERY_CLIENT_ID: string;
-}
-
 type BucketClass = "app" | "backup";
-type IdentityClass = "application" | "recovery";
+export type IdentityClass = "application" | "recovery";
 type ObjectMetadata = Record<string, string>;
 
 const FIXED_METADATA = new Map([
@@ -51,12 +42,20 @@ function bucketFor(env: Env, bucketClass: BucketClass): R2Bucket {
   return bucketClass === "app" ? env.R2_APP : env.R2_BACKUP;
 }
 
-function authenticate(request: Request, env: Env): IdentityClass | null {
-  const clientId = request.headers.get("cf-access-client-id")?.trim();
-  if (!clientId) return null;
-  if (clientId === env.APP_CLIENT_ID) return "application";
-  if (clientId === env.RECOVERY_CLIENT_ID) return "recovery";
+export function identityClassFromAccessIdentity(
+  identity: CloudflareAccessIdentity | undefined,
+  env: Pick<Env, "APP_CLIENT_ID" | "RECOVERY_CLIENT_ID">,
+): IdentityClass | null {
+  const commonName = identity?.common_name;
+  if (typeof commonName !== "string") return null;
+  if (commonName === env.APP_CLIENT_ID) return "application";
+  if (commonName === env.RECOVERY_CLIENT_ID) return "recovery";
   return null;
+}
+
+async function authenticate(env: Env, ctx: ExecutionContext): Promise<IdentityClass | null> {
+  if (!ctx.access) return null;
+  return identityClassFromAccessIdentity(await ctx.access.getIdentity(), env);
 }
 
 function allowed(identity: IdentityClass, bucketClass: BucketClass, operation: string): boolean {
@@ -313,9 +312,14 @@ async function route(request: Request, env: Env, id: string, identity: IdentityC
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const id = requestId(request);
-    const identity = authenticate(request, env);
+    let identity: IdentityClass | null;
+    try {
+      identity = await authenticate(env, ctx);
+    } catch {
+      identity = null;
+    }
     if (!identity) return failure(id, 401, "access_authentication_required");
     try {
       return await route(request, env, id, identity);
@@ -323,4 +327,4 @@ export default {
       return failure(id, 502, "r2_operation_failed");
     }
   },
-};
+} satisfies ExportedHandler<Env>;
