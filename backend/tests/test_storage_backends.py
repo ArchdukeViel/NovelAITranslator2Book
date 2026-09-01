@@ -223,6 +223,25 @@ class TestR2GatewayStorage:
         assert "hidden" not in str(raised.value)
         client.close()
 
+    def test_gateway_error_code_is_read_from_json_when_header_is_absent(self) -> None:
+        def denied(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(403, json={"error_code": "operation_not_allowed"}, request=request)
+
+        client = httpx.Client(base_url="https://gateway.test", transport=httpx.MockTransport(denied))
+        backend = R2GatewayStorage(
+            bucket="test-dokushodo-backup",
+            bucket_class="backup",
+            gateway_url="https://gateway.test",
+            client_id="recovery-client",
+            client_secret="recovery-secret",
+            client=client,
+        )
+        with pytest.raises(R2GatewayError) as raised:
+            backend.head("database/recovery-test/backup.dump")
+        assert raised.value.status_code == 403
+        assert raised.value.error_code == "operation_not_allowed"
+        client.close()
+
 
 class TestGetR2Storage:
     def test_factory_requires_gateway_identity(self, monkeypatch: pytest.MonkeyPatch) -> None:

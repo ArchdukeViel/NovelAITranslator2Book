@@ -229,11 +229,12 @@ class R2GatewayStorage(R2StorageBackend):
         response = self._client.request(method, path, headers=request_headers, params=params, content=content)
         if response.status_code >= 400:
             request_id = response.headers.get("x-request-id", request_headers["X-Request-ID"])
-            error_code = response.headers.get("x-r2-error-code", "http_error")
+            error_code = response.headers.get("x-r2-error-code")
             if not error_code:
                 try:
                     payload = response.json()
-                    error_code = str(payload.get("error_code", "http_error"))[:64]
+                    candidate = payload.get("error_code") if isinstance(payload, dict) else None
+                    error_code = str(candidate)[:64] if candidate else "http_error"
                 except ValueError, json.JSONDecodeError:
                     error_code = "http_error"
             response.close()
