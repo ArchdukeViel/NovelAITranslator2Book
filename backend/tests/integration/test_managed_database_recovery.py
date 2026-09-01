@@ -24,7 +24,7 @@ from sqlalchemy.engine import Engine, make_url
 
 from novelai.config.settings import settings
 from novelai.services.database_backup_service import DatabaseBackupService
-from novelai.storage.backends.r2_gateway import R2GatewayStorage
+from novelai.storage.backends.r2_gateway import R2GatewayError, R2GatewayStorage
 
 pytestmark = pytest.mark.slow
 
@@ -123,6 +123,13 @@ def _restore_diagnostic_class() -> str | None:
     except OSError:
         return None
     return value if re.fullmatch(r"[a-z_]{1,64}", value) else "unclassified"
+
+
+def _safe_gateway_error_code(exc: Exception) -> str | None:
+    if not isinstance(exc, R2GatewayError):
+        return None
+    value = str(exc.error_code)
+    return value if re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", value) else "unclassified"
 
 
 @pytest.mark.integration
@@ -279,6 +286,9 @@ def test_managed_database_backup_and_isolated_restore(monkeypatch: pytest.Monkey
         evidence["result"] = "failed"
         evidence["failure_stage"] = failure_stage
         evidence["failure_class"] = type(exc).__name__
+        if isinstance(exc, R2GatewayError):
+            evidence["failure_status"] = int(exc.status_code)
+            evidence["failure_error_code"] = _safe_gateway_error_code(exc)
         if failure_stage == "restore_backup":
             diagnostic_class = _restore_diagnostic_class()
             if diagnostic_class is not None:
@@ -292,6 +302,9 @@ def test_managed_database_backup_and_isolated_restore(monkeypatch: pytest.Monkey
         except Exception as exc:
             cleanup_errors.append(type(exc).__name__)
             evidence["r2_cleanup_status"] = "failed"
+            if isinstance(exc, R2GatewayError):
+                evidence["cleanup_failure_status"] = int(exc.status_code)
+                evidence["cleanup_failure_error_code"] = _safe_gateway_error_code(exc)
         if role_created:
             try:
                 _drop_backup_role(source_engine, role_name)
