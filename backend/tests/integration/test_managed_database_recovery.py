@@ -145,9 +145,9 @@ def test_managed_database_backup_and_isolated_restore(monkeypatch: pytest.Monkey
             "artifacts/operations/reader-capacity-follow-up/managed-database-recovery.json",
         )
     )
-    prefix = os.environ.get("DATABASE_BACKUP_PREFIX", f"recovery-test-{int(time.time())}")
-    if not re.fullmatch(r"[a-z0-9-]{1,64}", prefix):
-        raise RuntimeError("recovery prefix is not a safe isolated prefix")
+    prefix = os.environ.get("DATABASE_BACKUP_PREFIX", f"database/recovery-test-{int(time.time())}")
+    if not re.fullmatch(r"database/[a-z0-9-]{1,64}", prefix):
+        raise RuntimeError("recovery prefix must use the isolated database namespace")
 
     started_at = datetime.now(UTC)
     evidence: dict[str, Any] = {
