@@ -39,9 +39,10 @@ Canonical deployment topology, release, rollback, and GitHub-control contract. F
 | `worker` | Dedicated database-backed crawl/translation worker; no host port. |
 | `migrate` | One-shot Alembic migration profile before APIs. |
 | `redis` | Shared limits, queue, coordination where enabled. |
+| `db` | Co-located native PostgreSQL 17 (`postgres:17.4-alpine`) on `novelai-net`, bound to `127.0.0.1:5432` for secure desktop GUI SSH tunneling. |
 | `restore-db` | Isolated disposable PostgreSQL 18 restore verifier (profile: `recovery`). |
 
-PostgreSQL is external; Compose does not provision primary DB. Never run
+Compose provisions co-located native PostgreSQL 17 via the `db` service, or connects to an external PostgreSQL instance via `DATABASE_URL`. Never run
 migrations inside long-running backend containers.
 Use `MIGRATION_DATABASE_URL` for a dedicated schema-owner/migrator role and
 `DATABASE_URL` for the least-privilege long-running application role.
@@ -524,46 +525,10 @@ so the `GITGUARDIAN_API_KEY` is never exposed to fork code. This changes only
 the scan execution host; it does not reroute production deployment or
 monitoring workflows.
 
-### Current B6 private hosted checkpoint - 2026-08-31
+### Current B6/B1 repository and hosted-control checkpoint - 2026-09-01
 
-The current candidate workflow contract targets GitHub-hosted Ubuntu and forbids
-persistent self-hosted execution. The repository runner inventory is currently
-empty. The five required candidate workflows were returned by GitHub with 16 job
-records: 10 failed before runner assignment and 6 dependent jobs were skipped;
-all 16 had zero executed steps and zero billable runner time. This is a
-hosted-runner availability blocker rather than a successful CI or capacity
-result. The exact candidate SHA, run URLs, timings, and bounded job metadata are
-retained in the validated B6 evidence artifacts.
+Live GitHub metadata reports a public, unarchived repository with main as the default branch, and PR #136 is closed and merged. The current local inventory contains 13 workflow files: 12 tracked and one preserved untracked owner workflow. All external action references are pinned to full commit SHAs; tracked workflows target GitHub-hosted Ubuntu 24.04, while the untracked AI review workflow remains a persistent self-hosted owner draft and is not a candidate publication path.
 
-The repository remains private. No visibility transition, public-main rerun,
-external-fork proof, GitHub settings change, provider operation, production
-mutation, secret change, or repository-variable change was attempted. Branch
-protection was readable before the gate; unsupported settings endpoints remain
-explicitly `unavailable`. Do not reactivate the historical WSL2/self-hosted
-label to satisfy this gate, and do not treat local runner shutdown as proof of
-hosted workflow eligibility.
+The current candidate has 26 completed check-runs: 16 success, 6 failure, 2 cancelled, and 2 skipped. CodeQL and GitGuardian checks are present, but the result is mixed and does not establish a clean release-control pass. Branch-protection, workflow-list, and Actions-policy reads were unavailable or denied by the GitHub connector; two active repository rulesets were readable. No repository setting, visibility, secret, variable, provider, or production mutation was attempted.
 
-### Current hosted recheck after B7 capture fix - 2026-08-31
-
-The recheck used capture-fix candidate
-`5d410bd62949d70d31a70f9e88b98de3c707b266`. All tracked candidate workflows
-continue to target GitHub-hosted Ubuntu 24.04. The CI, CodeQL, Secret
-Scan, Security Static Analysis, and Dependency Review runs remain blocked: the
-required jobs completed with no runner assignment, no executed steps, and no
-billable runner time, while the repository runner inventory remains empty.
-Actions is enabled and no repository settings, visibility, secrets, variables,
-provider resources, or production targets were changed. The pre-existing
-untracked `ai-review.yml` self-hosted reference is outside this candidate
-closeout and remains untouched. Do not use it or a newly registered
-self-hosted runner to satisfy the GitHub-hosted execution gate.
-
-### Current hosted runner allocation result - 2026-08-31
-
-The current candidate is pushed to PR #136. Its CI, CodeQL, Secret Scan,
-Security Static Analysis, and Dependency Review runs all completed before
-runner assignment with zero executed steps and no runner name; the repository
-runner inventory remains empty. This is an external GitHub-hosted runner-allocation
-failure, not a deployment, application, or capacity result. The PR remains
-merge-blocked. Do not switch these workflows to the historical self-hosted
-label, and do not change repository visibility or provider resources to bypass
-the allocation failure.
+Hosted B7 and B8 execution remains blocked despite the later local Docker runtime recovery: the available base Compose stack is development-bound to the production application R2 bucket class and lacks the test fixture guard and verifiable application/recovery identities. Queue and writer quiescence for an isolated test campaign, the down account tunnel, the protected test gateway identity path, and exact-window provider telemetry remain unproven. Do not use the historical self-hosted label or the current development stack as a substitute for the required hosted execution. production_capacity_claim remains not_established.

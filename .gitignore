@@ -32,7 +32,8 @@ ENV/
 .ruff_cache/
 .pyright/
 .playwright-cli/
-.vercel/
+.playwright-mcp/
+.tmp-evidence/
 .local/
 
 # Graphify generated knowledge graph

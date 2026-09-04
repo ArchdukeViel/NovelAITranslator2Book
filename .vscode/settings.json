@@ -49,6 +49,11 @@
     "backend/tests/.tmp/**": true,
     "**/__pycache__/**": true,
     "**/.pytest_cache/**": true,
+    "**/.ruff_cache/**": true,
+    "**/.hypothesis/**": true,
+    "**/.local/**": true,
+    "**/frontend/.next/**": true,
+    "**/frontend/.next-dev/**": true,
     "node_modules/**": true,
     ".venv/**": true,
     ".opencode/**": true,
@@ -57,9 +62,17 @@
   "files.exclude": {
     "**/__pycache__/**": true,
     "**/.pytest_cache/**": true,
+    "**/.ruff_cache/**": true,
+    "**/.hypothesis/**": true,
+    "**/.local/**": true,
     "node_modules/**": true,
     ".venv/**": true
   },
+  "python.testing.pytestArgs": [
+    "backend/tests"
+  ],
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true,
   "editor.formatOnSave": true,
   "editor.rulers": [120],
   "editor.minimap.enabled": false,

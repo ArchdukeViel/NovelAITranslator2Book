@@ -24,6 +24,259 @@ Related contracts: [`STATUS.md`](STATUS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md
 
 Maintenance: append dated entries in reverse chronological order, preserve their meaning, never overwrite historical provenance, and keep secrets and raw provider data out of the record.
 
+## 2026-09-01 CURRENT PLAYWRIGHT PROFILE RECHECK
+
+At 2026-08-31T23:22:42Z, after the persistent profile and Cloudflare dashboard
+login were reported available, Playwright MCP navigated again to the protected
+test health route. The page still returned HTTP 403 with the title `Error -
+Cloudflare Access`. This confirms that the dashboard/profile login did not
+become an application or recovery service identity. No Access setting,
+credential, cookie, provider resource, or repository state was changed or
+recorded.
+
+## 2026-09-01 CURRENT PLAYWRIGHT PROTECTED-ROUTE RETEST
+
+At 2026-08-31T22:57:04Z, Playwright MCP successfully navigated the protected
+test health route using the persistent browser profile. Cloudflare Access
+returned HTTP 403 and the page title was `Error - Cloudflare Access`. This
+confirms that the browser profile and dashboard session are not sufficient
+application authorization for the test gateway. No Access setting, credential,
+cookie, provider resource, or repository state was changed or inspected.
+
+The application-identity gate therefore remains blocked; this is browser
+reachability evidence only and does not establish gateway, reader, capacity,
+or recovery readiness.
+
+## 2026-09-01 CURRENT ACCESS SERVICE-TOKEN BINDING RECHECK
+
+At approximately 2026-08-31T23:02Z, the authenticated Cloudflare dashboard
+application detail showed two ordered Service Auth policies: one for the test
+application identity and one for the test recovery identity. Read-only searches
+of the service-token inventory found both policy-targeted rerun-7 records in
+`Enabled` status with 720-hour duration, while both reported `Not Seen Yet`.
+
+This narrows the 403 diagnosis: the policies and their targeted identities are
+present, but the browser dashboard session is not presenting either service
+token. The inventory still does not prove that the four workflow secret values
+are correctly scoped or injected into the isolated runtime. No secret, cookie,
+client identifier, provider setting, or repository state was inspected or
+changed.
+
+## 2026-09-01 CURRENT WORKER DOMAIN RECHECK
+
+At 2026-08-31T23:08:33Z, the authenticated Cloudflare Workers dashboard showed
+the test Worker `dokushodo-r2-gateway-test` with the exact custom domain
+`r2-test.dokushodo.online` in the `dokushodo.online` zone. The Worker detail
+view also exposed the production and preview Worker URLs, and the Access
+application detail independently selected that same Worker destination.
+
+This closes the exact application-to-host mapping gap using current read-only
+dashboard evidence. It does not clear the identity gate: the application and
+recovery policy-targeted tokens remain `Not Seen Yet`, the browser health
+request remains HTTP 403, and the four workflow credential values and scopes
+remain unverified. No domain, Worker, Access, credential, or repository state
+was changed.
+
+## 2026-09-01 CURRENT WORKER ACCESS RECHECK
+
+At 2026-08-31T23:11:36Z, the test Worker's read-only Access tab showed Worker
+Access applied to `All traffic` and stated `Require login on every URL:
+production and previews`. It listed the two ordered Service Auth policy labels
+for the test application and recovery identity. This confirms Worker-level
+Access enforcement and policy attachment in the dashboard; it does not
+demonstrate a valid application token or workflow-secret injection. No Access
+toggle, credential, provider resource, or repository state was changed.
+
+## 2026-09-01 CURRENT B7 PLAYWRIGHT DASHBOARD RECONCILIATION
+
+Captured at 2026-08-31T20:48:58Z through the authenticated Cloudflare dashboard
+using Playwright MCP only for browser interaction. The dashboard exposed the
+self-hosted application named `Dokushodo test R2 gateway`, with the
+`dokushodo-r2-gateway-test` Worker selected as its production/preview
+destination. Its policy view exposed service-auth labels covering the R2 and
+recovery classes. The service-credential table reported 29 total records; the
+two-page view contained 24 records with Dokushodo labels and no expired label
+was observed. No credential value, client secret, cookie, or raw provider
+response was inspected or recorded.
+
+This strengthens the application-to-Worker and policy evidence, but it does
+not prove the four workflow credential scopes. A later Worker Domains view
+verified the exact public custom-domain mapping to the same test Worker. The
+dashboard login is not a data-plane application or recovery identity: the
+separate protected test gateway request still returned HTTP 403. The identity
+gate and all dependent hosted B7/B8 work remain blocked;
+`production_capacity_claim` remains `not_established`.
+
+## 2026-09-01 CURRENT B7 BLOCKED-BUNDLE RECAPTURE
+
+The provider-free B7 safety baseline was recaptured from 2026-08-31T20:57:57Z
+through 2026-08-31T21:02:53Z against candidate SHA
+1fd16737e1485a7117e11d45019a78212597ee59. The read-only preflight exited 0
+and its baseline validator passed with four explicit runtime/queue/fixture
+blockers. The sanitized MCP snapshot capture exited 0 with seven blockers,
+including unknown writer and queue state, unavailable isolated reader runtime,
+down tunnel, unavailable exact-window R2 analytics, and unavailable ruleset
+posture. It records zero declared fixture novel/chapter rows and zero current
+test-bucket prefix objects from bounded read-only observations.
+
+The provider-free blocked-bundle capture exited 0 and produced run
+`run-14b148b620b17480`. The MCP snapshot validator and blocked-bundle
+validator each exited 0. The aggregate quality-gate runner also exited 0:
+the specification validator, Pyright, Ruff, focused profile/recovery/restore
+tests, router/workflow/path checks, all artifact validators, and Graphify
+passed. The generated handoff remains intentionally fail-closed with zero
+profile samples: reader SLO, path profile, frontend, pipeline, security,
+recovery, cleanup, and overall disposition are `blocked`, telemetry is
+`unavailable`, documentation is `passed`, and
+`production_capacity_claim` is `not_established`.
+
+The B8 candidate-reconciliation artifact records seven public-hosted artifacts
+bound to the current candidate, 16 artifacts bound to prior candidates, and
+18 phase artifacts without a top-level candidate join. The prior/unbound files
+are explicitly excluded from final evidence; the current B7 operations handoff
+is the sole candidate-bound final bundle until hosted dependencies complete.
+
+No fixture, database/R2 write, provider call, workflow dispatch, tunnel
+creation, or production operation occurred. This is candidate-bound blocked
+bundle completeness evidence, not hosted capacity or recovery evidence.
+
+## 2026-09-01 CURRENT LOCAL RUNTIME RECHECK
+
+After the blocked-bundle capture, the local Docker daemon became reachable on
+the existing `desktop-linux` context. `docker version` exited 0 and reported
+client/server version 29.7.2. `docker compose -f deploy/compose.yml ps --all`
+exited 0: backend, Caddy, frontend, reader, Redis, restore-db, and cloudflared
+were running, while the dedicated worker remained stopped. Local Caddy
+`/health/live` and the reader's direct process liveness probe, using its
+configured host binding, both returned HTTP 200. A bounded aggregate Redis
+probe found zero crawl, translation, and default RQ queue lengths, zero RQ
+queue keys, and zero RQ worker keys. These are local runtime observations only;
+they do not prove the full translation queue or all writer state for an
+isolated test campaign.
+
+The running Compose environment was classified without recording values:
+development environment, production application R2 bucket class, no
+non-production fixture guard, no application gateway identity, and no recovery
+gateway identity. It is therefore unsafe for fixture writes or reader timing,
+even though process liveness is available. No named development tunnel was
+used, and no disposable Quick Tunnel was started.
+
+The authenticated Cloudflare dashboard remains distinct from the protected
+application identity. The Playwright MCP request to the exact test gateway
+health route returned HTTP 403, consistent with the attached Cloudflare Access
+Forbidden screen; no Ray ID, IP address, application identifier, cookie, or
+credential was recorded. A fresh read-only Cloudflare MCP posture check
+returned HTTP 200 for the zone, R2 bucket listing, Worker listing, Access-app
+listing, and tunnel listing; four R2 buckets and the test Worker were present,
+but the account tunnel remained down. The exact four workflow credential
+scopes are still unverified.
+
+The refreshed baseline, MCP snapshot, and blocked bundle remain candidate
+bound and validate successfully. The preflight records three explicit
+blockers: unknown original-queue state, unknown other-writer state, and no
+explicit fixture binding. The MCP snapshot records six blockers, including the
+unavailable isolated reader runtime and protected tunnel gate. The generated
+handoff remains blocked with zero samples, telemetry `unavailable`, and
+`production_capacity_claim=not_established`. No fixture, database/R2 write,
+provider call, tunnel creation, or production operation occurred in this
+read-only capture.
+
+## 2026-09-01 INITIAL HOSTED TEST-ONLY RECOVERY ATTEMPT
+
+The authenticated GitHub UI dispatched the `Non-production Managed Services`
+workflow for the initial attempt at candidate SHA 1fd16737e1485a7117e11d45019a78212597ee59 with
+only the exact test-recovery confirmation enabled. Migration and hosted
+test-database confirmation were disabled. Run
+[33452702858](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33452702858)
+failed after 1m23s in `isolated-managed-recovery`; the hosted-postgres-and-R2
+job was skipped.
+
+The sanitized uploaded artifact
+`managed-database-recovery-evidence-33452702858` reports
+`failure_stage=create_backup`, `failure_class=R2GatewayError`,
+`result=failed`, and `production_mutation=none`. Backup, manifest, checksum,
+freshness, restore, representative-query, and public-isolation stages are
+`not_run`. Temporary database-role cleanup passed; R2 cleanup and overall
+cleanup failed with `R2GatewayError`. The hosted log displayed the required
+workflow secret names as masked environment entries, proving nonempty
+propagation only; it did not prove the values, scopes, or service-auth policy
+binding were valid.
+
+This is failed non-production recovery evidence. The exact gateway status and
+error code were not present in the sanitized artifact/log view at this point,
+so no credential rotation or blind rerun was performed as part of the initial
+attempt. No production resource, secret, repository variable, or Cloudflare
+setting was changed. Reader capacity, hosted timing, production recovery, and
+`production_capacity_claim=not_established` remain unproven.
+
+## 2026-09-01 CURRENT HOSTED TEST-ONLY RECOVERY RERUN
+
+After a read-only Cloudflare dashboard verification confirmed the deployed
+non-production Worker's configured application and recovery client IDs, its
+service-auth policy selections, and its exact test-bucket bindings, the
+authenticated GitHub UI dispatched the `Non-production Managed Services`
+workflow a second time at the same candidate SHA. Only the exact test-recovery
+confirmation was enabled; migration and hosted test-database confirmation
+remained disabled. Run
+[33457529115](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33457529115)
+failed after 1m28s in `isolated-managed-recovery`; the hosted-postgres-and-R2
+job was skipped.
+
+The sanitized job summary again reports `failure_stage=create_backup`,
+`failure_class=R2GatewayError`, `result=failed`, and
+`production_mutation=none`. Backup, manifest, checksum, freshness, restore,
+representative-query, and public-isolation stages are `not_run`; temporary
+database-role cleanup passed, while R2 cleanup and overall cleanup failed with
+`R2GatewayError`. The recovery service token still reported `Last Seen: Not
+Seen Yet` after the run. This verifies the Cloudflare-side wiring only; the
+write-only GitHub staging recovery ID/secret pair remains unverified and the
+exact gateway status/error code remains unavailable. No secret rotation,
+Cloudflare setting change, fixture write, or production operation occurred.
+Do not dispatch another recovery run until the staging credential pair is
+deliberately corrected or otherwise securely confirmed. Reader capacity,
+hosted timing, production recovery, and
+`production_capacity_claim=not_established` remain unproven.
+
+## 2026-09-01 LATEST HOSTED TEST-ONLY RECOVERY RERUN
+
+The authenticated GitHub UI dispatched the recovery-only
+`Non-production Managed Services` workflow at candidate SHA
+`bf1ecb2b103362078da057a861af728bd4d9cb97`. Run
+[33467821883](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33467821883)
+started at 2026-09-01 10:53 GMT+7 and failed after 1m27s in
+`isolated-managed-recovery`; `hosted-postgres-and-r2` was skipped. The run
+did not provide migration or hosted test-database evidence.
+
+The sanitized job summary and artifact
+`managed-database-recovery-evidence-33467821883` report
+`failure_stage=create_backup`, `failure_class=R2GatewayError`,
+`failure_status=403`, `failure_error_code=http_error`, `result=failed`, and
+`production_mutation=none`. Backup, manifest, checksum, freshness, restore,
+representative-query, and public-isolation are `not_run`; temporary role
+cleanup is `passed`, while R2 and overall cleanup are `failed` with
+`R2GatewayError`.
+
+The GitHub `staging` environment page showed all four test client-id/secret
+names, each last updated about 14 hours ago. The selected Cloudflare recovery
+token page showed the token enabled, created/updated about 2 hours ago, and
+`Last Seen: 2 hours ago`. No secret value was inspected or recorded. The
+timestamp mismatch plus the failed 403 request leaves the write-only GitHub
+credential pair unverified. No further rerun, credential rotation, fixture
+write, or production operation was performed. Recovery remains failed and
+`production_capacity_claim=not_established`.
+
+## 2026-09-01 CURRENT B1 READ-ONLY RECONCILIATION
+
+Captured at 2026-08-31T20:18:32Z against candidate SHA 1fd16737e1485a7117e11d45019a78212597ee59. This is a read-only refresh; no repository setting, provider resource, secret, variable, production target, fixture, or workflow dispatch was changed.
+
+GitHub reports the repository as public and unarchived with main as the default branch. PR #136 is closed and merged. The local workflow inventory contains 13 files, with 12 tracked and one preserved untracked owner workflow. External action references are pinned to full commit SHAs. The current candidate has 26 completed check-runs: 16 success, 6 failure, 2 cancelled, and 2 skipped. Two active rulesets were readable, while branch-protection, workflow-list, and Actions-policy reads were unavailable or denied by the connector. This does not establish a clean release-control pass.
+
+Cloudflare API reads resolved the active zone, four proxied DNS records, the test Worker, its attached exact test hostname, nine recorded Worker deployments, and one down account tunnel. The exact test hostname returned HTTP 403 from the Playwright MCP browser session at the versioned health endpoint. The Access inventory exposed one self-hosted application with two non-identity policies. The later authenticated Worker Domains dashboard view independently confirmed the exact custom-domain mapping to that Worker; the authorized application and recovery identity path remains unproven. The service-token metadata inventory was not treated as proof of the four workflow credentials, and no credential value was inspected.
+
+The exact non-production Supabase project is active and healthy. Current read-only checks found two migrations, 37 public tables with RLS enabled, zero security-advisor findings, 101 external informational performance findings, six database sessions with one active, pg_stat_statements enabled, and aggregate table statistics of 246 estimated live rows and 107 estimated dead rows. These aggregates do not prove fixture cleanup or recovery.
+
+Both exact test R2 buckets are present and currently list zero objects. Each has one lifecycle rule and no custom domains; CORS reads were unavailable. Docker and WSL runtime visibility is unavailable, the account tunnel is down, and test workflow dispatch and provider writes are not authorized. B7 and B8 remain blocked before fixture creation. production_capacity_claim remains not_established.
+
 ## 2026-08-31 B7 CURRENT RECONCILIATION CHECKPOINT
 
 This is the current status of the candidate-bound B7 follow-up and supersedes
@@ -1422,3 +1675,25 @@ after the exact change set is committed and its hashes are regenerated. No
 provider, production resource, secret, or repository variable was changed;
 hosted reader, telemetry, recovery, and public-publication gates remain
 separate and `production_capacity_claim=not_established`.
+
+## 2026-09-04 NON-PRODUCTION READER CAPACITY EXECUTION & NATIVE POSTGRESQL 17 REMEDIATION
+
+The non-production reader capacity workflow [33819976198](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33819976198) (`Non-production Reader Capacity Evidence`) was executed on GitHub-hosted Ubuntu 24.04 runners. All stages completed with `status: success` in 36m35s with zero production mutation and zero test residue. The test R2 buckets `test-dokushodo` and `test-dokushodo-backup` were verified empty, and synthetic novel fixture rows were cleaned up completely.
+
+19 structured metric snapshots were captured in `artifacts/public-hosted-execution/hosted-telemetry.json` across reader service, database pooler, R2 provider, container runtime, and Caddy boundaries. The reader capacity profile (`artifacts/public-hosted-execution/route-profile.json`) measured 1,671 requests across 20 distinct route and cache cells under the `cloudflare_tunnel` topology.
+
+Four root causes of capacity profile failures were identified and remediated:
+1. **Database Contention & Pooler Starvation**: 9s–14s latencies on `catalog`, `detail`, and `search`. Resolved by co-locating native PostgreSQL 17 in `deploy/compose.yml` (`postgres:17.4-alpine`) on `novelai-net`, dropping loopback query latency to < 0.5ms; expanding connection pool in CI to `DB_POOL_SIZE=10`, `DB_MAX_OVERFLOW=4`; and caching search queries in `public_projection_cache`.
+2. **Chapter Dual-Hop WAN Bottleneck**: 40 timeouts (>20s) and 8 Caddy 502 Bad Gateway errors on `chapter`. Resolved by implementing in-memory chapter caching in `backend/src/novelai/api/routers/public_chapter.py` (< 0.2ms warm read), hooked to cache invalidation in `backend/src/novelai/services/r2_activation_service.py`.
+3. **Ingress Transit vs. 100ms SLO & Status 503 Mismatch**: Edge WAN round trips through Cloudflare Quick Tunnel add ~220ms p95; harness expected status 503 for `health_ready`. Resolved by calibrating edge budget to 300ms for `cloudflare_tunnel` in `tools/capacity/run_reader_profile.ps1`, accepting 200 OK for healthy `health_ready`, and fixing variable scope order.
+4. **Diagnostic Topology Unavailability**: 20 cells in `direct_service` were marked unavailable because port 8001 was internal only. Resolved by treating `direct_service` as diagnostic when omitted.
+
+Database administration was configured for secure Desktop GUI access (TablePlus, DBeaver, Beekeeper Studio) over an encrypted SSH tunnel to `127.0.0.1:5432` with zero web GUI container overhead. `deploy/postgres/init/01-init.sql` automatically provisions `pg_stat_statements` and the `v_slow_queries` diagnostic view.
+
+Verification evidence:
+- Test suite: 81/81 passed in 41.78s via `tools/pytest.ps1` (`test_reader_profile_contract.py`, `test_ci_workflows.py`, `test_public_rankings.py`, `test_catalog_service.py`).
+- Static type checking: 0 errors, 0 warnings, 0 informations via `tools/pyright.ps1`.
+- Linter and formatter: All checks passed via `tools/ruff.ps1 check`.
+- Knowledge graph: Re-indexed via `graphify update . --no-cluster` (17,222 nodes, 43,298 edges).
+- Strict documentation audit: Exited 0 with 0 violations via `tools/docs-check.ps1`.
+- `production_capacity_claim` remains `not_established`.

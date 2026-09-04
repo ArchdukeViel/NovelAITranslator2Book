@@ -127,11 +127,7 @@ test bucket classes. It stores no project or tunnel identifiers, URLs, SQL,
 object names, provider responses, credentials, or request data. Security and
 performance advisor counts, RLS/activity aggregates, DNS/TLS/tunnel posture,
 and bounded R2 prefix counts remain distinct from reader timing and billing.
-Unavailable MCP permissions or provider granularity are recorded as
-`unavailable`; they never become zero measurements or a capacity pass. The
-The current snapshot is blocked until the protected test R2 gateway is configured,
-queue/writer state and isolated runtime are independently proven, and the
-disposable quick-tunnel liveness gate is ready.
+Unavailable MCP permissions or provider granularity are recorded as `unavailable`; they never become zero measurements or a capacity pass. The current snapshot is blocked until an authorized test identity is available and accepted by the protected gateway, queue/writer state and isolated runtime are independently proven, and the disposable quick-tunnel liveness gate is ready.
 
 ### B7 blocked-evidence completeness
 
@@ -160,39 +156,63 @@ valid blocked report is non-production evidence: it does not change the named
 `dev.dokushodo.online` tunnel, prove hosted billing/queue telemetry, or establish
 production reader capacity.
 
-### Current B7 candidate refresh - 2026-08-31
+### Current B7/B1 read-only reconciliation - 2026-09-01
 
-After correcting the B7 tunnel-status argument binding, recapture the baseline
-and MCP bridge at one frozen candidate before accepting any evidence. The
-capture-fix candidate used for this recheck was
-`5d410bd62949d70d31a70f9e88b98de3c707b266`; the focused capture regression
-passed. The read-only MCP refresh observed the dedicated
-test project and both approved test R2 bucket classes, zero fixture/prefix
-collisions, active zone posture, and a down named tunnel with zero connectors.
-The fresh `pg_stat_statements` values are cumulative database telemetry and
-must not be used as request timing, billing, or pool occupancy. The R2 metrics
-endpoint and zone analytics do not provide an exact approved-bucket/test-run
-window, and the ruleset read is unavailable; preserve those dimensions as
-`unavailable`.
+The current read-only refresh is bound to candidate SHA 1fd16737e1485a7117e11d45019a78212597ee59. The exact non-production gateway hostname is attached to the test Worker and the latest Playwright MCP request at 2026-08-31T23:22:42Z again returned HTTP 403 from Cloudflare Access. The authenticated Cloudflare dashboard showed the named test Access application selecting the test Worker production/preview destination and service-auth policy labels for the R2 and recovery classes; its Worker Domains view also showed the exact public custom-domain mapping. This proves edge enforcement and the application-to-Worker mapping only; the available browser session is not an application or recovery service identity, and the exact four workflow credential values/scopes were not inspected or verified.
 
-The profile wrapper therefore generated no reader traffic and a validated
-blocked route/stage artifact. The provider-free bundle generator and validator
-produce the complete B7/B8 artifact shape, but neither replaces the required
-hosted run nor proves capacity or recovery. The active specification validator
-and strict documentation checker now pass. The latest GitHub-hosted Ubuntu
-jobs still fail before runner assignment while the repository has zero
-registered runners; GitHub service status was operational at the check. Do not
-reactivate the historical self-hosted label or infer queue and writer safety
-from local worker absence.
+The exact test Supabase project is active and healthy. Its current inventory has two migrations, 37 public tables with RLS enabled, zero security-advisor findings, 101 informational external performance findings, 12 aggregate sessions with one active, four idle, and seven null-state sessions, and pg_stat_statements enabled with 2,741 visible statement rows. Current aggregate table statistics are 246 estimated live rows and 107 estimated dead rows; they are not fixture-cleanliness evidence.
 
-Cloudflare Access is disabled and the required protected test R2 gateway URL
-and separate application/recovery identity secrets are absent from repository
-and staging secret inventories. No provider mutation was attempted. The local
-Docker engine is unavailable, so independent queue/writer proof, an observed
-isolated runtime, and a ready disposable Quick Tunnel remain required before
-starting any fixture write. Configure only an explicitly selected,
-non-production Access/gateway target and never reuse legacy S3-compatible
-credentials.
+Both exact test R2 bucket classes are present and each currently lists zero objects, one lifecycle rule, and no custom domains. CORS reads were unavailable. The single account tunnel is down. A later local runtime recheck found Docker engine 29.7.2 reachable, local Caddy and direct-reader liveness at HTTP 200, the dedicated worker stopped, and bounded local RQ queue aggregates at zero. The running Compose environment is nevertheless development-bound to the production application R2 bucket class and lacks the fixture guard and both test gateway identities, so it cannot be used for test fixture writes or hosted timing. Queue/writer quiescence for the approved isolated test campaign, disposable Quick Tunnel liveness, exact provider telemetry, and cleanup or recovery evidence remain blocked. One explicitly authorized test-only recovery workflow dispatch is recorded below; no provider setting, credential, or production resource was mutated.
+
+The B7 read-only preflight and MCP snapshot were subsequently recaptured at
+candidate SHA 1fd16737e1485a7117e11d45019a78212597ee59, followed by the
+provider-free blocked-bundle generator. The preflight, MCP snapshot, and
+blocked-bundle validators exited 0, and the aggregate quality-gate runner
+exited 0 for the specification, static checks, focused profile/recovery/restore
+tests, router/workflow/path guards, every B7 artifact validator, and Graphify.
+The generated handoff contains zero profile samples and keeps reader SLO,
+path, frontend, pipeline, security, recovery, cleanup, and overall status
+`blocked`; telemetry is `unavailable`. This is a valid blocked completeness
+bundle and does not authorize fixture creation or imply hosted capacity.
+
+### Current hosted test-only recovery attempt - 2026-09-01
+
+The authenticated GitHub UI dispatched `Non-production Managed Services` once
+at candidate SHA 1fd16737e1485a7117e11d45019a78212597ee59 with only the exact
+test-recovery confirmation enabled. Run [33452702858](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33452702858)
+failed in `isolated-managed-recovery`; its hosted-postgres-and-R2 job was
+skipped because the database-migration confirmation was disabled.
+
+The sanitized uploaded artifact records `failure_stage=create_backup`,
+`failure_class=R2GatewayError`, and `production_mutation=none`. Backup,
+manifest/checksum/freshness verification, restore, representative queries,
+and public isolation were not run. Temporary database-role cleanup passed;
+R2 cleanup and overall cleanup failed with `R2GatewayError`. The hosted log
+shows the required secret names as masked environment entries, but that is
+only nonempty propagation evidence and does not validate values, scopes, or
+the application/recovery policy path. Treat recovery as `failed` for this
+run and keep all dependent B7/B8 lanes blocked until the gateway failure is
+diagnosed and a fresh test-only result passes.
+
+### Latest hosted test-only recovery rerun - 2026-09-01
+
+The authenticated GitHub UI dispatched the recovery-only workflow at candidate
+SHA `bf1ecb2b103362078da057a861af728bd4d9cb97`. Run
+[33467821883](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33467821883)
+failed after 1m27s in `isolated-managed-recovery`; the
+`hosted-postgres-and-r2` job was skipped. The sanitized artifact reports
+`failure_stage=create_backup`, `failure_class=R2GatewayError`,
+`failure_status=403`, `failure_error_code=http_error`, and
+`production_mutation=none`. Backup, manifest, checksum, freshness, restore,
+representative-query, and public-isolation were not run. Temporary role
+cleanup passed; R2 and overall cleanup failed with the same error.
+
+The GitHub staging page shows the four test client-id/secret names, each last
+updated about 14 hours ago. The selected Cloudflare recovery token is enabled,
+was created/updated about 2 hours ago, and reports `Last Seen: 2 hours ago`.
+This is not valid credential-pair evidence; do not rerun until the current
+test pair is securely re-saved. Keep B7/B8 recovery and all dependent lanes
+blocked, and keep `production_capacity_claim=not_established`.
 
 ### Prior disposable profile checkpoint - 2026-08-29
 
@@ -595,12 +615,28 @@ The Cloudflare R2 backup bucket `dokushodo-backup` operates with bucket-level Ob
 
 ### Database
 
-- `DATABASE_BACKUP_ENABLED=true` creates PostgreSQL 18 custom-format dumps of
+- `DATABASE_BACKUP_ENABLED=true` creates PostgreSQL custom-format dumps of
   application-owned schema.
 - Dumps are streamed through AES-256-GCM encryption and committed independently.
 - No plaintext dump remains after successful or failed handling.
-- Restore verification uses a disposable PostgreSQL 18 database whose name
+- Restore verification uses a disposable PostgreSQL database whose name
   contains `restore`; never point it at production.
+
+#### Native PostgreSQL 17 administration via secure Desktop GUI over SSH tunnel
+
+To eliminate web attack surfaces and conserve server memory, no web GUI container is deployed. Operators manage the database using modern desktop clients (TablePlus, DBeaver, Beekeeper Studio) connected through an encrypted SSH tunnel.
+
+1. **Strict host loopback binding**: in `deploy/compose.yml`, the `db` service publishes port 5432 bound exclusively to `127.0.0.1:5432:5432`. Port 5432 is never published to `0.0.0.0` or exposed to the public internet.
+2. **Built-in Desktop GUI SSH tunnel**: configure Host: `127.0.0.1`, Port: `5432`, User: `dokushodo`, Database: `dokushodo`, with the GUI's SSH Tunnel set to the VPS host, user, and SSH private key.
+3. **CLI port forwarding**:
+   ```bash
+   ssh -N -L 54322:127.0.0.1:5432 user@your-vps-ip -i ~/.ssh/id_ed25519
+   ```
+   Connect the local GUI to `localhost:54322`.
+4. **Instant query performance diagnostics**: `deploy/postgres/init/01-init.sql` enables `pg_stat_statements` and provisions the `v_slow_queries` view:
+   ```sql
+   SELECT query, calls, total_ms, mean_ms, rows FROM v_slow_queries;
+   ```
 
 ## Restore Procedure
 
@@ -1026,3 +1062,54 @@ Verify the connector with `docker compose ... ps -a` and the Cloudflare MCP
 tunnel/DNS read path, then verify the real development URL. A healthy tunnel
 and HTTP smoke result do not authorize provider work, the original full
 queue, recovery writes, or a production launch.
+
+## Native PostgreSQL 17 administration, CloudBeaver, and backup/restore runbook
+
+### 1. Database Web GUI (CloudBeaver)
+- **Container**: `dokushodo-cloudbeaver` (`dbeaver/cloudbeaver:24.3.0`) in `deploy/compose.yml`.
+- **URL**: `http://127.0.0.1:8978`.
+- **Network & Host**: Connects over internal `novelai-net` Docker network to host `db` on port `5432`.
+- **Authentication**: Connect with username `dokushodo` and the password configured in `deploy/.env`.
+- **Desktop Alternative**: Desktop clients (TablePlus, DBeaver, Beekeeper Studio) connect via `127.0.0.1:5432` locally or via SSH tunnel in remote environments.
+
+### 2. Database Initialization and Migration Runbook
+Run `tools/database/init_native_postgres.ps1` to orchestrate container spin-up, migration, and data seed:
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/database/init_native_postgres.ps1
+```
+This script:
+1. Validates Docker engine availability.
+2. Ensures the `dokushodo-db` container is running and healthy.
+3. Dynamically resolves `DATABASE_URL` from `.env` and executes `alembic upgrade head`.
+4. Ingests the canonical relational seed from `deploy/postgres/seeds/02-data-seed.sql`.
+5. Asserts post-migration row counts across novels, chapters, and glossaries.
+
+### 3. Automated Database Backup Runbook
+Run `tools/database/backup_postgres.ps1` to generate a non-blocking, verified snapshot:
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/database/backup_postgres.ps1 -RetentionDays 14
+```
+- Performs a custom-format dump (`pg_dump -Fc`) inside the container.
+- Copies the binary dump to `deploy/postgres/backups/dokushodo_backup_<timestamp>.dump`.
+- Verifies archive integrity and non-zero size.
+- Prunes backups older than the retention threshold (defaults to 14 days).
+
+### 4. Database Restore Runbook
+Run `tools/database/restore_postgres.ps1` to recover from a backup:
+```powershell
+# Restore the latest backup automatically:
+powershell -ExecutionPolicy Bypass -File tools/database/restore_postgres.ps1
+
+# Or restore a specific backup archive:
+powershell -ExecutionPolicy Bypass -File tools/database/restore_postgres.ps1 -BackupFile deploy/postgres/backups/dokushodo_backup_2026-09-04_102004.dump
+```
+- Safely terminates open client sessions (`pg_terminate_backend`) to eliminate table-lock contention.
+- Executes `pg_restore --clean --if-exists --no-owner --no-privileges`.
+- Validates row counts in `novels`, `chapters`, and `novel_glossary_entries` to confirm data integrity.
+
+### 5. Performance Diagnostics (`v_slow_queries`)
+The PostgreSQL container automatically enables `pg_stat_statements` via `deploy/postgres/init/01-init.sql`.
+To diagnose query performance and slow executions:
+```sql
+SELECT query, calls, total_ms, mean_ms, rows FROM v_slow_queries;
+```

@@ -96,6 +96,23 @@
         "reveal": "silent",
         "panel": "shared"
       }
+    },
+    {
+      "label": "Backend: Ruff Format & Fix",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "& '${workspaceFolder}/tools/ruff.ps1' format .; & '${workspaceFolder}/tools/ruff.ps1' check . --fix"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
     }
   ]
 }

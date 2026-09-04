@@ -35,6 +35,7 @@ from novelai.api.routers.public_contracts import (
 from novelai.config.settings import settings
 from novelai.services.analytics_service import record_server_event
 from novelai.services.public_catalog_service import PublicCatalogService
+from novelai.services.public_projection_cache import public_projection_cache
 from novelai.services.takedown_service import TakedownService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -420,6 +421,19 @@ async def get_chapter(
     db: Session = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Public translated chapter reader."""
+    chapter_cache_key = ("public_chapter_v1", slug, chapter_id)
+    if version_id is None:
+        cached = public_projection_cache.get(chapter_cache_key)
+        if isinstance(cached, dict):
+            record_server_event(
+                "public_chapter.view",
+                user_id=user.user_id,
+                novel_id=str(cached.get("novel_id") or ""),
+                chapter_id=chapter_id,
+            )
+            response_headers.headers["Cache-Control"] = f"public, max-age={PUBLIC_CACHE_MAX_AGE_SECONDS}"
+            return cached
+
     context = service.get_public_read_context(slug)
     if context is None:
         raise HTTPException(status_code=404, detail="Novel not found.")
@@ -547,6 +561,8 @@ async def get_chapter(
     response_headers.headers["Cache-Control"] = (
         "no-store" if version_id is not None else f"public, max-age={PUBLIC_CACHE_MAX_AGE_SECONDS}"
     )
+    if version_id is None and isinstance(response, dict) and response.get("text"):
+        public_projection_cache.set(chapter_cache_key, response)
     return response
 
 

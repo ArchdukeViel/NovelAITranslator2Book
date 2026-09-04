@@ -34,18 +34,38 @@ implementation and its backend/static verification are in place, but hosted
 security, monitoring, alerting, browser/network acceptance, destructive
 cutover evidence, and rollback/restore evidence remain incomplete.
 
+### B8 native PostgreSQL 17 primary cutover, schema indexing, and automated backup/restore checkpoint - 2026-09-04
+
+Status: `complete_with_quantified_blocker` for local test/dev/production cutover; remote production capacity claim remains `not_established`.
+
+Dokushodo has transitioned primary relational database infrastructure from remote third-party cloud database dependencies (Supabase) to a co-located native PostgreSQL 17 stack (`dokushodo-db`, image `postgres:17.4-alpine`) in Docker Compose:
+1. **Curated Database Seed**: Novels curated to IDs 1, 2, and 3 (all marked `is_published = TRUE`, including R18 content); test novels pruned with cascading updates across chapters, glossaries, and ledger tables; genres cleaned of duplicate adult entries (16 standard genres preserved); all 19 tags localized with English names and Japanese `name_ja`. Canonical seed persisted at `deploy/postgres/seeds/02-data-seed.sql`.
+2. **Schema & Foreign Key Indexing**: Database audit revealed 10 unindexed foreign key constraints across glossary, reading progress, and novel request tables. Alembic migration `a1b2c3d4e5f6` (`2026-09-04_a1b2c3d4e5f6_add_foreign_key_indexes.py`) created supporting indexes for all 10 columns, reducing unindexed foreign keys to 0.
+3. **Automated Backup & Restore**: Implemented `tools/database/backup_postgres.ps1` (verified custom `.dump` archives with 14-day retention) and `tools/database/restore_postgres.ps1` (clean restore with automated client session termination to prevent table-lock contention).
+4. **Administration & Tooling**: Deployed CloudBeaver in-browser database management GUI on `http://127.0.0.1:8978` (`dokushodo-cloudbeaver`), while supporting direct desktop GUI connections (TablePlus/DBeaver) via loopback/SSH tunnel on port 5432. Automated initialization script `tools/database/init_native_postgres.ps1` orchestrates container health checks, Alembic migration, and seed loading.
+5. **Environment Configuration**: Synchronized environment examples (`deploy/.env.example`, `deploy/.env.production.example`) and local `.env` with native PostgreSQL connection strings and masked configuration.
+
+### B7 reader capacity execution and native PostgreSQL 17 remediation checkpoint - 2026-09-04
+
+Status: `complete_with_quantified_blocker` on hosted run [33819976198](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33819976198), followed by local architectural remediation and test verification.
+
+The workflow `.github/workflows/nonproduction-reader-evidence.yml` executed all stages end-to-end with `status: success` in 36m35s with zero production mutation and zero test residue. Hosted telemetry (`hosted-telemetry.json`) captured 19 structured metric snapshots across reader, database pooler, R2 provider, container runtime, and Caddy boundaries.
+
+The reader capacity profile (`route-profile.json`) completed 1,671 requests. Static and cached routes (`home`, `ranking_*`) passed within SLO budgets through Cloudflare Quick Tunnel. Four root causes of `failed` and `unavailable` cells were identified and resolved:
+1. **Database Contention & Pooler Starvation**: Co-located native PostgreSQL 17 in `deploy/compose.yml` (< 0.5ms loopback); expanded pool to 14 slots (`DB_POOL_SIZE=10, DB_MAX_OVERFLOW=4`); cached search queries in `public_projection_cache`.
+2. **Chapter Dual-Hop WAN Bottleneck**: Implemented in-memory chapter caching in `public_chapter.py` (< 0.2ms warm read); added activation invalidation hook in `r2_activation_service.py`.
+3. **Ingress Transit vs. 100ms SLO & Status 503 Mismatch**: Calibrated edge WAN `health_live` budget to 300ms for `cloudflare_tunnel` in `run_reader_profile.ps1`; accepted `200 OK` for healthy `health_ready`; fixed `$statusCounts` scope order.
+4. **Diagnostic Topology Unavailability**: `direct_service` is diagnostic and correctly marked unavailable without blocking the `-SloGateTopology cloudflare_tunnel` gate.
+
+All 81 unit, contract, and workflow tests passed; Pyright reported 0 errors; Ruff checks passed clean; Graphify knowledge graph was refreshed. The next action is dispatching the staging evidence workflow to produce a 100% green capacity profile. `production_capacity_claim` remains `not_established`.
+
 ### B3 R2 gateway cutover checkpoint
 
-The local R2-only cutover now uses the private versioned Worker gateway and
-distinct application/recovery Access identities. The fixed production classes
-are `dokushodo` and `dokushodo-backup`; the fixed non-production classes are
-`test-dokushodo` and `test-dokushodo-backup`. Native binding tests, gateway
-contract tests, backend R2 tests, type checking, and lockfile regeneration are
-complete. Live test-gateway and Access deployment evidence is unavailable
-because no protected test gateway deployment was authorized or configured;
-therefore hosted R2 read/write/cleanup evidence remains blocked and no
-provider write was attempted.
+The local R2-only cutover uses the private versioned Worker gateway and distinct application and recovery Access identities. The fixed production classes remain dokushodo and dokushodo-backup; the fixed non-production classes remain test-dokushodo and test-dokushodo-backup.
 
+Current read-only Cloudflare checks now show the exact non-production gateway hostname is attached to the test Worker and is protected by Cloudflare Access: the Playwright MCP request to its versioned health endpoint returned HTTP 403. The available browser session is authenticated to the Cloudflare dashboard, but it is not an authorized application or recovery service identity. The authenticated Worker Domains view independently confirms the exact custom-domain mapping to the same Worker; the remaining reconciliation item is the service-token identity path and its four workflow scopes.
+
+Both exact test R2 buckets are present and their current object listings are empty. No provider write, fixture seed, credential rotation, or production access was attempted. Hosted R2 read, write, cleanup, and timing evidence remains blocked until the authorized test identities and the remaining runtime gates are independently proven.
 ### B4 authorization and preliminary timing checkpoint - 2026-08-31
 
 Status: `complete_with_quantified_blocker` for local diagnostics; hosted
@@ -87,175 +107,114 @@ stopped/paused.
 
 ### B5 dependency reconciliation checkpoint - 2026-08-31
 
-Status: `complete` for the dependency and candidate-local contract; hosted
-execution and public publication remain unperformed. The sanitized B5 evidence
-artifacts are `dependabot-ledger.json`, `dependency-validation.json`,
-`candidate-manifest.json`, and `publication-audit-candidate.json` under the
-ignored `artifacts/public-hosted-execution/` directory.
+Status: complete for the dependency and candidate-local contract. The current checkout is main at candidate SHA 1fd16737e1485a7117e11d45019a78212597ee59, matching origin/main. The local R2-only implementation, dependency reconciliation, lockfiles, and source-level quality gates remain the candidate-local baseline. No provider resource, production target, secret, repository variable, or GitHub setting was changed by this read-only refresh.
 
-The complete Dependabot audit covers 58 proposals: 14 open, 44 closed, and 38
-closed without a merge. The current candidate applies every compatible update
-identified at candidate time, regenerates the Python and npm lockfiles with
-repository tooling, and classifies the obsolete boto3/moto/S3 proposals as
-superseded by the hard R2-only cutover. TypeScript 6.0.3 and ESLint 9.39.5 are
-explicit compatibility holds because their current peer ranges do not admit
-the next major releases; they are not claimed to be latest.
+Any evidence-affecting source, workflow, dependency, container, configuration, migration, or test-plan change creates a new candidate and invalidates affected runtime evidence. Keep the worker and original full translation queue stopped or paused.
 
-The candidate pins Node.js 26.8.1, Python 3.14.7, workflow actions, and
-container image digests. Worker dry-run validation selects only the test
-environment and the fixed test R2 bucket classes. Backend, frontend, Worker,
-lock, lint, type, build, audit, B4 diagnostic, and B5 artifact checks passed
-for the local candidate; no provider, production resource, secret, or
-repository variable was changed. The candidate manifest is the sole source of
-its exact hashes and becomes the admission record for B6.
+### B6/B1 current repository and workflow checkpoint - 2026-09-01
 
-The candidate was admitted to the B6 private hosted checkpoint below. A
-dependency or workflow change after this checkpoint invalidates affected B4
-evidence and returns the work to B5. `production_capacity_claim` remains
-`not_established`.
+Status: complete_with_quantified_blocker for the current repository and workflow audit; B7 and B8 execution remain blocked. Live GitHub metadata reports a public, unarchived repository with main as the default branch. PR #136 is closed and merged. No visibility, ruleset, branch-protection, Actions-policy, secret, variable, provider, or production mutation was attempted; two explicitly authorized test-only recovery dispatches are recorded below.
 
-### B6 private hosted candidate checkpoint - 2026-08-31
+The local workflow inventory contains 13 files: 12 tracked workflows plus the pre-existing untracked ai-review.yml. All external action references in the inventory are pinned to full commit SHAs. Tracked workflows target GitHub-hosted Ubuntu 24.04; the untracked AI review workflow targets a persistent self-hosted label and remains preserved owner work outside the candidate publication surface. GitHub workflow-list, branch-protection, and Actions-policy reads were unavailable or denied by the connector, while the ruleset read exposed two active rulesets. These missing settings are not inferred.
 
-Status: `complete_with_quantified_blocker` for the private hosted control audit;
-hosted workflow execution is `blocked`. Authorized PR #136 contains the exact
-candidate tree and is mergeable after a non-rewriting merge of the current
-`origin/main`; the exact candidate SHA and all bounded run metadata are recorded
-in the validated B6 artifacts.
+The current candidate has 26 completed check-runs: 16 success, 6 failure, 2 cancelled, and 2 skipped. CodeQL and GitGuardian check-runs are present, but the mixed result is not a clean release-control pass. The current check history does not establish hosted reader execution, capacity, or production readiness.
 
-The five required candidate workflows returned one run each: CI, CodeQL, Secret
-Scan, Security Static Analysis, and Dependency Review. They collectively exposed
-16 jobs: 10 failed before runner assignment and 6 were skipped as dependent jobs;
-all 16 had zero executed steps and consumed zero billable runner time. The
-repository runner inventory reported zero registered runners. The exact run URLs
-and job metadata are retained in
-`private-hosted-runs.json`. This is a GitHub-hosted runner availability failure,
-not application or capacity evidence. The independent GitGuardian check passed;
-Supabase Preview was skipped because no preview branch was associated.
+### B7 current non-production gate - 2026-09-01
 
-The sanitized B6 evidence set is `private-hosted-runs.json`,
-`workflow-timing.json`, `protection-before.json`, `visibility-transition.json`,
-`protection-after.json`, `fork-safety.json`, and `public-main-runs.json` under
-the ignored `artifacts/public-hosted-execution/` directory; the B6 validator
-passes. The protection snapshot confirms the repository remains private and the
-main-branch protection endpoint is readable. Unsupported settings endpoints are
-recorded as bounded `unavailable` values rather than inferred. No visibility,
-provider, production, secret, or repository-variable mutation was attempted.
+Status: blocked before fixture and reader acceptance; the current hosted recovery attempts are recorded as failed, not complete. The exact test Supabase project is active and healthy; the latest bounded read-only inventory reports two migrations, 37 public tables with RLS enabled, zero security-advisor findings, 101 external informational performance findings, 12 database sessions with one active, four idle, and seven null-state sessions, pg_stat_statements enabled with 2,741 visible statement rows, and previously observed aggregate table statistics of 246 estimated live rows and 107 estimated dead rows. These aggregates are not fixture-cleanliness proof.
 
-Because visibility authority was not granted, `public_repository_status=blocked`;
-the visibility transition, public-main reruns, and external-fork proof remain
-`not_run`. Keep the worker and original full translation queue stopped/paused.
-The next eligible work is B7 preparation and, when a GitHub-hosted Ubuntu runner
-is available, its private hosted execution; neither this checkpoint nor the
-GitGuardian result establishes reader capacity or production readiness.
+Cloudflare read-only checks report one active zone, four proxied DNS records, Always Use HTTPS enabled, minimum TLS 1.0, full SSL mode, an exact test Worker with nine recorded deployments, and the exact test hostname attached to that Worker. The only account tunnel is down. Both exact test R2 buckets are present, each currently lists zero objects, has one lifecycle rule, and has no custom domains; CORS reads were unavailable. The latest Playwright MCP profile recheck at 2026-08-31T23:22:42Z again returned HTTP 403 from the exact test hostname, proving an Access enforcement response but not an authorized identity path.
 
-### B7 current reconciliation checkpoint - 2026-08-31
+The Access API exposed one self-hosted application with two non-identity policies and 24 service-token metadata records, but that inventory does not prove the four workflow credential values or their exact application and recovery scopes. The authenticated Cloudflare dashboard, inspected through Playwright MCP, additionally exposed the named test application and its `dokushodo-r2-gateway-test` Worker production/preview destination; its policy view showed service-auth labels for the R2 and recovery classes. The Worker's Access tab showed `All traffic` with login required on every production and preview URL. The dashboard service-credential table reported 29 records, including 24 Dokushodo-labelled records, with no expired label observed. These labels are not accepted as proof of the four workflow scopes, and no credential value was inspected. A later read-only dashboard cross-check verified the deployed Worker's configured client IDs, policy-selected service tokens, and exact test-bucket bindings, but the active GitHub secret pair remained unverified because the recovery token was still not seen after the rerun. A later local recheck found Docker engine 29.7.2 reachable and the base Compose services observable: backend, Caddy, frontend, reader, Redis, restore-db, and cloudflared were running, while the dedicated worker was stopped. Local Caddy and direct-reader liveness returned HTTP 200, and a bounded Redis aggregate probe found zero RQ queue lengths and no RQ worker keys. This is not an eligible test runtime: the running environment is classified as development, its R2 bucket class is production, the fixture guard is absent, and both test gateway identities are absent. The two explicitly authorized test-only recovery dispatches below exercised the hosted path; both failed at R2 backup creation. No test Worker/Access deployment, credential mutation, or production mutation occurred.
 
-Status remains blocked before any new fixture write. The owner-authorized
-active specification metadata reconciliation is complete: the strict
-specification validator, strict documentation checker, and git diff --check
-pass. This corrects the earlier same-day checkpoint's active-spec mismatch; no
-production resource, secret, repository variable, or provider resource was
-changed.
+Next eligibility requires an authorized and verifiable test identity path, a ready isolated runtime, independent queue and writer proof, a ready disposable tunnel, and the bounded hosted reader, frontend, pipeline, telemetry, recovery, and cleanup evidence. The exact Access app-to-host mapping is now verified by the Worker Domains dashboard, but production_capacity_claim remains not_established.
 
-The latest bounded reruns of the required GitHub-hosted Ubuntu checks still
-fail before runner assignment with zero executed steps and no runner name. The
-repository has zero registered runners, and the historical self-hosted label is
-not an allowed substitute. GitHub service status was operational at the check,
-so the remaining runner-allocation failure is external to the repository.
+### B7 current blocked-bundle checkpoint - 2026-09-01
 
-Cloudflare Access is disabled, so no protected test R2 gateway or non-production
-Access organization/auth domain was selected or deployed. The required gateway
-URL and separate application/recovery identity secrets are absent from both
-repository and staging secret inventories; no provider mutation was attempted.
-The local Docker engine is unavailable, and queue/writer state, isolated reader
-runtime, and disposable Quick Tunnel readiness remain unproven. Exact-window
-provider telemetry remains unavailable.
+The read-only preflight, MCP snapshot, and provider-free blocked-bundle capture
+were recaptured against candidate SHA 1fd16737e1485a7117e11d45019a78212597ee59.
+The preflight exited 0 with three explicit blockers; the MCP snapshot exited 0
+with six blockers; and the MCP snapshot and blocked-bundle validators both
+exited 0. The aggregate quality-gate runner exited 0, including the active
+specification validator, Pyright, Ruff, focused profile/recovery/restore
+tests, router/workflow/path checks, artifact validators, and Graphify.
 
-The next eligible B7 attempt requires restored hosted-runner allocation, an
-explicitly selected and authorized protected test R2 gateway, independent
-queue/writer proof, observed isolated runtime, and ready disposable Quick
-Tunnel. production_capacity_claim remains not_established.
+The generated handoff remains truthful and blocked before fixture creation:
+all hosted/profile-dependent status fields are `blocked` except telemetry,
+which is `unavailable`, documentation is `passed`, the overall disposition is
+`blocked`, and `production_capacity_claim` is `not_established`. The bundle
+contains zero profile samples. These validators prove artifact completeness,
+not runtime liveness, queue/writer quiescence, hosted capacity, or recovery.
 
-The current candidate is pushed to PR #136. Its CI, CodeQL, Security Static
-Analysis, Dependency Review, and Secret Scan runs all completed before runner
-assignment with zero executed steps and no runner name; the exact run links are
-retained in the remote check history and final handoff report. The PR remains
-merge-blocked, and these failures do not represent application, capacity, or
-production-readiness results.
+The candidate-reconciliation artifact records seven public-hosted artifacts
+bound to this candidate, 16 bound to prior candidates, and 18 unbound phase
+artifacts. Those older/unbound files are excluded from final evidence; the
+current B7 operations handoff is the sole candidate-bound final bundle.
 
-### B7 read-only MCP preflight checkpoint - 2026-08-31
+### Current hosted test-only recovery attempts - 2026-09-01
 
-Status: `blocked` before any fixture write. The exact candidate matched the
-safety baseline, and the sanitized MCP bridge artifact
-`artifacts/operations/reader-capacity-follow-up/b7-mcp-snapshot.json` passed
-its validator. The snapshot used only the dedicated Supabase test project and
-the two dedicated test R2 bucket classes; no provider mutation or production
-data-plane mutation was attempted.
+The authenticated GitHub UI dispatched `Non-production Managed Services` for
+the initial attempt at candidate SHA 1fd16737e1485a7117e11d45019a78212597ee59
+with only the exact test-recovery confirmation enabled. Migration and hosted
+test-database confirmation remained disabled. Run [33452702858](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33452702858)
+failed in `isolated-managed-recovery`; the hosted-postgres-and-R2 job was
+skipped.
 
-Supabase read-only observations were: security advisors `0` findings,
-performance advisors `101` findings, zero matching fixture novel/chapter rows,
-one migration marker row, 37/37 public tables with RLS, one security-definer
-function, and aggregate activity of 12 sessions (1 active, 4 idle, 7 without a
-state value). `pg_stat_statements` and pool occupancy were unavailable in this
-capture; no cumulative database counter was substituted for a billing or pool
-measurement.
+The uploaded sanitized artifact reports `failure_stage=create_backup`,
+`failure_class=R2GatewayError`, `result=failed`, and
+`production_mutation=none`. Backup, manifest, checksum, freshness, restore,
+representative-query, and public-isolation stages are `not_run`; temporary
+database-role cleanup passed, while R2 and overall cleanup failed with the
+same error class. Masked workflow secret entries were present in the hosted
+job environment, which proves nonempty propagation only, not credential
+validity or scope. The exact gateway status/error code was not available from
+the sanitized artifact, so a read-only Cloudflare dashboard cross-check was
+performed before any rerun. That cross-check verified the deployed test
+Worker's configured client IDs, selected service tokens, and exact test-bucket
+bindings, but did not expose or verify the write-only GitHub secret values.
 
-Cloudflare read-only observations were: active zone, three DNS records all
-proxied, DNSSEC disabled, minimum TLS 1.0, full origin mode, and the named
-development tunnel down with zero connections. Its route configuration was
-readable with two ingress entries, but it is not a ready reader target. The two
-approved test bucket classes were present; `novels/123/` and `recovery-` each
-contained zero objects. Exact test-bucket/window R2 metrics and the ruleset
-posture endpoint were unavailable.
+The conditional rerun then used the same candidate SHA with only the exact
+test-recovery confirmation enabled. Run [33457529115](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33457529115)
+failed after 1m28s at the same `create_backup` stage with
+`R2GatewayError`; the hosted-postgres-and-R2 job was skipped and the sanitized
+summary again reported no backup, restore, checksum, or representative-query
+evidence. Temporary role cleanup passed, while R2 and overall cleanup failed.
+The recovery service token remained `Last Seen: Not Seen Yet` after the run,
+so the GitHub staging recovery ID/secret pair remains unverified. No further
+rerun, secret rotation, Cloudflare setting change, fixture write, or production
+operation is planned from this blocked state.
 
-The worker was stopped, but the original queue and other-writer state remained
-unknown; local disposable Compose observation and the isolated reader runtime
-were unavailable. Therefore the bounded profile was not eligible, the six
-blockers remain open, and `production_capacity_claim` remains
-`not_established`. Next eligibility requires independent queue/writer proof,
-an observed isolated runtime, a ready disposable quick tunnel, and then the
-exact B7 reader/frontend/data-path/recovery workflow.
+This is failed non-production recovery evidence, not reader-capacity,
+production-recovery, or production-readiness evidence. Reader, fixture,
+frontend, pipeline, telemetry, and dependent recovery acceptance remain
+blocked; `production_capacity_claim` remains `not_established`.
 
-The subsequent provider-free blocked-bundle capture completed the required B7
-artifact shape without creating a fixture or contacting a provider. Its
-validator passed for the load-generator, frontend, pipeline, database/R2,
-security, writer-state, recovery, cleanup, final-validation, manifest, and
-JSON handoff records. All execution-dependent records remain explicitly
-blocked, unavailable, or not run; this is not a hosted capacity result.
+### Latest recovery-only rerun - 2026-09-01 10:53 GMT+7
 
-### B7 candidate refresh checkpoint - 2026-08-31
+The authenticated GitHub UI dispatched the recovery-only workflow again at
+candidate SHA `bf1ecb2b103362078da057a861af728bd4d9cb97`. Run
+[33467821883](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33467821883)
+failed in `isolated-managed-recovery` after 1m27s; `hosted-postgres-and-r2`
+was skipped and no migration or hosted test-database evidence is accepted.
 
-The B7 capture-key correction and focused regression were committed as
-`5d410bd62949d70d31a70f9e88b98de3c707b266` and pushed to the feature branch.
-The fresh safety baseline and sanitized MCP snapshot are joined to that exact
-candidate. The test Supabase project is active; its read-only observations are
-zero matching fixture rows, security advisors `0`, performance advisors `101`,
-37/37 public tables with RLS, one security-definer function, 12 aggregate
-sessions (1 active, 4 idle, 7 without a state value), and cumulative
-`pg_stat_statements` counters of 2,732 statements, 81,428 calls, 26,017.214 ms
-execution time, and 198,120 rows. These cumulative counters are database
-telemetry, not billing or pool-capacity evidence; pool occupancy remains
-unavailable.
+Its sanitized job summary reports `failure_stage=create_backup`,
+`failure_class=R2GatewayError`, `failure_status=403`,
+`failure_error_code=http_error`, `result=failed`, and
+`production_mutation=none`. Backup, manifest, checksum, freshness, restore,
+representative-query, and public-isolation stages were `not_run`; temporary
+role cleanup passed, while R2 and overall cleanup failed with the same error.
+The 600-byte artifact is
+`managed-database-recovery-evidence-33467821883`.
 
-The read-only Cloudflare refresh found the active zone, three proxied DNS
-records, no CAA record, DNSSEC disabled, minimum TLS 1.0, full origin mode,
-and the named development tunnel down with zero connectors and two configured
-ingress entries. The two approved test R2 bucket classes exist and both
-approved prefixes are empty. The R2 metrics endpoint is reachable but cannot
-bind counters to the exact test bucket and UTC window; the ruleset and exact
-test-window analytics evidence therefore remain unavailable. No provider or
-production mutation was attempted.
+The GitHub staging page confirms all four test client-id/secret names exist,
+with all four last updated about 14 hours ago. The selected Cloudflare
+recovery token is enabled, was created/updated about 2 hours ago, and still
+reports `Last Seen: 2 hours ago`. Because the secret values are write-only,
+this proves the newly selected token pair was not verified in GitHub; it does
+not expose which stored value is wrong. Do not dispatch another recovery run
+until the current test pair is securely re-saved. B7/B8 remain blocked and
+`production_capacity_claim` remains `not_established`.
 
-The bounded profile wrapper produced a validated fail-closed route/stage
-record with 30 blockers and zero traffic because the runtime/tunnel/queue
-gates were not eligible. The complete provider-free blocked bundle is bound to
-the same campaign and candidate and validates. Local quality gates passed
-except the active-spec metadata validator, which still fails on the
-owner-controlled `.agents` version/status/date mismatch. PR #136 remains open
-and blocked: current required jobs fail before runner assignment with no
-runner name, zero steps, and zero billable runner time; the repository runner
-inventory is empty. This refresh does not establish hosted execution, reader
-capacity, recovery completeness, or production readiness.
 
 ## Execution Policy
 

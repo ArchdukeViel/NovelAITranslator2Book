@@ -33,7 +33,7 @@ product scope. Recovery backups remain supported.
 
 - Python 3.14+
 - Node.js 26.8.1 and npm for local, CI, and Docker development
-- PostgreSQL 18 or compatible managed PostgreSQL
+- PostgreSQL 17+ or compatible managed PostgreSQL
 - Gemini API key for real translation
 - Docker Desktop when using Redis/Compose
 
@@ -72,8 +72,8 @@ Set-Location "backend"
 & "..\.venv\Scripts\python.exe" -m alembic -c alembic.ini upgrade head
 ```
 
-`DATABASE_URL` must use `postgresql+psycopg://`. Compose does not provision the
-primary application database.
+`DATABASE_URL` must use `postgresql+psycopg://`. Compose provisions co-located
+native PostgreSQL 17 (`postgres:17.4-alpine`) via the `db` service or connects to external PostgreSQL.
 
 ## Run Locally
 

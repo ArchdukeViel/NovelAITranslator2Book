@@ -15,6 +15,56 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
 
+  db:
+    image: postgres:17.4-alpine
+    restart: unless-stopped
+    container_name: dokushodo-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dokushodo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-dokushodo}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    command: >-
+      postgres
+        -c shared_preload_libraries=pg_stat_statements
+        -c shared_buffers=256MB
+        -c effective_cache_size=768MB
+        -c work_mem=16MB
+        -c maintenance_work_mem=64MB
+        -c max_connections=100
+        -c wal_level=replica
+        -c checkpoint_completion_target=0.9
+        -c autovacuum_vacuum_scale_factor=0.05
+        -c autovacuum_analyze_scale_factor=0.02
+        -c log_min_duration_statement=250
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dokushodo} -d ${POSTGRES_DB:-dokushodo}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - novelai-net
+    stop_grace_period: 30s
+
+  cloudbeaver:
+    image: dbeaver/cloudbeaver:24.3.0
+    container_name: dokushodo-cloudbeaver
+    restart: unless-stopped
+    ports:
+      - "${CLOUDBEAVER_BIND_ADDRESS:-127.0.0.1}:${CLOUDBEAVER_PORT:-8978}:8978"
+    volumes:
+      - cloudbeaver_data:/opt/cloudbeaver/workspace
+    networks:
+      - novelai-net
+    depends_on:
+      db:
+        condition: service_healthy
+
   restore-db:
     image: postgres:18.6-alpine@sha256:432b3b824c0769275ec9b0947736ef8b376d6997bcaa9de29818f613819c2feb
     profiles:
@@ -379,6 +429,8 @@ volumes:
   caddy_config:
   redis_data:
   restore_db_data:
+  postgres_data:
+  cloudbeaver_data:
 
 secrets:
   cloudflare_tunnel_token:

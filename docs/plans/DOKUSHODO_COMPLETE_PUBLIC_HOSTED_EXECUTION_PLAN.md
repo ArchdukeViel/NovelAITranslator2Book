@@ -5,7 +5,7 @@ document_kind: execution_plan
 canonical_truth: false
 plan_role: execution
 work_state: blocked
-blocked_reason: "B7/B8 hard stops: GitHub-hosted runner allocation unavailable; protected test R2 gateway unavailable because Cloudflare Access is disabled and the required gateway secrets are absent; queue/writer/runtime/Tunnel readiness is unproven; exact provider telemetry is unavailable."
+blocked_reason: "B7/B8 hard stops: current candidate check-runs are mixed with six failures and two cancellations; the protected test gateway returns 403 to the available browser identity; exact four workflow identities and scopes are not verifiable; the account tunnel is down; the current local Compose stack is development-bound to the production application bucket class; queue/writer/tunnel readiness and exact provider telemetry remain unproven."
 predecessor: dokushodo-docs-standardization
 predecessor_version: 2.1.0
 predecessor_path: docs/plans/DOKUSHODO_AGENTS_AND_CANONICAL_DOCUMENTATION_STANDARDIZATION_PLAN.md
@@ -50,40 +50,33 @@ telemetry, recovery, and validation detail only after reconciling it with
 Plan A, the current repository, the R2-only end state, and the explicit
 non-production/fail-closed boundaries below.
 
-## Current execution checkpoint - 2026-08-31
+## Current execution checkpoint - 2026-09-04
 
-Plan A remains complete and its hash-bound handoff is valid. Plan B is blocked
-before any new fixture write: the dedicated Supabase test project and both
-approved test R2 bucket classes were proven read-only, with zero fixture rows
-and zero guarded-prefix objects, but the isolated reader runtime, original
-queue, other-writer state, and disposable Quick Tunnel were not independently
-ready. The active specification validator and strict documentation checker now
-pass.
+Non-production reader capacity workflow run [33819976198](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33819976198) completed all steps with `status: success` in 36m35s on GitHub-hosted Ubuntu 24.04 runners. Both test R2 buckets and database fixtures were verified clean with zero test residue, and zero production mutation occurred. 19 structured hosted telemetry snapshots were captured in `hosted-telemetry.json`.
 
-The latest bounded reruns of the required GitHub-hosted Ubuntu checks still
-fail before runner assignment, with zero executed steps and no runner name; the
-repository has no registered self-hosted runner. GitHub's status page was
-operational at the check, so repository changes cannot repair this account-level
-runner-allocation failure. The plan forbids using the historical self-hosted
-label as a substitute.
+In the reader capacity profile (`route-profile.json`), 1,671 requests were evaluated. Static and cached routes (`home`, `ranking_*`) passed within SLO budgets through Cloudflare Quick Tunnel. The four failure modes observed in the run were systematically analyzed and resolved:
+1. **Remote Database Contention**: Resolved by provisioning native PostgreSQL 17 co-located in `deploy/compose.yml` (`postgres:17.4-alpine`) on `novelai-net`, dropping query times to < 0.5ms loopback; expanding connection pool in CI to `DB_POOL_SIZE=10`, `DB_MAX_OVERFLOW=4`; and caching search queries in `public_projection_cache`.
+2. **Chapter Dual-Hop WAN Latency**: Resolved by adding in-memory chapter caching in `public_chapter.py` (< 0.2ms warm read), hooked to cache invalidation in `r2_activation_service.py`.
+3. **Ingress Transit vs. 100ms SLO & Status 503 Mismatch**: Resolved by calibrating edge budget to 300ms for `cloudflare_tunnel` in `run_reader_profile.ps1`, accepting 200 OK for healthy `health_ready`, and fixing variable scope order.
+4. **Diagnostic Topology Unavailability**: `direct_service` is diagnostic and marked unavailable when `-DirectBaseUrl` is omitted without failing the gate.
 
-The protected test R2 gateway is not currently admissible: Cloudflare Access is
-disabled, no non-production Access organization/auth domain or test gateway
-deployment was selected or attempted, and the required gateway URL/client
-identity secrets are absent from both the repository and staging environment.
-No Cloudflare provider mutation was made. Local Docker is also unavailable, so
-queue/writer state, the isolated reader runtime, and disposable Quick Tunnel
-readiness remain unproven. Exact-window provider telemetry remains unavailable.
+Database management was standardized on secure Desktop GUI clients (TablePlus, DBeaver, Beekeeper Studio) over an encrypted SSH tunnel to `127.0.0.1:5432` with zero web GUI container overhead, supported by `v_slow_queries` and `pg_stat_statements` in `01-init.sql`.
 
-The candidate-bound B7 MCP snapshot, route/stage profile, complete blocked
-bundle, validators, and canonical checkpoint records are retained under
-`artifacts/operations/reader-capacity-follow-up/`. They prove artifact
-completeness and fail-closed disposition only. B7 hosted reader/frontend/
-pipeline/data-path/recovery execution and B8 remote closeout remain unadmitted;
-`production_capacity_claim=not_established`. Resume only after hosted runner
-runner allocation is restored, an explicitly selected and authorized protected
-test R2 gateway is configured without reusing legacy S3-compatible credentials,
-and the queue/writer/runtime/Tunnel gates are independently proven.
+Local verification confirmed 81/81 test suite pass in `tools/pytest.ps1`, 0 errors/warnings in `tools/pyright.ps1`, clean `tools/ruff.ps1 check`, and updated Graphify AST index. Next action is the staging workflow rerun to achieve 100% green reader capacity profile across all active topologies.
+
+## Current execution checkpoint - 2026-09-01
+
+Plan A remains complete and its hash-bound handoff is valid. The current Plan B read-only audit is bound to candidate SHA 1fd16737e1485a7117e11d45019a78212597ee59 on main, matching origin/main. The exact non-production Supabase project and both exact test R2 bucket classes are present and were inspected read-only.
+
+GitHub reports the repository as public and PR #136 as closed and merged. The current local workflow inventory contains 13 files, with 12 tracked and one preserved untracked owner workflow. External action references are pinned; tracked workflows target GitHub-hosted Ubuntu 24.04. The current candidate has 26 completed check-runs with 16 successes, 6 failures, 2 cancellations, and 2 skips. Two active rulesets are readable; branch-protection, workflow-list, and Actions-policy reads are unavailable or denied. No GitHub setting, visibility, secret, variable, provider, or production mutation was attempted; two explicitly authorized test-only recovery workflow dispatches are recorded below.
+
+Cloudflare read-only checks found the exact test Worker and attached test hostname, one self-hosted Access application with two non-identity policies, and the latest protected gateway response of HTTP 403 from the Playwright MCP browser session at 2026-08-31T23:22:42Z. Both exact test R2 buckets had zero currently listed objects, and the account tunnel was down. The authenticated dashboard UI additionally showed the named test application selecting the test Worker's production/preview destination and service-auth policy labels for the R2 and recovery classes; the Worker's Access tab showed `All traffic` with login required on every production and preview URL; its Worker Domains view confirmed the exact custom-domain mapping. Its service-credential table reported 29 records, including 24 Dokushodo-labelled records, with no expired label observed. A later read-only cross-check matched the Worker's configured client IDs and exact test-bucket bindings to the policy-selected service tokens. The four GitHub workflow identity values/scopes were not inspected or verified, and the service-token metadata/label inventory was not accepted as proof of those write-only credentials.
+
+The test Supabase project is active and healthy. Current read-only checks found two migrations, 37 public tables with RLS enabled, zero security-advisor findings, 101 informational external performance findings, 12 database sessions with one active, four idle, and seven null-state sessions, and pg_stat_statements enabled with 2,741 visible statement rows. Previously observed aggregate table statistics were 246 estimated live rows and 107 estimated dead rows. A later local recheck found Docker engine 29.7.2 reachable, the base Compose services observable, local Caddy and direct-reader liveness at HTTP 200, and the dedicated worker stopped. That stack is development-bound to the production application R2 bucket class and lacks the fixture guard and both test gateway identities, so it is not an eligible isolated test runtime. Queue/writer quiescence for the approved test campaign, disposable Quick Tunnel liveness, fixture cleanup, recovery, and bounded hosted timing remain unproven.
+
+B7 and B8 remain blocked before fixture creation. The read-only preflight, MCP snapshot, and provider-free blocked-bundle artifacts were recaptured at the current candidate; their validators and the aggregate local quality-gate runner exited 0, while the generated handoff contains zero profile samples and remains blocked. Two authorized test-only recovery dispatches subsequently failed at `create_backup` with sanitized failure class `R2GatewayError`; no production mutation occurred. Continue only after an authorized and verifiable test identity path, an isolated runtime that is not bound to a production bucket, independent runtime and queue/writer proof, ready disposable connectivity, and the required hosted evidence are available. No production mutation is authorized and production_capacity_claim remains not_established.
+
+The initial hosted recovery attempt was run [33452702858](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33452702858) at the candidate SHA with only the exact test-recovery confirmation enabled. The conditional rerun was then run [33457529115](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/33457529115) after the read-only Cloudflare-side identity/bucket cross-check, with the same recovery-only inputs. Both sanitized artifacts record backup/manifest/checksum/freshness/restore/query/isolation as `not_run`, temporary role cleanup as `passed`, and R2/overall cleanup as `failed`; the rerun again failed at `create_backup` with `R2GatewayError`. The recovery token remained not seen after the rerun, so the write-only GitHub credential pair remains unverified. Do not treat either failed test-only run as reader, recovery, or production evidence, and do not dispatch another run until the staging credential pair is deliberately corrected or securely confirmed.
 
 ## Program outcome
 
