@@ -40,6 +40,7 @@ class Novel(Base):
     __tablename__ = "novels"
     __table_args__ = (
         Index("ix_novels_is_published_updated_at", "is_published", "updated_at"),
+        Index("ix_novels_is_published_created_at", "is_published", "created_at"),
         Index("ix_novels_is_published_publication_status", "is_published", "publication_status"),
         Index("ix_novels_language", "language"),
         Index("ix_novels_source_site", "source_site"),

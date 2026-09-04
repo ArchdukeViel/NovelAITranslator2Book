@@ -11,6 +11,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import logging
+import uuid
 from collections.abc import Awaitable, Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -39,10 +40,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
         response = await call_next(request)
+        request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+        response.headers.setdefault("X-Request-ID", request_id)
         if settings.SECURITY_HEADERS_ENABLED:
             response.headers.setdefault("X-Content-Type-Options", "nosniff")
             response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
             response.headers.setdefault("X-Frame-Options", "DENY")
+            response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+            response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
             if settings.HSTS_MAX_AGE_SECONDS > 0:
                 hsts_value = f"max-age={settings.HSTS_MAX_AGE_SECONDS}; includeSubDomains"
                 response.headers.setdefault("Strict-Transport-Security", hsts_value)

@@ -23,7 +23,7 @@
     "backend/tests/.tmp/**",
     ".agents/**",
     ".opencode/**",
-    "storage/novel_library/**"
+    "data/runtime/**"
   ],
   "[typescript]": {
     "editor.formatOnSave": true,
@@ -57,7 +57,7 @@
     "node_modules/**": true,
     ".venv/**": true,
     ".opencode/**": true,
-    "storage/novel_library/**": true
+    "data/runtime/**": true
   },
   "files.exclude": {
     "**/__pycache__/**": true,

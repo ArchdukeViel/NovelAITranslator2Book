@@ -1,14 +1,27 @@
 ---
 trigger: always_on
-description: Consult the graphify knowledge graph at graphify-out/ for codebase and architecture questions.
+description: Consult the graphify knowledge graph at graphify-out/ for codebase and architecture questions, and update after code modifications.
 ---
 
-## graphify
+# Graphify Knowledge Graph
 
-This project has a graphify knowledge graph at graphify-out/.
+This project maintains a synchronized Graphify knowledge graph under `graphify-out/`.
 
-Rules:
-- For codebase or architecture questions, when `graphify-out/graph.json` exists, first run `graphify query "<question>"` (CLI) or `query_graph` (MCP). Use `graphify path "<A>" "<B>"` / `shortest_path` for relationships and `graphify explain "<concept>"` / `get_node` for focused concepts. These return a scoped subgraph, usually much smaller than `GRAPH_REPORT.md` or raw grep output.
-- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context
-- After modifying code or documentation files in this session, run `graphify update . --no-cluster` to keep the graph current (AST/source refresh only, no semantic reclustering, no API cost). Semantic extraction (`graphify extract` or `graphify update .` without `--no-cluster` when provider credentials are set) is a separate operator action — do not run it as a routine edit refresh.
+## Code Intelligence & Architecture Queries
+
+- **Graph-First Navigation**: When `graphify-out/graph.json` exists, reach for Graphify before broad raw grep:
+  - Scoped concept questions: `graphify query "<question>"` (CLI) or `query_graph` (MCP).
+  - Cross-artifact relationships: `graphify path "<SymbolA>" "<SymbolB>"` / `shortest_path`.
+  - Focused definitions: `graphify explain "<concept>"` / `get_node`.
+- **Navigating Wiki**: If `graphify-out/wiki/index.md` exists, consult it for subsystem maps before reading raw source trees.
+- **Architecture Summaries**: Read `graphify-out/GRAPH_REPORT.md` only for broad high-level review when scoped queries do not surface sufficient context.
+
+## Refresh & Synchronization Contract
+
+- **Post-Edit AST Refresh**: After modifying source code or documentation, run:
+  ```powershell
+  graphify update . --no-cluster
+  ```
+  *(This refreshes the AST and edges locally without API cost or semantic reclustering).*
+- **Harmless Zero-Node Warnings**: Non-code files (e.g. JSON configs, visual reports) may emit `warning: N source file(s) produced zero nodes`. This is expected AST behavior for non-extractable files and is not an error.
+- **Never Run Routine Semantic Extraction**: `graphify extract` or `graphify update .` without `--no-cluster` requires provider credentials and costs tokens &mdash; do not run semantic extraction during routine editing sessions.

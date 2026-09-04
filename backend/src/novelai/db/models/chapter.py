@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from novelai.core.chapter_state import TranslationState
@@ -24,11 +24,20 @@ class Chapter(Base):
 
     __tablename__ = "chapters"
     __table_args__ = (
+        CheckConstraint(
+            "raw_status IN ('pending', 'fetched', 'crawled', 'failed', 'ready')",
+            name="ck_chapters_raw_status",
+        ),
+        CheckConstraint(
+            "translation_status IN ('pending', 'in_progress', 'translated', 'completed', 'failed', 'approved')",
+            name="ck_chapters_translation_status",
+        ),
         Index("ix_chapters_novel_id_chapter_number", "novel_id", "chapter_number"),
         Index("ix_chapters_novel_id_logical_chapter_id", "novel_id", "logical_chapter_id", unique=True),
         Index("ix_chapters_novel_id_source_episode_id", "novel_id", "source_episode_id"),
         Index("ix_chapters_novel_id_sequence_number", "novel_id", "sequence_number"),
         Index("ix_chapters_novel_id_translation_status_updated_at", "novel_id", "translation_status", "updated_at"),
+        Index("ix_chapters_novel_toc_ordering", "novel_id", "sequence_number", "chapter_number", "id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -43,7 +52,7 @@ class Chapter(Base):
     logical_chapter_id: Mapped[str] = mapped_column(String(512), nullable=False)
     source_episode_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     sequence_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
     translated_section_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
     section_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
     section_source_id: Mapped[str | None] = mapped_column(String(255), nullable=True)

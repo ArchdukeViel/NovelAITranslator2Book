@@ -109,11 +109,11 @@ jobs:
                   review_body = res_data["choices"][0]["message"]["content"]
           except urllib.error.HTTPError as err:
               err_body = err.read().decode("utf-8", errors="replace")
-              print(f"Router API error ({err.code}): {err_body} (skipping advisory review)")
-              sys.exit(0)
+              print(f"Router API error ({err.code}): {err_body}")
+              sys.exit(1)
           except Exception as exc:
-              print(f"Request failed: {exc} (skipping advisory review)")
-              sys.exit(0)
+              print(f"Request failed: {exc}")
+              sys.exit(1)
 
           if not review_body:
               print("Empty review response.")
@@ -148,9 +148,9 @@ jobs:
               if err.code in (401, 403):
                   print(f"Skipping comment: insufficient permissions on PR #{pr_number} (likely fork PR).")
                   sys.exit(0)
-              print(f"GitHub API error ({err.code}): {err} (skipping comment)")
-              sys.exit(0)
+              print(f"GitHub API error ({err.code}): {err}")
+              sys.exit(1)
           except Exception as exc:
-              print(f"Failed to post comment to PR #{pr_number}: {exc} (skipping comment)")
-              sys.exit(0)
+              print(f"Failed to post comment to PR #{pr_number}: {exc}")
+              sys.exit(1)
           EOF

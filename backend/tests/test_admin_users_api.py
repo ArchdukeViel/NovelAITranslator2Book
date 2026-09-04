@@ -656,3 +656,34 @@ class TestExistingBehaviorPreserved:
     def test_get_user_returns_404_for_missing(self, client_owner):
         response = client_owner.get("/api/admin/users/9999")
         assert response.status_code == 404
+
+
+class TestPruneTokens:
+    def test_prune_tokens_owner_only(self, client_non_owner):
+        response = client_non_owner.post("/api/admin/users/tokens/prune", json={"reason": "routine cleanup"})
+        assert response.status_code == 403
+
+    def test_prune_tokens_success(self, client_owner, db_session):
+        from datetime import UTC, datetime, timedelta
+
+        from novelai.db.models.users import EmailVerificationToken, PasswordResetToken
+
+        with db_session() as s:
+            user = User(email="test@example.com", role="user", is_active=True)
+            s.add(user)
+            s.flush()
+            expired_time = datetime.now(UTC) - timedelta(days=40)
+            t1 = PasswordResetToken(user_id=user.id, token_hash="hash1", expires_at=expired_time)
+            t2 = EmailVerificationToken(user_id=user.id, token_hash="hash2", expires_at=expired_time)
+            s.add_all([t1, t2])
+            s.commit()
+
+        response = client_owner.post(
+            "/api/admin/users/tokens/prune",
+            json={"reason": "maintenance sweep", "max_age_days": 30},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["deleted_password_reset_tokens"] >= 1
+        assert data["deleted_email_verification_tokens"] >= 1

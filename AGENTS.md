@@ -44,6 +44,7 @@ active.
 | translation, prompts, glossary, QA, quotas | `docs/TRANSLATION.md` |
 | active work and gates | `docs/STATUS.md` |
 | completed verification | `docs/EVIDENCE.md` |
+| specialized execution rules | `.agents/rules/` |
 | intended feature work | the applicable `.agents/specs/<name>/` |
 | active execution order | `docs/plans/` |
 
@@ -60,8 +61,9 @@ Do not preload unrelated documentation.
 - Preserve unrelated changes; do not reset, clean, stash, overwrite, or
   reformat them.
 - Make the smallest coherent change in the existing architecture.
-- Use `apply_patch` for local file edits. Use repository-native commands for
-  generated files and explicitly authorized renames.
+- Use `apply_patch`, `replace_file_content`, or agent-native edit tools for local
+  file modifications. Use repository-native commands for generated files and
+  explicitly authorized renames.
 - Do not delete, rename, migrate data, or change contracts unless the request
   or an approved active specification requires it.
 - After every repository edit, run `graphify update . --no-cluster`.
@@ -96,8 +98,11 @@ Do not preload unrelated documentation.
 ### Python wrappers
 
 - `.venv\Scripts\python.exe` is the canonical interpreter (Python >= 3.14).
-- Use `tools\pytest.ps1`, `tools\pyright.ps1`, and `tools\ruff.ps1`.
+- Use `tools\pytest.ps1`, `tools\pyright.ps1`, `tools\ruff.ps1`, and
+  `tools\docs-check.ps1`.
 - Never use bare `python`, `pytest`, `ruff`, or `pyright` for backend work.
+- Execute ad-hoc scripts via `.venv\Scripts\python.exe <script-path>`.
+- Execute Alembic migrations via `.venv\Scripts\python.exe -m alembic -c backend/alembic.ini <cmd>`.
 - If the venv is missing, follow `docs/OPERATIONS.md` or `readme.md` to
   recover it; do not silently use another interpreter.
 - `pyproject.toml` is authoritative. Generated lockfiles are updated only by
@@ -109,13 +114,20 @@ From `frontend/`, use `npm run lint`, `npm run typecheck`, `npm run test`, and
 `npm run build` as applicable. Server state uses React Query, client-only state
 uses Zustand, and components use existing hooks and shared utilities. Do not
 call `fetch()` directly from components or add Redux, CSS modules, or styled
-components.
+components. Novel covers must use `next/image` with configured `remotePatterns`
+in `next.config.mjs` (never disable optimization in production). Modals must wrap
+in `DialogShell` (Escape dismissal, backdrop click closing, and body scroll locking).
+Reader pages trigger next-chapter prefetching when `scrollProgress >= 70%`.
 
 ### Windows and shell rules
 
 - Use PowerShell-compatible commands and quote paths containing spaces.
 - Chain dependent commands with `; if ($?) { ... }` when needed.
 - Use `rg` or `rg --files` for search.
+- Do not use Linux bashisms (`cat`, `export`, `grep`, `rm -rf`, `touch`, `source`, `which`);
+  use PowerShell equivalents (`Get-Content`, `$env:VAR = "val"`, `Remove-Item -Recurse -Force`, `Get-Command`).
+- Write UTF-8 files without BOM using .NET `[System.IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding($false)))`
+  to avoid PowerShell 5.1 BOM corruption.
 - Do not expose environment values while checking variable names.
 - Do not assume console scripts are on `PATH`.
 
@@ -135,7 +147,16 @@ use the configured Graphify graph with focused `graphify query`, `graphify
 path`, or `graphify explain` calls. Use `graphify-out/wiki/index.md` for
 navigation and read `GRAPH_REPORT.md` only when scoped queries are insufficient.
 After every edit run `graphify update . --no-cluster`; do not run semantic
-extraction or clustering as a routine refresh.
+extraction or clustering as a routine refresh. Harmless zero-node warnings on
+non-code files (e.g. JSON configs) can be safely ignored.
+
+### Archify
+
+When visualizing system architecture, workflows, API sequences, data pipelines,
+or state lifecycles, author Archify diagrams via `tools\archify.ps1`. All diagram
+JSON specifications, delivered HTML, and visual checks must reside strictly under
+`docs/design/diagrams/` to comply with documentation whitelist contracts. Deliver
+using `--quality showcase --json` and verify all 9 artifact checks pass with 0 errors.
 
 ## Project invariants
 
@@ -147,6 +168,15 @@ protection in `infrastructure/http/`, providers behind provider interfaces,
 and persistence in `storage/` and `db/`. Use SQLAlchemy for application
 persistence and raw SQL only in migrations or explicit policy scripts under
 `backend/sql/`. Read settings through `novelai.config.settings.settings`.
+Migrations in `backend/alembic/versions/` must use date-prefixed naming
+`YYYY-MM-DD_<hash>_<description>.py`, maintain a single linear head, and be fully
+reversible (`upgrade()` and `downgrade()`).
+Web novel titles, episode subtitles, author notes, and chapter HTML bodies must use
+SQLAlchemy `Text`, never clamped `String(255)` or `String(512)`. Do not apply ORM-level
+SQLite table check constraints on `Novel.publication_status` that reject unnormalized
+legacy strings (`"strange"` -> `"unknown"`). PostgreSQL connection pool budgeting must
+satisfy `DB_POOL_PROCESS_COUNT * (DB_POOL_SIZE + DB_MAX_OVERFLOW) + DB_CONNECTION_RESERVE <= DB_CONNECTION_BUDGET`
+(5/5 split across backend, reader, and worker against `max_connections = 100`).
 
 ### Frontend boundaries
 
@@ -173,6 +203,15 @@ route groups without an explicit architecture decision.
   coordination; local runtime storage is disposable.
 - R2 directories are virtual prefixes. Use exact-key reads and paginated
   listing only for inventory, backup, migration, or garbage collection.
+- Raw novel generations under `generations/<gen-id>/` are byte-immutable; never
+  rewrite raw chapter bundles or image assets in place.
+- Translation writes land exclusively in the per-chapter overlay:
+  `translations/<encoded-chapter-stem>.json` alongside the `active/` pointer mirror.
+- Readers compose the active raw generation with the active translation overlay on read.
+- Kakuyomu IDs (`kakuyomu:<episode>`) and chapter IDs are stable strings; never cast to
+  `int`, never use `isdigit()`, and never fallback non-numeric IDs to `-1`.
+- Cache acceptance is locked strictly to QA-accepted attempts; chunks marked `needs_retry`,
+  `needs_review`, or `qa_failed` must never reach cache.
 - Do not add compatibility aliases, filesystem fallbacks, dual writes, or
   alternate storage backends.
 - Migrations run in the one-shot Compose `migrate` service before backends.
@@ -217,6 +256,8 @@ scope is affected.
 - `docs/ARCHITECTURE.md` remains authoritative for architecture and security.
 - Canonical documents own one concern each; cross-link instead of duplicating
   normative prose.
+- Under `docs/`, only three subdirectories are permitted: `docs/archive/`,
+  `docs/design/`, and `docs/plans/`; creating any other directory fails `tools/docs-check.ps1`.
 - `docs/STATUS.md` contains current unresolved work, decisions, dependencies,
   and acceptance gates; it contains no completed-work narrative.
 - `docs/EVIDENCE.md` contains sanitized, dated verification and limitations;
@@ -227,6 +268,7 @@ scope is affected.
 - Archives preserve provenance and never become active authority.
 - Update canonical documentation whenever implementation changes behavior,
   configuration, storage, deployment, security, operations, or testing.
+- Validate documentation contracts with `powershell -ExecutionPolicy Bypass -File tools\docs-check.ps1`.
 
 ## Final evidence contract
 

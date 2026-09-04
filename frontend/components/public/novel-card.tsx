@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Image, { type ImageLoaderProps } from "next/image";
+import Image from "next/image";
 import Link from "next/link";
 import { BookOpen } from "lucide-react";
 
@@ -21,10 +21,6 @@ type DiscoveryNovel = PublicNovelSummary & {
 
 const MAX_VISIBLE_GENRES = 3;
 const MAX_VISIBLE_TAGS = 2;
-
-function directCoverLoader({ src }: ImageLoaderProps): string {
-  return src;
-}
 
 /** Wraps a cover Image with graceful fallback on load error. */
 function CoverImage({
@@ -63,8 +59,6 @@ function CoverImage({
       alt={`Cover for ${title}`}
       fill
       sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-      loader={directCoverLoader}
-      unoptimized
       onError={() => setFailed(true)}
       className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
     />
@@ -139,7 +133,11 @@ export function NovelCard({ novel }: NovelCardProps) {
           {(genres.length > 0 || tags.length > 0) && (
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
               {genres.slice(0, MAX_VISIBLE_GENRES).map((genre) => (
-                <GenreChip key={genre.slug} label={genre.name_en ?? genre.slug} labelJa={genre.name_ja} />
+                <GenreChip
+                  key={genre.slug}
+                  label={genre.name_en ?? genre.slug}
+                  labelJa={genre.name_ja}
+                />
               ))}
               {genres.length > MAX_VISIBLE_GENRES && (
                 <span className="text-xs text-muted-foreground">
@@ -147,7 +145,11 @@ export function NovelCard({ novel }: NovelCardProps) {
                 </span>
               )}
               {tags.slice(0, MAX_VISIBLE_TAGS).map((tag) => (
-                <TagChip key={tag.name} label={tag.name} labelJa={tag.name_ja} />
+                <TagChip
+                  key={tag.name}
+                  label={tag.name}
+                  labelJa={tag.name_ja}
+                />
               ))}
               {tags.length > MAX_VISIBLE_TAGS && (
                 <span className="text-xs text-muted-foreground">

@@ -18,6 +18,7 @@
     "tools",
     "docs",
     "artifacts",
+    "data",
     ".tmp",
     "**/.tmp/**",
     ".tmp.driveupload"

@@ -58,6 +58,7 @@ class AppSettings(BaseSettings):
     # --- Runtime
     ENV: str = "development"
     LOG_LEVEL: str = "INFO"
+    ENABLE_OPENAPI_DOCS: bool = False
 
     # --- R2 content storage and disposable runtime
     R2_BUCKET: str = Field(

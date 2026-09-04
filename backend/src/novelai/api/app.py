@@ -90,7 +90,21 @@ def create_app() -> FastAPI:
     if settings.ENV == "production":
         assert_production_config(settings)
 
-    app = FastAPI(title="Novel AI", lifespan=lifespan)
+    docs_url: str | None = "/docs"
+    redoc_url: str | None = "/redoc"
+    openapi_url: str | None = "/openapi.json"
+    if settings.ENV == "production" and not settings.ENABLE_OPENAPI_DOCS:
+        docs_url = None
+        redoc_url = None
+        openapi_url = None
+
+    app = FastAPI(
+        title="Novel AI",
+        lifespan=lifespan,
+        docs_url=docs_url,
+        redoc_url=redoc_url,
+        openapi_url=openapi_url,
+    )
 
     # Session middleware (HTTP-only signed cookies — v1 auth strategy, architecture §19).
     # Must be added before CORS middleware.
@@ -141,35 +155,36 @@ def create_app() -> FastAPI:
     app.include_router(user_contributions_router)
     app.include_router(notifications_router)
 
-    app.include_router(admin.router, prefix="/api", tags=["admin-api"])
-    app.include_router(admin_analytics.router)
-    app.include_router(admin_analytics.ingestion_router)
-    app.include_router(admin_audit.router)
-    app.include_router(admin_users.router)
-    app.include_router(admin_contributions.router)
-    app.include_router(admin_takedown.router)
-    app.include_router(admin_reviews.router)
-    app.include_router(sources.router, prefix="/api/admin", tags=["admin-api"])
-    app.include_router(activity.router, prefix="/api/admin", tags=["admin-api"])
-    app.include_router(requests.router, prefix="/api/admin", tags=["admin-api"])
-    app.include_router(admin_glossary.router, prefix="/api/admin", tags=["admin-api"])
-    app.include_router(admin_taxonomy.router, prefix="/api/admin/novels", tags=["admin-api"])
-    app.include_router(editor.router, prefix="/api/admin/novels", tags=["admin-api"])
-    app.include_router(operations.router, prefix="/api/admin/novels", tags=["admin-api"])
-    app.include_router(library.router, prefix="/api/admin/novels", tags=["admin-api"])
-    app.include_router(library.read_router, prefix="/api", tags=["admin-api"])
-    app.include_router(library_detail.router, prefix="/api/admin/novels", tags=["admin-api"])
-    app.include_router(library_actions.router, prefix="/api/admin/novels", tags=["admin-api"])
-    app.add_api_route(
-        "/api/admin/novels",
-        list_novels,
-        methods=["GET"],
-        response_model=list[NovelSummary],
-        include_in_schema=False,
-    )
+    if settings.SERVICE_ROLE != "reader":
+        app.include_router(admin.router, prefix="/api", tags=["admin-api"])
+        app.include_router(admin_analytics.router)
+        app.include_router(admin_analytics.ingestion_router)
+        app.include_router(admin_audit.router)
+        app.include_router(admin_users.router)
+        app.include_router(admin_contributions.router)
+        app.include_router(admin_takedown.router)
+        app.include_router(admin_reviews.router)
+        app.include_router(sources.router, prefix="/api/admin", tags=["admin-api"])
+        app.include_router(activity.router, prefix="/api/admin", tags=["admin-api"])
+        app.include_router(requests.router, prefix="/api/admin", tags=["admin-api"])
+        app.include_router(admin_glossary.router, prefix="/api/admin", tags=["admin-api"])
+        app.include_router(admin_taxonomy.router, prefix="/api/admin/novels", tags=["admin-api"])
+        app.include_router(editor.router, prefix="/api/admin/novels", tags=["admin-api"])
+        app.include_router(operations.router, prefix="/api/admin/novels", tags=["admin-api"])
+        app.include_router(library.router, prefix="/api/admin/novels", tags=["admin-api"])
+        app.include_router(library.read_router, prefix="/api", tags=["admin-api"])
+        app.include_router(library_detail.router, prefix="/api/admin/novels", tags=["admin-api"])
+        app.include_router(library_actions.router, prefix="/api/admin/novels", tags=["admin-api"])
+        app.add_api_route(
+            "/api/admin/novels",
+            list_novels,
+            methods=["GET"],
+            response_model=list[NovelSummary],
+            include_in_schema=False,
+        )
+        app.include_router(health_admin_router, prefix="/api", tags=["health"])
 
     app.include_router(health.router)
-    app.include_router(health_admin_router, prefix="/api", tags=["health"])
     app.include_router(metrics_router)
 
     return app

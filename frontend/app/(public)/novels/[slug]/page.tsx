@@ -24,13 +24,15 @@ import { CommunityReviews } from "@/components/public/community-reviews";
 import { StatusBadge } from "@/components/public/status-badge";
 import { ApiError } from "@/lib/api";
 import { ErrorState, LoadingState } from "@/components/ui/page-state";
-import {
-  authorOrFallback,
-  sortChaptersAscending,
-} from "@/lib/public-format";
+import { authorOrFallback, sortChaptersAscending } from "@/lib/public-format";
 import { publicChapterHref } from "@/lib/public-routes";
 import type { PublicChapterSummary } from "@/lib/public-types";
-import { useChapters, useGenreLabelMap, useNovel, useProgress } from "@/hooks/public";
+import {
+  useChapters,
+  useGenreLabelMap,
+  useNovel,
+  useProgress,
+} from "@/hooks/public";
 
 type NovelTab = "overview" | "chapters" | "reviews";
 
@@ -47,16 +49,35 @@ function formatLanguage(value: string | null | undefined): string | null {
   }
 
   const normalized = trimmed.toLowerCase().replaceAll("_", "-");
-  if (normalized === "ja" || normalized.startsWith("ja-") || normalized.includes("japanese") || trimmed === "日本語") {
+  if (
+    normalized === "ja" ||
+    normalized.startsWith("ja-") ||
+    normalized.includes("japanese") ||
+    trimmed === "日本語"
+  ) {
     return "Japanese";
   }
-  if (normalized === "zh" || normalized.startsWith("zh-") || normalized.includes("chinese") || trimmed === "中文") {
+  if (
+    normalized === "zh" ||
+    normalized.startsWith("zh-") ||
+    normalized.includes("chinese") ||
+    trimmed === "中文"
+  ) {
     return "Chinese";
   }
-  if (normalized === "ko" || normalized.startsWith("ko-") || normalized.includes("korean") || trimmed === "한국어") {
+  if (
+    normalized === "ko" ||
+    normalized.startsWith("ko-") ||
+    normalized.includes("korean") ||
+    trimmed === "한국어"
+  ) {
     return "Korean";
   }
-  if (normalized === "en" || normalized.startsWith("en-") || normalized.includes("english")) {
+  if (
+    normalized === "en" ||
+    normalized.startsWith("en-") ||
+    normalized.includes("english")
+  ) {
     return "English";
   }
   return trimmed;
@@ -66,16 +87,26 @@ function isJapaneseLanguage(value: string | null | undefined): boolean {
   const normalized = value?.trim().toLowerCase().replaceAll("_", "-");
   return Boolean(
     normalized &&
-      (normalized === "ja" || normalized.startsWith("ja-") || normalized.includes("japanese") || normalized === "日本語")
+    (normalized === "ja" ||
+      normalized.startsWith("ja-") ||
+      normalized.includes("japanese") ||
+      normalized === "日本語"),
   );
 }
 
 function chapterDisplayTitle(chapter: PublicChapterSummary): string {
-  return chapter.title?.trim() || `Chapter ${chapter.chapter_number ?? chapter.chapter_id}`;
+  return (
+    chapter.title?.trim() ||
+    `Chapter ${chapter.chapter_number ?? chapter.chapter_id}`
+  );
 }
 
 function hasSourceNumber(chapter: PublicChapterSummary): boolean {
-  if (chapter.chapter_number === null || chapter.chapter_number === undefined || !chapter.title?.trim()) {
+  if (
+    chapter.chapter_number === null ||
+    chapter.chapter_number === undefined ||
+    !chapter.title?.trim()
+  ) {
     return false;
   }
 
@@ -83,8 +114,15 @@ function hasSourceNumber(chapter: PublicChapterSummary): boolean {
   return new RegExp(`(?:^|[^0-9])${number}(?:[^0-9]|$)`).test(chapter.title);
 }
 
-function shouldShowGeneratedChapterNumber(chapter: PublicChapterSummary): boolean {
-  return Boolean(chapter.title?.trim()) && chapter.chapter_number !== null && chapter.chapter_number !== undefined && !hasSourceNumber(chapter);
+function shouldShowGeneratedChapterNumber(
+  chapter: PublicChapterSummary,
+): boolean {
+  return (
+    Boolean(chapter.title?.trim()) &&
+    chapter.chapter_number !== null &&
+    chapter.chapter_number !== undefined &&
+    !hasSourceNumber(chapter)
+  );
 }
 
 function formatAddedDate(value: string): string {
@@ -119,16 +157,23 @@ function chapterSectionKey(chapter: PublicChapterSummary): string | null {
   if (sourceId) {
     return `source:${sourceId}`;
   }
-  if (chapter.section_ordinal !== null && chapter.section_ordinal !== undefined) {
+  if (
+    chapter.section_ordinal !== null &&
+    chapter.section_ordinal !== undefined
+  ) {
     return `ordinal:${chapter.section_ordinal}`;
   }
   const title = chapter.section_title?.trim() || chapter.part?.trim();
   return title ? `legacy:${title}` : null;
 }
 
-function groupChaptersByVolume(chapters: PublicChapterSummary[]): VolumeGroup[] {
+function groupChaptersByVolume(
+  chapters: PublicChapterSummary[],
+): VolumeGroup[] {
   const groups: VolumeGroup[] = [];
-  const hasSections = chapters.some((chapter) => chapterSectionKey(chapter) !== null);
+  const hasSections = chapters.some(
+    (chapter) => chapterSectionKey(chapter) !== null,
+  );
   let lastGroupKey: string | null = null;
 
   for (const chapter of chapters) {
@@ -204,9 +249,13 @@ function ChapterRow({
   isLastRead?: boolean;
   isRead?: boolean;
 }) {
-  const canRead = chapter.translated && (!chapter.availability_status || chapter.availability_status === "available");
+  const canRead =
+    chapter.translated &&
+    (!chapter.availability_status ||
+      chapter.availability_status === "available");
   const availabilityLabel =
-    chapter.availability_status === "unavailable" || chapter.availability_status === "refresh_failed"
+    chapter.availability_status === "unavailable" ||
+    chapter.availability_status === "refresh_failed"
       ? "Unavailable"
       : "Not translated";
 
@@ -220,9 +269,13 @@ function ChapterRow({
         </h3>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           {shouldShowGeneratedChapterNumber(chapter) && (
-            <span className="font-metadata">Chapter {chapter.chapter_number}</span>
+            <span className="font-metadata">
+              Chapter {chapter.chapter_number}
+            </span>
           )}
-          {canRead && <span className="font-metadata text-accent">Translated</span>}
+          {canRead && (
+            <span className="font-metadata text-accent">Translated</span>
+          )}
           {isRead && <span className="font-metadata">Read</span>}
           {isLastRead && (
             <span className="rounded bg-primary/15 px-1.5 py-0.5 font-metadata text-primary">
@@ -261,7 +314,9 @@ export default function NovelDetailPage() {
   const genreLabels = useGenreLabelMap();
   const requestedTab = searchParams.get("tab");
   const activeTab: NovelTab =
-    requestedTab === "chapters" || requestedTab === "reviews" ? requestedTab : "overview";
+    requestedTab === "chapters" || requestedTab === "reviews"
+      ? requestedTab
+      : "overview";
   const [chapterQuery, setChapterQuery] = useState("");
   const [chapterOrder, setChapterOrder] = useState<"asc" | "desc">("asc");
   const [groupsExpanded, setGroupsExpanded] = useState(true);
@@ -273,7 +328,7 @@ export default function NovelDetailPage() {
       return (
         <PageErrorState
           title="Novel not found"
-          description="The novel you&apos;re looking for doesn&apos;t exist or has been removed."
+          description="The novel you're looking for doesn't exist or has been removed."
         />
       );
     }
@@ -298,12 +353,18 @@ export default function NovelDetailPage() {
   const showSourceTitle = Boolean(sourceTitle && sourceTitle !== title);
   const languageLabel = formatLanguage(data.language);
   const showJapaneseTaxonomy = isJapaneseLanguage(data.language);
-  const sortedChapters = chapters.data ? sortChaptersAscending(chapters.data) : [];
+  const sortedChapters = chapters.data
+    ? sortChaptersAscending(chapters.data)
+    : [];
   const readableChapters = sortedChapters.filter(
-    (chapter) => chapter.translated && (!chapter.availability_status || chapter.availability_status === "available")
+    (chapter) =>
+      chapter.translated &&
+      (!chapter.availability_status ||
+        chapter.availability_status === "available"),
   );
   const firstTranslatedChapter = readableChapters[0] ?? null;
-  const latestTranslatedChapter = readableChapters[readableChapters.length - 1] ?? null;
+  const latestTranslatedChapter =
+    readableChapters[readableChapters.length - 1] ?? null;
   const firstChapterId = firstTranslatedChapter?.chapter_id ?? null;
   const progressChapterId = progress.data?.chapter_id ?? null;
   const progressChapterNumber = progress.data?.chapter_number ?? null;
@@ -314,13 +375,16 @@ export default function NovelDetailPage() {
       .toLowerCase()
       .includes(normalizedQuery);
   });
-  const orderedChapters = chapterOrder === "asc" ? filteredChapters : [...filteredChapters].reverse();
+  const orderedChapters =
+    chapterOrder === "asc" ? filteredChapters : [...filteredChapters].reverse();
   const visibleChapters = orderedChapters.slice(0, chapterLimit);
   const firstUnread = sortedChapters.find(
     (chapter) =>
       chapter.translated &&
-      (!chapter.availability_status || chapter.availability_status === "available") &&
-      (progressChapterNumber == null || (chapter.chapter_number ?? 0) > progressChapterNumber)
+      (!chapter.availability_status ||
+        chapter.availability_status === "available") &&
+      (progressChapterNumber == null ||
+        (chapter.chapter_number ?? 0) > progressChapterNumber),
   );
 
   function setTab(tab: NovelTab) {
@@ -329,12 +393,29 @@ export default function NovelDetailPage() {
     else next.set("tab", tab);
     router.push(
       `/novels/${encodeURIComponent(publicSlug)}${next.toString() ? `?${next}` : ""}`,
-      { scroll: false }
+      { scroll: false },
     );
   }
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Book",
+    name: title,
+    alternateName: sourceTitle || undefined,
+    author: data.author ? { "@type": "Person", name: data.author } : undefined,
+    description: synopsis || undefined,
+    inLanguage: data.language || "ja",
+    genre:
+      data.genres?.map((g) => g.name_en || g.name_ja || g.slug) || undefined,
+    numberOfPages: data.chapter_count || undefined,
+  };
+
   return (
     <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <BackToBrowse />
 
       <header className="mt-8 grid gap-6 border-b border-border/70 pb-8 lg:grid-cols-[220px_minmax(0,1fr)_auto] lg:items-end lg:gap-8">
@@ -352,7 +433,9 @@ export default function NovelDetailPage() {
           <h1 className="font-literary text-3xl font-medium leading-tight sm:text-4xl">
             {title}
           </h1>
-          <p className="mt-3 text-base text-muted-foreground">{authorOrFallback(data.author)}</p>
+          <p className="mt-3 text-base text-muted-foreground">
+            {authorOrFallback(data.author)}
+          </p>
           {showSourceTitle && (
             <p className="mt-2 break-words font-literary text-sm text-accent">
               <span className="mr-2 font-metadata text-xs uppercase text-muted-foreground">
@@ -416,7 +499,9 @@ export default function NovelDetailPage() {
           tabIndex={0}
         >
           <section>
-            <h2 className="font-literary text-2xl font-semibold">About this story</h2>
+            <h2 className="font-literary text-2xl font-semibold">
+              About this story
+            </h2>
             <p className="mt-4 leading-7 text-muted-foreground">
               {synopsis || "Synopsis unavailable for this novel."}
             </p>
@@ -430,7 +515,10 @@ export default function NovelDetailPage() {
           )}
 
           {(data.genres?.length ?? 0) > 0 && (
-            <section aria-labelledby="novel-genres-heading" className="space-y-2">
+            <section
+              aria-labelledby="novel-genres-heading"
+              className="space-y-2"
+            >
               <h3 className="text-sm font-medium" id="novel-genres-heading">
                 Genres
               </h3>
@@ -496,7 +584,9 @@ export default function NovelDetailPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="font-literary text-2xl font-semibold">Chapters</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{sortedChapters.length} total</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {sortedChapters.length} total
+              </p>
             </div>
             <div className="flex flex-wrap gap-2">
               {firstUnread && (
@@ -544,7 +634,9 @@ export default function NovelDetailPage() {
             </label>
             <button
               className="min-h-11 rounded-md border border-border px-3 text-sm"
-              onClick={() => setChapterOrder((value) => (value === "asc" ? "desc" : "asc"))}
+              onClick={() =>
+                setChapterOrder((value) => (value === "asc" ? "desc" : "asc"))
+              }
               type="button"
             >
               {chapterOrder === "asc" ? "Ascending" : "Descending"}
@@ -560,8 +652,13 @@ export default function NovelDetailPage() {
               </div>
             ) : visibleChapters.length === 0 ? (
               <div className="py-10 text-center">
-                <Library className="mx-auto h-10 w-10 text-muted-foreground/50" aria-hidden="true" />
-                <p className="mt-3 text-sm text-muted-foreground">No chapters matched.</p>
+                <Library
+                  className="mx-auto h-10 w-10 text-muted-foreground/50"
+                  aria-hidden="true"
+                />
+                <p className="mt-3 text-sm text-muted-foreground">
+                  No chapters matched.
+                </p>
               </div>
             ) : (
               groupChaptersByVolume(visibleChapters).map((group) =>
@@ -579,10 +676,15 @@ export default function NovelDetailPage() {
                     </summary>
                     <div className="border-t border-border/40">
                       {group.chapters.map((chapter) => (
-                        <div id={chapterAnchorId(chapter.chapter_id)} key={chapter.chapter_id}>
+                        <div
+                          id={chapterAnchorId(chapter.chapter_id)}
+                          key={chapter.chapter_id}
+                        >
                           <ChapterRow
                             chapter={chapter}
-                            isLastRead={progressChapterId === chapter.chapter_id}
+                            isLastRead={
+                              progressChapterId === chapter.chapter_id
+                            }
                             isRead={
                               progressChapterNumber != null &&
                               chapter.chapter_number != null &&
@@ -597,7 +699,10 @@ export default function NovelDetailPage() {
                 ) : (
                   <div key={group.key}>
                     {group.chapters.map((chapter) => (
-                      <div id={chapterAnchorId(chapter.chapter_id)} key={chapter.chapter_id}>
+                      <div
+                        id={chapterAnchorId(chapter.chapter_id)}
+                        key={chapter.chapter_id}
+                      >
                         <ChapterRow
                           chapter={chapter}
                           isLastRead={progressChapterId === chapter.chapter_id}
@@ -611,7 +716,7 @@ export default function NovelDetailPage() {
                       </div>
                     ))}
                   </div>
-                )
+                ),
               )
             )}
           </div>

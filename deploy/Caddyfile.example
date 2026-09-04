@@ -40,6 +40,10 @@
     reverse_proxy reader:8001
   }
 
+  handle /health/* {
+    reverse_proxy reader:8001
+  }
+
   handle {
     reverse_proxy frontend:3000
   }

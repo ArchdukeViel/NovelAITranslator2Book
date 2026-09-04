@@ -287,3 +287,38 @@ def revoke_sessions(
         )
     except Exception as exc:
         _handle_service_error(exc)
+
+
+class PruneTokensRequest(ReasonMixin):
+    max_age_days: int = Field(default=30, ge=1, le=365)
+
+
+@router.post("/tokens/prune")
+def prune_tokens(
+    body: PruneTokensRequest,
+    actor: SessionUser = Depends(require_role("owner")),
+    session: Session = Depends(get_db_session),
+) -> dict[str, Any]:
+    try:
+        AuthService.validate_reason(body.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    svc = _svc(session)
+    result = svc.prune_expired_tokens(max_age_days=body.max_age_days)
+    AuditService(session).log(
+        action="auth.tokens_pruned",
+        actor_user_id=actor.user_id,
+        target_type="auth",
+        target_id="system",
+        metadata={
+            "reason": body.reason.strip(),
+            "max_age_days": body.max_age_days,
+            **result,
+        },
+    )
+    session.commit()
+    return {
+        "status": "success",
+        **result,
+    }

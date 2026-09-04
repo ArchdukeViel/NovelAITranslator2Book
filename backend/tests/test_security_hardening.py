@@ -256,7 +256,7 @@ def test_gitignore_excludes_secret_backups_and_runtime_state() -> None:
 
     for pattern in (
         ".env",
-        "storage/novel_library/",
+        "data/runtime/",
         "backups/",
         "*.bak",
         "*.zip",

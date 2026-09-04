@@ -36,9 +36,7 @@ frontend/novel_library
 frontend/tsconfig.tsbuildinfo
 
 backend/tests
-storage/novel_library
-storage/backups
-storage/logs
-storage/**/*.tmp
+data/runtime
+data/**/*.tmp
 backups
 logs

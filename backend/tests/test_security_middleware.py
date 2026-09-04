@@ -84,6 +84,32 @@ class TestSecurityHeadersMiddleware:
             resp = client.get("/hello")
         assert resp.headers.get("X-Frame-Options") == "DENY"
 
+    def test_permissions_policy(self):
+        app = _make_app()
+        with TestClient(app) as client:
+            resp = client.get("/hello")
+        assert resp.headers.get("Permissions-Policy") == "camera=(), microphone=(), geolocation=(), payment=()"
+
+    def test_cross_origin_opener_policy(self):
+        app = _make_app()
+        with TestClient(app) as client:
+            resp = client.get("/hello")
+        assert resp.headers.get("Cross-Origin-Opener-Policy") == "same-origin"
+
+    def test_x_request_id_generated_when_absent(self):
+        app = _make_app()
+        with TestClient(app) as client:
+            resp = client.get("/hello")
+        req_id = resp.headers.get("X-Request-ID")
+        assert req_id is not None
+        assert len(req_id) >= 16
+
+    def test_x_request_id_preserved_when_supplied(self):
+        app = _make_app()
+        with TestClient(app) as client:
+            resp = client.get("/hello", headers={"X-Request-ID": "test-request-12345"})
+        assert resp.headers.get("X-Request-ID") == "test-request-12345"
+
     def test_hsts_included_when_configured(self):
         original = settings.HSTS_MAX_AGE_SECONDS
         try:
@@ -120,6 +146,8 @@ class TestSecurityHeadersMiddleware:
             assert "X-Content-Type-Options" not in resp.headers
             assert "Referrer-Policy" not in resp.headers
             assert "X-Frame-Options" not in resp.headers
+            assert "Permissions-Policy" not in resp.headers
+            assert "Cross-Origin-Opener-Policy" not in resp.headers
             assert "Strict-Transport-Security" not in resp.headers
         finally:
             settings.SECURITY_HEADERS_ENABLED = original_enabled

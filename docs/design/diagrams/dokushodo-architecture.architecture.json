@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Dokushodo Multi-Process Architecture",
+    "output": "dokushodo-architecture.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "reader-flow",
+        "label": "Public Reader Path",
+        "focus": ["browsers", "caddy", "reader_api", "postgres", "r2"],
+        "note": "Public readers request novel metadata and cached chapters via Caddy to Reader API."
+      },
+      {
+        "id": "admin-flow",
+        "label": "Admin & Ingestion",
+        "focus": ["browsers", "caddy", "frontend", "admin_api", "redis", "rq_worker", "postgres"],
+        "note": "Admins configure scrapers, manage users, and dispatch asynchronous worker tasks."
+      },
+      {
+        "id": "translation-pipeline",
+        "label": "Async LLM Translation",
+        "focus": ["redis", "rq_worker", "gemini", "r2", "postgres"],
+        "note": "Background workers pull chapter translation jobs, call Gemini LLM, and persist immutable text in R2."
+      }
+    ]
+  },
+  "components": [
+    { "id": "browsers", "type": "external", "label": "Client Browsers", "sublabel": "Readers & Admins", "pos": [40, 260], "size": [130, 60] },
+    { "id": "caddy", "type": "cloud", "label": "Caddy Gateway", "sublabel": "Reverse Proxy :80/:443", "pos": [240, 260], "size": [130, 60], "brand": "docker" },
+    { "id": "frontend", "type": "frontend", "label": "Web Frontend", "sublabel": "Next.js 14 SSR :3000", "pos": [240, 100], "size": [130, 60], "brand": "next-js" },
+    { "id": "reader_api", "type": "backend", "label": "Reader API", "sublabel": "FastAPI :8001 (Public)", "pos": [460, 260], "size": [130, 60], "brand": "python" },
+    { "id": "admin_api", "type": "backend", "label": "Admin API", "sublabel": "FastAPI :8000 (Internal)", "pos": [460, 420], "size": [130, 60], "brand": "python" },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "sublabel": "Relational Catalog :5432", "pos": [720, 260], "size": [130, 60], "brand": "postgresql" },
+    { "id": "r2", "type": "cloud", "label": "Cloudflare R2", "sublabel": "Immutable Storage", "pos": [720, 100], "size": [130, 60], "brand": "cloudflare" },
+    { "id": "redis", "type": "database", "label": "Redis / Valkey", "sublabel": "Queues & Cache :6379", "pos": [680, 420], "size": [130, 60], "brand": "redis" },
+    { "id": "rq_worker", "type": "backend", "label": "RQ Workers", "sublabel": "Ingestion & Pipeline", "pos": [890, 420], "size": [130, 60], "brand": "python" },
+    { "id": "gemini", "type": "external", "label": "Gemini LLM", "sublabel": "AI Translation API", "pos": [1100, 420], "size": [130, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Docker Compose Topology", "wraps": ["caddy", "frontend", "reader_api", "admin_api", "postgres", "redis", "rq_worker"], "pad": 18 },
+    { "kind": "security-group", "label": "Durable Persistence Tier", "wraps": ["postgres", "r2"], "pad": 14 }
+  ],
+  "connections": [
+    { "id": "browsers-to-caddy", "from": "browsers", "to": "caddy", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "caddy-to-frontend", "from": "caddy", "to": "frontend", "label": "Web UI", "fromSide": "top", "toSide": "bottom" },
+    { "id": "caddy-to-reader", "from": "caddy", "to": "reader_api", "label": "/api/v1/reader" },
+    { "id": "caddy-to-admin", "from": "caddy", "to": "admin_api", "label": "/api/admin", "variant": "security", "fromSide": "bottom", "toSide": "left" },
+    { "id": "reader-to-postgres", "from": "reader_api", "to": "postgres", "label": "read catalog" },
+    { "id": "reader-to-r2", "from": "reader_api", "to": "r2", "label": "fetch chapter", "fromSide": "top", "toSide": "left" },
+    { "id": "admin-to-postgres", "from": "admin_api", "to": "postgres", "label": "mutations", "fromSide": "top", "toSide": "bottom" },
+    { "id": "admin-to-redis", "from": "admin_api", "to": "redis", "label": "enqueue", "fromSide": "right", "toSide": "left" },
+    { "id": "redis-to-worker", "from": "redis", "to": "rq_worker", "label": "dequeue" },
+    { "id": "worker-to-gemini", "from": "rq_worker", "to": "gemini", "label": "translate", "variant": "emphasis" },
+    { "id": "worker-to-r2", "from": "rq_worker", "to": "r2", "label": "store text", "fromSide": "top", "toSide": "right", "via": [[955, 130]] },
+    { "id": "worker-to-postgres", "from": "rq_worker", "to": "postgres", "label": "mark status", "fromSide": "top", "toSide": "right" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Routing & Frontend", "items": ["Caddy handles TLS and path routing to Frontend, Reader, and Admin", "Next.js provides SSR reader pages with prefetching"] },
+    { "dot": "emerald", "title": "Data Isolation", "items": ["PostgreSQL stores catalog metadata and chapter indices", "Cloudflare R2 holds immutable chapter content and covers", "Redis caches active sessions and manages RQ job queues"] },
+    { "dot": "rose", "title": "Asynchronous AI Pipeline", "items": ["Background RQ workers execute multi-pass translation via Gemini LLM", "Dead-letter queues and retry limits guard worker stability"] }
+  ]
+}

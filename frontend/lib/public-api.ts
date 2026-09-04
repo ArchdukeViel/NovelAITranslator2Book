@@ -50,7 +50,8 @@ import type {
   UserReviewItem,
 } from "@/lib/public-types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "";
 const DEFAULT_PUBLIC_RETURN_TO = "/";
 const CSRF_HEADER_NAME = "X-CSRF-Token";
 export const PUBLIC_REQUEST_TIMEOUT_MS = 10_000;
@@ -63,7 +64,11 @@ export class PublicRequestAbortError extends Error {
   readonly reason: PublicRequestAbortReason;
   readonly path: string;
 
-  constructor(reason: PublicRequestAbortReason, path: string, options?: ErrorOptions) {
+  constructor(
+    reason: PublicRequestAbortReason,
+    path: string,
+    options?: ErrorOptions,
+  ) {
     super(
       reason === "timeout"
         ? `Public request timed out: ${path}`
@@ -76,7 +81,9 @@ export class PublicRequestAbortError extends Error {
   }
 }
 
-export function isPublicRequestAbortError(error: unknown): error is PublicRequestAbortError {
+export function isPublicRequestAbortError(
+  error: unknown,
+): error is PublicRequestAbortError {
   return error instanceof PublicRequestAbortError;
 }
 
@@ -159,12 +166,16 @@ async function responseError(response: Response): Promise<ApiError> {
 
 export async function publicFetch(
   path: string,
-  init?: RequestInit
+  init?: RequestInit,
 ): Promise<Response> {
   const method = (init?.method ?? "GET").toUpperCase();
   const unsafeMethod = !["GET", "HEAD", "OPTIONS"].includes(method);
   const headers = new Headers(init?.headers);
-  if (unsafeMethod && path !== "/api/auth/csrf" && !headers.has(CSRF_HEADER_NAME)) {
+  if (
+    unsafeMethod &&
+    path !== "/api/auth/csrf" &&
+    !headers.has(CSRF_HEADER_NAME)
+  ) {
     headers.set(CSRF_HEADER_NAME, await getCsrfToken());
   }
 
@@ -182,7 +193,9 @@ export async function publicFetch(
     return response;
   } catch (error) {
     if (requestSignal.signal.aborted) {
-      throw new PublicRequestAbortError(requestSignal.reason, path, { cause: error });
+      throw new PublicRequestAbortError(requestSignal.reason, path, {
+        cause: error,
+      });
     }
     throw error;
   } finally {
@@ -212,14 +225,17 @@ export async function publicServerFetch(
   const headers = new Headers({ Accept: "application/json" });
   if (options.host) headers.set("Host", options.host);
 
-  const response = await fetch(`${options.baseUrl.replace(/\/+$/, "")}${path}`, {
-    headers,
-    next:
-      options.revalidateSeconds === undefined
-        ? undefined
-        : { revalidate: options.revalidateSeconds },
-    signal: options.signal,
-  });
+  const response = await fetch(
+    `${options.baseUrl.replace(/\/+$/, "")}${path}`,
+    {
+      headers,
+      next:
+        options.revalidateSeconds === undefined
+          ? undefined
+          : { revalidate: options.revalidateSeconds },
+      signal: options.signal,
+    },
+  );
   if (!response.ok) {
     throw await responseError(response);
   }
@@ -366,10 +382,14 @@ export function googleOAuthStartUrl(returnTo?: string): string {
 // ---------------------------------------------------------------------------
 
 export const publicApi = {
-  catalog(params: CatalogParams, signal?: AbortSignal): Promise<PublicCatalogResponse> {
+  catalog(
+    params: CatalogParams,
+    signal?: AbortSignal,
+  ): Promise<PublicCatalogResponse> {
     const search = new URLSearchParams();
     if (params.q) search.set("q", params.q);
-    if (params.publication_status) search.set("publication_status", params.publication_status);
+    if (params.publication_status)
+      search.set("publication_status", params.publication_status);
     if (params.source_key) search.set("source_key", params.source_key);
     if (params.sort_by) search.set("sort_by", params.sort_by);
     if (params.order) search.set("order", params.order);
@@ -387,7 +407,7 @@ export const publicApi = {
     const qs = search.toString();
     return publicGet<PublicCatalogResponse>(
       `/api/public/catalog${qs ? `?${qs}` : ""}`,
-      signal
+      signal,
     );
   },
 
@@ -398,14 +418,21 @@ export const publicApi = {
     );
   },
 
-  chapters(slug: string, signal?: AbortSignal): Promise<PublicChapterSummary[]> {
+  chapters(
+    slug: string,
+    signal?: AbortSignal,
+  ): Promise<PublicChapterSummary[]> {
     return publicGet<PublicChapterSummary[]>(
       `/api/public/novels/${encodeURIComponent(slug)}/chapters`,
       signal,
     );
   },
 
-  chapter(slug: string, chapterId: string, signal?: AbortSignal): Promise<PublicChapterDetail> {
+  chapter(
+    slug: string,
+    chapterId: string,
+    signal?: AbortSignal,
+  ): Promise<PublicChapterDetail> {
     return publicGet<PublicChapterDetail>(
       `/api/public/novels/${encodeURIComponent(slug)}/chapters/${encodeURIComponent(chapterId)}`,
       signal,
@@ -418,36 +445,48 @@ export const publicApi = {
       search.set("include_adult", String(params.include_adult));
     const qs = search.toString();
     return publicGet<PublicGenreResponse[]>(
-      `/api/public/genres${qs ? `?${qs}` : ""}`
+      `/api/public/genres${qs ? `?${qs}` : ""}`,
     );
   },
 
-  searchTags(params: TagSearchParams, signal?: AbortSignal): Promise<PublicTagSearchResult[]> {
+  searchTags(
+    params: TagSearchParams,
+    signal?: AbortSignal,
+  ): Promise<PublicTagSearchResult[]> {
     const search = new URLSearchParams();
     search.set("q", params.q);
     if (params.include_adult !== undefined)
       search.set("include_adult", String(params.include_adult));
-    if (params.limit !== undefined)
-      search.set("limit", String(params.limit));
+    if (params.limit !== undefined) search.set("limit", String(params.limit));
     return publicGet<PublicTagSearchResult[]>(
       `/api/public/tags/search?${search.toString()}`,
-      signal
+      signal,
     );
   },
 
-  novelReviews(slug: string, params?: { limit?: number; cursor?: string | null }): Promise<PublicReviewListResponse> {
+  novelReviews(
+    slug: string,
+    params?: { limit?: number; cursor?: string | null },
+  ): Promise<PublicReviewListResponse> {
     const search = new URLSearchParams();
     if (params?.limit !== undefined) search.set("limit", String(params.limit));
     if (params?.cursor) search.set("cursor", params.cursor);
     const qs = search.toString();
     return publicGet<PublicReviewListResponse>(
-      `/api/public/novels/${encodeURIComponent(slug)}/reviews${qs ? `?${qs}` : ""}`
+      `/api/public/novels/${encodeURIComponent(slug)}/reviews${qs ? `?${qs}` : ""}`,
     );
   },
 
-  rankings(period: PublicRankingPeriod, limit = 10, signal?: AbortSignal): Promise<PublicRankingResponse> {
+  rankings(
+    period: PublicRankingPeriod,
+    limit = 10,
+    signal?: AbortSignal,
+  ): Promise<PublicRankingResponse> {
     const search = new URLSearchParams({ period, limit: String(limit) });
-    return publicGet<PublicRankingResponse>(`/api/public/rankings?${search.toString()}`, signal);
+    return publicGet<PublicRankingResponse>(
+      `/api/public/rankings?${search.toString()}`,
+      signal,
+    );
   },
 };
 
@@ -460,11 +499,21 @@ export const userContributionApi = {
     return publicGet<ContributorListResponse>("/api/user/contributions");
   },
 
-  replace(input: { provider_key: "gemini"; api_key: string; consent_version: string }): Promise<ContributorWriteResponse> {
-    return publicPut<ContributorWriteResponse>("/api/user/contributions", input);
+  replace(input: {
+    provider_key: "gemini";
+    api_key: string;
+    consent_version: string;
+  }): Promise<ContributorWriteResponse> {
+    return publicPut<ContributorWriteResponse>(
+      "/api/user/contributions",
+      input,
+    );
   },
 
-  updateStatus(credentialId: string, status: "active" | "paused"): Promise<ContributorListResponse["credentials"][number]> {
+  updateStatus(
+    credentialId: string,
+    status: "active" | "paused",
+  ): Promise<ContributorListResponse["credentials"][number]> {
     return publicPatch<ContributorListResponse["credentials"][number]>(
       `/api/user/contributions/${encodeURIComponent(credentialId)}`,
       { status },
@@ -472,7 +521,9 @@ export const userContributionApi = {
   },
 
   remove(credentialId: string): Promise<void> {
-    return publicDelete(`/api/user/contributions/${encodeURIComponent(credentialId)}`);
+    return publicDelete(
+      `/api/user/contributions/${encodeURIComponent(credentialId)}`,
+    );
   },
 
   usage(credentialId: string): Promise<ContributorUsageResponse> {
@@ -523,13 +574,13 @@ export const userReadingApi = {
 
   getLibraryItem(slug: string): Promise<LibraryItem> {
     return publicGet<LibraryItem>(
-      `/api/user/library/${encodeURIComponent(slug)}`
+      `/api/user/library/${encodeURIComponent(slug)}`,
     );
   },
 
   addToLibrary(slug: string): Promise<LibraryItem> {
     return publicPost<LibraryItem>(
-      `/api/user/library/${encodeURIComponent(slug)}`
+      `/api/user/library/${encodeURIComponent(slug)}`,
     );
   },
 
@@ -539,14 +590,14 @@ export const userReadingApi = {
 
   getProgress(slug: string): Promise<ProgressResponse> {
     return publicGet<ProgressResponse>(
-      `/api/user/progress/${encodeURIComponent(slug)}`
+      `/api/user/progress/${encodeURIComponent(slug)}`,
     );
   },
 
   putProgress(slug: string, input: ProgressInput): Promise<ProgressResponse> {
     return publicPut<ProgressResponse>(
       `/api/user/progress/${encodeURIComponent(slug)}`,
-      input
+      input,
     );
   },
 
@@ -557,7 +608,7 @@ export const userReadingApi = {
     }
     const qs = search.toString();
     return publicGet<HistoryListResponse>(
-      `/api/user/history${qs ? `?${qs}` : ""}`
+      `/api/user/history${qs ? `?${qs}` : ""}`,
     );
   },
 
@@ -574,25 +625,32 @@ export const userNotificationApi = {
   list(params: NotificationListParams = {}): Promise<NotificationListResponse> {
     const search = new URLSearchParams();
     if (params.page !== undefined) search.set("page", String(params.page));
-    if (params.page_size !== undefined) search.set("page_size", String(params.page_size));
+    if (params.page_size !== undefined)
+      search.set("page_size", String(params.page_size));
     if (params.status) search.set("status", params.status);
     if (params.event_type) search.set("event_type", params.event_type);
     const qs = search.toString();
     return publicGet<NotificationListResponse>(
-      `/api/user/notifications${qs ? `?${qs}` : ""}`
+      `/api/user/notifications${qs ? `?${qs}` : ""}`,
     );
   },
 
   unreadCount(): Promise<NotificationUnreadCount> {
-    return publicGet<NotificationUnreadCount>("/api/user/notifications/unread-count");
+    return publicGet<NotificationUnreadCount>(
+      "/api/user/notifications/unread-count",
+    );
   },
 
   readAll(): Promise<NotificationReadAllResponse> {
-    return publicPost<NotificationReadAllResponse>("/api/user/notifications/read-all");
+    return publicPost<NotificationReadAllResponse>(
+      "/api/user/notifications/read-all",
+    );
   },
 
   archive(notificationId: number): Promise<void> {
-    return publicPost<void>(`/api/user/notifications/${notificationId}/archive`);
+    return publicPost<void>(
+      `/api/user/notifications/${notificationId}/archive`,
+    );
   },
 
   read(notificationId: number): Promise<void> {
@@ -600,11 +658,18 @@ export const userNotificationApi = {
   },
 
   getPreferences(): Promise<NotificationPreference[]> {
-    return publicGet<NotificationPreference[]>("/api/user/notifications/preferences");
+    return publicGet<NotificationPreference[]>(
+      "/api/user/notifications/preferences",
+    );
   },
 
-  updatePreference(update: NotificationPreferenceUpdate): Promise<NotificationPreference> {
-    return publicPut<NotificationPreference>("/api/user/notifications/preferences", update);
+  updatePreference(
+    update: NotificationPreferenceUpdate,
+  ): Promise<NotificationPreference> {
+    return publicPut<NotificationPreference>(
+      "/api/user/notifications/preferences",
+      update,
+    );
   },
 };
 
@@ -620,7 +685,7 @@ export const userEngagementApi = {
   putReview(slug: string, input: ReviewInput): Promise<ReviewResponse> {
     return publicPut<ReviewResponse>(
       `/api/user/reviews/${encodeURIComponent(slug)}`,
-      input
+      input,
     );
   },
 
@@ -635,7 +700,7 @@ export const userEngagementApi = {
     }
     const qs = search.toString();
     return publicGet<RequestListResponse>(
-      `/api/user/requests${qs ? `?${qs}` : ""}`
+      `/api/user/requests${qs ? `?${qs}` : ""}`,
     );
   },
 

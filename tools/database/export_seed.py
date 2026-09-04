@@ -5,6 +5,7 @@ import os
 from datetime import UTC, datetime
 
 import psycopg
+from psycopg import sql
 
 TABLES = [
     "users",
@@ -23,18 +24,18 @@ TABLES = [
     "notification_deliveries",
 ]
 
-SEQUENCES = [
-    ("users_id_seq", "SELECT COALESCE(MAX(id), 1) FROM users"),
-    ("genres_id_seq", "SELECT COALESCE(MAX(id), 1) FROM genres"),
-    ("tags_id_seq", "SELECT COALESCE(MAX(id), 1) FROM tags"),
-    ("novels_id_seq", "SELECT COALESCE(MAX(id), 1) FROM novels"),
-    ("chapters_id_seq", "SELECT COALESCE(MAX(id), 1) FROM chapters"),
-    ("provider_credentials_id_seq", "SELECT COALESCE(MAX(id), 1) FROM provider_credentials"),
-    ("novel_glossary_entries_id_seq", "SELECT COALESCE(MAX(id), 1) FROM novel_glossary_entries"),
-    ("novel_glossary_decision_events_id_seq", "SELECT COALESCE(MAX(id), 1) FROM novel_glossary_decision_events"),
-    ("contributor_usage_ledger_id_seq", "SELECT COALESCE(MAX(id), 1) FROM contributor_usage_ledger"),
-    ("notifications_id_seq", "SELECT COALESCE(MAX(id), 1) FROM notifications"),
-    ("notification_deliveries_id_seq", "SELECT COALESCE(MAX(id), 1) FROM notification_deliveries"),
+SEQUENCES: list[tuple[str, str]] = [
+    ("users_id_seq", "users"),
+    ("genres_id_seq", "genres"),
+    ("tags_id_seq", "tags"),
+    ("novels_id_seq", "novels"),
+    ("chapters_id_seq", "chapters"),
+    ("provider_credentials_id_seq", "provider_credentials"),
+    ("novel_glossary_entries_id_seq", "novel_glossary_entries"),
+    ("novel_glossary_decision_events_id_seq", "novel_glossary_decision_events"),
+    ("contributor_usage_ledger_id_seq", "contributor_usage_ledger"),
+    ("notifications_id_seq", "notifications"),
+    ("notification_deliveries_id_seq", "notification_deliveries"),
 ]
 
 
@@ -78,7 +79,9 @@ def main():
         conn_str = conn_str.replace("postgresql+psycopg://", "postgresql://", 1)
     with psycopg.connect(conn_str) as conn, conn.cursor() as cur:
         for tbl in TABLES:
-            cur.execute(f'SELECT * FROM "{tbl}"')
+            cur.execute(sql.SQL("SELECT * FROM {}").format(sql.Identifier(tbl)))
+            if not cur.description:
+                continue
             cols = [d[0] for d in cur.description]
             rows = cur.fetchall()
             lines.append(f"-- Table: {tbl} ({len(rows)} rows)")
@@ -92,10 +95,31 @@ def main():
         lines.append("SET session_replication_role = 'origin';")
         lines.append("")
         lines.append("-- Synchronize primary key sequences")
-        for seq, q in SEQUENCES:
-            cur.execute(q)
-            max_val = cur.fetchone()[0]
+        for seq, tbl in SEQUENCES:
+            cur.execute(sql.SQL("SELECT COALESCE(MAX(id), 1) FROM {}").format(sql.Identifier(tbl)))
+            row = cur.fetchone()
+            max_val = row[0] if row else 1
             lines.append(f"SELECT setval('{seq}', {max_val}, true);")
+        cur.execute(
+            """
+            SELECT s.relname AS seq_name, t.relname AS tbl_name, a.attname AS col_name
+            FROM pg_class s
+            JOIN pg_depend d ON d.objid = s.oid
+            JOIN pg_class t ON d.refobjid = t.oid
+            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = d.refobjsubid
+            WHERE s.relkind = 'S' AND t.relkind = 'r' AND d.deptype = 'a'
+            ORDER BY t.relname, s.relname;
+            """
+        )
+        discovered_sequences = cur.fetchall()
+        for seq, tbl, col in discovered_sequences:
+            if tbl in TABLES:
+                cur.execute(
+                    sql.SQL("SELECT COALESCE(MAX({}), 1) FROM {}").format(sql.Identifier(col), sql.Identifier(tbl))
+                )
+                row = cur.fetchone()
+                max_val = row[0] if row else 1
+                lines.append(f"SELECT setval('{seq}', {max_val}, true);")
 
         lines.append("")
         lines.append("COMMIT;")

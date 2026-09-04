@@ -15,7 +15,8 @@ if ($RuntimeOnly -and $DevOnly) {
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $pythonPath = if ([System.IO.Path]::IsPathRooted($Python)) {
     $Python
-} else {
+}
+else {
     Join-Path $repoRoot $Python
 }
 
