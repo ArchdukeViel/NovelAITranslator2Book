@@ -464,7 +464,7 @@ def test_production_compose_contract() -> None:
     assert {"redis:8.8.0-alpine", "postgres:18.6-alpine", "caddy:2.11.4-alpine"} == {
         ref.split("@")[0] for ref in pinned
     }
-    assert len(pinned) == 3
+    assert len(pinned) == 4
     # Public-service images use ${VAR:-ghcr.io/...} interpolation and must
     # never be digest-pinned by CI: their digests change on every build, so
     # a pin would hard-fail the deploy.
