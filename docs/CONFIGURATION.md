@@ -32,7 +32,7 @@ Configuration contract. Exact fields/defaults live in
 
 - Canonical environment selector: `ENV`; never introduce `APP_ENV`.
 - Pydantic settings reads root `.env`; process environment overrides it.
-- Compose reads `deploy/.env` and requires external `DATABASE_URL`.
+- Compose reads `deploy/.env` and supports co-located native PostgreSQL 17 (`POSTGRES_*` settings) or an external `DATABASE_URL`.
 - `MIGRATION_DATABASE_URL` optionally gives the one-shot Alembic service a
   separate elevated role; long-running processes continue using `DATABASE_URL`.
 - Immutable remote releases combine the shared secret `.env` with a non-secret
@@ -209,6 +209,11 @@ restore namespace. Do not reuse production identities for that test. Keep all
 test values in ignored local environment files or an approved secret store; the
 committed examples contain placeholders only.
 
+The managed database recovery workflow assigns each run a unique
+`database/recovery-<run_id>` prefix. The `database/` namespace is required by
+the R2 gateway for database-backup writes, reads, listing, and cleanup; a
+root-level `recovery-` prefix is rejected before R2 is called.
+
 `BACKUP_ENABLED` controls object snapshots. `BACKUP_RETENTION_COUNT`,
 `BACKUP_MIN_SUCCESSFUL_TO_KEEP`, and `BACKUP_MAX_AGE_DAYS` bound committed
 snapshot retention; `BACKUP_SAFETY_GRACE_DAYS` protects unreferenced shared R2
@@ -240,7 +245,10 @@ duration and renewal; do not tune lease below realistic job duration without tes
   The current runtime uses a Supabase Session Pooler endpoint on port `5432`
   while retaining `DB_CONNECTION_MODE=direct` for its application pool
   behavior; keep those two concepts distinct during egress investigations.
-- `DB_POOL_SIZE` and `DB_MAX_OVERFLOW`: bound each direct/session process pool.
+- `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`: credentials for co-located PostgreSQL 17 in `deploy/compose.yml`.
+- `POSTGRES_BIND_ADDRESS`: host interface binding for PostgreSQL port (defaults to `127.0.0.1` for secure desktop GUI SSH tunneling).
+- `POSTGRES_PORT`: host port mapping for PostgreSQL (defaults to `5432`).
+- `DB_POOL_SIZE` and `DB_MAX_OVERFLOW`: bound each direct/session process pool. Defaults are tuned to `DB_POOL_SIZE=10` and `DB_MAX_OVERFLOW=4` (14 max connections per process) to support concurrency 8 without pooler starvation.
 - `DB_POOL_PROCESS_COUNT`: count every long-lived process or replica that can
   own one of those pools. The current split Compose topology defaults to three
   (backend, reader, and worker); update it whenever replicas or topology
@@ -248,13 +256,8 @@ duration and renewal; do not tune lease below realistic job duration without tes
 - `DB_CONNECTION_RESERVE`: reserve connections for one-shot migration,
   readiness, and emergency operator access outside the long-lived pool
   ceiling.
-- `DB_CONNECTION_BUDGET`: deployment-wide managed-pooler budget. For
-  direct/session mode, production startup now fails closed unless
-  `DB_POOL_PROCESS_COUNT * (DB_POOL_SIZE + DB_MAX_OVERFLOW) +
-  DB_CONNECTION_RESERVE <= DB_CONNECTION_BUDGET`. The committed production
-  example uses `3 * (5 + 5) + 2 = 32`; verify the resulting aggregate against
-  the target pooler before launch. Transaction mode uses `NullPool`, but its
-  pooler concurrency and reserve still require operator verification.
+- `DB_CONNECTION_BUDGET`: deployment-wide database pool ceiling (e.g. `32` for managed cloud poolers, or up to `100` for native PostgreSQL 17). Startup checks that
+  `DB_POOL_PROCESS_COUNT * (DB_POOL_SIZE + DB_MAX_OVERFLOW) + DB_CONNECTION_RESERVE <= DB_CONNECTION_BUDGET`.
 - `WEB_RATE_LIMITER_BACKEND=memory|redis`: memory only for single instance.
 - `REDIS_URL`: shared rate limiting and distributed queue where enabled.
 - `TRUSTED_PROXY_CIDRS`: exact reverse-proxy CIDRs allowed to supply
@@ -317,9 +320,8 @@ introducing a shared cache.
 `PUBLIC_PROJECTION_CACHE_TTL_SECONDS` defaults to `30` and accepts
 `1..300`; `PUBLIC_PROJECTION_CACHE_MAX_ENTRIES` defaults to `256` and
 accepts `1..2048`. Each process owns a bounded TTL/LRU cache for
-non-personalized, JSON-safe catalog pages, novel summaries, and chapter
-metadata. Search query text, user identity, progress, history, cookies, and
-raw chapter text are never stored in this cache.
+non-personalized, JSON-safe catalog pages, novel summaries, chapter
+reader responses (when `version_id is None`), and warm search query results. User identity, progress, history, cookies, and raw translation chunks are never stored in this cache.
 
 Catalog keys include the current published projection timestamp. Novel-summary
 and chapter-context keys include the current novel timestamp. Publish,

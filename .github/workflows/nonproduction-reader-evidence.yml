@@ -112,7 +112,7 @@ jobs:
             printf 'DATABASE_URL=%s\n' "$database_url"
             printf 'MIGRATION_DATABASE_URL=%s\n' "$database_url"
             printf 'DB_CONNECTION_MODE=session\n'
-            printf 'DB_POOL_SIZE=5\nDB_MAX_OVERFLOW=2\nDB_POOL_PROCESS_COUNT=2\nDB_CONNECTION_RESERVE=2\nDB_CONNECTION_BUDGET=32\n'
+            printf 'DB_POOL_SIZE=10\nDB_MAX_OVERFLOW=4\nDB_POOL_PROCESS_COUNT=2\nDB_CONNECTION_RESERVE=2\nDB_CONNECTION_BUDGET=32\n'
             printf 'DB_SSL_MODE=require\nDB_CONNECT_TIMEOUT_SECONDS=15\n'
             printf 'R2_BUCKET=%s\n' "$TEST_R2_APPLICATION_BUCKET"
             printf 'R2_GATEWAY_URL=%s\nR2_GATEWAY_CLIENT_ID=%s\nR2_GATEWAY_CLIENT_SECRET=%s\n' \

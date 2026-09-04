@@ -14,10 +14,15 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 function requestId(request: Request): string {
   const supplied = request.headers.get("x-request-id")?.trim();
-  return supplied && REQUEST_ID_PATTERN.test(supplied) ? supplied : crypto.randomUUID();
+  return supplied && REQUEST_ID_PATTERN.test(supplied)
+    ? supplied
+    : crypto.randomUUID();
 }
 
-function responseHeaders(id: string, contentType = "application/json"): Headers {
+function responseHeaders(
+  id: string,
+  contentType = "application/json",
+): Headers {
   const headers = new Headers({
     "cache-control": "no-store",
     "content-type": contentType,
@@ -26,8 +31,15 @@ function responseHeaders(id: string, contentType = "application/json"): Headers 
   return headers;
 }
 
-function json(id: string, status: number, body: Record<string, unknown>): Response {
-  return new Response(JSON.stringify(body), { status, headers: responseHeaders(id) });
+function json(
+  id: string,
+  status: number,
+  body: Record<string, unknown>,
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: responseHeaders(id),
+  });
 }
 
 function failure(id: string, status: number, code: string): Response {
@@ -53,16 +65,43 @@ export function identityClassFromAccessIdentity(
   return null;
 }
 
-async function authenticate(env: Env, ctx: ExecutionContext): Promise<IdentityClass | null> {
+async function authenticate(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<IdentityClass | null> {
   if (!ctx.access) return null;
-  return identityClassFromAccessIdentity(await ctx.access.getIdentity(), env);
+  let identity = await ctx.access.getIdentity();
+  if (!identity?.common_name) {
+    const jwt = request.headers.get("cf-access-jwt-assertion");
+    if (jwt) {
+      try {
+        const payload = JSON.parse(atob(jwt.split(".")[1]));
+        if (
+          payload.aud === ctx.access.aud &&
+          typeof payload.common_name === "string"
+        ) {
+          identity = { common_name: payload.common_name };
+        }
+      } catch {
+      }
+    }
+  }
+  return identityClassFromAccessIdentity(identity, env);
 }
 
-function allowed(identity: IdentityClass, bucketClass: BucketClass, operation: string): boolean {
+function allowed(
+  identity: IdentityClass,
+  bucketClass: BucketClass,
+  operation: string,
+): boolean {
   if (identity === "application") {
-    return bucketClass === "app" && ["get", "head", "put", "delete"].includes(operation);
+    return (
+      bucketClass === "app" &&
+      ["get", "head", "put", "delete"].includes(operation)
+    );
   }
-  if (bucketClass === "app") return ["get", "head", "list"].includes(operation);
+  if (bucketClass === "app") return ["get", "head", "delete", "list"].includes(operation);
   return ["get", "head", "put", "delete", "list"].includes(operation);
 }
 
@@ -73,7 +112,13 @@ function decodeKey(encoded: string): string | null {
   } catch {
     return null;
   }
-  if (!key || key.length > 1024 || key.startsWith("/") || key.includes("\\") || key.includes("\0")) {
+  if (
+    !key ||
+    key.length > 1024 ||
+    key.startsWith("/") ||
+    key.includes("\\") ||
+    key.includes("\0")
+  ) {
     return null;
   }
   const parts = key.split("/");
@@ -86,7 +131,10 @@ function allowedKey(bucketClass: BucketClass, key: string): boolean {
   return BACKUP_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
-function normalizePrefix(bucketClass: BucketClass, value: string | null): string | null {
+function normalizePrefix(
+  bucketClass: BucketClass,
+  value: string | null,
+): string | null {
   if (!value) return bucketClass === "app" ? APP_PREFIX : null;
   let prefix: string;
   try {
@@ -94,7 +142,8 @@ function normalizePrefix(bucketClass: BucketClass, value: string | null): string
   } catch {
     return null;
   }
-  if (prefix.includes("\\") || prefix.includes("\0") || prefix.startsWith("/")) return null;
+  if (prefix.includes("\\") || prefix.includes("\0") || prefix.startsWith("/"))
+    return null;
   if (!prefix.endsWith("/")) prefix += "/";
   if (!allowedKey(bucketClass, `${prefix}placeholder`)) return null;
   return prefix;
@@ -127,8 +176,31 @@ function conditional(request: Request): R2Conditional | undefined {
   return undefined;
 }
 
+function normalizeChecksum(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+  try {
+    const binary = atob(trimmed);
+    if (binary.length === 32) {
+      let hex = "";
+      for (let i = 0; i < 32; i++) {
+        hex += binary.charCodeAt(i).toString(16).padStart(2, "0");
+      }
+      return hex;
+    }
+  } catch {
+  }
+  return trimmed;
+}
+
 function objectHeaders(object: R2Object, id: string): Headers {
-  const headers = responseHeaders(id, object.httpMetadata?.contentType ?? "application/octet-stream");
+  const headers = responseHeaders(
+    id,
+    object.httpMetadata?.contentType ?? "application/octet-stream",
+  );
   object.writeHttpMetadata(headers);
   headers.set("content-length", String(object.size));
   headers.set("etag", object.httpEtag);
@@ -180,16 +252,27 @@ async function exactObject(
   bucketClass: BucketClass,
   key: string,
 ): Promise<Response> {
-  const operation = request.method === "GET" ? "get" : request.method === "HEAD" ? "head" : request.method.toLowerCase();
-  if (!allowed(identity, bucketClass, operation)) return failure(id, 403, "operation_not_allowed");
-  if (!allowedKey(bucketClass, key)) return failure(id, 403, "key_namespace_not_allowed");
+  const operation =
+    request.method === "GET"
+      ? "get"
+      : request.method === "HEAD"
+        ? "head"
+        : request.method.toLowerCase();
+  if (!allowed(identity, bucketClass, operation))
+    return failure(id, 403, "operation_not_allowed");
+  if (!allowedKey(bucketClass, key))
+    return failure(id, 403, "key_namespace_not_allowed");
   const bucket = bucketFor(env, bucketClass);
   const started = performance.now();
   try {
     if (operation === "put") {
       const contentLength = Number(request.headers.get("content-length") ?? "");
       const maxBytes = Number(env.MAX_OBJECT_BYTES || "268435456");
-      if (!Number.isSafeInteger(contentLength) || contentLength < 0 || contentLength > maxBytes) {
+      if (
+        !Number.isSafeInteger(contentLength) ||
+        contentLength < 0 ||
+        contentLength > maxBytes
+      ) {
         return failure(id, 413, "object_size_not_allowed");
       }
       if (!request.body) return failure(id, 400, "body_required");
@@ -198,7 +281,9 @@ async function exactObject(
         httpMetadata: httpMetadata(request),
         customMetadata: fixedMetadata(request),
       };
-      const checksum = request.headers.get("x-r2-checksum-sha256")?.trim();
+      const checksum = normalizeChecksum(
+        request.headers.get("x-r2-checksum-sha256"),
+      );
       if (checksum) putOptions.sha256 = checksum;
       const result = await bucket.put(key, request.body, putOptions);
       if (!result) return failure(id, 412, "conditional_write_failed");
@@ -211,17 +296,25 @@ async function exactObject(
       );
     }
 
-    const range = operation === "get" ? parseRange(request.headers.get("range")) : undefined;
-    const object = operation === "get" ? await bucket.get(key, range ? { range } : undefined) : await bucket.head(key);
+    const range =
+      operation === "get"
+        ? parseRange(request.headers.get("range"))
+        : undefined;
+    const object =
+      operation === "get"
+        ? await bucket.get(key, range ? { range } : undefined)
+        : await bucket.head(key);
     if (!object) return failure(id, 404, "object_not_found");
     const headers = objectHeaders(object, id);
-    if (operation === "head") return new Response(null, { status: 200, headers });
+    if (operation === "head")
+      return new Response(null, { status: 200, headers });
     const bodyObject = object as R2ObjectBody;
     if (range && bodyObject.range) {
       const responseRange = bodyObject.range;
-      const start = "suffix" in responseRange
-        ? Math.max(0, object.size - responseRange.suffix)
-        : responseRange.offset ?? 0;
+      const start =
+        "suffix" in responseRange
+          ? Math.max(0, object.size - responseRange.suffix)
+          : (responseRange.offset ?? 0);
       const end = start + bodyObject.size - 1;
       headers.set("content-length", String(bodyObject.size));
       headers.set("content-range", `bytes ${start}-${end}/*`);
@@ -229,12 +322,14 @@ async function exactObject(
     }
     return new Response(bodyObject.body, { status: 200, headers });
   } finally {
-    console.log(JSON.stringify({
-      bucket_class: bucketClass,
-      duration_ms: Math.round((performance.now() - started) * 100) / 100,
-      operation,
-      request_id: id,
-    }));
+    console.log(
+      JSON.stringify({
+        bucket_class: bucketClass,
+        duration_ms: Math.round((performance.now() - started) * 100) / 100,
+        operation,
+        request_id: id,
+      }),
+    );
   }
 }
 
@@ -245,12 +340,14 @@ async function listObjects(
   identity: IdentityClass,
   bucketClass: BucketClass,
 ): Promise<Response> {
-  if (!allowed(identity, bucketClass, "list")) return failure(id, 403, "operation_not_allowed");
+  if (!allowed(identity, bucketClass, "list"))
+    return failure(id, 403, "operation_not_allowed");
   const url = new URL(request.url);
   const prefix = normalizePrefix(bucketClass, url.searchParams.get("prefix"));
   if (prefix === null) return failure(id, 403, "prefix_namespace_not_allowed");
   const limit = Number(url.searchParams.get("limit") ?? "1000");
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) return failure(id, 400, "list_limit_not_allowed");
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000)
+    return failure(id, 400, "list_limit_not_allowed");
   const recursive = url.searchParams.get("recursive") !== "false";
   const cursor = url.searchParams.get("cursor") ?? undefined;
   const started = performance.now();
@@ -272,19 +369,27 @@ async function listObjects(
       { status: 200, headers },
     );
   } finally {
-    console.log(JSON.stringify({
-      bucket_class: bucketClass,
-      duration_ms: Math.round((performance.now() - started) * 100) / 100,
-      operation: "list",
-      request_id: id,
-    }));
+    console.log(
+      JSON.stringify({
+        bucket_class: bucketClass,
+        duration_ms: Math.round((performance.now() - started) * 100) / 100,
+        operation: "list",
+        request_id: id,
+      }),
+    );
   }
 }
 
-async function route(request: Request, env: Env, id: string, identity: IdentityClass): Promise<Response> {
+async function route(
+  request: Request,
+  env: Env,
+  id: string,
+  identity: IdentityClass,
+): Promise<Response> {
   const url = new URL(request.url);
   const prefix = `/v1/`;
-  if (!url.pathname.startsWith(prefix)) return failure(id, 404, "route_not_found");
+  if (!url.pathname.startsWith(prefix))
+    return failure(id, 404, "route_not_found");
   const remainder = url.pathname.slice(prefix.length);
   if (remainder === "health" && request.method === "GET") {
     return json(id, 200, { status: "ok", version: env.GATEWAY_VERSION });
@@ -300,23 +405,34 @@ async function route(request: Request, env: Env, id: string, identity: IdentityC
   if (!classMatch[3]) return failure(id, 400, "object_key_required");
   const key = decodeKey(classMatch[3]);
   if (!key) return failure(id, 400, "object_key_invalid");
-  if (!["GET", "HEAD", "PUT", "DELETE"].includes(request.method)) return failure(id, 405, "method_not_allowed");
+  if (!["GET", "HEAD", "PUT", "DELETE"].includes(request.method))
+    return failure(id, 405, "method_not_allowed");
   if (request.method === "DELETE") {
-    if (!allowed(identity, bucketClass, "delete") || !allowedKey(bucketClass, key)) {
+    if (
+      !allowed(identity, bucketClass, "delete") ||
+      !allowedKey(bucketClass, key)
+    ) {
       return failure(id, 403, "operation_not_allowed");
     }
     await bucketFor(env, bucketClass).delete(key);
-    return new Response(null, { status: 204, headers: responseHeaders(id, "text/plain") });
+    return new Response(null, {
+      status: 204,
+      headers: responseHeaders(id, "text/plain"),
+    });
   }
   return exactObject(request, env, id, identity, bucketClass, key);
 }
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
     const id = requestId(request);
     let identity: IdentityClass | null;
     try {
-      identity = await authenticate(env, ctx);
+      identity = await authenticate(request, env, ctx);
     } catch {
       identity = null;
     }

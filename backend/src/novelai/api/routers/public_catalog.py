@@ -79,9 +79,9 @@ async def catalog(
 
     response: PublicCatalogResponse
     source_key_filter = _optional_str(source_key)
+    query_str = (q or "").strip()
     cacheable = not any(
         (
-            q and q.strip(),
             publication_status_filter,
             source_key_filter,
             min_chapters is not None,
@@ -93,12 +93,13 @@ async def catalog(
             include_adult,
         )
     )
-    cache_key = service.public_catalog_cache_key(
+    base_cache_key = service.public_catalog_cache_key(
         sort_by=effective_sort_by,
         order=effective_order,
         page=page,
         page_size=page_size,
     )
+    cache_key = (*base_cache_key, query_str) if query_str else base_cache_key
     cached = public_projection_cache.get(cache_key) if cacheable else None
     if isinstance(cached, dict):
         response = PublicCatalogResponse.model_validate(cached)

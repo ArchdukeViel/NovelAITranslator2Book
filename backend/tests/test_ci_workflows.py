@@ -355,6 +355,7 @@ def test_managed_recovery_workflow_is_confirmation_gated_and_isolated() -> None:
     assert "MANAGED_DATABASE_TEST_URL" in source
     assert "TEST_R2_BACKUP_BUCKET" in source
     assert "DATABASE_RESTORE_TARGET_URL" in source
+    assert "DATABASE_BACKUP_PREFIX: database/recovery-${{ github.run_id }}" in source
     assert "postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94" in source
     assert "docker_args=(" in source
     assert "--network host" in source

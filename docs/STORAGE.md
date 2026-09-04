@@ -165,3 +165,13 @@ database; verify exact key references and active generation; rebuild derived
 projections if required; then run health, public reader, authentication,
 takedown, and representative URL checks. R2 lifecycle rules and bucket locks
 are not backups.
+
+## Relational database storage (PostgreSQL 17)
+
+The co-located database runs on `postgres:17.4-alpine` within Docker Compose
+and mounts persistent data to the named volume `postgres_data` (`/var/lib/postgresql/data`).
+
+- **Persistence**: Relational state (novels, chapters, users, glossaries, ledgers, credentials, audit logs) is stored in native PostgreSQL 17 data files.
+- **Automated Backup**: `tools/database/backup_postgres.ps1` runs non-blocking `pg_dump -Fc` inside the `dokushodo-db` container, outputs a timestamped `.dump` archive to `deploy/postgres/backups/`, verifies the archive, and prunes dumps older than the configured retention policy (14 days default).
+- **Automated Restore**: `tools/database/restore_postgres.ps1` terminates active connections to prevent table-lock contention, applies `pg_restore --clean --if-exists`, and asserts table row counts post-restore.
+- **Relational Integrity**: Foreign keys enforce relational invariants and are 100% indexed as of migration `a1b2c3d4e5f6` to avoid sequential table scans.

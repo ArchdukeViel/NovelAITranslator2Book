@@ -166,6 +166,9 @@ class R2GenerationActivationService:
         novel.active_generation_storage_key = stored.key
         self.db_session.add(novel)
         self.db_session.flush()
+        from novelai.services.public_projection_cache import invalidate_public_projection_cache
+
+        invalidate_public_projection_cache()
         return GenerationActivationResult(
             novel_id=novel_id,
             generation_id=generation_id,

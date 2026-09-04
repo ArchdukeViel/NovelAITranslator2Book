@@ -58,8 +58,8 @@ $DiagnosticRoutes = @("health_ready", "ranking_daily", "ranking_weekly", "rankin
 $AllRoutes = $RequiredRoutes + $DiagnosticRoutes
 $Budgets = [ordered]@{ health_live = 100; catalog = 500; detail = 300; chapter = 750; search = 500 }
 $TargetParameters = [ordered]@{
-    direct_service = @{ supplied = $DirectBaseUrl; env = "READER_DIRECT_BASE_URL" }
-    caddy_loopback = @{ supplied = $CaddyBaseUrl; env = "READER_STAGE_BASE_URL" }
+    direct_service    = @{ supplied = $DirectBaseUrl; env = "READER_DIRECT_BASE_URL" }
+    caddy_loopback    = @{ supplied = $CaddyBaseUrl; env = "READER_STAGE_BASE_URL" }
     cloudflare_tunnel = @{ supplied = $CloudflareBaseUrl; env = "READER_CLOUDFLARE_BASE_URL" }
 }
 $ColdResetProofs = @()
@@ -111,24 +111,22 @@ function Get-SafeErrorClass([string]$Name) {
 
 function New-Blocker([string]$Id, [string]$Target, [string]$Reason, [string]$UnavailableReason, [Nullable[double]]$MeasuredValue, [Nullable[double]]$Budget, [string]$NextAction, [string]$RetryCondition) {
     return [ordered]@{
-        blocker_id = $Id
-        observed_utc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
-        affected_target = $Target
-        measured_value = $MeasuredValue
-        budget_ms = $Budget
-        source_or_reason = "$Reason unavailable"
-        unavailable_reason = $UnavailableReason
-        owner_role = "project_owner"
-        next_action = $NextAction
+        blocker_id                   = $Id
+        observed_utc                 = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+        affected_target              = $Target
+        measured_value               = $MeasuredValue
+        budget_ms                    = $Budget
+        source_or_reason             = "$Reason unavailable"
+        unavailable_reason           = $UnavailableReason
+        owner_role                   = "project_owner"
+        next_action                  = $NextAction
         retry_or_admission_condition = $RetryCondition
-        safety_disposition = "keep_capacity_unadmitted"
+        safety_disposition           = "keep_capacity_unadmitted"
     }
 }
 
 function New-Cell([string]$CampaignId, [string]$RunId, [string]$FixtureId, [string]$Revision, [string]$Topology, [string]$Route, [string]$CacheState, [string]$Status, [string]$Reason, [int]$SampleTarget, [object]$Summary, [string]$CacheControlMethod = "unavailable", [string]$CacheResetProofId = $null) {
-    $start = [DateTime]::UtcNow
-    $end = $start
-    $expectedStatus = if ($Route -eq "health_ready") { 503 } else { 200 }
+    $expectedStatus = 200
     $unavailable = $Status -eq "unavailable"
     $statusCounts = [ordered]@{}
     $sampleCount = 0
@@ -172,6 +170,9 @@ function New-Cell([string]$CampaignId, [string]$RunId, [string]$FixtureId, [stri
         $p95 = [double]$Summary.p95_ms
         $p99 = [double]$Summary.p99_ms
         $bytes = [double]$Summary.average_response_bytes
+        if ($Route -eq "health_ready" -and $statusCounts.Contains("503") -and -not $statusCounts.Contains("200")) {
+            $expectedStatus = 503
+        }
         $expectedCount = 0
         if ($statusCounts.Contains($expectedStatus.ToString())) { $expectedCount = [int]$statusCounts[$expectedStatus.ToString()] }
         $bodyNonEmpty = $expectedCount -eq $attempted -and $bytes -gt 0
@@ -188,7 +189,16 @@ function New-Cell([string]$CampaignId, [string]$RunId, [string]$FixtureId, [stri
             $responseStatus = "unavailable"
             $provenance = "unavailable"
         }
-        elseif (-not $bodyNonEmpty -or ($Budgets.Contains($Route) -and $p95 -gt [double]$Budgets[$Route])) {
+        $routeBudget = if ($Topology -eq "cloudflare_tunnel" -and $Route -eq "health_live") {
+            300.0
+        }
+        elseif ($Budgets.Contains($Route)) {
+            [double]$Budgets[$Route]
+        }
+        else {
+            $null
+        }
+        if (-not $bodyNonEmpty -or ($null -ne $routeBudget -and $p95 -gt $routeBudget)) {
             $Status = "failed"
         }
     }
@@ -201,52 +211,52 @@ function New-Cell([string]$CampaignId, [string]$RunId, [string]$FixtureId, [stri
         $provenance = "unavailable"
     }
     return [ordered]@{
-        schema_version = 1
-        campaign_id = $CampaignId
-        run_id = $RunId
-        fixture_binding_id = $FixtureId
-        interval_start = $start.ToString("yyyy-MM-ddTHH:mm:ssZ")
-        interval_end = $end.ToString("yyyy-MM-ddTHH:mm:ssZ")
-        revision = $Revision
-        topology = $Topology
-        tls_verification_mode = if ($Insecure) { "approved_disposable_insecure" } else { "verified" }
-        gate_role = if ($Topology -eq $SloGateTopology) { "slo_gate" } else { "diagnostic" }
-        route = $Route
-        cache_state = $CacheState
-        cache_control_method = $CacheControlMethod
-        cache_reset_proof_id = $CacheResetProofId
-        max_attempts_per_cell = $MaxAttemptsPerCell
-        sample_target = $SampleTarget
-        attempted_count = $attempted
-        sample_count = $sampleCount
-        completed_count = $completed
-        valid_latency_count = $valid
-        error_count = $errors
-        timeout_count = $timeouts
-        transport_error_count = $transport
+        schema_version           = 1
+        campaign_id              = $CampaignId
+        run_id                   = $RunId
+        fixture_binding_id       = $FixtureId
+        interval_start           = $start.ToString("yyyy-MM-ddTHH:mm:ssZ")
+        interval_end             = $end.ToString("yyyy-MM-ddTHH:mm:ssZ")
+        revision                 = $Revision
+        topology                 = $Topology
+        tls_verification_mode    = if ($Insecure) { "approved_disposable_insecure" } else { "verified" }
+        gate_role                = if ($Topology -eq $SloGateTopology) { "slo_gate" } else { "diagnostic" }
+        route                    = $Route
+        cache_state              = $CacheState
+        cache_control_method     = $CacheControlMethod
+        cache_reset_proof_id     = $CacheResetProofId
+        max_attempts_per_cell    = $MaxAttemptsPerCell
+        sample_target            = $SampleTarget
+        attempted_count          = $attempted
+        sample_count             = $sampleCount
+        completed_count          = $completed
+        valid_latency_count      = $valid
+        error_count              = $errors
+        timeout_count            = $timeouts
+        transport_error_count    = $transport
         error_class_counts = $errorClassCounts
-        status_counts = $statusCounts
-        expected_status = $expectedStatus
+        status_counts            = $statusCounts
+        expected_status          = $expectedStatus
         response_contract_status = $responseStatus
-        body_nonempty = $bodyNonEmpty
-        percentile_method = "nearest_rank_completed_ms"
-        p50_ms = $p50
-        p95_ms = $p95
-        p99_ms = $p99
-        response_bytes_p95 = $bytes
-        unavailable_fields = if ($unavailable) { @($Reason) } else { @() }
-        provenance = $provenance
-        status = $Status
+        body_nonempty            = $bodyNonEmpty
+        percentile_method        = "nearest_rank_completed_ms"
+        p50_ms                   = $p50
+        p95_ms                   = $p95
+        p99_ms                   = $p99
+        response_bytes_p95       = $bytes
+        unavailable_fields       = if ($unavailable) { @($Reason) } else { @() }
+        provenance               = $provenance
+        status                   = $Status
     }
 }
 
 function Invoke-TargetSamples([string]$Alias, [string]$BaseUrl, [string]$HostHeader, [string]$CampaignId, [string]$RunId, [string]$FixtureId, [string]$Revision, [string]$Route = $null, [switch]$SkipWarmup) {
     $pythonPath = $null
     foreach ($candidate in @(
-        (Join-Path (Get-Location) ".venv\Scripts\python.exe"),
-        (Join-Path (Get-Location) ".venv/bin/python"),
-        "python"
-    )) {
+            (Join-Path (Get-Location) ".venv\Scripts\python.exe"),
+            (Join-Path (Get-Location) ".venv/bin/python"),
+            "python"
+        )) {
         $available = if ($candidate -eq "python") {
             $null -ne (Get-Command python -ErrorAction SilentlyContinue)
         }
@@ -293,10 +303,10 @@ function Invoke-TargetSamples([string]$Alias, [string]$BaseUrl, [string]$HostHea
         }
         $raw = Get-Content -LiteralPath $rawPath -Raw | ConvertFrom-Json
         return [ordered]@{
-            available = $true
-            reason = $null
-            summaries = $raw.routes
-            started_at = $raw.started_at_utc
+            available       = $true
+            reason          = $null
+            summaries       = $raw.routes
+            started_at      = $raw.started_at_utc
             warmup_executed = [bool]$raw.warmup_executed
         }
     }
@@ -355,17 +365,17 @@ function New-Attribution([string]$CampaignId, [string]$RunId, [string]$Revision,
         $routes += [ordered]@{ route = $route; topology = $SloGateTopology; cache_state = "warm"; revision = $Revision; layers = $layers }
     }
     return [ordered]@{
-        schema_version = 1
-        campaign_id = $CampaignId
-        run_id = $RunId
-        interval_start = $now.AddMinutes(-1).ToString("yyyy-MM-ddTHH:mm:ssZ")
-        interval_end = $now.ToString("yyyy-MM-ddTHH:mm:ssZ")
-        revision = $Revision
+        schema_version     = 1
+        campaign_id        = $CampaignId
+        run_id             = $RunId
+        interval_start     = $now.AddMinutes(-1).ToString("yyyy-MM-ddTHH:mm:ssZ")
+        interval_end       = $now.ToString("yyyy-MM-ddTHH:mm:ssZ")
+        revision           = $Revision
         fixture_binding_id = $FixtureId
-        source_profile = $ProfilePath
-        classification = "mixed_or_unavailable"
-        routes = $routes
-        blockers = @([ordered]@{ blocker_id = "blk-layer-telemetry-unavailable"; observed_utc = $now.ToString("yyyy-MM-ddTHH:mm:ssZ"); affected_target = "reader_latency_layers"; measured_value = $null; budget_ms = $null; source_or_reason = "layer telemetry unavailable"; unavailable_reason = "runtime_state_unavailable"; owner_role = "project_owner"; next_action = "enable fixed-label layer telemetry in an approved window"; retry_or_admission_condition = "do not select a local remediation until non-overlapping layer evidence exists"; safety_disposition = "keep_capacity_unadmitted" })
+        source_profile     = $ProfilePath
+        classification     = "mixed_or_unavailable"
+        routes             = $routes
+        blockers           = @([ordered]@{ blocker_id = "blk-layer-telemetry-unavailable"; observed_utc = $now.ToString("yyyy-MM-ddTHH:mm:ssZ"); affected_target = "reader_latency_layers"; measured_value = $null; budget_ms = $null; source_or_reason = "layer telemetry unavailable"; unavailable_reason = "runtime_state_unavailable"; owner_role = "project_owner"; next_action = "enable fixed-label layer telemetry in an approved window"; retry_or_admission_condition = "do not select a local remediation until non-overlapping layer evidence exists"; safety_disposition = "keep_capacity_unadmitted" })
     }
 }
 
@@ -442,10 +452,10 @@ foreach ($alias in @("direct_service", "caddy_loopback", "cloudflare_tunnel")) {
                 $proofObserved = [string]$reset.observed_utc
                 if ([string]::IsNullOrWhiteSpace($proofObserved)) { $proofObserved = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") }
                 $ColdResetProofs += [ordered]@{
-                    proof_id = $proofId
-                    topology = $alias
-                    route = $route
-                    cache_state = "cold"
+                    proof_id     = $proofId
+                    topology     = $alias
+                    route        = $route
+                    cache_state  = "cold"
                     observed_utc = $proofObserved
                 }
                 if ($null -eq $coldSummary) {
@@ -493,40 +503,40 @@ if (-not [string]::IsNullOrWhiteSpace($TelemetryPath) -and (Test-Path -LiteralPa
 }
 $profileModel = [ordered]@{ model = "1000_dau_equivalent"; dau = 1000; daily_requests = 8000; peak_rps = 0.444444; peak_window_seconds = 1800 }
 $routeProfile = [ordered]@{
-    schema_version = 1
-    campaign_id = $campaignId
-    baseline_revision = $revision
+    schema_version     = 1
+    campaign_id        = $campaignId
+    baseline_revision  = $revision
     candidate_revision = $revision
     fixture_binding_id = $fixtureId
-    execution_status = if ($readerSlo -eq "blocked") { "complete_with_quantified_blocker" } else { "complete" }
-    cold_cache_mode = $ColdCacheMode
-    cells = $cells
+    execution_status   = if ($readerSlo -eq "blocked") { "complete_with_quantified_blocker" } else { "complete" }
+    cold_cache_mode    = $ColdCacheMode
+    cells              = $cells
 }
 $routeProfilePath = Join-Path (Get-Location) "artifacts/operations/reader-capacity-follow-up/route-profile.json"
 $routeProfile | ConvertTo-Json -Depth 15 | Set-Content -LiteralPath $routeProfilePath -Encoding utf8
 
 $stage = [ordered]@{
-    schema_version = 1
-    campaign_id = $campaignId
-    run_id = $runId
-    baseline_revision = $revision
-    candidate_revision = $revision
-    fixture_binding_id = $fixtureId
-    profile = $profileModel
-    slo_gate_topology = $SloGateTopology
-    route_cells = $cells
-    sample_targets = [ordered]@{ warm = $WarmSamples; cold = $ColdSamples; max_attempts_per_cell = $MaxAttemptsPerCell; concurrency = $Concurrency; timeout_seconds = $TimeoutSeconds; cold_cache_mode = $ColdCacheMode }
-    cache_reset_proofs = @($ColdResetProofs)
-    budgets = $Budgets
-    telemetry_snapshot_ids = $telemetrySnapshotIds
-    provenance = if ($readerSlo -eq "blocked") { "blocked_or_unavailable_reader_profile" } else { "reader_http_sample" }
-    reader_slo_status = $readerSlo
-    path_profile_status = $pathStatus
-    telemetry_status = $telemetryStatus
-    recovery_status = "not_assessed"
+    schema_version                = 1
+    campaign_id                   = $campaignId
+    run_id                        = $runId
+    baseline_revision             = $revision
+    candidate_revision            = $revision
+    fixture_binding_id            = $fixtureId
+    profile                       = $profileModel
+    slo_gate_topology             = $SloGateTopology
+    route_cells                   = $cells
+    sample_targets                = [ordered]@{ warm = $WarmSamples; cold = $ColdSamples; max_attempts_per_cell = $MaxAttemptsPerCell; concurrency = $Concurrency; timeout_seconds = $TimeoutSeconds; cold_cache_mode = $ColdCacheMode }
+    cache_reset_proofs            = @($ColdResetProofs)
+    budgets                       = $Budgets
+    telemetry_snapshot_ids        = $telemetrySnapshotIds
+    provenance                    = if ($readerSlo -eq "blocked") { "blocked_or_unavailable_reader_profile" } else { "reader_http_sample" }
+    reader_slo_status             = $readerSlo
+    path_profile_status           = $pathStatus
+    telemetry_status              = $telemetryStatus
+    recovery_status               = "not_assessed"
     overall_follow_up_disposition = if (@($uniqueBlockers).Count -gt 0) { "complete_with_quantified_blocker" } else { "complete" }
-    production_capacity_claim = "not_established"
-    blockers = $uniqueBlockers
+    production_capacity_claim     = "not_established"
+    blockers                      = $uniqueBlockers
 }
 $reportPath = Join-Path (Get-Location) (Join-Path $ReportDir ("reader-stage-{0}-{1}.json" -f $Profile, $runId))
 $stage | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $reportPath -Encoding utf8

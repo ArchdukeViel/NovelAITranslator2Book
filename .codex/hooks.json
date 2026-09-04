@@ -1,5 +1,16 @@
-{
+﻿{
   "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|Patch|create_file|replace_string_in_file|multi_replace_string_in_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -Command \"graphify update . --no-cluster\""
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": ".*",
@@ -7,17 +18,6 @@
           {
             "type": "command",
             "command": "powershell -NoProfile -Command \"if (Test-Path 'graphify-out\\graph.json') { Write-Host '[graphify] Knowledge graph exists at graphify-out/graph.json. Query before broad grepping.' }\""
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": ".*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "powershell -NoProfile -Command \"graphify update . --no-cluster\""
           }
         ]
       }

@@ -96,7 +96,9 @@ The production topology is the target.
 
 - Backend: split admin and reader containers on ports 8000 and 8001.
 - Frontend: Next.js container on port 3000, proxied through Caddy.
-- Database: external PostgreSQL; Compose does not provision the primary DB.
+- Database: co-located native PostgreSQL 17 (`postgres:17.4-alpine`) on `novelai-net`, bound to `127.0.0.1:5432` on the host for secure desktop GUI SSH tunneling. External PostgreSQL remains supported via `DATABASE_URL`.
+- Database Administration: CloudBeaver (`dbeaver/cloudbeaver:24.3.0`) on `novelai-net`, bound to `127.0.0.1:8978` for in-browser administration, alongside desktop GUI over SSH/loopback.
+- Relational Schema & Indexing: All foreign keys are supported by explicit indexes (migration `a1b2c3d4e5f6`) to prevent table-scan locks during joins and cascades.
 - Storage: Cloudflare R2 application bucket ``dokushodo``; only disposable
   runtime data is mounted locally at ``RUNTIME_DIR``.
 - Redis: Compose service for split-mode rate limiting and coordination.
@@ -139,7 +141,7 @@ The production topology is the target.
     API, guest-safe GETs, no admin session, no mutations.
   - A separate one-shot migration job runs ``alembic upgrade head`` before
     either long-running API process starts.
-- **Database**: managed PostgreSQL (Supabase / RDS / Cloud SQL) with:
+- **Database**: co-located native PostgreSQL 17 or managed PostgreSQL (RDS / Cloud SQL / Supabase) with:
   - TLS required, connection pool with transaction-level budgeting.
   - `DB_POOL_PROCESS_COUNT` explicitly counts long-lived backend, reader,
     worker, and replica pool owners; `DB_CONNECTION_RESERVE` accounts for
@@ -311,6 +313,7 @@ chapter storage -> paragraph IDs -> chunks/bundles -> prompt + glossary
   new rows; same-title chapters remain distinct rows.
 - SQL chapter counts are projections of PostgreSQL-owned references; public
   readers do not enumerate R2 to rebuild a response.
+- In-memory projection caching: Public chapter reads and search catalog reads use the in-memory `public_projection_cache`. When `version_id is None`, warm chapter reads serve directly from in-memory cache (< 0.2ms), bypassing both PostgreSQL metadata queries and Cloudflare R2 Worker Gateway HTTPS calls. Search queries without filters cache by query string. Novel activations purge affected projections via `invalidate_public_projection_cache()`.
 - `Novel.public_reader_unavailable_policy` is an optional projection of the
   per-novel availability policy from canonical metadata. Migration
   `e5f7a9c1d3b2` persists it so projection-first public chapter reads retain

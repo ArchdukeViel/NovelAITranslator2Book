@@ -1,0 +1,156 @@
+name: AI PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Run Review via Router
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROUTER_API_KEY: ${{ secrets.NINEROUTER_API_KEY }}
+          ROUTER_BASE_URL: ${{ vars.NINEROUTER_BASE_URL || 'https://api.9router.com/v1' }}
+          MODEL_NAME: ${{ vars.AI_REVIEW_MODEL || 'antigravity' }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.base_ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'EOF'
+          import json
+          import os
+          import subprocess
+          import sys
+          import urllib.error
+          import urllib.request
+
+          base_ref = os.environ.get("BASE_REF", "main")
+          pr_number = os.environ.get("PR_NUMBER")
+          repo = os.environ.get("REPO")
+          api_key = os.environ.get("ROUTER_API_KEY", "").strip()
+          base_url = os.environ.get("ROUTER_BASE_URL", "https://api.9router.com/v1").rstrip("/")
+          model = os.environ.get("MODEL_NAME", "antigravity").strip()
+
+          if not api_key:
+              print("No API key provided. Skipping.")
+              sys.exit(0)
+
+          # Fetch diff
+          try:
+              diff_bytes = subprocess.check_output(
+                  ["git", "diff", f"origin/{base_ref}...HEAD"],
+                  stderr=subprocess.STDOUT,
+              )
+              diff_text = diff_bytes.decode("utf-8", errors="replace")
+          except Exception as exc:
+              print(f"Failed to get diff: {exc}")
+              sys.exit(0)
+
+          if not diff_text.strip():
+              print("Empty diff. Skipping review.")
+              sys.exit(0)
+
+          # Truncate diff if extremely large to prevent payload overflow
+          max_chars = 40000
+          if len(diff_text) > max_chars:
+              diff_text = diff_text[:max_chars] + "\n\n... [diff truncated for length] ..."
+
+          prompt = (
+              "You are an expert automated code reviewer. Analyze this pull request git diff. "
+              "Focus on: security issues, potential bugs, breaking changes, architecture violations, and performance issues. "
+              "Be concise, actionable, and cite file names or line ranges when giving feedback.\n\n"
+              f"```diff\n{diff_text}\n```"
+          )
+
+          payload = {
+              "model": model,
+              "messages": [
+                  {
+                      "role": "system",
+                      "content": "You are a senior code reviewer providing high-signal, concise feedback on pull requests.",
+                  },
+                  {"role": "user", "content": prompt},
+              ],
+              "temperature": 0.2,
+          }
+
+          req = urllib.request.Request(
+              f"{base_url}/chat/completions",
+              data=json.dumps(payload).encode("utf-8"),
+              headers={
+                  "Authorization": f"Bearer {api_key}",
+                  "Content-Type": "application/json",
+                  "User-Agent": "GitHub-AI-Reviewer",
+              },
+              method="POST",
+          )
+
+          try:
+              with urllib.request.urlopen(req, timeout=120) as resp:
+                  res_data = json.loads(resp.read().decode("utf-8"))
+                  review_body = res_data["choices"][0]["message"]["content"]
+          except urllib.error.HTTPError as err:
+              err_body = err.read().decode("utf-8", errors="replace")
+              print(f"Router API error ({err.code}): {err_body} (skipping advisory review)")
+              sys.exit(0)
+          except Exception as exc:
+              print(f"Request failed: {exc} (skipping advisory review)")
+              sys.exit(0)
+
+          if not review_body:
+              print("Empty review response.")
+              sys.exit(0)
+
+          comment_header = f"### 🤖 AI Code Review (`{model}`)\n\n"
+          full_comment = comment_header + review_body
+
+          if not pr_number:
+              print("No pull request number identified. Skipping comment posting.")
+              sys.exit(0)
+
+          # Post review comment to GitHub PR
+          comment_payload = json.dumps({"body": full_comment}).encode("utf-8")
+          gh_token = os.environ.get("GH_TOKEN")
+          gh_req = urllib.request.Request(
+              f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments",
+              data=comment_payload,
+              headers={
+                  "Authorization": f"Bearer {gh_token}",
+                  "Accept": "application/vnd.github+json",
+                  "Content-Type": "application/json",
+                  "User-Agent": "GitHub-AI-Reviewer",
+              },
+              method="POST",
+          )
+
+          try:
+              with urllib.request.urlopen(gh_req, timeout=30) as gh_resp:
+                  print(f"Successfully posted review comment (Status: {gh_resp.status})")
+          except urllib.error.HTTPError as err:
+              if err.code in (401, 403):
+                  print(f"Skipping comment: insufficient permissions on PR #{pr_number} (likely fork PR).")
+                  sys.exit(0)
+              print(f"GitHub API error ({err.code}): {err} (skipping comment)")
+              sys.exit(0)
+          except Exception as exc:
+              print(f"Failed to post comment to PR #{pr_number}: {exc} (skipping comment)")
+              sys.exit(0)
+          EOF
