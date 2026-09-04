@@ -6,12 +6,10 @@ build-backend = "setuptools.build_meta"
 name = "novel-ai"
 version = "0.1.0"
 description = "Web-based Japanese novel crawling, translation, editing, and reader platform."
-authors = [
-  {name = "ArchdukeViel"}
-]
+authors = [{ name = "ArchdukeViel" }]
 readme = "readme.md"
 requires-python = ">=3.14"
-license = {text = "GPL-3.0-or-later"}
+license = { text = "GPL-3.0-or-later" }
 
 dependencies = [
   "argon2-cffi>=25.1.0",
@@ -30,9 +28,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gemini = [
-  "google-genai>=2.20.0",
-]
+gemini = ["google-genai>=2.20.0"]
 test = [
   "httpx2>=2.12.0",
   "pytest>=9.1.1",
@@ -41,22 +37,11 @@ test = [
   "aiosqlite>=0.22.1",
   "hypothesis>=6.167.1",
 ]
-db = [
-  "sqlalchemy>=2.0.52",
-  "alembic>=1.19.1",
-  "psycopg[binary]>=3.3.4",
-]
-worker = [
-  "rq>=2.12.0",
-  "redis>=8.1.0",
-]
-auth = [
-  "argon2-cffi>=25.1.0",
-  "itsdangerous>=2.2.0",
-]
+db = ["sqlalchemy>=2.0.52", "alembic>=1.19.1", "psycopg[binary]>=3.3.4"]
+worker = ["rq>=2.12.0", "redis>=8.1.0"]
+auth = ["itsdangerous>=2.2.0"]
 dev = [
   "aiosqlite>=0.22.1",
-  "argon2-cffi>=25.1.0",
   "cryptography>=50.0.1",
   "croniter>=6.2.4",
   "google-genai>=2.20.0",
@@ -99,9 +84,9 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 tmp_path_retention_policy = "none"
 markers = [
-    "e2e: end-to-end integration tests (full pipeline, slower, requires fixtures)",
-    "integration: integration tests against external services (R2 gateway, Redis, etc.)",
-    "slow: tests that require database, network, or are particularly slow",
+  "e2e: end-to-end integration tests (full pipeline, slower, requires fixtures)",
+  "integration: integration tests against external services (R2 gateway, Redis, etc.)",
+  "slow: tests that require database, network, or are particularly slow",
 ]
 
 [tool.ruff]
@@ -119,15 +104,17 @@ select = [
   "B",     # flake8-bugbear
   "SIM",   # flake8-simplify
   "RUF",   # Ruff-specific rules
+  "ASYNC", # flake8-async
 ]
 ignore = [
-  "E501",   # line too long (handled by formatter)
-  "B008",   # mutable default arg (used intentionally in CLI helpers)
-  "B023",   # loop variable binding
-  "RUF001", # ambiguous unicode (intentional Japanese text in tests)
-  "RUF012", # mutable class attribute (used in dataclass-style patterns)
-  "SIM102", # nested if (readability preference)
-  "SIM108", # ternary operator (readability preference)
+  "E501",     # line too long (handled by formatter)
+  "B008",     # mutable default arg (used intentionally in CLI helpers)
+  "B023",     # loop variable binding
+  "RUF001",   # ambiguous unicode (intentional Japanese text in tests)
+  "RUF012",   # mutable class attribute (used in dataclass-style patterns)
+  "SIM102",   # nested if (readability preference)
+  "SIM108",   # ternary operator (readability preference)
+  "ASYNC109", # Async function definition with a `timeout` parameter (http client interface compatibility)
 ]
 
 [tool.ruff.lint.isort]

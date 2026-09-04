@@ -66,7 +66,8 @@ Do not preload unrelated documentation.
   explicitly authorized renames.
 - Do not delete, rename, migrate data, or change contracts unless the request
   or an approved active specification requires it.
-- After every repository edit, run `graphify update . --no-cluster`.
+- Run `graphify update . --no-cluster` once after completing an edit batch,
+  before running verification checks (do not run on every single file write).
 
 ### Side-effect authorization
 
@@ -106,12 +107,15 @@ Do not preload unrelated documentation.
 - If the venv is missing, follow `docs/OPERATIONS.md` or `readme.md` to
   recover it; do not silently use another interpreter.
 - `pyproject.toml` is authoritative. Generated lockfiles are updated only by
-  `deploy\update-lockfiles.ps1` after an authorized dependency change.
+  `deploy\update-lockfiles.ps1` after an authorized dependency change. Never run ad-hoc lockfile updates or dependency installations directly in production or staging.
+- Focused test safety: During dirty-worktree states, run focused tests targeting affected modules instead of full test suites to prevent flakiness and uncommitted collision.
 
 ### Frontend commands
 
 From `frontend/`, use `npm run lint`, `npm run typecheck`, `npm run test`, and
-`npm run build` as applicable. Server state uses React Query, client-only state
+`npm run build` as applicable. `frontend/package-lock.json` is authoritative for
+frontend dependencies and must only be updated via `npm install` inside `frontend/`,
+never through manual edits. Server state uses React Query, client-only state
 uses Zustand, and components use existing hooks and shared utilities. Do not
 call `fetch()` directly from components or add Redux, CSS modules, or styled
 components. Novel covers must use `next/image` with configured `remotePatterns`
@@ -122,6 +126,8 @@ Reader pages trigger next-chapter prefetching when `scrollProgress >= 70%`.
 ### Windows and shell rules
 
 - Use PowerShell-compatible commands and quote paths containing spaces.
+- Always include `-ExecutionPolicy Bypass` when invoking `.ps1` wrapper scripts:
+  `powershell -ExecutionPolicy Bypass -File <script.ps1>`.
 - Chain dependent commands with `; if ($?) { ... }` when needed.
 - Use `rg` or `rg --files` for search.
 - Do not use Linux bashisms (`cat`, `export`, `grep`, `rm -rf`, `touch`, `source`, `which`);
@@ -133,22 +139,24 @@ Reader pages trigger next-chapter prefetching when `scrollProgress >= 70%`.
 
 ## Code intelligence
 
-### CodeGraph
-
-When `.codegraph/` exists and the question concerns current symbols, callers,
-dependencies, or blast radius, use CodeGraph before broad search. Verify its
-results against source, tests, and configuration. Do not initialize or edit
-`.codegraph/` during routine work.
-
 ### Graphify
 
 When architecture, documentation, or cross-artifact relationships matter,
 use the configured Graphify graph with focused `graphify query`, `graphify
 path`, or `graphify explain` calls. Use `graphify-out/wiki/index.md` for
 navigation and read `GRAPH_REPORT.md` only when scoped queries are insufficient.
-After every edit run `graphify update . --no-cluster`; do not run semantic
-extraction or clustering as a routine refresh. Harmless zero-node warnings on
-non-code files (e.g. JSON configs) can be safely ignored.
+Run `graphify update . --no-cluster` once after completing an edit batch,
+before running verification checks; do not run semantic extraction or clustering
+as a routine refresh. Harmless zero-node warnings on non-code files (e.g. JSON
+configs) can be safely ignored.
+
+### CodeGraph
+
+When `.codegraph/` exists and the question concerns current symbols, callers,
+dependencies, or blast radius, use CodeGraph before broad search. Verify its
+results against source, tests, and configuration. If `.codegraph/` does not
+exist, default to Graphify (`graphify-out/`) and native search tools; do not
+initialize `.codegraph/` during routine work.
 
 ### Archify
 
@@ -177,6 +185,8 @@ SQLite table check constraints on `Novel.publication_status` that reject unnorma
 legacy strings (`"strange"` -> `"unknown"`). PostgreSQL connection pool budgeting must
 satisfy `DB_POOL_PROCESS_COUNT * (DB_POOL_SIZE + DB_MAX_OVERFLOW) + DB_CONNECTION_RESERVE <= DB_CONNECTION_BUDGET`
 (5/5 split across backend, reader, and worker against `max_connections = 100`).
+Any change to database migrations under `backend/alembic/versions/` must verify downgrade
+reversibility locally (`alembic downgrade -1` followed by `upgrade head`).
 
 ### Frontend boundaries
 
@@ -222,11 +232,26 @@ route groups without an explicit architecture decision.
 
 ## Verification ladder
 
+### Tiered verification protocol
+
+Apply scope-proportional ceremony:
+- **Tier 1 (Core)**: Architecture changes, schema/migrations, security/auth, R2 storage,
+  public API contracts, or breaking configuration. Requires full specification under
+  `.agents/specs/`, formal verification logging in `docs/STATUS.md` and `docs/EVIDENCE.md`,
+  and full guard execution.
+- **Tier 2 (Targeted)**: Bug fixes, UI/CSS adjustments, internal refactors, isolated test
+  additions. Requires only focused tests, affected linters/typechecks, and atomic git commit.
+  Do not update `docs/STATUS.md` or `docs/EVIDENCE.md` for routine Tier 2 edits unless
+  explicitly requested.
+
+### Execution ladder
+
 Run the smallest decisive check first, then broaden for changed scope:
 
 1. focused architecture, path, documentation, or security guard;
 2. affected lint/type check through repository wrappers;
-3. focused tests;
+3. focused tests (run targeted test files first during dirty worktree state to avoid
+   false failures from unrelated uncommitted work);
 4. affected integration, frontend, build, workflow, or evidence validation;
 5. broader checks only when cross-subsystem impact requires them.
 
@@ -234,9 +259,11 @@ Record the exact command, timeout when relevant, exit code, result count, and
 paths. A skipped or unavailable command is recorded as `not_run` or
 `unavailable`, never as passed.
 
-Required repository guards include the router import guard, AGENTS heading
-uniqueness guard, documentation/path checker, and Graphify refresh when their
-scope is affected.
+Required repository guards include:
+- **Router import guard**: `powershell -ExecutionPolicy Bypass -Command "rg -n '^from novelai\.(db\.models|storage\.service|sources\.)' backend/src/novelai/api/routers/ --glob '!dependencies.py'"` (must return 0 matches / exit 1).
+- **AGENTS heading uniqueness guard**: `powershell -ExecutionPolicy Bypass -Command "Get-Content AGENTS.md | Select-String '^#{1,6}\s+' | Group-Object | Where-Object Count -gt 1"` (must return 0 duplicates).
+- **Documentation contract check**: `powershell -ExecutionPolicy Bypass -File tools\docs-check.ps1` (must return exit 0, 0 violations).
+- **Graphify index refresh**: `graphify update . --no-cluster` (after edit batch).
 
 ## Git and commit rules
 
@@ -256,8 +283,15 @@ scope is affected.
 - `docs/ARCHITECTURE.md` remains authoritative for architecture and security.
 - Canonical documents own one concern each; cross-link instead of duplicating
   normative prose.
+- Canonical documents (`docs/*.md`) strictly describe verified shipped code.
+  Never edit canonical documents during the planning phase to describe an intended
+  state; update canonical docs only after implementation passes all verification.
 - Under `docs/`, only three subdirectories are permitted: `docs/archive/`,
   `docs/design/`, and `docs/plans/`; creating any other directory fails `tools/docs-check.ps1`.
+- Specifications belong in `.agents/specs/<name>/`, never under `docs/specs/`.
+  Active specifications must define YAML/header metadata with `Spec ID`, `Version`, and `Status` (`Active`, `Blocked`, `Complete`, or `Superseded`).
+  An agent must not implement or close tasks on a specification marked `Status: Blocked` or `Status: Superseded`
+  without an explicit, authorized unblocking instruction from the repository owner.
 - `docs/STATUS.md` contains current unresolved work, decisions, dependencies,
   and acceptance gates; it contains no completed-work narrative.
 - `docs/EVIDENCE.md` contains sanitized, dated verification and limitations;

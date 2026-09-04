@@ -11,19 +11,19 @@ When requested a task, feature, change, or fix, default to **planning/spec mode 
 
 ## Artifact Protocol
 
-1. **Implementation Plan (`implementation_plan.md`)**:
-   - Write to `<appDataDir>\brain\<conversation-id>\implementation_plan.md`.
-   - Set `RequestFeedback: true` and `UserFacing: true` in `ArtifactMetadata`.
+1. **Implementation Plan (`docs/plans/<PLAN_NAME>.md`)**:
+   - Write to `docs/plans/<PLAN_NAME>.md` or present for chat review.
+   - Plans written to `docs/plans/` MUST include YAML frontmatter with `canonical_truth: false` and `title`.
    - Include: Background, User Review Required, Open Questions, Proposed Changes (grouped by component with `[MODIFY]`, `[NEW]`, `[DELETE]`), and Verification Plan.
-   - Do NOT re-summarize the full plan in chat; point the user to the artifact.
+   - Do NOT edit canonical documents (`docs/*.md`) during the planning phase.
 2. **Approval Gate**:
    - STOP and wait for the user's explicit directive before modifying any codebase files.
-3. **Walkthrough (`walkthrough.md`)**:
-   - Upon completion, summarize all changes, verification commands, and test results in `walkthrough.md`.
+3. **Walkthrough / Completion Summary**:
+   - Upon completion, summarize all changes, verification commands, and test results in chat or follow-up evidence.
 
 ## When to Plan (Default)
 
-Create an `implementation_plan.md` artifact when:
+Create a plan (`docs/plans/<PLAN_NAME>.md` or chat review) when:
 - Requesting a new feature, endpoint, component, or capability.
 - Asking for a refactor, redesign, schema migration, or architectural change.
 - Fixing a bug or issue spanning multiple files or modules.

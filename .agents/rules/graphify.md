@@ -18,10 +18,10 @@ This project maintains a synchronized Graphify knowledge graph under `graphify-o
 
 ## Refresh & Synchronization Contract
 
-- **Post-Edit AST Refresh**: After modifying source code or documentation, run:
+- **Post-Edit AST Refresh**: After completing an edit batch (prior to running verification checks), run:
   ```powershell
   graphify update . --no-cluster
   ```
-  *(This refreshes the AST and edges locally without API cost or semantic reclustering).*
+  *(This refreshes the AST and edges locally without API cost or semantic reclustering. Do not run on every single file write).*
 - **Harmless Zero-Node Warnings**: Non-code files (e.g. JSON configs, visual reports) may emit `warning: N source file(s) produced zero nodes`. This is expected AST behavior for non-extractable files and is not an error.
 - **Never Run Routine Semantic Extraction**: `graphify extract` or `graphify update .` without `--no-cluster` requires provider credentials and costs tokens &mdash; do not run semantic extraction during routine editing sessions.

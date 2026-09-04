@@ -1,85 +1,91 @@
 {
-  "css.lint.unknownAtRules": "ignore",
-  "scss.lint.unknownAtRules": "ignore",
-  "less.lint.unknownAtRules": "ignore",
-  "tailwindCSS.includeLanguages": {
-    "typescript": "javascript",
-    "typescriptreact": "javascript",
-    "javascript": "javascript",
-    "javascriptreact": "javascript"
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
   },
   "[python]": {
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "charliermarsh.ruff",
     "editor.codeActionsOnSave": {
       "source.organizeImports.ruff": "explicit"
-    }
+    },
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true
   },
-  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
-  "python.analysis.exclude": [
-    ".venv/**",
-    "**/node_modules/**",
-    "**/__pycache__/**",
-    "backend/tests/.tmp/**",
-    ".agents/**",
-    ".opencode/**",
-    "data/runtime/**"
-  ],
   "[typescript]": {
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
   },
   "[typescriptreact]": {
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
   },
-  "[javascript]": {
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
+  "css.lint.unknownAtRules": "ignore",
+  "editor.formatOnSave": true,
+  "editor.minimap.enabled": false,
+  "editor.rulers": [
+    120
+  ],
   "explorer.fileNesting.enabled": true,
   "explorer.fileNesting.patterns": {
+    "*.py": "${capture}_test.py, ${capture}.pyi",
     "*.ts": "${capture}.test.ts, ${capture}.spec.ts",
     "*.tsx": "${capture}.test.tsx, ${capture}.spec.tsx",
-    "*.py": "${capture}_test.py, ${capture}.pyi",
     "package.json": "package-lock.json, tsconfig.json, vitest.config.ts",
     "pyproject.toml": "requirements.lock, requirements-dev.lock, uv.lock"
   },
-  "search.exclude": {
-    "backend/tests/.tmp/**": true,
-    "**/__pycache__/**": true,
-    "**/.pytest_cache/**": true,
-    "**/.ruff_cache/**": true,
-    "**/.hypothesis/**": true,
-    "**/.local/**": true,
-    "**/frontend/.next/**": true,
-    "**/frontend/.next-dev/**": true,
-    "node_modules/**": true,
-    ".venv/**": true,
-    ".opencode/**": true,
-    "data/runtime/**": true
+  "files.associations": {
+    "*.html": "html"
   },
   "files.exclude": {
-    "**/__pycache__/**": true,
-    "**/.pytest_cache/**": true,
-    "**/.ruff_cache/**": true,
     "**/.hypothesis/**": true,
     "**/.local/**": true,
-    "node_modules/**": true,
-    ".venv/**": true
+    "**/.pytest_cache/**": true,
+    "**/.ruff_cache/**": true,
+    "**/__pycache__/**": true,
+    ".venv/**": true,
+    "node_modules/**": true
   },
+  "less.lint.unknownAtRules": "ignore",
+  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+  "python.terminal.useEnvFile": true,
   "python.testing.pytestArgs": [
     "backend/tests"
   ],
-  "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,
-  "editor.formatOnSave": true,
-  "editor.rulers": [120],
-  "editor.minimap.enabled": false,
+  "python.testing.unittestEnabled": false,
+  "scss.lint.unknownAtRules": "ignore",
+  "search.exclude": {
+    "**/.hypothesis/**": true,
+    "**/.local/**": true,
+    "**/.pytest_cache/**": true,
+    "**/.ruff_cache/**": true,
+    "**/__pycache__/**": true,
+    "**/frontend/.next-dev/**": true,
+    "**/frontend/.next/**": true,
+    ".opencode/**": true,
+    ".venv/**": true,
+    "backend/tests/.tmp/**": true,
+    "data/runtime/**": true,
+    "node_modules/**": true
+  },
+  "tailwindCSS.includeLanguages": {
+    "javascript": "javascript",
+    "javascriptreact": "javascript",
+    "typescript": "javascript",
+    "typescriptreact": "javascript"
+  },
   "terminal.integrated.env.windows": {
     "PYTHONPATH": ""
-  },
-  "files.associations": {
-    "*.html": "html"
   }
 }

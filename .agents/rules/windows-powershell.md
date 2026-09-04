@@ -32,10 +32,21 @@ This rule enforces Windows OS compatibility, PowerShell syntax safety, and encod
   ```powershell
   # CORRECT
   cd "c:\Akmal\Novel AI\frontend"
-  powershell -File "c:\Akmal\Novel AI\tools\pytest.ps1"
+  powershell -ExecutionPolicy Bypass -File "c:\Akmal\Novel AI\tools\pytest.ps1"
 
   # PROHIBITED
   cd c:\Akmal\Novel AI\frontend
+  ```
+
+## PowerShell Script Execution Policy
+
+- **Mandatory Bypass**: Always pass `-ExecutionPolicy Bypass` when executing `.ps1` wrapper scripts or PowerShell commands to prevent execution policy errors on Windows (`PSSecurityException`):
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File tools\pytest.ps1
+  powershell -ExecutionPolicy Bypass -File tools\pyright.ps1
+  powershell -ExecutionPolicy Bypass -File tools\ruff.ps1 check .
+  powershell -ExecutionPolicy Bypass -File tools\docs-check.ps1
+  powershell -ExecutionPolicy Bypass -File deploy\update-lockfiles.ps1
   ```
 
 ## UTF-8 Encoding Without BOM

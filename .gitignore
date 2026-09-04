@@ -109,6 +109,7 @@ deploy/.cloudflared/
 
 # Runtime data
 data/runtime/
+!data/runtime/.gitkeep
 !data/README.md
 novel_library/
 output/
