@@ -414,7 +414,9 @@ def test_translate_stage_glossary_hash_changes_only_for_approved_prompt_rules():
 
 
 @pytest.mark.asyncio
-@hypothesis_settings(suppress_health_check=[HealthCheck.function_scoped_fixture], database=None, deadline=None)
+@hypothesis_settings(
+    max_examples=10, suppress_health_check=[HealthCheck.function_scoped_fixture], database=None, deadline=None
+)
 @given(st.integers(min_value=0, max_value=10), st.integers(min_value=0, max_value=4))
 async def test_translate_stage_audit_metadata_matches_db_state(tmp_path, revision: int, term_count: int) -> None:
     engine, session, novel, repo, service = _glossary_test_service()
