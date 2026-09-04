@@ -17,7 +17,7 @@ afterEach(() => cleanup());
 
 function renderWithClient(ui: React.ReactElement) {
   return render(
-    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
   );
 }
 
@@ -28,7 +28,7 @@ function makeNovel(
   overrides: Partial<PublicNovelSummary> & {
     cover_url?: string | null;
     source?: string | null;
-  } = {}
+  } = {},
 ): PublicNovelSummary & {
   cover_url?: string | null;
   source?: string | null;
@@ -59,22 +59,24 @@ describe("NovelCard genre/tag rendering", () => {
   });
 
   it("renders a generated fallback cover when cover_url is absent", () => {
-const novel = makeNovel({
-       source_title: "テスト小説",
-       genres: [{ slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" }],
-       publication_status: "Ongoing",
-     });
+    const novel = makeNovel({
+      source_title: "テスト小説",
+      genres: [
+        { slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" },
+      ],
+      publication_status: "Ongoing",
+    });
     renderWithClient(<NovelCard novel={novel} />);
 
     expect(
       screen.getByRole("img", {
         name: "Generated Dokushodo bookplate for Test Novel",
-      })
+      }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("テスト小説").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Fantasy")).toBeInTheDocument();
     expect(
-      screen.queryByRole("img", { name: "Cover for Test Novel" })
+      screen.queryByRole("img", { name: "Cover for Test Novel" }),
     ).not.toBeInTheDocument();
   });
 
@@ -95,11 +97,13 @@ const novel = makeNovel({
     renderWithClient(<NovelCard novel={novel} />);
 
     const image = screen.getByRole("img", { name: "Cover for Test Novel" });
-    expect(image).toHaveAttribute("src", "https://assets.example.test/test-cover.jpg");
+    expect(image.getAttribute("src")).toContain(
+      encodeURIComponent("https://assets.example.test/test-cover.jpg")
+    );
     expect(
       screen.queryByRole("img", {
         name: "Generated Dokushodo bookplate for Test Novel",
-      })
+      }),
     ).not.toBeInTheDocument();
   });
 
@@ -108,11 +112,15 @@ const novel = makeNovel({
     renderWithClient(<NovelCard novel={novel} />);
 
     expect(screen.queryByText(/official cover/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/views|readers|rating|ranking|trending/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/views|readers|rating|ranking|trending/i),
+    ).not.toBeInTheDocument();
   });
 
   it("renders genre chips when genres are provided", () => {
-    const novel = makeNovel({ genres: [genre("fantasy"), genre("isekai-tensei")] });
+    const novel = makeNovel({
+      genres: [genre("fantasy"), genre("isekai-tensei")],
+    });
     renderWithClient(<NovelCard novel={novel} />);
 
     expect(screen.getByText("fantasy")).toBeInTheDocument();
@@ -120,7 +128,9 @@ const novel = makeNovel({
   });
 
   it("renders tag chips when tags are provided", () => {
-    const novel = makeNovel({ tags: [tag("\u9b54\u6cd5"), tag("\u52c7\u8005")] });
+    const novel = makeNovel({
+      tags: [tag("\u9b54\u6cd5"), tag("\u52c7\u8005")],
+    });
     renderWithClient(<NovelCard novel={novel} />);
 
     expect(screen.getByText("\u9b54\u6cd5")).toBeInTheDocument();
@@ -222,7 +232,13 @@ const novel = makeNovel({
     const novel = makeNovel({
       cover_url: "https://assets.example.test/cover-that-will-fail.jpg",
       source_title: "\u30c6\u30b9\u30c8\u5c0f\u8aac",
-      genres: [{ slug: "fantasy", name_ja: "\u30d5\u30a1\u30f3\u30bf\u30b8\u30fc", name_en: "Fantasy" }],
+      genres: [
+        {
+          slug: "fantasy",
+          name_ja: "\u30d5\u30a1\u30f3\u30bf\u30b8\u30fc",
+          name_en: "Fantasy",
+        },
+      ],
       publication_status: "Ongoing",
     });
     renderWithClient(<NovelCard novel={novel} />);
@@ -233,7 +249,7 @@ const novel = makeNovel({
 
     // Trigger an error on the underlying <img>
     const nativeImg = document.querySelector<HTMLImageElement>(
-      'img[alt="Cover for Test Novel"]'
+      'img[alt="Cover for Test Novel"]',
     );
     expect(nativeImg).toBeInTheDocument();
     fireEvent.error(nativeImg!);
@@ -242,10 +258,10 @@ const novel = makeNovel({
     expect(
       screen.getByRole("img", {
         name: "Generated Dokushodo bookplate for Test Novel",
-      })
+      }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("img", { name: "Cover for Test Novel" })
+      screen.queryByRole("img", { name: "Cover for Test Novel" }),
     ).not.toBeInTheDocument();
   });
 });

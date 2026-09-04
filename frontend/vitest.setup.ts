@@ -16,12 +16,16 @@ const originalError = console.error;
 beforeAll(() => {
   console.warn = (...args: unknown[]) => {
     originalWarn(...args);
-    const msg = args.map(a => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+    const msg = args
+      .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+      .join(" ");
     throw new Error(`Unexpected console.warn during test: ${msg}`);
   };
   console.error = (...args: unknown[]) => {
     originalError(...args);
-    const msg = args.map(a => (typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+    const msg = args
+      .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+      .join(" ");
     throw new Error(`Unexpected console.error during test: ${msg}`);
   };
 });
@@ -133,17 +137,19 @@ vi.mock("next/navigation", () => ({
 // ---------------------------------------------------------------------------
 
 vi.mock("next/link", async () => {
-  const { forwardRef, createElement } = await vi.importActual<typeof import("react")>("react");
-  const Link = forwardRef<HTMLAnchorElement, Record<string, unknown> & { href?: unknown }>(
-    (props, ref) => {
-      const { href, children, ...rest } = props;
-      return createElement(
-        "a",
-        { ...rest, ref, href: typeof href === "string" ? href : undefined },
-        children as ReactNode
-      );
-    }
-  );
+  const { forwardRef, createElement } =
+    await vi.importActual<typeof import("react")>("react");
+  const Link = forwardRef<
+    HTMLAnchorElement,
+    Record<string, unknown> & { href?: unknown }
+  >((props, ref) => {
+    const { href, children, ...rest } = props;
+    return createElement(
+      "a",
+      { ...rest, ref, href: typeof href === "string" ? href : undefined },
+      children as ReactNode,
+    );
+  });
   Link.displayName = "NextLinkMock";
   return { default: Link };
 });

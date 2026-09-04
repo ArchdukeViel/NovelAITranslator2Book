@@ -86,7 +86,7 @@ describe("LoginView public auth options", () => {
 
 describe("LoginView email sign in", () => {
   it("validates email before submitting", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderLogin();
 
     await user.type(screen.getByLabelText("Email"), "not-an-email");
@@ -100,7 +100,7 @@ describe("LoginView email sign in", () => {
   });
 
   it("validates password before submitting", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderLogin();
 
     await user.type(screen.getByLabelText("Email"), "reader@example.com");
@@ -114,7 +114,7 @@ describe("LoginView email sign in", () => {
   });
 
   it("submits password login and calls onSuccess", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onSuccess = vi.fn();
     mockPasswordLogin.mockResolvedValueOnce({
       user_id: 7,
@@ -140,7 +140,7 @@ describe("LoginView email sign in", () => {
   });
 
   it("shows a safe error on failed password login", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockPasswordLogin.mockRejectedValueOnce(new Error("401 Unauthorized"));
 
     renderLogin();
@@ -157,7 +157,7 @@ describe("LoginView email sign in", () => {
 
 describe("LoginView email sign up", () => {
   it("shows confirm password field in sign-up mode", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderLogin();
 
     await user.click(screen.getByRole("button", { name: "Create one" }));
@@ -177,7 +177,7 @@ describe("LoginView email sign up", () => {
   });
 
   it("validates mismatched passwords before submitting", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderLogin();
 
     await user.click(screen.getByRole("button", { name: "Create one" }));
@@ -196,7 +196,7 @@ describe("LoginView email sign up", () => {
   });
 
   it("submits registration and calls onSuccess", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onSuccess = vi.fn();
     mockRegister.mockResolvedValueOnce({
       user_id: 8,
@@ -227,7 +227,7 @@ describe("LoginView email sign up", () => {
   });
 
   it("shows a safe error on failed registration", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mockRegister.mockRejectedValueOnce(new Error("409 Conflict"));
 
     renderLogin();
@@ -249,7 +249,7 @@ describe("LoginView email sign up", () => {
 
 describe("LoginView Google OAuth", () => {
   it("shows unavailable message but keeps email/password usable when Google returns 503", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
       new Response("", { status: 503, statusText: "Service Unavailable" })
     ));
@@ -268,7 +268,7 @@ describe("LoginView Google OAuth", () => {
   });
 
   it("does not redirect when Google is unavailable", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
       new Response("", { status: 503, statusText: "Service Unavailable" })
     ));
@@ -283,7 +283,7 @@ describe("LoginView Google OAuth", () => {
   });
 
   it("redirects to Google OAuth when available", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({ status: 302, type: "opaqueredirect" })
