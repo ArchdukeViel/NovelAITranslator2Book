@@ -92,11 +92,16 @@ class R2ArtifactRepository:
         )
         return self._stored(result)
 
-    def load_json(self, key: str) -> dict[str, Any]:
+    def load_json(self, key: str, *, max_decompressed_bytes: int = 25 * 1024 * 1024) -> dict[str, Any]:
         compressed = self.storage.load(key)
         try:
-            payload = json.loads(gzip.decompress(compressed).decode("utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            decompressed = gzip.decompress(compressed)
+            if len(decompressed) > max_decompressed_bytes:
+                raise ValueError(
+                    f"Decompressed artifact size {len(decompressed)} exceeds limit of {max_decompressed_bytes}"
+                )
+            payload = json.loads(decompressed.decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
             raise RuntimeError("R2 JSON artifact is corrupt") from exc
         if not isinstance(payload, dict):
             raise RuntimeError("R2 JSON artifact must contain an object")

@@ -81,6 +81,8 @@ class Chapter(Base):
 
     word_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -99,6 +101,10 @@ class Chapter(Base):
     novel: Mapped[Novel] = relationship(  # type: ignore[name-defined]  # noqa: F821
         "Novel", back_populates="chapters"
     )
+
+    __mapper_args__ = {
+        "version_id_col": version,
+    }
 
     def __repr__(self) -> str:
         return (

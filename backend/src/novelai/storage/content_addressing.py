@@ -29,6 +29,10 @@ DEFAULT_VOLATILE_FIELDS = frozenset(
         "translated_at",
         "last_updated",
         "timestamp",
+        "model_version",
+        "prompt_tokens",
+        "completion_tokens",
+        "latency_ms",
     }
 )
 
