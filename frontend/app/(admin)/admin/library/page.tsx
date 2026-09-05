@@ -186,6 +186,7 @@ export default function LibraryPage() {
   const [translationLanguage, setTranslationLanguage] = React.useState<(typeof TRANSLATION_LANGUAGES)[number]>("English");
   const [selectedTranslationChapterIds, setSelectedTranslationChapterIds] = React.useState<Set<string>>(new Set());
   const [retranslateStaleNovel, setRetranslateStaleNovel] = React.useState<NovelSummary | null>(null);
+  const [coverUploadNovelId, setCoverUploadNovelId] = React.useState<string | null>(null);
 
   const translationNovelId = translationNovel?.novel_id;
 
@@ -917,6 +918,26 @@ export default function LibraryPage() {
                               cancelOnboarding.isPending
                             }
                             translationPending={runTranslationDialog.isPending}
+                            coverUploadOpen={coverUploadNovelId === novel.novel_id}
+                            onToggleCoverUpload={(row) =>
+                              setCoverUploadNovelId((current) =>
+                                current === row.novel_id ? null : row.novel_id,
+                              )
+                            }
+                            onValidatedCover={(row, file, format) => {
+                              // Transport wire-up is out of scope for this audit
+                              // remediation; the validator boundary is the
+                              // security control. Surface the validated file
+                              // to the owner console until a backend upload
+                              // endpoint is added in a follow-up product task.
+                              console.info(
+                                "[cover] validated for",
+                                row.novel_id,
+                                file.name,
+                                format,
+                                file.size,
+                              );
+                            }}
                             onTranslate={(row) => runAction("translate", [row])}
                             onRecrawl={(row) => runAction("recrawl", [row])}
                             onDelete={(row) => runAction("delete", [row])}

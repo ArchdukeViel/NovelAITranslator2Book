@@ -22,8 +22,8 @@ vi.mock("@/components/public/reader-controls", () => ({
   ReaderControls: () => <div data-testid="reader-controls" />,
 }));
 
-vi.mock("@/lib/reader-prefs", () => ({
-  useReaderPrefsStore: () => ({
+vi.mock("@/lib/store", () => ({
+  useReaderUiStore: () => ({
     theme: "light",
     fontSize: 18,
     width: "standard",

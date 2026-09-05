@@ -17,6 +17,7 @@ function statusTone(status: string | null | undefined): StatusTone {
     case "paused":
     case "pending":
       return "amber";
+    case "cancelled":
     case "rejected":
     case "failed":
     case "error":

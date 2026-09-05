@@ -28,7 +28,7 @@ import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useUiStore } from "@/lib/store";
+import { useAdminUiStore } from "@/lib/store";
 import { OwnerSessionIndicator } from "@/components/admin/owner-session-indicator";
 import { LogoutControl } from "@/components/admin/logout-control";
 import { CredentialStatusIndicator } from "@/components/admin/credential-status-indicator";
@@ -79,7 +79,7 @@ function selectActiveNav(pathname: string, items: NavItem[]): NavItem | undefine
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { darkMode, sidebarCollapsed, toggleDarkMode, toggleSidebar } = useUiStore();
+  const { darkMode, sidebarCollapsed, toggleDarkMode, toggleSidebar } = useAdminUiStore();
   const activeItem = selectActiveNav(pathname, navItems);
 
   React.useEffect(() => {

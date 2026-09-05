@@ -41,7 +41,7 @@ function makeNovel(
     author: "Test Author",
     language: "ja",
     synopsis: null as string | null,
-    publication_status: "Ongoing",
+    publication_status: "ongoing",
     chapter_count: 10,
     translated_count: 5,
     added_at: null,
@@ -64,7 +64,7 @@ describe("NovelCard genre/tag rendering", () => {
       genres: [
         { slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" },
       ],
-      publication_status: "Ongoing",
+      publication_status: "ongoing",
     });
     renderWithClient(<NovelCard novel={novel} />);
 
@@ -239,7 +239,7 @@ describe("NovelCard genre/tag rendering", () => {
           name_en: "Fantasy",
         },
       ],
-      publication_status: "Ongoing",
+      publication_status: "ongoing",
     });
     renderWithClient(<NovelCard novel={novel} />);
 

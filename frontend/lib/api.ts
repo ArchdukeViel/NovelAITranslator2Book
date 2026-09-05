@@ -1,4 +1,3 @@
-import { useUiStore } from "@/lib/store";
 import type {
   ActivityRecord,
   ApiErrorPayload,

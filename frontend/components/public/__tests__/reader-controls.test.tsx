@@ -11,8 +11,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/hooks/public", () => ({ usePublicAuth: () => ({ isAuthenticated: mocks.isAuthenticated }) }));
-vi.mock("@/lib/reader-prefs", () => ({
-  useReaderPrefsStore: () => ({ theme: "sepia", fontSize: 18, width: "comfortable", setFontSize: mocks.setFontSize, setTheme: mocks.setTheme, setWidth: mocks.setWidth }),
+vi.mock("@/lib/store", () => ({
+  useReaderUiStore: () => ({ theme: "sepia", fontSize: 18, width: "comfortable", setFontSize: mocks.setFontSize, setTheme: mocks.setTheme, setWidth: mocks.setWidth }),
 }));
 
 beforeEach(() => { vi.clearAllMocks(); mocks.isAuthenticated = false; });
@@ -58,5 +58,28 @@ describe("ReaderControls Aa sheet", () => {
   it("explains guest position is local-only", () => {
     open();
     expect(screen.getByText(/stays on this device/i)).toBeInTheDocument();
+  });
+
+  it("ignores the period shortcut when focus is inside editable controls", () => {
+    render(<ReaderControls />);
+    const input = document.createElement("input");
+    const textarea = document.createElement("textarea");
+    const select = document.createElement("select");
+    const editable = document.createElement("div");
+    editable.setAttribute("contenteditable", "true");
+    const editableChild = document.createElement("span");
+    editable.appendChild(editableChild);
+    document.body.append(input, textarea, select, editable);
+    try {
+      for (const target of [input, textarea, select, editable, editableChild]) {
+        fireEvent.keyDown(target, { key: "." });
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      }
+    } finally {
+      input.remove();
+      textarea.remove();
+      select.remove();
+      editable.remove();
+    }
   });
 });

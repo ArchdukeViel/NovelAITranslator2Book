@@ -1,8 +1,9 @@
 "use client";
 
-import { BookMarked, BookOpen, Eye, EyeOff, FileEdit, Languages, RefreshCw, RotateCw, Tags, Trash2, X } from "lucide-react";
+import { BookMarked, BookOpen, Eye, EyeOff, FileEdit, ImageUp, Languages, RefreshCw, RotateCw, Tags, Trash2, X } from "lucide-react";
 import Link from "next/link";
 
+import { CoverUploader } from "@/components/admin/cover-uploader";
 import { GlossaryFreshnessBadge } from "@/components/admin/glossary-freshness-badge";
 import { ReadinessBadge } from "@/components/admin/glossary/readiness-badge";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,13 @@ export type LibraryRowActionsProps = {
   missingSource: boolean;
   pending: boolean;
   translationPending: boolean;
+  coverUploadOpen: boolean;
+  onToggleCoverUpload: (novel: NovelSummary) => void;
+  onValidatedCover: (
+    novel: NovelSummary,
+    file: File,
+    format: "png" | "jpeg" | "webp",
+  ) => void;
   onTranslate: (novel: NovelSummary) => void;
   onRecrawl: (novel: NovelSummary) => void;
   onDelete: (novel: NovelSummary) => void;
@@ -47,6 +55,9 @@ export function LibraryRowActions({
   missingSource,
   pending,
   translationPending,
+  coverUploadOpen,
+  onToggleCoverUpload,
+  onValidatedCover,
   onTranslate,
   onRecrawl,
   onDelete,
@@ -210,7 +221,29 @@ export function LibraryRowActions({
             Cancel
           </Button>
         ) : null}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => onToggleCoverUpload(novel)}
+          disabled={pending}
+          aria-expanded={coverUploadOpen}
+          aria-controls={`cover-uploader-${novel.novel_id}`}
+          title="Upload a cover image (validated locally before any network call)"
+        >
+          <ImageUp className="h-4 w-4" />
+          {coverUploadOpen ? "Hide cover uploader" : "Upload cover"}
+        </Button>
       </div>
+      {coverUploadOpen ? (
+        <div
+          id={`cover-uploader-${novel.novel_id}`}
+          className="rounded-md border border-border/60 bg-muted/30 p-3"
+        >
+          <CoverUploader
+            onValidatedFile={(file, format) => onValidatedCover(novel, file, format)}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

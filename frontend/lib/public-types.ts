@@ -5,6 +5,52 @@
 
 // ---- Catalog / Novel / Chapter (from routers/public.py) ----
 
+/**
+ * Canonical novel publication status (Finding 10.1, REQ-16, AC-16).
+ * 5-variant union: "completed" | "ongoing" | "hiatus" | "cancelled" | "unknown".
+ * Mirrors the backend `PUBLICATION_STATUS_VALUES` set in
+ * `backend/src/novelai/sources/status.py` (updated 2026-09-06 to include
+ * "cancelled" for author-dropped source novels). The "cancelled" variant is
+ * distinct from `onboarding_status="cancelled"` (a runtime crawl-abort
+ * signal in `storage/r2_catalog.py`).
+ */
+export type PublicationStatus =
+  | "completed"
+  | "ongoing"
+  | "hiatus"
+  | "cancelled"
+  | "unknown";
+
+const PUBLICATION_STATUS_VALUES: readonly PublicationStatus[] = [
+  "completed",
+  "ongoing",
+  "hiatus",
+  "cancelled",
+  "unknown",
+];
+
+/**
+ * Legacy UI filter aliases that have no backend publication_status counterpart.
+ * "Dropped" previously reached the backend verbatim and normalized to
+ * "unknown" there (`normalize_publication_status`); mapping it here preserves
+ * that exact filter behavior client-side.
+ */
+const LEGACY_STATUS_ALIASES: Record<string, PublicationStatus> = {
+  dropped: "unknown",
+};
+
+/** Narrow an untrusted string (e.g. URL query param) to PublicationStatus. */
+export function toPublicationStatus(
+  value: string | null | undefined,
+): PublicationStatus | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if ((PUBLICATION_STATUS_VALUES as readonly string[]).includes(normalized)) {
+    return normalized as PublicationStatus;
+  }
+  return LEGACY_STATUS_ALIASES[normalized];
+}
+
 export interface PublicGenreInfo {
   slug: string;
   name_ja: string;
@@ -24,7 +70,7 @@ export interface PublicNovelSummary {
   author: string | null; // null -> render "Unknown author" (Req 2.4)
   language: string | null;
   synopsis: string | null;
-  publication_status: string;
+  publication_status: PublicationStatus;
   chapter_count: number;
   translated_count: number;
   added_at?: string | null;
@@ -66,7 +112,7 @@ export type CatalogOrder = "asc" | "desc";
 
 export interface CatalogParams {
   q?: string;
-  publication_status?: string;
+  publication_status?: PublicationStatus;
   source_key?: string;
   sort_by?: CatalogSortField;
   order?: CatalogOrder;

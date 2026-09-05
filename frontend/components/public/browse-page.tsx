@@ -23,6 +23,7 @@ import { useCatalog, useDebounce, useGenres } from "@/hooks/public";
 import { publicApi } from "@/lib/public-api";
 import { hasNextPage } from "@/lib/public-format";
 import { publicNovelHref } from "@/lib/public-routes";
+import { toPublicationStatus } from "@/lib/public-types";
 import type {
   CatalogOrder,
   CatalogParams,
@@ -271,7 +272,7 @@ function BrowseContent({ basePath, preset }: Pick<BrowsePageProps, "basePath" | 
   const router = useRouter();
 
   const q = searchParams.get("q") ?? undefined;
-  const publicationStatus = searchParams.get("publication_status") ?? undefined;
+  const publicationStatus = toPublicationStatus(searchParams.get("publication_status"));
   const sort_by = (searchParams.get("sort_by") ?? undefined) as CatalogSortField | undefined;
   const order = (searchParams.get("order") ?? undefined) as CatalogOrder | undefined;
   const min_chapters_raw = searchParams.get("min_chapters");
@@ -407,7 +408,7 @@ function BrowseContent({ basePath, preset }: Pick<BrowsePageProps, "basePath" | 
   function handleStatusChange(nextStatus: string) {
     pushParams({
       ...params,
-      publication_status: nextStatus || undefined,
+      publication_status: toPublicationStatus(nextStatus),
       page: 1,
     });
   }

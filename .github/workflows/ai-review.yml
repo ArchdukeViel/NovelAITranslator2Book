@@ -3,7 +3,6 @@ name: AI PR Review
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,9 +14,7 @@ concurrency:
 
 jobs:
   review:
-    # Restrict execution to internal repo to protect self-hosted runner from untrusted forks
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux]
+    runs-on: [self-hosted, linux, x64, dokushodo-nonprod-linux-x64]
     timeout-minutes: 10
     steps:
       - name: Checkout repository
@@ -27,11 +24,10 @@ jobs:
           fetch-depth: 0
 
       - name: Run Review via Router
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          ROUTER_API_KEY: ${{ secrets.NINEROUTER_API_KEY }}
-          ROUTER_BASE_URL: ${{ vars.NINEROUTER_BASE_URL || 'https://api.9router.com/v1' }}
+          ROUTER_API_KEY: ${{ secrets.NINEROUTER_API_KEY || 'dummy-local' }}
+          ROUTER_BASE_URL: ${{ vars.NINEROUTER_BASE_URL || 'http://localhost:20128/v1' }}
           MODEL_NAME: ${{ vars.AI_REVIEW_MODEL || 'antigravity' }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.base_ref }}
@@ -51,16 +47,6 @@ jobs:
           api_key = os.environ.get("ROUTER_API_KEY", "").strip()
           base_url = os.environ.get("ROUTER_BASE_URL", "https://api.9router.com/v1").rstrip("/")
           model = os.environ.get("MODEL_NAME", "antigravity").strip()
-
-          # If base_url targets localhost inside WSL, replace with host default gateway
-          if "localhost" in base_url or "127.0.0.1" in base_url:
-              try:
-                  route_out = subprocess.check_output(["ip", "route"], stderr=subprocess.DEVNULL).decode("utf-8")
-                  gw_ips = [line.split()[2] for line in route_out.splitlines() if line.startswith("default") and len(line.split()) >= 3]
-                  target_host = gw_ips[0] if gw_ips else "127.0.0.1"
-                  base_url = base_url.replace("localhost", target_host).replace("127.0.0.1", target_host)
-              except Exception:
-                  pass
 
           if not api_key:
               print("No API key provided. Skipping.")
@@ -95,7 +81,6 @@ jobs:
 
           payload = {
               "model": model,
-              "stream": False,
               "messages": [
                   {
                       "role": "system",
@@ -136,10 +121,6 @@ jobs:
           comment_header = f"### 🤖 AI Code Review (`{model}`)\n\n"
           full_comment = comment_header + review_body
 
-          if not pr_number:
-              print("No pull request number identified. Skipping comment posting.")
-              sys.exit(0)
-
           # Post review comment to GitHub PR
           comment_payload = json.dumps({"body": full_comment}).encode("utf-8")
           gh_token = os.environ.get("GH_TOKEN")
@@ -158,12 +139,6 @@ jobs:
           try:
               with urllib.request.urlopen(gh_req, timeout=30) as gh_resp:
                   print(f"Successfully posted review comment (Status: {gh_resp.status})")
-          except urllib.error.HTTPError as err:
-              if err.code in (401, 403):
-                  print(f"Skipping comment: insufficient permissions on PR #{pr_number} (likely fork PR).")
-                  sys.exit(0)
-              print(f"GitHub API error ({err.code}): {err}")
-              sys.exit(1)
           except Exception as exc:
               print(f"Failed to post comment to PR #{pr_number}: {exc}")
               sys.exit(1)

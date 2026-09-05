@@ -54,7 +54,7 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "";
 const DEFAULT_PUBLIC_RETURN_TO = "/";
 const CSRF_HEADER_NAME = "X-CSRF-Token";
-export const PUBLIC_REQUEST_TIMEOUT_MS = 10_000;
+export const PUBLIC_REQUEST_TIMEOUT_MS = 15_000;
 let csrfTokenPromise: Promise<string> | null = null;
 
 export type PublicRequestAbortReason = "caller" | "timeout";
@@ -256,35 +256,45 @@ function createRequestSignal(callerSignal?: AbortSignal): {
   reason: PublicRequestAbortReason;
   cleanup: () => void;
 } {
-  const controller = new AbortController();
+  // NOTE: the timeout leg is a setTimeout-backed AbortController rather than
+  // AbortSignal.timeout so the 15s bound stays deterministic under vitest fake
+  // timers (native AbortSignal.timeout uses unmockable internal timers). The
+  // caller and timeout legs are still combined with native AbortSignal.any,
+  // and abort attribution still distinguishes caller AbortError from timeout.
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(
+    () =>
+      timeoutController.abort(
+        new DOMException("Public request timed out", "TimeoutError"),
+      ),
+    PUBLIC_REQUEST_TIMEOUT_MS,
+  );
+  const timeoutSignal = timeoutController.signal;
+  const signal = callerSignal
+    ? AbortSignal.any([callerSignal, timeoutSignal])
+    : timeoutSignal;
   let reason: PublicRequestAbortReason = "caller";
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-  const abort = (nextReason: PublicRequestAbortReason) => {
-    if (controller.signal.aborted) return;
-    reason = nextReason;
-    controller.abort(nextReason);
+  const onAbort = () => {
+    // A caller-owned abort surfaces as AbortError; the timeout leg surfaces
+    // as TimeoutError. Attribute the abort to the caller only when the caller
+    // signal actually aborted.
+    reason = callerSignal?.aborted ? "caller" : "timeout";
   };
-
-  const onCallerAbort = () => abort("caller");
-  if (callerSignal?.aborted) {
-    abort("caller");
-  } else if (callerSignal) {
-    callerSignal.addEventListener("abort", onCallerAbort, { once: true });
-  }
-
-  if (!controller.signal.aborted) {
-    timeoutId = setTimeout(() => abort("timeout"), PUBLIC_REQUEST_TIMEOUT_MS);
+  if (signal.aborted) {
+    onAbort();
+  } else {
+    signal.addEventListener("abort", onAbort, { once: true });
   }
 
   return {
-    signal: controller.signal,
+    signal,
     get reason() {
       return reason;
     },
     cleanup: () => {
-      if (timeoutId !== undefined) clearTimeout(timeoutId);
-      callerSignal?.removeEventListener("abort", onCallerAbort);
+      clearTimeout(timeoutId);
+      signal.removeEventListener("abort", onAbort);
     },
   };
 }
@@ -356,12 +366,21 @@ async function publicHead(path: string): Promise<{ available: boolean }> {
   return { available: response.status !== 503 };
 }
 
-function safeRelativeReturnPath(returnTo?: string): string {
-  if (!returnTo || !returnTo.startsWith("/") || returnTo.startsWith("//")) {
+export function safeRelativeReturnPath(returnTo?: string): string {
+  if (!returnTo) {
+    return DEFAULT_PUBLIC_RETURN_TO;
+  }
+  const sanitized = returnTo.trim().replace(/[\x00-\x1F\x7F]/g, "");
+  if (
+    !sanitized.startsWith("/") ||
+    sanitized.startsWith("//") ||
+    sanitized.startsWith("/\\") ||
+    sanitized.startsWith("\\")
+  ) {
     return DEFAULT_PUBLIC_RETURN_TO;
   }
   try {
-    const parsed = new URL(returnTo, "http://novelai.local");
+    const parsed = new URL(sanitized, "http://novelai.local");
     if (parsed.origin !== "http://novelai.local") {
       return DEFAULT_PUBLIC_RETURN_TO;
     }

@@ -26,8 +26,10 @@ export function PublicHeader() {
   // Auto-hide header on scroll down, reveal on scroll up or at top
   useEffect(() => {
     let lastScrollY = window.scrollY;
+    let ticking = false;
+    let rafId: number | null = null;
 
-    function handleScroll() {
+    function updateVisibility() {
       const currentScrollY = window.scrollY;
       const scrollDifference = currentScrollY - lastScrollY;
 
@@ -43,10 +45,23 @@ export function PublicHeader() {
       }
 
       lastScrollY = currentScrollY;
+      ticking = false;
+    }
+
+    function handleScroll() {
+      if (!ticking) {
+        ticking = true;
+        rafId = window.requestAnimationFrame(updateVisibility);
+      }
     }
 
     window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
   }, []);
 
   return (

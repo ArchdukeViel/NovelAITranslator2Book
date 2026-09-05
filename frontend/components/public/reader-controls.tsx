@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { RotateCcw, X } from "lucide-react";
 
 import { usePublicAuth } from "@/hooks/public";
-import { useReaderPrefsStore } from "@/lib/reader-prefs";
+import { useReaderUiStore } from "@/lib/store";
 
 const FONT_SIZES = [16, 18, 20, 22] as const;
 const WIDTHS = [
@@ -13,20 +13,34 @@ const WIDTHS = [
   { value: "wide" as const, label: "Wide", width: "800px" },
 ];
 
+export function isEditableTarget(target: EventTarget | null): boolean {
+  if (!target || !(target instanceof HTMLElement)) return false;
+  const tagName = target.tagName;
+  return (
+    tagName === "INPUT" ||
+    tagName === "TEXTAREA" ||
+    tagName === "SELECT" ||
+    target.isContentEditable ||
+    Boolean(target.closest("[contenteditable='true']"))
+  );
+}
+
 export function ReaderControls() {
   const [open, setOpen] = useState(false);
   const { isAuthenticated } = usePublicAuth();
-  const { fontSize, theme, width, setFontSize, setTheme, setWidth } = useReaderPrefsStore();
+  const { fontSize, theme, width, setFontSize, setTheme, setWidth } = useReaderUiStore();
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      const target = event.target as HTMLElement | null;
-      const editing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable;
-      if (event.key === "." && !editing) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        return;
+      }
+      if (isEditableTarget(event.target)) return;
+      if (event.key === ".") {
         event.preventDefault();
         setOpen(true);
       }
-      if (event.key === "Escape") setOpen(false);
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

@@ -24,7 +24,7 @@ import type {
   PublicGlossaryAnnotation,
   PublicReaderBlock,
 } from "@/lib/public-types";
-import { useReaderPrefsStore } from "@/lib/reader-prefs";
+import { useReaderUiStore } from "@/lib/store";
 
 import "../../../../reader.css";
 
@@ -338,7 +338,7 @@ export default function ChapterPage() {
   const prefetchedNextRef = useRef<string | null>(null);
   const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scrollProgress, setScrollProgress] = useState(0);
-  const { theme, fontSize, width } = useReaderPrefsStore();
+  const { theme, fontSize, width } = useReaderUiStore();
 
   useEffect(() => {
     const nextId = data?.next_chapter_id;
@@ -451,12 +451,26 @@ export default function ChapterPage() {
         });
       else localStorage.setItem(localKey, String(percent));
     }
-    window.addEventListener("scroll", update, { passive: true });
+    let ticking = false;
+    let rafId: number | null = null;
+    function throttledUpdate() {
+      if (!ticking) {
+        ticking = true;
+        rafId = window.requestAnimationFrame(() => {
+          update();
+          ticking = false;
+        });
+      }
+    }
+    window.addEventListener("scroll", throttledUpdate, { passive: true });
     window.addEventListener("pagehide", flush);
     requestAnimationFrame(update);
     return () => {
-      window.removeEventListener("scroll", update);
+      window.removeEventListener("scroll", throttledUpdate);
       window.removeEventListener("pagehide", flush);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
       if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
     };
   }, [chapterId, data, fontSize, isAuthenticated, slug, updateProgress, width]);
@@ -468,9 +482,13 @@ export default function ChapterPage() {
     const nextChapterId = chapter.next_chapter_id;
     const publicSlug = chapter.slug?.trim() || slug;
     function navigate(event: KeyboardEvent) {
+      const target = event.target;
       if (
-        event.target instanceof HTMLInputElement ||
-        event.target instanceof HTMLTextAreaElement
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement &&
+          (target.isContentEditable || Boolean(target.closest("[contenteditable='true']"))))
       )
         return;
       if (event.key === "ArrowLeft" && previousChapterId)
@@ -574,6 +592,7 @@ export default function ChapterPage() {
         <ReaderErrorBoundary
           novelSlug={typeof slug === "string" ? slug : undefined}
           chapterId={typeof chapterId === "string" ? chapterId : undefined}
+          plainText={data.text}
         >
           <article className="reader-article">
             <header className="reader-title-block">

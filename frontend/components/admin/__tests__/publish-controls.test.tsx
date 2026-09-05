@@ -73,6 +73,9 @@ describe("Library publish controls", () => {
         missingSource={false}
         pending={false}
         translationPending={false}
+        coverUploadOpen={false}
+        onToggleCoverUpload={() => {}}
+        onValidatedCover={() => {}}
         onTranslate={() => {}}
         onRecrawl={() => {}}
         onDelete={() => {}}
@@ -94,6 +97,9 @@ describe("Library publish controls", () => {
         missingSource={false}
         pending={false}
         translationPending={false}
+        coverUploadOpen={false}
+        onToggleCoverUpload={() => {}}
+        onValidatedCover={() => {}}
         onTranslate={() => {}}
         onRecrawl={() => {}}
         onDelete={() => {}}
@@ -123,6 +129,9 @@ describe("Library publish controls", () => {
         missingSource={false}
         pending={false}
         translationPending={false}
+        coverUploadOpen={false}
+        onToggleCoverUpload={() => {}}
+        onValidatedCover={() => {}}
         onTranslate={() => {}}
         onRecrawl={() => {}}
         onDelete={() => {}}
@@ -143,6 +152,9 @@ describe("Library publish controls", () => {
         missingSource={false}
         pending={false}
         translationPending={false}
+        coverUploadOpen={false}
+        onToggleCoverUpload={() => {}}
+        onValidatedCover={() => {}}
         onTranslate={() => {}}
         onRecrawl={() => {}}
         onDelete={() => {}}
