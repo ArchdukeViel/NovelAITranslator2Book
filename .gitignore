@@ -140,6 +140,7 @@ SESSION_EXPORT_*.json
 .codex/scratch/
 .codex/*.log
 .history/
+.goals/
 
 
 # Documentation (tracking)
