@@ -55,10 +55,10 @@ jobs:
           # If base_url targets localhost inside WSL, replace with host default gateway
           if "localhost" in base_url or "127.0.0.1" in base_url:
               try:
-                  route_out = subprocess.check_output(["ip", "route"]).decode("utf-8")
-                  gw_ips = [line.split()[2] for line in route_out.splitlines() if line.startswith("default")]
-                  if gw_ips:
-                      base_url = base_url.replace("localhost", gw_ips[0]).replace("127.0.0.1", gw_ips[0])
+                  route_out = subprocess.check_output(["ip", "route"], stderr=subprocess.DEVNULL).decode("utf-8")
+                  gw_ips = [line.split()[2] for line in route_out.splitlines() if line.startswith("default") and len(line.split()) >= 3]
+                  target_host = gw_ips[0] if gw_ips else "127.0.0.1"
+                  base_url = base_url.replace("localhost", target_host).replace("127.0.0.1", target_host)
               except Exception:
                   pass
 
