@@ -372,6 +372,14 @@ class AppSettings(BaseSettings):
     # --- Database
     DATABASE_URL: str | None = None
     MIGRATION_DATABASE_URL: str | None = None
+    READER_DATABASE_URL: str | None = Field(
+        default=None,
+        description="Dedicated read-only database URL (or replica URL) for novelai.main_reader.",
+    )
+    DATABASE_REPLICA_URL: str | None = Field(
+        default=None,
+        description="Optional read-replica database URL for analytical/read routing fallback to primary.",
+    )
     DATABASE_BACKUP_URL: SecretStr | None = None
     DB_CONNECTION_MODE: Literal["direct", "session", "transaction"] = "direct"
     DB_POOL_SIZE: int = Field(default=5, ge=1)

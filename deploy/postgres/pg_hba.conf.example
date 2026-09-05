@@ -1,0 +1,30 @@
+# PostgreSQL Client Authentication Configuration Template
+# Place in PostgreSQL data directory ($PGDATA/pg_hba.conf) for production deployment.
+#
+# Reference: F-1 Hardening & Network Isolation (postgres-database-hardening-and-security)
+# Invariants:
+# 1. Reject unencrypted plaintext passwords (force scram-sha-256).
+# 2. Reject non-SSL external connections.
+# 3. Fail-closed: default reject all unspecified hosts.
+
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+
+# Local administrative socket access (peer auth on unix socket)
+local   all             postgres                                peer
+local   all             all                                     scram-sha-256
+
+# Reject unencrypted external TCP connections
+hostnossl all           all             0.0.0.0/0               reject
+hostnossl all           all             ::/0                    reject
+
+# Encrypted container network & VPC internal ranges (TLS 1.3 enforced)
+# Docker default bridge/overlay networks (172.16.0.0/12)
+hostssl all             all             172.16.0.0/12           scram-sha-256
+# Private VPC internal CIDR (10.0.0.0/8)
+hostssl all             all             10.0.0.0/8              scram-sha-256
+# Loopback access for co-located tools (CloudBeaver, admin proxies)
+hostssl all             all             127.0.0.1/32            scram-sha-256
+hostssl all             all             ::1/128                 scram-sha-256
+
+# Fail-closed default rejection for all other network addresses
+host    all             all             all                     reject

@@ -91,6 +91,9 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
+        # Zero-downtime DDL safety: prevent migration from locking tables indefinitely
+        connection.exec_driver_sql("SET LOCAL lock_timeout = '2s'")
+        connection.exec_driver_sql("SET LOCAL statement_timeout = '10s'")
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

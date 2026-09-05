@@ -14,6 +14,7 @@ update_triggers:
 owned_concerns:
   - deployment-release-topology
 ---
+
 # Deployment
 
 This document owns repeatable deployment, migration, verification, rollback, and release-control procedures. It does not own application architecture, secret values, incident detail, or dated deployment evidence.
@@ -30,17 +31,17 @@ Canonical deployment topology, release, rollback, and GitHub-control contract. F
 
 `deploy/compose.yml` is canonical:
 
-| Service | Purpose |
-|---|---|
-| `caddy` | Internal HTTP proxy behind the browser-facing HTTPS entry point, compression, security headers, ordered routing. |
-| `frontend` | Next.js public/admin UI, port 3000. |
-| `backend` | Admin/auth/user API and scheduler, port 8000; no normal provider worker. |
-| `reader` | Guest public API, port 8001. |
-| `worker` | Dedicated database-backed crawl/translation worker; no host port. |
-| `migrate` | One-shot Alembic migration profile before APIs. |
-| `redis` | Shared limits, queue, coordination where enabled. |
-| `db` | Co-located native PostgreSQL 17 (`postgres:17.4-alpine`) on `novelai-net`, bound to `127.0.0.1:5432` for secure desktop GUI SSH tunneling. |
-| `restore-db` | Isolated disposable PostgreSQL 18 restore verifier (profile: `recovery`). |
+| Service      | Purpose                                                                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `caddy`      | Internal HTTP proxy behind the browser-facing HTTPS entry point, compression, security headers, ordered routing.                           |
+| `frontend`   | Next.js public/admin UI, port 3000.                                                                                                        |
+| `backend`    | Admin/auth/user API and scheduler, port 8000; no normal provider worker.                                                                   |
+| `reader`     | Guest public API, port 8001.                                                                                                               |
+| `worker`     | Dedicated database-backed crawl/translation worker; no host port.                                                                          |
+| `migrate`    | One-shot Alembic migration profile before APIs.                                                                                            |
+| `redis`      | Shared limits, queue, coordination where enabled.                                                                                          |
+| `db`         | Co-located native PostgreSQL 17 (`postgres:17.4-alpine`) on `novelai-net`, bound to `127.0.0.1:5432` for secure desktop GUI SSH tunneling. |
+| `restore-db` | Isolated disposable PostgreSQL 18 restore verifier (profile: `recovery`).                                                                  |
 
 Compose provisions co-located native PostgreSQL 17 via the `db` service, or connects to an external PostgreSQL instance via `DATABASE_URL`. Never run
 migrations inside long-running backend containers.
@@ -160,7 +161,7 @@ Validator output remains redacted.
      schema scope, and denied admin DDL.
 7. Verify liveness/readiness, public catalog, owner auth boundary, CSRF/OAuth,
    storage scope, and frontend.
-7. Record release commit, immutable tags, UTC time, and sanitized evidence.
+8. Record release commit, immutable tags, UTC time, and sanitized evidence.
 
 ## Deploy Workflow
 
@@ -196,9 +197,7 @@ Hardening contract:
   invalid.
 - **Migration-head parity.** Before SSH, the workflow compares the checked-out
   migration head with the exact admin image digest and requires
-  `f8a2c4e6b0d1`, the current release head. The optional Supabase RLS-helper
-  hardening migration is conditional and a no-op when the helper is absent;
-  it still remains part of the source/image parity contract.
+  `e5f6a7b8c9d0`, the current release head (incorporating `a1b2c3d4e5f6` foreign key indexes and `e5f6a7b8c9d0` autovacuum storage parameter tuning).
   The role migration `c7d9e1f3a5b2` is an earlier migration in that chain, not the final head;
   a staging database at that earlier head is advanced by the one-shot
   migration profile before readiness is accepted.
@@ -234,8 +233,8 @@ Hardening contract:
 - Inspect the previous release's `release.env` and require image/current-schema
   compatibility before switching traffic. The exact two-env-file restart form is:
   `docker compose --env-file /opt/novelai/shared/.env --env-file
-  /opt/novelai/releases/<VERSION>/release.env -f
-  /opt/novelai/releases/<VERSION>/compose.yml up -d --pull never --wait`.
+/opt/novelai/releases/<VERSION>/release.env -f
+/opt/novelai/releases/<VERSION>/compose.yml up -d --pull never --wait`.
 - Redeploy the previous immutable image/version only after that compatibility
   check. The old `sha-071f6829f572b431f9583ff0988560cd795c9b56` image is retained
   as an identifiable **schema-incompatible rollback candidate** and must not be
@@ -244,7 +243,7 @@ Hardening contract:
 - Prefer forward-fix for migrations. Take DB snapshot and test any downgrade on
   isolated staging before production.
 - **Rollback blocking gate**: Prior image must pass production smoke against
-  *current* schema before routing traffic. Smoke validates catalog (200) and
+  _current_ schema before routing traffic. Smoke validates catalog (200) and
   owner recovery health (all recovery probes healthy). A 500 from catalog or
   unhealthy recovery probe **blocks rollback** — investigate schema/image
   incompatibility and apply forward-fix or verified downgrade migration.
@@ -404,14 +403,14 @@ in [`STATUS.md`](STATUS.md) pass without unwaived blockers.
 Current decision is **NO-GO**. Repository checks prove local behavior, not hosted
 operation. Production approval still requires:
 
-| Area | Required hosted evidence |
-|---|---|
-| Identity/security | Real domains, OAuth callback, cookies, CORS/CSRF, hosts, disabled-user behavior. |
-| Storage/recovery | Isolated current-head PostgreSQL restore and object snapshot restore. |
-| Monitoring | External checks, real redacted alert delivery, escalation ownership. |
-| Browser/network | Accessibility, real-network performance, SEO validators, legal propagation. |
-| Rollback | Pause worker/scheduler, purge cache, disable reader, redeploy immutable prior version, smoke. |
-| Ownership | Named launch, rollback, and monitoring operators. |
+| Area              | Required hosted evidence                                                                      |
+| ----------------- | --------------------------------------------------------------------------------------------- |
+| Identity/security | Real domains, OAuth callback, cookies, CORS/CSRF, hosts, disabled-user behavior.              |
+| Storage/recovery  | Isolated current-head PostgreSQL restore and object snapshot restore.                         |
+| Monitoring        | External checks, real redacted alert delivery, escalation ownership.                          |
+| Browser/network   | Accessibility, real-network performance, SEO validators, legal propagation.                   |
+| Rollback          | Pause worker/scheduler, purge cache, disable reader, redeploy immutable prior version, smoke. |
+| Ownership         | Named launch, rollback, and monitoring operators.                                             |
 
 Provider configuration must be verified against tracked topology. Account or
 payment blocks remain blocks; screenshots or free previews are not production
