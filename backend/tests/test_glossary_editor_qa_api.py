@@ -139,6 +139,7 @@ class FakeStorage:
         self.translated[(novel_id, chapter_id)] = {"text": text, **kwargs}
 
     def save_edited_translation(self, novel_id, chapter_id, text, **kwargs):
+        kwargs.pop("session", None)
         self.saved_edits.append(
             {
                 "novel_id": novel_id,
@@ -154,6 +155,15 @@ class FakeStorage:
 
     def load_translation_edit_history(self, novel_id, chapter_id):
         return []
+
+    def count_translated_chapters(self, novel_id):
+        return len([k for k in self.translated if k[0] == novel_id])
+
+    def list_translated_chapters(self, novel_id):
+        return [k[1] for k in self.translated if k[0] == novel_id]
+
+    def count_stored_chapters(self, novel_id):
+        return len([k for k in self.chapters if k[0] == novel_id])
 
 
 @pytest.fixture
