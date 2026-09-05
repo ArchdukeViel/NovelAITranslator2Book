@@ -109,3 +109,32 @@ async def test_retranslate_stale_schedules_only_stale_canonical_versions() -> No
     create_kwargs = cast(Any, service.activity_log.create_translation_activity).call_args.kwargs
     assert create_kwargs["kind"] == "batch_retranslate"
     assert create_kwargs["chapters"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_list_failed_jobs_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    from novelai.api.routers.operations import list_failed_jobs
+
+    monkeypatch.setattr(
+        "novelai.worker.queue.get_failed_jobs",
+        lambda limit: [{"job_id": "test-job-123", "queue": "crawl", "func_name": "crawl_task"}],
+    )
+    result = await list_failed_jobs(limit=10)
+    assert result["total"] == 1
+    assert result["jobs"][0]["job_id"] == "test-job-123"
+
+
+@pytest.mark.asyncio
+async def test_requeue_job_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import HTTPException
+
+    from novelai.api.routers.operations import requeue_job
+
+    monkeypatch.setattr("novelai.worker.queue.requeue_failed_job", lambda jid: jid == "valid-job")
+
+    success_result = await requeue_job(job_id="valid-job")
+    assert success_result == {"status": "requeued", "job_id": "valid-job"}
+
+    with pytest.raises(HTTPException) as exc_info:
+        await requeue_job(job_id="missing-job")
+    assert exc_info.value.status_code == 404

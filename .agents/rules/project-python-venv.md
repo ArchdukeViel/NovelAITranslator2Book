@@ -3,26 +3,42 @@ trigger: always_on
 description: Always run backend tooling through the project virtualenv; never invoke bare python/pytest/ruff/pyright outside the tools/ wrappers.
 ---
 
-## project-python-venv
+# Project Python Virtualenv (`.venv`)
 
-The project virtualenv at `.venv/` is the canonical interpreter
-(Python ≥ 3.14). PATH-precedence mistakes against the system interpreter
-silently lose the venv pinning and poison results.
+The project virtualenv at `.venv/` is the canonical interpreter (Python ≥ 3.14). PATH-precedence mistakes against the system interpreter silently lose package pinning and produce deceptive test or lint results.
 
-Rules:
+## Mandatory Tooling Wrappers
 
-- Always invoke backend tooling through `tools/`:
-  - `tools/pytest.ps1` for the test suite
-  - `tools/pyright.ps1` for type checking
-  - `tools/ruff.ps1` for lint and format
-- Never run bare `python`, `pytest`, `ruff`, or `pyright` for backend
-  work; those fall through to the system interpreter.
-- If `.venv\Scripts\python.exe` is missing, rebuild per
-  `docs/OPERATIONS.md` "Recovering the Project Venv" (or
-  `readme.md`). Do not continue with a different interpreter.
-- The CI workflow installs
-  `.[documents,gemini,dev,test,s3,auth]` into the venv before
-  invoking tooling.
-- When verifying a change, use the smallest decisive check first:
-  focused test file through `tools/pytest.ps1`, then type checking
-  through `tools/pyright.ps1`.
+Always invoke backend quality tools through the repository wrappers with `-ExecutionPolicy Bypass`:
+- `powershell -ExecutionPolicy Bypass -File tools/pytest.ps1 [args]` &mdash; focused and suite test runs.
+- `powershell -ExecutionPolicy Bypass -File tools/pyright.ps1 [args]` &mdash; static type analysis.
+- `powershell -ExecutionPolicy Bypass -File tools/ruff.ps1 [check|format] [args]` &mdash; linting and formatting.
+- `powershell -ExecutionPolicy Bypass -File tools/docs-check.ps1` &mdash; documentation contract and path validation.
+
+## One-Off Scripts & CLI Commands
+
+- **Ad-Hoc Scripts & Module Execution**: Run `.venv\Scripts\python.exe <script-path> [args]`. Never use bare `python`. Note that `backend/src` must be in `PYTHONPATH` or `novelai` installed in editable mode (`pip install -e backend`) for package imports to resolve. Prefer module execution:
+  ```powershell
+  .venv\Scripts\python.exe -m novelai --interface cli
+  .venv\Scripts\python.exe tools\database\export_seed.py
+  ```
+- **Alembic Migrations**: Invoke Alembic via the virtualenv:
+  ```powershell
+  .venv\Scripts\python.exe -m alembic -c backend/alembic.ini <command>
+  ```
+- **Dependency Management**: `pyproject.toml` is the sole authoritative manifest. Dependencies and lockfiles are synchronized only by running `deploy\update-lockfiles.ps1` after an authorized dependency change.
+
+## CI Test Sharding Contract
+
+CI divides backend tests into two tiers:
+- `backend-tests` (Core): Unit tests running in parallel with `-n 2`, excluding 18 integration/extended test files.
+- `backend-extended`: Sharded matrix (`orchestration-and-pipeline`, `web-api-and-auth`, `components-and-lifecycle`) running the heavy suites.
+When authoring or reorganizing test files in `backend/tests/`, verify where the test runs in `.github/workflows/ci.yml` to prevent runner timeouts or missing test coverage.
+
+## Recovery & Verification Protocol
+
+- If `.venv\Scripts\python.exe` is missing, recover it per `docs/OPERATIONS.md` ("Recovering the Project Venv"). Never fallback to a system or global Python interpreter.
+- When verifying backend changes, follow the smallest-decisive ladder:
+  1. Focused test file: `powershell -ExecutionPolicy Bypass -File tools\pytest.ps1 backend/tests/test_<name>.py`
+  2. Type check: `powershell -ExecutionPolicy Bypass -File tools\pyright.ps1`
+  3. Linter/Formatter: `powershell -ExecutionPolicy Bypass -File tools\ruff.ps1 check`

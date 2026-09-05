@@ -214,7 +214,7 @@ async def test_run_activity_renews_lease_while_orchestrator_blocks_event_loop(wo
 
     async def blocking_translate(*args: object, **kwargs: object) -> None:
         del args, kwargs
-        time.sleep(1.25)
+        time.sleep(1.25)  # noqa: ASYNC251  # Intentional synchronous blocking sleep to test worker lease renewal
 
     monkeypatch.setattr(orchestrator, "translate_chapters", blocking_translate)
 

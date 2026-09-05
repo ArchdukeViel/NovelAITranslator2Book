@@ -5,10 +5,10 @@ describe("public API quarantine", () => {
   it("keeps guest reader API methods available", () => {
     const publicApi = readFileSync("lib/public-api.ts", "utf8");
 
-    expect(publicApi).toContain("catalog(params");
-    expect(publicApi).toContain("novel(slug");
-    expect(publicApi).toContain("chapters(slug");
-    expect(publicApi).toContain("chapter(slug");
+    expect(publicApi).toMatch(/catalog\s*\(\s*params/);
+    expect(publicApi).toMatch(/novel\s*\(\s*slug/);
+    expect(publicApi).toMatch(/chapters\s*\(\s*slug/);
+    expect(publicApi).toMatch(/chapter\s*\(\s*slug/);
     expect(publicApi).toContain("/api/public/catalog");
     expect(publicApi).toContain("/api/public/novels/");
   });

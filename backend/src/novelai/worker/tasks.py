@@ -25,9 +25,16 @@ import asyncio
 import logging
 from typing import Any
 
+from rq import Retry
+
 from novelai.worker.queue import QUEUE_CRAWL, QUEUE_TRANSLATION, get_queue
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_JOB_TIMEOUT_SECONDS: int = 600
+DEFAULT_JOB_RETRY: Retry = Retry(max=3, interval=[10, 30, 60])
+DEFAULT_RESULT_TTL_SECONDS: int = 86400  # 24 hours
+DEFAULT_FAILURE_TTL_SECONDS: int = 604800  # 7 days
 
 
 # ---------------------------------------------------------------------------
@@ -110,33 +117,71 @@ def run_translation_activity(activity_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def enqueue_crawl_job(activity_id: str, *, redis_url: str | None = None) -> str:
+def enqueue_crawl_job(
+    activity_id: str,
+    *,
+    redis_url: str | None = None,
+    retry: Retry | None = DEFAULT_JOB_RETRY,
+    job_timeout: int = DEFAULT_JOB_TIMEOUT_SECONDS,
+    result_ttl: int = DEFAULT_RESULT_TTL_SECONDS,
+    failure_ttl: int = DEFAULT_FAILURE_TTL_SECONDS,
+) -> str:
     """Enqueue a crawl activity onto the RQ crawl queue.
 
     Args:
         activity_id: The activity ID already created in ActivityQueueService.
         redis_url: Optional explicit Redis URL; falls back to settings.REDIS_URL.
+        retry: RQ Retry policy for transient failures.
+        job_timeout: Execution timeout in seconds.
+        result_ttl: Time in seconds to keep successful job results in Redis.
+        failure_ttl: Time in seconds to keep failed jobs in Redis.
 
     Returns:
         The RQ job ID (str).
     """
     q = get_queue(QUEUE_CRAWL, url=redis_url)
-    job = q.enqueue(run_crawl_activity, activity_id)
+    job = q.enqueue(
+        run_crawl_activity,
+        activity_id,
+        retry=retry,
+        job_timeout=job_timeout,
+        result_ttl=result_ttl,
+        failure_ttl=failure_ttl,
+    )
     logger.info("Enqueued crawl activity %s as RQ job %s", activity_id, job.id)
     return job.id
 
 
-def enqueue_translation_job(activity_id: str, *, redis_url: str | None = None) -> str:
+def enqueue_translation_job(
+    activity_id: str,
+    *,
+    redis_url: str | None = None,
+    retry: Retry | None = DEFAULT_JOB_RETRY,
+    job_timeout: int = DEFAULT_JOB_TIMEOUT_SECONDS,
+    result_ttl: int = DEFAULT_RESULT_TTL_SECONDS,
+    failure_ttl: int = DEFAULT_FAILURE_TTL_SECONDS,
+) -> str:
     """Enqueue a translation activity onto the RQ translation queue.
 
     Args:
         activity_id: The activity ID already created in ActivityQueueService.
         redis_url: Optional explicit Redis URL; falls back to settings.REDIS_URL.
+        retry: RQ Retry policy for transient failures.
+        job_timeout: Execution timeout in seconds.
+        result_ttl: Time in seconds to keep successful job results in Redis.
+        failure_ttl: Time in seconds to keep failed jobs in Redis.
 
     Returns:
         The RQ job ID (str).
     """
     q = get_queue(QUEUE_TRANSLATION, url=redis_url)
-    job = q.enqueue(run_translation_activity, activity_id)
+    job = q.enqueue(
+        run_translation_activity,
+        activity_id,
+        retry=retry,
+        job_timeout=job_timeout,
+        result_ttl=result_ttl,
+        failure_ttl=failure_ttl,
+    )
     logger.info("Enqueued translation activity %s as RQ job %s", activity_id, job.id)
     return job.id

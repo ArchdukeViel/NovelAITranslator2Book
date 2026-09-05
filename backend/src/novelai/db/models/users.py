@@ -114,6 +114,7 @@ class ReadingHistory(Base):
     """Records each time a user reads a chapter (reading history log)."""
 
     __tablename__ = "reading_history"
+    __table_args__ = (Index("ix_reading_history_user_read_at", "user_id", "read_at"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -151,7 +152,10 @@ class Review(Base):
     """
 
     __tablename__ = "reviews"
-    __table_args__ = (UniqueConstraint("user_id", "novel_id", name="uq_reviews_user_novel"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "novel_id", name="uq_reviews_user_novel"),
+        Index("ix_reviews_novel_status_created_at", "novel_id", "status", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)

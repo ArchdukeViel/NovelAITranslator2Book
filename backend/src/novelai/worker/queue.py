@@ -17,6 +17,8 @@ Usage:
 
 from __future__ import annotations
 
+from typing import Any
+
 from redis import Redis
 from rq import Queue
 
@@ -61,3 +63,49 @@ def get_queue(name: str = QUEUE_DEFAULT, url: str | None = None) -> Queue:
     """
     conn = get_redis_connection(url)
     return Queue(name, connection=conn)
+
+
+def get_failed_jobs(limit: int = 50) -> list[dict[str, Any]]:
+    """List recent failed jobs across worker queues."""
+    from rq.job import Job
+    from rq.registry import FailedJobRegistry
+
+    failed_jobs: list[dict[str, Any]] = []
+    conn = get_redis_connection()
+    for queue_name in ALL_QUEUES:
+        q = Queue(queue_name, connection=conn)
+        registry = FailedJobRegistry(queue=q)
+        for job_id in registry.get_job_ids()[:limit]:
+            try:
+                job = Job.fetch(job_id, connection=conn)
+                failed_jobs.append(
+                    {
+                        "job_id": job_id,
+                        "queue": queue_name,
+                        "func_name": job.func_name,
+                        "created_at": job.created_at.isoformat() if job.created_at else None,
+                        "enqueued_at": job.enqueued_at.isoformat() if job.enqueued_at else None,
+                        "exc_info": job.exc_info,
+                    }
+                )
+            except Exception:
+                failed_jobs.append({"job_id": job_id, "queue": queue_name})
+            if len(failed_jobs) >= limit:
+                break
+        if len(failed_jobs) >= limit:
+            break
+    return failed_jobs
+
+
+def requeue_failed_job(job_id: str) -> bool:
+    """Requeue a failed job by ID."""
+    from rq.registry import FailedJobRegistry
+
+    conn = get_redis_connection()
+    for queue_name in ALL_QUEUES:
+        q = Queue(queue_name, connection=conn)
+        registry = FailedJobRegistry(queue=q)
+        if job_id in registry.get_job_ids():
+            registry.requeue(job_id)
+            return True
+    return False

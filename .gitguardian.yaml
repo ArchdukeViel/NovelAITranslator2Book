@@ -1,0 +1,7 @@
+secret:
+  ignored_matches:
+  - match: 7ba00ab9f29dc36c7914ae42866d83938e8741971465a53726633132acd34379
+    name: local-dev-postgres-dummy-password
+  - match: 3231225aefc892e3e6fec27371c0dd572f59fb727f0c1ed7ad8802b5f0174293
+    name: local-dev-postgres-compose-dummy-password
+version: 2

@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, BookOpen, Flag } from "lucide-react";
 
 import { ReaderControls } from "@/components/public/reader-controls";
 import { GlossaryAnnotationHighlighter } from "@/components/public/glossary-annotation-highlighter";
+import { ReaderErrorBoundary } from "@/components/reader/reader-error-boundary";
 import {
   useChapter,
   usePublicAuth,
@@ -15,9 +17,13 @@ import {
   useUpdateProgress,
 } from "@/hooks/public";
 import { ApiError } from "@/lib/api";
+import { publicApi } from "@/lib/public-api";
 import { widthClass } from "@/lib/public-format";
 import { publicChapterHref, publicNovelHref } from "@/lib/public-routes";
-import type { PublicGlossaryAnnotation, PublicReaderBlock } from "@/lib/public-types";
+import type {
+  PublicGlossaryAnnotation,
+  PublicReaderBlock,
+} from "@/lib/public-types";
 import { useReaderPrefsStore } from "@/lib/reader-prefs";
 
 import "../../../../reader.css";
@@ -80,27 +86,35 @@ function isDialogueLine(text: string): boolean {
   if (!trimmed) {
     return false;
   }
-  const withoutTrailingPunctuation = trimmed.replace(/[.!?…。！？]*$/u, "").trimEnd();
+  const withoutTrailingPunctuation = trimmed
+    .replace(/[.!?…。！？]*$/u, "")
+    .trimEnd();
   return dialogueQuotePairs.some(
-    ({ open, close }) => withoutTrailingPunctuation.startsWith(open)
-      && withoutTrailingPunctuation.endsWith(close)
-      && withoutTrailingPunctuation.length > open.length + close.length
+    ({ open, close }) =>
+      withoutTrailingPunctuation.startsWith(open) &&
+      withoutTrailingPunctuation.endsWith(close) &&
+      withoutTrailingPunctuation.length > open.length + close.length,
   );
 }
 
-function readerDisplayBlocks(data: { text: string; reader_blocks?: PublicReaderBlock[] }): ReaderDisplayBlock[] {
+function readerDisplayBlocks(data: {
+  text: string;
+  reader_blocks?: PublicReaderBlock[];
+}): ReaderDisplayBlock[] {
   if (Array.isArray(data.reader_blocks)) {
-    const blocks = data.reader_blocks.flatMap((block, sourceBlockIndex): ReaderDisplayBlock[] => {
-      if (typeof block === "string") {
-        const text = readerDisplayText(block).trim();
+    const blocks = data.reader_blocks.flatMap(
+      (block, sourceBlockIndex): ReaderDisplayBlock[] => {
+        if (typeof block === "string") {
+          const text = readerDisplayText(block).trim();
+          return text ? [{ type: "line", text, sourceBlockIndex }] : [];
+        }
+        if (block?.type === "break") {
+          return [{ type: "break" }];
+        }
+        const text = readerDisplayText(String(block?.text ?? "")).trim();
         return text ? [{ type: "line", text, sourceBlockIndex }] : [];
-      }
-      if (block?.type === "break") {
-        return [{ type: "break" }];
-      }
-      const text = readerDisplayText(String(block?.text ?? "")).trim();
-      return text ? [{ type: "line", text, sourceBlockIndex }] : [];
-    });
+      },
+    );
     if (blocks.length > 0) {
       return blocks;
     }
@@ -113,11 +127,17 @@ function readerDisplayBlocks(data: { text: string; reader_blocks?: PublicReaderB
     .flatMap((block, index): ReaderDisplayBlock[] =>
       index === 0
         ? [{ type: "line", text: block, sourceBlockIndex: null }]
-        : [{ type: "break" }, { type: "line", text: block, sourceBlockIndex: null }]
+        : [
+            { type: "break" },
+            { type: "line", text: block, sourceBlockIndex: null },
+          ],
     );
 }
 
-function readerDisplayParagraphs(data: { text: string; reader_blocks?: PublicReaderBlock[] }): ReaderDisplayParagraph[] {
+function readerDisplayParagraphs(data: {
+  text: string;
+  reader_blocks?: PublicReaderBlock[];
+}): ReaderDisplayParagraph[] {
   const paragraphs: ReaderDisplayParagraph[] = [];
   let lines: string[] = [];
   let sourceBlockIndices: number[] = [];
@@ -148,7 +168,8 @@ function readerDisplayParagraphs(data: { text: string; reader_blocks?: PublicRea
       paragraphs.push({
         kind: "dialogue",
         text,
-        sourceBlockIndices: block.sourceBlockIndex === null ? [] : [block.sourceBlockIndex],
+        sourceBlockIndices:
+          block.sourceBlockIndex === null ? [] : [block.sourceBlockIndex],
       });
       continue;
     }
@@ -168,9 +189,10 @@ function annotationsForParagraph(
 ): PublicGlossaryAnnotation[] {
   return annotations.flatMap((annotation) => {
     const relevantMatches = annotation.matches.filter(
-      (match) => match.block_index === undefined
-        || paragraph.sourceBlockIndices.length === 0
-        || paragraph.sourceBlockIndices.includes(match.block_index),
+      (match) =>
+        match.block_index === undefined ||
+        paragraph.sourceBlockIndices.length === 0 ||
+        paragraph.sourceBlockIndices.includes(match.block_index),
     );
     if (relevantMatches.length === 0) {
       return [];
@@ -178,7 +200,9 @@ function annotationsForParagraph(
 
     const paragraphLower = paragraph.text.toLocaleLowerCase();
     const remappedMatches: PublicGlossaryAnnotation["matches"] = [];
-    for (const surface of [...new Set(relevantMatches.map((match) => match.surface).filter(Boolean))]) {
+    for (const surface of [
+      ...new Set(relevantMatches.map((match) => match.surface).filter(Boolean)),
+    ]) {
       const surfaceLower = surface.toLocaleLowerCase();
       let start = paragraphLower.indexOf(surfaceLower);
       while (start >= 0 && remappedMatches.length < relevantMatches.length) {
@@ -190,7 +214,9 @@ function annotationsForParagraph(
         start = paragraphLower.indexOf(surfaceLower, start + surface.length);
       }
     }
-    return remappedMatches.length > 0 ? [{ ...annotation, matches: remappedMatches }] : [];
+    return remappedMatches.length > 0
+      ? [{ ...annotation, matches: remappedMatches }]
+      : [];
   });
 }
 
@@ -286,6 +312,14 @@ function ReaderMessage({
   );
 }
 
+function useSafeQueryClient() {
+  try {
+    return useQueryClient();
+  } catch {
+    return null;
+  }
+}
+
 export default function ChapterPage() {
   const params = useParams<{ slug: string; chapterId: string }>();
   const router = useRouter();
@@ -298,11 +332,41 @@ export default function ChapterPage() {
   const savedProgress = useProgress(slug);
   const updateProgress = useUpdateProgress(slug);
   const recordHistory = useRecordHistory();
+  const queryClient = useSafeQueryClient();
   const trackedChapterRef = useRef<string | null>(null);
   const restoredChapterRef = useRef<string | null>(null);
+  const prefetchedNextRef = useRef<string | null>(null);
   const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scrollProgress, setScrollProgress] = useState(0);
   const { theme, fontSize, width } = useReaderPrefsStore();
+
+  useEffect(() => {
+    const nextId = data?.next_chapter_id;
+    if (
+      !nextId ||
+      scrollProgress < 70 ||
+      prefetchedNextRef.current === nextId
+    ) {
+      return;
+    }
+    prefetchedNextRef.current = nextId;
+    const targetSlug = data.slug?.trim() || slug;
+    if (queryClient) {
+      void queryClient.prefetchQuery({
+        queryKey: ["public", "chapter", targetSlug, nextId],
+        queryFn: ({ signal }) => publicApi.chapter(targetSlug, nextId, signal),
+        staleTime: 1000 * 60 * 5,
+      });
+    }
+    router.prefetch?.(publicChapterHref(targetSlug, nextId));
+  }, [
+    data?.next_chapter_id,
+    data?.slug,
+    queryClient,
+    router,
+    scrollProgress,
+    slug,
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated || !data || trackedChapterRef.current === chapterId) {
@@ -318,14 +382,18 @@ export default function ChapterPage() {
   useEffect(() => {
     if (!data || restoredChapterRef.current === chapterId) return;
     const localKey = `reader-position:${slug}:${chapterId}`;
-    const percent = isAuthenticated && savedProgress.data?.chapter_id === chapterId
-      ? savedProgress.data.progress_percent
-      : Number(localStorage.getItem(localKey) ?? 0);
+    const percent =
+      isAuthenticated && savedProgress.data?.chapter_id === chapterId
+        ? savedProgress.data.progress_percent
+        : Number(localStorage.getItem(localKey) ?? 0);
     restoredChapterRef.current = chapterId;
     if (percent > 0) {
       const restore = () => {
-        const maximum = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-        window.scrollTo(0, maximum * Math.min(100, percent) / 100);
+        const maximum = Math.max(
+          0,
+          document.documentElement.scrollHeight - window.innerHeight,
+        );
+        window.scrollTo(0, (maximum * Math.min(100, percent)) / 100);
       };
       requestAnimationFrame(() => requestAnimationFrame(restore));
       const article = document.querySelector(".reader-article");
@@ -345,19 +413,42 @@ export default function ChapterPage() {
     if (!data) return;
     const localKey = `reader-position:${slug}:${chapterId}`;
     function update() {
-      const maximum = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-      const percent = Math.min(100, Math.max(0, window.scrollY / maximum * 100));
+      const maximum = Math.max(
+        1,
+        document.documentElement.scrollHeight - window.innerHeight,
+      );
+      const percent = Math.min(
+        100,
+        Math.max(0, (window.scrollY / maximum) * 100),
+      );
       setScrollProgress(percent);
       if (!isAuthenticated) localStorage.setItem(localKey, String(percent));
       else {
         if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
-        progressTimerRef.current = setTimeout(() => updateProgress.mutate({ chapter_id: chapterId, progress_percent: percent }), 500);
+        progressTimerRef.current = setTimeout(
+          () =>
+            updateProgress.mutate({
+              chapter_id: chapterId,
+              progress_percent: percent,
+            }),
+          500,
+        );
       }
     }
     function flush() {
-      const maximum = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-      const percent = Math.min(100, Math.max(0, window.scrollY / maximum * 100));
-      if (isAuthenticated) updateProgress.mutate({ chapter_id: chapterId, progress_percent: percent });
+      const maximum = Math.max(
+        1,
+        document.documentElement.scrollHeight - window.innerHeight,
+      );
+      const percent = Math.min(
+        100,
+        Math.max(0, (window.scrollY / maximum) * 100),
+      );
+      if (isAuthenticated)
+        updateProgress.mutate({
+          chapter_id: chapterId,
+          progress_percent: percent,
+        });
       else localStorage.setItem(localKey, String(percent));
     }
     window.addEventListener("scroll", update, { passive: true });
@@ -377,9 +468,15 @@ export default function ChapterPage() {
     const nextChapterId = chapter.next_chapter_id;
     const publicSlug = chapter.slug?.trim() || slug;
     function navigate(event: KeyboardEvent) {
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
-      if (event.key === "ArrowLeft" && previousChapterId) router.push(publicChapterHref(publicSlug, previousChapterId));
-      if (event.key === "ArrowRight" && nextChapterId) router.push(publicChapterHref(publicSlug, nextChapterId));
+      if (
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement
+      )
+        return;
+      if (event.key === "ArrowLeft" && previousChapterId)
+        router.push(publicChapterHref(publicSlug, previousChapterId));
+      if (event.key === "ArrowRight" && nextChapterId)
+        router.push(publicChapterHref(publicSlug, nextChapterId));
     }
     window.addEventListener("keydown", navigate);
     return () => window.removeEventListener("keydown", navigate);
@@ -404,7 +501,8 @@ export default function ChapterPage() {
         theme={theme}
         novelHref={novelHref}
       >
-        Could not load this chapter. It may be unavailable or there may be a connection issue. Try the novel page to find available chapters.
+        Could not load this chapter. It may be unavailable or there may be a
+        connection issue. Try the novel page to find available chapters.
       </ReaderMessage>
     );
   }
@@ -425,14 +523,28 @@ export default function ChapterPage() {
   const publicSlug = data.slug?.trim() || slug;
   const publicNovelHrefValue = publicNovelHref(publicSlug);
   const novelTitle = data.novel_title || slug;
-  const chapterTitle = data.title || (data.chapter_number != null ? `Chapter ${data.chapter_number}` : "Untitled chapter");
+  const chapterTitle =
+    data.title ||
+    (data.chapter_number != null
+      ? `Chapter ${data.chapter_number}`
+      : "Untitled chapter");
   const displayParagraphs = readerDisplayParagraphs(data);
   const glossaryAnnotations = data.glossary_annotations ?? [];
 
   return (
     <div data-reader-theme={theme} className="reader-container">
-      <div role="progressbar" aria-label="Reading progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(scrollProgress)} className="fixed inset-x-0 top-0 z-50 h-[3px] bg-muted">
-        <div className="h-full bg-primary transition-[width] duration-100" style={{ width: `${scrollProgress}%` }} />
+      <div
+        role="progressbar"
+        aria-label="Reading progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(scrollProgress)}
+        className="fixed inset-x-0 top-0 z-50 h-[3px] bg-muted"
+      >
+        <div
+          className="h-full bg-primary transition-[width] duration-100"
+          style={{ width: `${scrollProgress}%` }}
+        />
       </div>
       <main className={`reader-shell ${widthClass(width)}`}>
         <header className="reader-chrome">
@@ -442,7 +554,9 @@ export default function ChapterPage() {
               <span className="font-literary">{novelTitle}</span>
             </Link>
             <p className="mt-2 truncate text-xs font-metadata reader-muted">
-              {data.chapter_number != null ? `Chapter ${data.chapter_number}` : "\u00a0"}
+              {data.chapter_number != null
+                ? `Chapter ${data.chapter_number}`
+                : "\u00a0"}
             </p>
           </div>
           <ReaderControls />
@@ -457,34 +571,42 @@ export default function ChapterPage() {
           novelHref={publicNovelHrefValue}
         />
 
-        <article className="reader-article">
-          <header className="reader-title-block">
-            <p className="font-metadata text-xs uppercase tracking-[0.22em] reader-muted">
-              {novelTitle}
-            </p>
-            <h1 className="mt-4 font-literary text-3xl font-medium leading-tight tracking-normal md:text-4xl">
-              {chapterTitle}
-            </h1>
-          </header>
-
-          <div
-            className="reader-text font-literary"
-            style={{ fontSize: `${fontSize}px` }}
-          >
-            {displayParagraphs.map((paragraph, paragraphIndex) => (
-              <p
-                key={`${data.chapter_id}-paragraph-${paragraphIndex}`}
-                className={`reader-source-paragraph reader-source-paragraph--${paragraph.kind}`}
-                data-reader-source-group="true"
-              >
-                <GlossaryAnnotationHighlighter
-                  text={paragraph.text}
-                  annotations={annotationsForParagraph(paragraph, glossaryAnnotations)}
-                />
+        <ReaderErrorBoundary
+          novelSlug={typeof slug === "string" ? slug : undefined}
+          chapterId={typeof chapterId === "string" ? chapterId : undefined}
+        >
+          <article className="reader-article">
+            <header className="reader-title-block">
+              <p className="font-metadata text-xs uppercase tracking-[0.22em] reader-muted">
+                {novelTitle}
               </p>
-            ))}
-          </div>
-        </article>
+              <h1 className="mt-4 font-literary text-3xl font-medium leading-tight tracking-normal md:text-4xl">
+                {chapterTitle}
+              </h1>
+            </header>
+
+            <div
+              className="reader-text font-literary"
+              style={{ fontSize: `${fontSize}px` }}
+            >
+              {displayParagraphs.map((paragraph, paragraphIndex) => (
+                <p
+                  key={`${data.chapter_id}-paragraph-${paragraphIndex}`}
+                  className={`reader-source-paragraph reader-source-paragraph--${paragraph.kind}`}
+                  data-reader-source-group="true"
+                >
+                  <GlossaryAnnotationHighlighter
+                    text={paragraph.text}
+                    annotations={annotationsForParagraph(
+                      paragraph,
+                      glossaryAnnotations,
+                    )}
+                  />
+                </p>
+              ))}
+            </div>
+          </article>
+        </ReaderErrorBoundary>
 
         <section className="reader-report" aria-label="Report chapter issue">
           <Flag className="mt-0.5 h-4 w-4 shrink-0" />

@@ -237,3 +237,29 @@ async def cancel_onboarding(
     except OperationError as exc:
         _raise_operation_error(exc)
         raise AssertionError("unreachable") from None
+
+
+@router.get("/jobs/failed")
+async def list_failed_jobs(
+    limit: int = 50,
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    """List recent failed jobs across worker queues."""
+    from novelai.worker.queue import get_failed_jobs
+
+    jobs = get_failed_jobs(limit=min(limit, 100))
+    return {"total": len(jobs), "jobs": jobs}
+
+
+@router.post("/jobs/failed/{job_id}/requeue")
+async def requeue_job(
+    job_id: str,
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    """Requeue a failed job by ID."""
+    from novelai.worker.queue import requeue_failed_job
+
+    success = requeue_failed_job(job_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Failed job '{job_id}' not found in any queue registry.")
+    return {"status": "requeued", "job_id": job_id}

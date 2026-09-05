@@ -109,18 +109,14 @@ deploy/.cloudflared/
 
 # Runtime data
 data/runtime/
+!data/runtime/.gitkeep
+!data/README.md
 novel_library/
-storage/novel_library/
-storage/output/
-storage/input/
-storage/logs/
-storage_backups/
 output/
 input/
 logs/
 *.log
 backups/
-storage/backups/
 *.bak
 *.backup
 *.orig

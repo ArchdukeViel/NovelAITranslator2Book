@@ -51,7 +51,8 @@ jobs:
           version: "0.12.0"
           enable-cache: true
 
-      - run: >-
+      - name: Install dependencies
+        run: >-
           uv sync --locked --extra gemini --extra dev
           --extra test --extra auth
       - name: Run locked security rules
@@ -79,6 +80,9 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run typecheck
+      - name: Install dependencies
+        run: npm ci
+      - name: Run ESLint
+        run: npm run lint
+      - name: Run TypeScript check
+        run: npm run typecheck

@@ -248,7 +248,7 @@ duration and renewal; do not tune lease below realistic job duration without tes
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`: credentials for co-located PostgreSQL 17 in `deploy/compose.yml`.
 - `POSTGRES_BIND_ADDRESS`: host interface binding for PostgreSQL port (defaults to `127.0.0.1` for secure desktop GUI SSH tunneling).
 - `POSTGRES_PORT`: host port mapping for PostgreSQL (defaults to `5432`).
-- `DB_POOL_SIZE` and `DB_MAX_OVERFLOW`: bound each direct/session process pool. Defaults are tuned to `DB_POOL_SIZE=10` and `DB_MAX_OVERFLOW=4` (14 max connections per process) to support concurrency 8 without pooler starvation.
+- `DB_POOL_SIZE` and `DB_MAX_OVERFLOW`: bound each direct/session process pool. Defaults are tuned to `DB_POOL_SIZE=5` and `DB_MAX_OVERFLOW=5` (10 max connections per process). Across the three split Compose processes (`backend`, `reader`, `worker`), this consumes 30 connections plus 2 reserved (`DB_CONNECTION_RESERVE=2`), fitting cleanly within `DB_CONNECTION_BUDGET=32`. For dedicated PostgreSQL 17 deployments, pool size can be scaled up proportionately with budget.
 - `DB_POOL_PROCESS_COUNT`: count every long-lived process or replica that can
   own one of those pools. The current split Compose topology defaults to three
   (backend, reader, and worker); update it whenever replicas or topology

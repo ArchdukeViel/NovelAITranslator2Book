@@ -501,3 +501,34 @@ class AuthService:
         self.db_session.add(user)
         self.db_session.flush()
         return user
+
+    def prune_expired_tokens(self, max_age_days: int = 30) -> dict[str, int]:
+        """Delete expired password reset and email verification tokens.
+
+        Purges tokens where expires_at is older than `max_age_days` days,
+        or where the token has already been consumed (used_at is not None)
+        and expires_at is in the past.
+        """
+        now = datetime.now(UTC)
+        threshold = now - timedelta(days=max_age_days)
+        deleted_reset = (
+            self.db_session.query(PasswordResetToken)
+            .filter(
+                (PasswordResetToken.expires_at < threshold)
+                | ((PasswordResetToken.used_at.is_not(None)) & (PasswordResetToken.expires_at < now))
+            )
+            .delete(synchronize_session=False)
+        )
+        deleted_verification = (
+            self.db_session.query(EmailVerificationToken)
+            .filter(
+                (EmailVerificationToken.expires_at < threshold)
+                | ((EmailVerificationToken.used_at.is_not(None)) & (EmailVerificationToken.expires_at < now))
+            )
+            .delete(synchronize_session=False)
+        )
+        self.db_session.flush()
+        return {
+            "deleted_password_reset_tokens": deleted_reset,
+            "deleted_email_verification_tokens": deleted_verification,
+        }

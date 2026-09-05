@@ -1,7 +1,9 @@
 {
   "include": [
     "backend/src",
-    "backend/tests"
+    "backend/tests",
+    "tools/docs_check.py",
+    "tools/audit_dead_code.py"
   ],
   "exclude": [
     "**/__pycache__",
@@ -15,16 +17,18 @@
     ".git",
     ".github",
     "deploy",
-    "tools",
+    "tools/capacity",
+    "tools/benchmarks",
+    "tools/database",
     "docs",
     "artifacts",
+    "data",
     ".tmp",
     "**/.tmp/**",
-    ".tmp.driveupload"
+    ".tmp.driveupload",
+    ".opencode"
   ],
-  "extraPaths": [
-    "backend/src"
-  ],
+  "extraPaths": ["backend/src"],
   "venvPath": ".",
   "venv": ".venv",
   "pythonVersion": "3.14",

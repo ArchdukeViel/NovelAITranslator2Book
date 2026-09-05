@@ -145,6 +145,9 @@ def _headers_dict(headers: httpx.Headers | dict[str, str]) -> dict[str, str]:
     return {str(key).lower(): str(value) for key, value in dict(headers).items()}
 
 
+_GLOBAL_THROTTLE = DomainThrottle()
+
+
 class FetchService:
     """Central HTTP fetcher for source adapters.
 
@@ -163,10 +166,12 @@ class FetchService:
         client_factory: ClientFactory = create_async_client,
         throttle: DomainThrottle | None = None,
         cache: FetchCache | None = None,
+        retry_config: RetryConfig | None = None,
     ) -> None:
         self._client_factory = client_factory
         self._throttle = throttle or _GLOBAL_THROTTLE
         self._cache = cache or LRUFetchCache()
+        self._retry_config: RetryConfig | None = retry_config
         # Pooled clients keyed by request profile ("" for the default).
         self._clients: dict[str, httpx.AsyncClient] = {}
 
@@ -459,7 +464,7 @@ class FetchService:
     async def _with_retry(
         self, fn: Callable[[], Any], *, on_retry: Callable[[int, Exception], None] | None = None
     ) -> _FetchedBody:
-        config = RetryConfig(
+        config = self._retry_config or RetryConfig(
             max_attempts=3,
             initial_delay=1.0,
             max_delay=30.0,
@@ -501,7 +506,6 @@ class FetchService:
             raise
 
 
-_GLOBAL_THROTTLE = DomainThrottle()
 _DEFAULT_FETCH_SERVICE: FetchService | None = None
 
 

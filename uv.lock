@@ -906,7 +906,6 @@ dependencies = [
 
 [package.optional-dependencies]
 auth = [
-    { name = "argon2-cffi" },
     { name = "itsdangerous" },
 ]
 db = [
@@ -917,7 +916,6 @@ db = [
 dev = [
     { name = "aiosqlite" },
     { name = "alembic" },
-    { name = "argon2-cffi" },
     { name = "croniter" },
     { name = "cryptography" },
     { name = "fakeredis" },
@@ -961,8 +959,6 @@ requires-dist = [
     { name = "alembic", marker = "extra == 'db'", specifier = ">=1.19.1" },
     { name = "alembic", marker = "extra == 'dev'", specifier = ">=1.19.1" },
     { name = "argon2-cffi", specifier = ">=25.1.0" },
-    { name = "argon2-cffi", marker = "extra == 'auth'", specifier = ">=25.1.0" },
-    { name = "argon2-cffi", marker = "extra == 'dev'", specifier = ">=25.1.0" },
     { name = "beautifulsoup4", specifier = ">=4.15.0" },
     { name = "croniter", specifier = ">=6.2.4" },
     { name = "croniter", marker = "extra == 'dev'", specifier = ">=6.2.4" },

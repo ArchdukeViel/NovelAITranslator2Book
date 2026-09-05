@@ -32,6 +32,26 @@
                                                     "--browser=chrome",
                                                     "--user-data-dir=C:\\Users\\AKMALSAFARIPELLU\\.codex\\playwright-profile"
                                                 ]
-                                   }
+                                   },
+                    "github":  {
+                                   "type":  "stdio",
+                                   "command":  "npx",
+                                   "args":  [
+                                                "--yes",
+                                                "-y",
+                                                "@modelcontextprotocol/server-github@2025.4.8"
+                                            ],
+                                   "env":  {
+                                                "GITHUB_PERSONAL_ACCESS_TOKEN":  "${env:GITHUB_PERSONAL_ACCESS_TOKEN}"
+                                            }
+                               },
+                    "stitch":  {
+                                   "type":  "http",
+                                   "url":  "https://stitch.googleapis.com/mcp"
+                               },
+                    "supabase":  {
+                                     "type":  "http",
+                                     "url":  "https://mcp.supabase.com/mcp?project_ref=jzacnvsjvfgsmakybjpl&features=storage%2Cbranching%2Cfunctions%2Cdevelopment%2Cdebugging%2Cdatabase%2Cdocs%2Caccount"
+                                 }
                 }
 }

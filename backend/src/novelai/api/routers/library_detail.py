@@ -237,10 +237,12 @@ async def catalog_health(
     _owner=Depends(require_role("owner")),
     db: Session = Depends(get_db_session),
 ) -> CatalogHealthResponse:
+    from datetime import UTC
+
     from novelai.db.models.novel import Novel
 
     total_novels = db.query(func.count(Novel.id)).scalar() or 0
-    stale_threshold = datetime.utcnow() - timedelta(hours=24)
+    stale_threshold = datetime.now(UTC) - timedelta(hours=24)
     stale_count = db.query(func.count(Novel.id)).filter(Novel.updated_at < stale_threshold).scalar() or 0
 
     storage_ids = set(storage.list_novels())

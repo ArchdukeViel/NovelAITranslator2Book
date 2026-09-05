@@ -15,7 +15,9 @@ concurrency:
 
 jobs:
   review:
-    runs-on: ubuntu-24.04
+    # Restrict execution to internal repo to protect self-hosted runner from untrusted forks
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux]
     timeout-minutes: 10
     steps:
       - name: Checkout repository
@@ -25,6 +27,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run Review via Router
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           ROUTER_API_KEY: ${{ secrets.NINEROUTER_API_KEY }}
@@ -48,6 +51,16 @@ jobs:
           api_key = os.environ.get("ROUTER_API_KEY", "").strip()
           base_url = os.environ.get("ROUTER_BASE_URL", "https://api.9router.com/v1").rstrip("/")
           model = os.environ.get("MODEL_NAME", "antigravity").strip()
+
+          # If base_url targets localhost inside WSL, replace with host default gateway
+          if "localhost" in base_url or "127.0.0.1" in base_url:
+              try:
+                  route_out = subprocess.check_output(["ip", "route"], stderr=subprocess.DEVNULL).decode("utf-8")
+                  gw_ips = [line.split()[2] for line in route_out.splitlines() if line.startswith("default") and len(line.split()) >= 3]
+                  target_host = gw_ips[0] if gw_ips else "127.0.0.1"
+                  base_url = base_url.replace("localhost", target_host).replace("127.0.0.1", target_host)
+              except Exception:
+                  pass
 
           if not api_key:
               print("No API key provided. Skipping.")
@@ -82,6 +95,7 @@ jobs:
 
           payload = {
               "model": model,
+              "stream": False,
               "messages": [
                   {
                       "role": "system",
@@ -109,11 +123,11 @@ jobs:
                   review_body = res_data["choices"][0]["message"]["content"]
           except urllib.error.HTTPError as err:
               err_body = err.read().decode("utf-8", errors="replace")
-              print(f"Router API error ({err.code}): {err_body} (skipping advisory review)")
-              sys.exit(0)
+              print(f"Router API error ({err.code}): {err_body}")
+              sys.exit(1)
           except Exception as exc:
-              print(f"Request failed: {exc} (skipping advisory review)")
-              sys.exit(0)
+              print(f"Request failed: {exc}")
+              sys.exit(1)
 
           if not review_body:
               print("Empty review response.")
@@ -148,9 +162,9 @@ jobs:
               if err.code in (401, 403):
                   print(f"Skipping comment: insufficient permissions on PR #{pr_number} (likely fork PR).")
                   sys.exit(0)
-              print(f"GitHub API error ({err.code}): {err} (skipping comment)")
-              sys.exit(0)
+              print(f"GitHub API error ({err.code}): {err}")
+              sys.exit(1)
           except Exception as exc:
-              print(f"Failed to post comment to PR #{pr_number}: {exc} (skipping comment)")
-              sys.exit(0)
+              print(f"Failed to post comment to PR #{pr_number}: {exc}")
+              sys.exit(1)
           EOF
