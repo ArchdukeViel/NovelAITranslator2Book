@@ -13,6 +13,7 @@ For tests, pass an explicit SQLite in-memory URL.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from threading import Lock
@@ -105,9 +106,11 @@ def _session_rollback_finished(session: Session, previous_transaction: Any) -> N
 
 
 def _engine_key(db_url: str) -> tuple[object, ...]:
+    pid = os.getpid()
     if not db_url.startswith("postgresql"):
-        return (db_url,)
+        return (pid, db_url)
     return (
+        pid,
         db_url,
         settings.DB_CONNECTION_MODE,
         settings.DB_POOL_SIZE,
@@ -197,12 +200,17 @@ def read_session_scope(url: str | None = None) -> Generator[Session]:
     """Context manager for read-only database sessions.
 
     Prefers settings.DATABASE_REPLICA_URL, falls back to explicit url or settings.DATABASE_URL.
+    Enforces transaction read only and tight statement timeout for reader protection.
     Always rolls back on exit to prevent accidental writes.
     """
     target_url = url or settings.DATABASE_REPLICA_URL or settings.DATABASE_URL
     Session_ = get_sessionmaker(target_url)
     session = Session_()
     try:
+        bind = session.get_bind()
+        if bind and bind.dialect.name == "postgresql":
+            session.execute(text("SET TRANSACTION READ ONLY"))
+            session.execute(text("SET LOCAL statement_timeout = '3000'"))
         yield session
     finally:
         session.rollback()
@@ -214,7 +222,7 @@ def session_scope(url: str | None = None, *, current_user_id: str | None = None)
     """Context manager that provides a transactional database session.
 
     Commits on clean exit, rolls back on exception, always closes.
-    If current_user_id is provided, sets transaction-scoped RLS context (SET LOCAL app.current_user_id).
+    If current_user_id is provided, sets transaction-scoped RLS context via parameter binding.
 
     Args:
         url: explicit connection URL; falls back to settings.DATABASE_URL.
@@ -228,15 +236,16 @@ def session_scope(url: str | None = None, *, current_user_id: str | None = None)
     session = Session_()
     try:
         if current_user_id is not None:
-            # Set local variable for RLS; fail-safe across Postgres dialects
+            # Set local variable for RLS using set_config; fail-safe across Postgres dialects
             bind = session.get_bind()
             if bind and bind.dialect.name == "postgresql":
                 session.execute(
-                    text("SET LOCAL app.current_user_id = :uid"),
+                    text("SELECT set_config('app.current_user_id', :uid, true)"),
                     {"uid": str(current_user_id)},
                 )
         yield session
-        session.commit()
+        if session.in_transaction():
+            session.commit()
     except Exception:
         session.rollback()
         raise

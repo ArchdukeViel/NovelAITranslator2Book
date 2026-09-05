@@ -21,8 +21,9 @@ def test_session_scope_sets_rls_current_user_id(monkeypatch) -> None:
     with session_scope(current_user_id=user_id) as s:
         assert s is mock_session
 
-    # Verify SET LOCAL was executed
+    # Verify RLS session context was executed
     mock_session.execute.assert_called_once()
     call_args = mock_session.execute.call_args
-    assert "SET LOCAL app.current_user_id" in str(call_args[0][0])
+    sql_text = str(call_args[0][0])
+    assert "set_config('app.current_user_id'" in sql_text or "SET LOCAL app.current_user_id" in sql_text
     assert call_args[0][1] == {"uid": user_id}

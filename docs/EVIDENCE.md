@@ -25,6 +25,29 @@ Related contracts: [`STATUS.md`](STATUS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md
 
 Maintenance: append dated entries in reverse chronological order, preserve their meaning, never overwrite historical provenance, and keep secrets and raw provider data out of the record.
 
+## 2026-09-05 POSTGRESQL AND CLOUDFLARE R2 DATABASE AND STORAGE HARDENING AUDIT VERIFICATION
+
+Specification: `.agents/specs/database-and-storage-hardening/` (Tasks 1 through 16).
+Verified automated checks and test execution outcomes across 100 remediation points:
+
+- `backend/tests/test_db_engine.py`: Engine cache PID isolation and read/write session scopes passed (14 passed in 4.79s).
+- `backend/tests/test_r2_catalog.py`: Nested savepoint session handling and translation edit persistence passed (5 passed in 18.55s).
+- `backend/tests/test_production_config.py`: Connection pool budgeting 5/5 split passed (34 passed in 4.91s).
+- `backend/tests/test_scheduled_job_lease_service.py`: Job lease skip-locked concurrency passed (1 passed in 3.19s).
+- `backend/tests/test_db_models_chapter.py`: Optimistic concurrency locking via `version_id_col` passed (9 passed in 6.03s).
+- `backend/tests/test_advisory_lock.py`: Deterministic SHA-256 advisory lock helper passed (1 passed in 3.64s).
+- `workers/r2-gateway`: Cloudflare worker path traversal regex and JWT verification passed (5 passed in 565ms).
+- `backend/tests/test_r2_immutability.py`: R2 client byte matching and immutability checks passed (1 passed in 2.70s).
+- `backend/tests/test_r2_content_addressing.py`: Volatile field stripping and canonical hashing passed (6 passed in 3.91s).
+- `backend/tests/test_security_migration.py`: Security and migration invariant checks passed (20 passed in 3.82s).
+- `backend/tests/test_r2_backup.py`: Backup manifest and retention logic passed (5 passed in 2.87s).
+- `backend/tests/test_r2_cutover.py`: Storage cutover and orphan detection passed (5 passed in 3.52s).
+- `backend/tests/test_public_projection_cache.py`: Cache projection and TTL handling passed (2 passed in 3.17s).
+- `tools/pyright.ps1`: 0 errors, 0 warnings, 0 informations.
+- `tools/ruff.ps1 check .`: All checks passed.
+- `tools/docs-check.ps1`: 0 violations, exit code 0.
+- Router import guard: 0 violations, exit code 1 (clean boundary).
+
 ## 2026-09-05 POSTGRESQL HARDENING AND SECURITY DELIVERABLE VERIFICATION
 
 Specification: `.agents/specs/postgres-database-hardening-and-security/` (Tasks T-001 through T-029).

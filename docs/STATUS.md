@@ -43,11 +43,22 @@ Implemented and verified the 23-finding hardening baseline across database infra
 
 1. **Transport & Network Hardening**: Authored `deploy/postgres/pg_hba.conf.example` enforcing fail-closed SSL (`hostssl`) with `scram-sha-256` authentication and explicit plaintext rejections.
 2. **Role & Privilege Separation**: Authored `backend/sql/02_least_privilege_roles.sql` defining granular roles (`novelai_migrator` for DDL, `novelai_app` for web DML, `novelai_reader` for read-only queries, `novelai_worker` for queue jobs) with role-level statement timeouts (`reader=8s`, `app=15s`, `worker=60s`, `migrator=120s`).
-3. **Connection Budgeting & Transaction Pooler**: Added unit test `backend/tests/test_db_budget.py` enforcing `DB_POOL_PROCESS_COUNT * (DB_POOL_SIZE + DB_MAX_OVERFLOW) + DB_CONNECTION_RESERVE <= DB_CONNECTION_BUDGET`. Verified `backend/tests/test_db_engine.py` disables prepared statements when connecting to transaction poolers.
-4. **Zero-Downtime DDL & Migration Linearity**: Updated `backend/alembic/env.py` to inject `lock_timeout = '2s'` and `statement_timeout = '10s'`. Authored `tools/database/test_alembic_reversibility.ps1` to guarantee single-head linear DAG (`e5f6a7b8c9d0`) and migration reversibility.
-5. **Schema & Write-Heavy Autovacuum**: Added `backend/tests/test_schema_foreign_key_indexes.py` auditing foreign key backing indexes across SQLAlchemy models. Added Alembic migration `2026-09-05_a1b2c3d4e5f6_add_table_autovacuum_storage.py` tuning `autovacuum_vacuum_scale_factor = 0.01` on high-churn tables (`activity_records`, `scheduled_job_leases`).
-6. **Architecture Isolation & Worker Concurrency**: Wired `READER_DATABASE_URL` and `DATABASE_REPLICA_URL` with `read_session_scope()` in `backend/src/novelai/db/engine.py`. Verified row-level CAS locking in `R2GenerationActivationService` and non-blocking `FOR UPDATE SKIP LOCKED` in `ActivityDatabaseBackend`. Added `current_user_id` session context propagation for RLS portability.
-7. **CloudBeaver Administration Hardening**: Configured `deploy/postgres/cloudbeaver/cloudbeaver.conf` to bind strictly to loopback (`127.0.0.1`), disable anonymous access, enforce 1,000 row result limit, enable SQL autoSave/autocommit, cap data exports to 10MB, and hide `auth`/`private` internal schemas. Provided pre-seeded read-only `novelai_reader` connection profile.
+
+### B10 PostgreSQL and Cloudflare R2 Storage Hardening Audit - 2026-09-05
+
+Status: `completed` for specification `.agents/specs/database-and-storage-hardening/` (Tasks 1 through 16).
+
+Implemented and verified full 100-finding audit remediation across PostgreSQL 17 database management and Cloudflare R2 object storage:
+
+1. Session and transaction boundaries: PID engine partitioning, read-only transaction scopes, parameterized RLS config.
+2. R2 gateway worker and storage client: streaming body pass-through, key path sanitization, batch deletion.
+3. Content addressing & immutability: extended volatile field normalization, deterministic hashing, deterministic gzip compression.
+4. Schema & concurrency integrity: optimistic version locking, deterministic 64-bit advisory locks, queue skip-locked semantics.
+5. **Connection Budgeting & Transaction Pooler**: Added unit test `backend/tests/test_db_budget.py` enforcing `DB_POOL_PROCESS_COUNT * (DB_POOL_SIZE + DB_MAX_OVERFLOW) + DB_CONNECTION_RESERVE <= DB_CONNECTION_BUDGET`. Verified `backend/tests/test_db_engine.py` disables prepared statements when connecting to transaction poolers.
+6. **Zero-Downtime DDL & Migration Linearity**: Updated `backend/alembic/env.py` to inject `lock_timeout = '2s'` and `statement_timeout = '10s'`. Authored `tools/database/test_alembic_reversibility.ps1` to guarantee single-head linear DAG (`e5f6a7b8c9d0`) and migration reversibility.
+7. **Schema & Write-Heavy Autovacuum**: Added `backend/tests/test_schema_foreign_key_indexes.py` auditing foreign key backing indexes across SQLAlchemy models. Added Alembic migration `2026-09-05_a1b2c3d4e5f6_add_table_autovacuum_storage.py` tuning `autovacuum_vacuum_scale_factor = 0.01` on high-churn tables (`activity_records`, `scheduled_job_leases`).
+8. **Architecture Isolation & Worker Concurrency**: Wired `READER_DATABASE_URL` and `DATABASE_REPLICA_URL` with `read_session_scope()` in `backend/src/novelai/db/engine.py`. Verified row-level CAS locking in `R2GenerationActivationService` and non-blocking `FOR UPDATE SKIP LOCKED` in `ActivityDatabaseBackend`. Added `current_user_id` session context propagation for RLS portability.
+9. **CloudBeaver Administration Hardening**: Configured `deploy/postgres/cloudbeaver/cloudbeaver.conf` to bind strictly to loopback (`127.0.0.1`), disable anonymous access, enforce 1,000 row result limit, enable SQL autoSave/autocommit, cap data exports to 10MB, and hide `auth`/`private` internal schemas. Provided pre-seeded read-only `novelai_reader` connection profile.
 
 ### B8 native PostgreSQL 17 primary cutover, schema indexing, and automated backup/restore checkpoint - 2026-09-04
 

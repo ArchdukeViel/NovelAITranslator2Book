@@ -83,8 +83,7 @@ async function authenticate(
         ) {
           identity = { common_name: payload.common_name };
         }
-      } catch {
-      }
+      } catch {}
     }
   }
   return identityClassFromAccessIdentity(identity, env);
@@ -101,7 +100,8 @@ function allowed(
       ["get", "head", "put", "delete"].includes(operation)
     );
   }
-  if (bucketClass === "app") return ["get", "head", "delete", "list"].includes(operation);
+  if (bucketClass === "app")
+    return ["get", "head", "delete", "list"].includes(operation);
   return ["get", "head", "put", "delete", "list"].includes(operation);
 }
 
@@ -127,6 +127,9 @@ function decodeKey(encoded: string): string | null {
 }
 
 function allowedKey(bucketClass: BucketClass, key: string): boolean {
+  if (key.includes("..") || key.includes("\0") || key.includes("\\"))
+    return false;
+  if (!/^[a-zA-Z0-9_\-\.\/]+$/.test(key)) return false;
   if (bucketClass === "app") return key.startsWith(APP_PREFIX);
   return BACKUP_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
@@ -176,7 +179,9 @@ function conditional(request: Request): R2Conditional | undefined {
   return undefined;
 }
 
-function normalizeChecksum(value: string | null | undefined): string | undefined {
+function normalizeChecksum(
+  value: string | null | undefined,
+): string | undefined {
   if (!value) return undefined;
   const trimmed = value.trim();
   if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
@@ -191,8 +196,7 @@ function normalizeChecksum(value: string | null | undefined): string | undefined
       }
       return hex;
     }
-  } catch {
-  }
+  } catch {}
   return trimmed;
 }
 

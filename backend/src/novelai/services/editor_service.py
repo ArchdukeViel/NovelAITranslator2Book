@@ -261,6 +261,7 @@ class EditorService:
             note=note,
             glossary_qa=qa_summary,
             glossary_revision=glossary_revision,
+            session=self.db_session,
         )
         safely_refresh_catalog_projection_after_storage_write(
             novel_id,

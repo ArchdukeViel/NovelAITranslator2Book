@@ -918,6 +918,7 @@ def save_edited_translation(
     note: str | None = None,
     glossary_qa: dict[str, Any] | None = None,
     glossary_revision: int,
+    session: Any | None = None,
 ) -> Path:
     if type(glossary_revision) is not int or glossary_revision < 0:
         raise ValueError("glossary_revision must be a non-negative integer")
@@ -925,12 +926,22 @@ def save_edited_translation(
     from novelai.db.models.chapter import Chapter
     from novelai.db.models.novel import Novel
 
-    with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+    @contextmanager
+    def _resolve_session() -> Iterator[Any]:
+        if session is not None:
+            # Outer session provided; isolate writes in a savepoint without auto-commit
+            with session.begin_nested():
+                yield session
+        else:
+            with _storage_session(storage) as s:
+                yield s
+
+    with _resolve_session() as s:
+        novel = s.query(Novel).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             raise ValueError(f"No metadata found for novel {novel_id!r}")
         storage_novel_id = str(novel.id)
-        row = session.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id)).one_or_none()
+        row = s.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id)).one_or_none()
         if row is None:
             raise ValueError(f"No chapter found for {novel_id!r}/{chapter_id!r}")
         versions = _translation_version_rows(row)
@@ -973,11 +984,11 @@ def save_edited_translation(
         payload=payload,
     )
 
-    with _storage_session(storage) as session:
-        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+    with _resolve_session() as s:
+        novel = s.query(Novel).filter_by(slug=novel_id).one_or_none()
         if novel is None:
             raise ValueError(f"No metadata found for novel {novel_id!r}")
-        row = session.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id)).one_or_none()
+        row = s.query(Chapter).filter_by(novel_id=novel.id, logical_chapter_id=str(chapter_id)).one_or_none()
         if row is None:
             raise ValueError(f"No chapter found for {novel_id!r}/{chapter_id!r}")
         _append_translation_version(row, _translation_version_record(payload, stored))
@@ -996,7 +1007,8 @@ def save_edited_translation(
         row.translated_storage_key = stored.key
         row.translated_content_hash = stored.logical_sha256
         row.translation_status = "translated"
-        session.add(row)
+        s.add(row)
+    return _marker("translation", novel_id, chapter_id)
     return _marker("translation", novel_id, chapter_id)
 
 
