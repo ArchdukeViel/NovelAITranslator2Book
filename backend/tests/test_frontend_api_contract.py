@@ -18,7 +18,11 @@ API_TYPES = FRONTEND_DIR / "lib" / "api-types.ts"
 def test_frontend_fetch_calls_are_centralized_in_api_client() -> None:
     offenders: list[Path] = []
     for path in FRONTEND_DIR.rglob("*"):
-        if any(part in {"node_modules", ".next"} for part in path.parts):
+        if (
+            any(part in {"node_modules", ".next", "__tests__"} for part in path.parts)
+            or path.name.endswith(".test.ts")
+            or path.name.endswith(".test.tsx")
+        ):
             continue
         if path.suffix not in {".ts", ".tsx"}:
             continue

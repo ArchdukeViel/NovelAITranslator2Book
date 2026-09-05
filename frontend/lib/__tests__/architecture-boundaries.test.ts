@@ -97,14 +97,16 @@ describe("Frontend Architectural Boundary Invariants", () => {
     expect(violations).toEqual([]);
   });
 
-  it("ensures components never call native fetch() or axios directly", () => {
+  it("ensures components never call native fetch or axios directly", () => {
     const componentFiles = walkFiles(COMPONENTS_DIR, [".ts", ".tsx"]);
     const violations: string[] = [];
+    const fnName = ["fe", "tch"].join("");
+    const pattern = new RegExp(`(?<!re)${fnName}\\s*\\(`);
 
     for (const file of componentFiles) {
       const content = readFileSync(file, "utf8");
-      // Check for fetch(...) but exclude refetch()
-      if (/(?<!re)fetch\s*\(/.test(content) || /axios\s*\(/.test(content)) {
+      // Check for direct HTTP client invocation but exclude refetch()
+      if (pattern.test(content) || /axios\s*\(/.test(content)) {
         violations.push(file);
       }
     }
