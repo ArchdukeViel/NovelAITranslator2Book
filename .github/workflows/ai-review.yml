@@ -92,6 +92,7 @@ jobs:
 
           payload = {
               "model": model,
+              "stream": False,
               "messages": [
                   {
                       "role": "system",
