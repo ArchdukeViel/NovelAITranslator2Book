@@ -193,21 +193,48 @@ def get_sessionmaker(url: str | None = None) -> sessionmaker[Session]:
 
 
 @contextmanager
-def session_scope(url: str | None = None) -> Generator[Session]:
+def read_session_scope(url: str | None = None) -> Generator[Session]:
+    """Context manager for read-only database sessions.
+
+    Prefers settings.DATABASE_REPLICA_URL, falls back to explicit url or settings.DATABASE_URL.
+    Always rolls back on exit to prevent accidental writes.
+    """
+    target_url = url or settings.DATABASE_REPLICA_URL or settings.DATABASE_URL
+    Session_ = get_sessionmaker(target_url)
+    session = Session_()
+    try:
+        yield session
+    finally:
+        session.rollback()
+        session.close()
+
+
+@contextmanager
+def session_scope(url: str | None = None, *, current_user_id: str | None = None) -> Generator[Session]:
     """Context manager that provides a transactional database session.
 
     Commits on clean exit, rolls back on exception, always closes.
+    If current_user_id is provided, sets transaction-scoped RLS context (SET LOCAL app.current_user_id).
 
     Args:
         url: explicit connection URL; falls back to settings.DATABASE_URL.
+        current_user_id: optional UUID/string user identifier for RLS policies.
 
     Example:
-        with session_scope() as session:
+        with session_scope(current_user_id=user_id) as session:
             session.add(obj)
     """
     Session_ = get_sessionmaker(url)
     session = Session_()
     try:
+        if current_user_id is not None:
+            # Set local variable for RLS; fail-safe across Postgres dialects
+            bind = session.get_bind()
+            if bind and bind.dialect.name == "postgresql":
+                session.execute(
+                    text("SET LOCAL app.current_user_id = :uid"),
+                    {"uid": str(current_user_id)},
+                )
         yield session
         session.commit()
     except Exception:

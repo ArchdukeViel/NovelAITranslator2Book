@@ -1,0 +1,66 @@
+# ------------------------------------------------------------------------------
+# PostgreSQL Production Hardened Configuration Profile
+# Reference: REQ-010 / F-10 (postgres-database-hardening-and-security)
+# ------------------------------------------------------------------------------
+
+# -----------------------------
+# Connectivity & Authentication
+# -----------------------------
+listen_addresses = '*'
+port = 5432
+max_connections = 100
+password_encryption = scram-sha-256
+ssl = on
+ssl_ciphers = 'HIGH:!aNULL:!kEDH'
+ssl_min_protocol_version = 'TLSv1.3'
+
+# -----------------------------
+# Memory Sizing (Based on 4GB-8GB Host Target)
+# -----------------------------
+shared_buffers = 1GB                  # 25% of 4GB RAM
+effective_cache_size = 3GB            # 50-75% of RAM
+work_mem = 32MB                       # For hash joins & sorts per connection
+maintenance_work_mem = 512MB          # For VACUUM, CREATE INDEX, ALTER TABLE
+wal_buffers = 16MB
+min_wal_size = 1GB
+max_wal_size = 4GB
+
+# -----------------------------
+# Checkpoints & Disk
+# -----------------------------
+checkpoint_completion_target = 0.9
+checkpoint_timeout = 15min
+default_statistics_target = 100
+random_page_cost = 1.1                # SSD / NVMe optimization
+effective_io_concurrency = 200        # Concurrent IO requests
+
+# -----------------------------
+# Query Optimization & Locking
+# -----------------------------
+lock_timeout = 2000                   # 2s fail-fast for table lock contention
+statement_timeout = 30000             # 30s runaway query ceiling
+idle_in_transaction_session_timeout = 60000  # 60s cap for dangling transactions
+
+# -----------------------------
+# Diagnostics & Logging
+# -----------------------------
+shared_preload_libraries = 'pg_stat_statements'
+pg_stat_statements.track = all
+pg_stat_statements.max = 10000
+log_min_duration_statement = 250      # Log queries exceeding 250ms
+log_checkpoints = on
+log_connections = off
+log_disconnections = off
+log_lock_waits = on
+log_temp_files = 0
+track_io_timing = on
+
+# -----------------------------
+# Autovacuum & Bloat Control
+# -----------------------------
+autovacuum = on
+autovacuum_max_workers = 3
+autovacuum_naptime = 1min
+autovacuum_vacuum_threshold = 50
+autovacuum_vacuum_scale_factor = 0.1
+autovacuum_vacuum_cost_limit = 2000

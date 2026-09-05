@@ -14,6 +14,7 @@ update_triggers:
 owned_concerns:
   - architecture-system-boundaries
 ---
+
 # Architecture
 
 This document owns the system architecture, dependency direction, trust boundaries, and stable service contracts. It does not own environment values, release procedures, operational runbooks, or dated evidence.
@@ -29,6 +30,7 @@ Canonical project architecture. This file wins when project documents conflict.
 ## Ingestion & Pipeline Architecture
 
 ### Hybrid Crawl & Generation Contracts
+
 - **Syosetu / Novel18 Official API Enrichment**: Official JSON API array responses (Header `allcount` + work objects) provide initial title, author, genre codes, keywords, episode count, content length, timestamps, and status flags (`end=0` completed, `isstop=1` suspended). HTML crawling remains authoritative for chapter URLs, TOC structure, synopsis, and body text.
 - **Public age-gate handling**: Supported public age-confirmation interstitials are followed through the source's bounded cookie/redirect flow before parsing. Interstitial HTML is never treated as chapter text; unresolved or unsafe targets fail as structured source-fetch errors, and parsed prose is not classified as a gate merely because it mentions age restrictions.
 - **Novel18 as a first-class novel**: `novel18_syosetu` keeps source-specific host, cookie, API, and adult taxonomy provenance, but uses the same crawl, storage, translation, glossary, publication, catalog, detail, availability, and reader lifecycle as every other novel. Adult/R18 classification does not suppress an explicitly published novel from the default catalog; `include_adult` controls optional taxonomy exposure and filtering only.
@@ -48,13 +50,13 @@ Canonical project architecture. This file wins when project documents conflict.
 Novel AI is a single-owner Japanese-novel ingestion, translation, editing, and
 public-reading system.
 
-| Surface | Contract |
-|---|---|
-| Owner | Crawling, imports, translation, editing, providers, users, requests, takedowns, and operations. |
-| Guest | Public catalog, novel detail, chapter list, and reader. |
-| User | Google OAuth or email/password session; private library, progress, history, reviews, and requests. |
-| Enabled | Unified provider credentials with user contribution pooling, and public rankings. |
-| Deferred | Community features, billing, organizations, and multiple admins. |
+| Surface  | Contract                                                                                           |
+| -------- | -------------------------------------------------------------------------------------------------- |
+| Owner    | Crawling, imports, translation, editing, providers, users, requests, takedowns, and operations.    |
+| Guest    | Public catalog, novel detail, chapter list, and reader.                                            |
+| User     | Google OAuth or email/password session; private library, progress, history, reviews, and requests. |
+| Enabled  | Unified provider credentials with user contribution pooling, and public rankings.                  |
+| Deferred | Community features, billing, organizations, and multiple admins.                                   |
 
 Generated translated-novel downloads are outside scope. Do not add PDF, EPUB,
 HTML, Markdown, manifests, freshness, or downloads without an approved spec.
@@ -92,30 +94,31 @@ and archive imports are not supported. Preserve historical generated files.
 Two deployment modes, each with different topology and security properties.
 The production topology is the target.
 
-### Local Docker acceptance (``compose.yml``)
+### Local Docker acceptance (`compose.yml`)
 
 - Backend: split admin and reader containers on ports 8000 and 8001.
 - Frontend: Next.js container on port 3000, proxied through Caddy.
 - Database: co-located native PostgreSQL 17 (`postgres:17.4-alpine`) on `novelai-net`, bound to `127.0.0.1:5432` on the host for secure desktop GUI SSH tunneling. External PostgreSQL remains supported via `DATABASE_URL`.
-- Database Administration: CloudBeaver (`dbeaver/cloudbeaver:24.3.0`) on `novelai-net`, bound to `127.0.0.1:8978` for in-browser administration, alongside desktop GUI over SSH/loopback.
-- Relational Schema & Indexing: All foreign keys are supported by explicit indexes (migration `a1b2c3d4e5f6`) to prevent table-scan locks during joins and cascades.
-- Storage: Cloudflare R2 application bucket ``dokushodo``; only disposable
-  runtime data is mounted locally at ``RUNTIME_DIR``.
+- Database Administration: CloudBeaver (`dbeaver/cloudbeaver:24.3.0`) on `novelai-net`, bound to `127.0.0.1:8978` for in-browser administration, alongside desktop GUI over SSH/loopback. Anonymous access disabled, query limit capped at 1000 rows, export file limit capped at 10MB, autoSave/autocommit enabled, and schema exposure filtered to `public`.
+- Relational Schema & Indexing: All foreign keys are supported by explicit indexes (migration `a1b2c3d4e5f6`) to prevent table-scan locks during joins and cascades. Tuned autovacuum storage parameters (`autovacuum_vacuum_scale_factor = 0.01`, threshold 50) are configured on high-churn tables (`activity_records`, `scheduled_job_leases`) via migration `e5f6a7b8c9d0`.
+- Database Roles & Segregation: Dedicated least-privilege roles (`novelai_migrator`, `novelai_app`, `novelai_reader`, `novelai_worker`) enforce DML/DDL isolation and role-specific statement timeouts. Reader service binds to `READER_DATABASE_URL` (or read-replica via `DATABASE_REPLICA_URL`) for read-only query isolation.
+- Storage: Cloudflare R2 application bucket `dokushodo`; only disposable
+  runtime data is mounted locally at `RUNTIME_DIR`.
 - Redis: Compose service for split-mode rate limiting and coordination.
-- Migrations: one-shot Compose ``migrate`` service must succeed before APIs.
+- Migrations: one-shot Compose `migrate` service must succeed before APIs.
 - Purpose: production-like local acceptance and smoke testing.
 
 ### Current development origin (Windows Docker + Cloudflare Tunnel)
 
-- The temporary development URL is ``https://dev.dokushodo.online``. It is
-  separate from the production apex and ``www`` hostnames; neither production
+- The temporary development URL is `https://dev.dokushodo.online`. It is
+  separate from the production apex and `www` hostnames; neither production
   DNS record is repointed by this topology.
-- A remotely managed Cloudflare Tunnel named ``dokushodo-dev`` routes only
-  ``dev.dokushodo.online`` to the internal Caddy service at
-  ``http://caddy:80``. Caddy receives the same development host header and
+- A remotely managed Cloudflare Tunnel named `dokushodo-dev` routes only
+  `dev.dokushodo.online` to the internal Caddy service at
+  `http://caddy:80`. Caddy receives the same development host header and
   remains the only HTTP router for frontend, admin, reader, and health paths.
-- The Compose ``cloudflared`` service uses the digest-pinned Cloudflare image
-  and an ignored local token file under ``deploy/.cloudflared/``. The token is
+- The Compose `cloudflared` service uses the digest-pinned Cloudflare image
+  and an ignored local token file under `deploy/.cloudflared/`. The token is
   never checked into the repository or passed through tracked configuration.
 - This is an externally reachable development smoke path over the current
   Windows Docker host. It is not a production topology and does not establish
@@ -130,16 +133,16 @@ The production topology is the target.
 
 - **Frontend**: pinned Node.js 26.8.1 Next.js container behind Caddy on the
   WSL/Docker host, with explicit
-  ``WEB_CORS_ORIGINS``, ``CSRF_TRUSTED_ORIGINS``, ``ALLOWED_HOSTS``, CSP,
+  `WEB_CORS_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, `ALLOWED_HOSTS`, CSP,
   and HSTS. Operators reach the public site through the selected Cloudflare
   edge/proxy, with origin access restricted to the deployment boundary.
 - **Backend**: always-on split deployment:
-  - **Admin process** (``admin.Dockerfile``, port 8000) — owner/user
+  - **Admin process** (`admin.Dockerfile`, port 8000) — owner/user
     control plane, session-authenticated endpoints, CSRF-protected
     mutations, scheduled jobs, health probes.
-  - **Reader process** (``reader.Dockerfile``, port 8001) — public reader
+  - **Reader process** (`reader.Dockerfile`, port 8001) — public reader
     API, guest-safe GETs, no admin session, no mutations.
-  - A separate one-shot migration job runs ``alembic upgrade head`` before
+  - A separate one-shot migration job runs `alembic upgrade head` before
     either long-running API process starts.
 - **Database**: co-located native PostgreSQL 17 or managed PostgreSQL (RDS / Cloud SQL / Supabase) with:
   - TLS required, connection pool with transaction-level budgeting.
@@ -148,19 +151,19 @@ The production topology is the target.
     migration, readiness, and operator access.
   - In direct/session mode, startup fails closed unless
     `DB_POOL_PROCESS_COUNT * (DB_POOL_SIZE + DB_MAX_OVERFLOW) +
-    DB_CONNECTION_RESERVE` fits within `DB_CONNECTION_BUDGET`. This source
+DB_CONNECTION_RESERVE` fits within `DB_CONNECTION_BUDGET`. This source
     guard does not replace verification against the managed pooler. Transaction
     mode uses `NullPool` and still requires measured pooler concurrency review.
-  - Dedicated direct-database role (not ``anon``/``authenticated``) used by
+  - Dedicated direct-database role (not `anon`/`authenticated`) used by
     backend SQLAlchemy connections. It owns application tables or has the
     audited privileges required to operate while RLS denies Data API roles.
-  - ``anon`` and ``authenticated`` roles exist only if Data API is
+  - `anon` and `authenticated` roles exist only if Data API is
     enabled; their privileges are explicitly revoked on backend-internal
     tables and sequences.
   - If a managed Supabase project contains the optional
-    ``public.rls_auto_enable()`` ``SECURITY DEFINER`` event-trigger helper,
-    migration ``f8a2c4e6b0d1`` conditionally revokes ``PUBLIC``, ``anon``, and
-    ``authenticated`` execution. The helper is not application schema and is
+    `public.rls_auto_enable()` `SECURITY DEFINER` event-trigger helper,
+    migration `f8a2c4e6b0d1` conditionally revokes `PUBLIC`, `anon`, and
+    `authenticated` execution. The helper is not application schema and is
     never Data API-callable by those roles; deployments without it are a
     no-op.
 - **Storage**: two separate R2 buckets behind a private, versioned Cloudflare
@@ -175,29 +178,29 @@ The production topology is the target.
   distributed rate limiting and the job queue in split mode.
 - **Networking**: explicit HTTPS termination at the selected edge/proxy,
   explicit CORS origins, CSRF token validation on cookie-authenticated
-  mutations, explicit allowed hosts, ``X-Forwarded-Proto`` enforcement.
-- **Observability**: health endpoints (``/health/live``, ``/health/ready``,
-  ``/api/admin/health``), structured logging, runtime error monitoring.
+  mutations, explicit allowed hosts, `X-Forwarded-Proto` enforcement.
+- **Observability**: health endpoints (`/health/live`, `/health/ready`,
+  `/api/admin/health`), structured logging, runtime error monitoring.
 - **Email**: Auth mail is capability-gated through
-  ``AUTH_EMAIL_DELIVERY_MODE`` and the canonical SMTP settings. The safe
-  ``noop`` profile remains the current baseline: password signup may create an
-  unverified ``user`` and establish a session, but verification and password
-  reset messages are not delivered until the ``DEBT-118`` SMTP acceptance
+  `AUTH_EMAIL_DELIVERY_MODE` and the canonical SMTP settings. The safe
+  `noop` profile remains the current baseline: password signup may create an
+  unverified `user` and establish a session, but verification and password
+  reset messages are not delivered until the `DEBT-118` SMTP acceptance
   gate passes.
   - **Backup and restore**: independently restorable copies with verified
     restore procedure; encrypted database dumps and incremental R2 snapshots.
-    ``R2IncrementalBackupTarget.apply_retention()`` keeps manifests and shared
-    objects reference-aware, while ``InterProcessFileLock`` protects scheduled
+    `R2IncrementalBackupTarget.apply_retention()` keeps manifests and shared
+    objects reference-aware, while `InterProcessFileLock` protects scheduled
     backup and retention runs. The local runtime contains only the lock and
     other disposable state; it is never a backup archive.
-  - **R2 transfer boundary**: ``R2GatewayStorage.put_immutable()`` handles
-    content-addressed JSON writes, while ``R2GatewayStorage.save_stream()``
+  - **R2 transfer boundary**: `R2GatewayStorage.put_immutable()` handles
+    content-addressed JSON writes, while `R2GatewayStorage.save_stream()`
     sends bounded HTTPS requests to the private Worker gateway. The Worker
     performs native R2 binding operations, fixed metadata validation,
     checksum handling, and committed-length verification.
 - **Scheduled maintenance**: PostgreSQL-side cron for internal cleanup
-  (``private.cleanup_expired_scheduler_states()``); application-side
-  scheduler loop checks ``scheduled_cron_log`` for pending backup and
+  (`private.cleanup_expired_scheduler_states()`); application-side
+  scheduler loop checks `scheduled_cron_log` for pending backup and
   maintenance work.
 - **Image immutability**: containers built by SHA-pinned Docker images,
   not mutable tags.
@@ -358,11 +361,11 @@ fields, fallback readers, compatibility routes, or import shims.
 
 ### Request Body Boundaries
 
-| Route group | Max body | Content-Type |
-|---|---|---|
-| Auth (login, register) | 64 KiB | `application/json`, `application/*+json` |
-| General JSON API | 1 MiB | `application/json`, `application/*+json` |
-| Analytics ingest | 32 KiB (default) | `application/json` |
+| Route group            | Max body         | Content-Type                             |
+| ---------------------- | ---------------- | ---------------------------------------- |
+| Auth (login, register) | 64 KiB           | `application/json`, `application/*+json` |
+| General JSON API       | 1 MiB            | `application/json`, `application/*+json` |
+| Analytics ingest       | 32 KiB (default) | `application/json`                       |
 
 ASGI middleware bounds every API request body and emits route-class `413`/`415`
 responses. Caddy rejects bodies
@@ -376,8 +379,8 @@ Roles are `guest`, `user`, and exactly one `owner`.
 - Public login never calls owner bootstrap `/api/auth/login`.
 - Identity comes from session, never client-supplied `user_id`.
 - Cookie-authenticated mutations require CSRF protection.
-- **Worker process** (``admin.Dockerfile``) claims database-backed crawl and
-  translation activities through ``novelaibook worker``. It has no public port
+- **Worker process** (`admin.Dockerfile`) claims database-backed crawl and
+  translation activities through `novelaibook worker`. It has no public port
   and does not run an in-process web worker.
 - Disabled users cannot log in or continue sessions.
 - Never log or return keys, cookies, auth headers, encryption keys, database
@@ -530,7 +533,7 @@ unchanged.
 - HTTP origin is `(scheme, hostname, effective_port)`; default ports are
   80 for http and 443 for https, so different effective ports are
   cross-origin. Multi-hop redirects strip Authorization / Proxy-Authorization /
-  Cookie / Host / If-* / If-Range headers and Referer on cross-origin hops;
+  Cookie / Host / If-\* / If-Range headers and Referer on cross-origin hops;
   dict-style cookies (which lack domain context) only apply to the first
   hop, real cookie jars keep domain semantics across hops. `throttle.before_request`
   / `throttle.after_response` runs for every hop and attributes to the host

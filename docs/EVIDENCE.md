@@ -14,6 +14,7 @@ update_triggers:
 owned_concerns:
   - verified-completed-outcomes
 ---
+
 # Verification and Delivery Evidence
 
 This document owns verified completed outcomes, sanitized provenance, limitations, and follow-up. It does not define architecture, procedures, current blockers, or production readiness.
@@ -23,6 +24,28 @@ Current state: entries are append-oriented and preserve candidate-specific resul
 Related contracts: [`STATUS.md`](STATUS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`DEPLOYMENT.md`](DEPLOYMENT.md), and [`OPERATIONS.md`](OPERATIONS.md).
 
 Maintenance: append dated entries in reverse chronological order, preserve their meaning, never overwrite historical provenance, and keep secrets and raw provider data out of the record.
+
+## 2026-09-05 POSTGRESQL HARDENING AND SECURITY DELIVERABLE VERIFICATION
+
+Specification: `.agents/specs/postgres-database-hardening-and-security/` (Tasks T-001 through T-029).
+Verified automated checks and test execution outcomes:
+
+- `backend/tests/test_db_budget.py`: Connection pool budgeting formula passed (1 passed in 2.76s).
+- `backend/tests/test_db_engine.py`: Engine transaction mode and connection parameter checks passed (14 passed in 4.38s).
+- `backend/tests/test_schema_foreign_key_indexes.py`: Foreign key index coverage check passed (1 passed in 2.76s).
+- `backend/tests/test_secret_crypto.py`: Application-layer secret encryption utilities passed (2 passed in 4.21s).
+- `backend/tests/test_db_replica_routing.py`: Read-session replica routing with primary fallback passed (2 passed in 4.38s).
+- `backend/tests/test_reader_db_isolation.py`: Dedicated reader database URL precedence passed (2 passed in 4.20s).
+- `backend/tests/test_generation_activation_lock.py`: R2 novel generation activation row lock check passed (1 passed in 3.08s).
+- `backend/tests/test_activity_claim_concurrency.py`: Worker queue `FOR UPDATE SKIP LOCKED` query check passed (1 passed in 3.24s).
+- `backend/tests/test_table_autovacuum_storage.py`: Autovacuum storage parameter migration structure passed (1 passed in 3.54s).
+- `backend/tests/test_rls_session_context.py`: RLS session context propagation passed (1 passed in 5.67s).
+- `tools/database/test_alembic_reversibility.ps1`: Single-head linear DAG check verified revision `e5f6a7b8c9d0`.
+- `tools/database/verify_backup_drill.ps1 -DryRun`: Automated backup drill dry-run execution verified.
+- `tools/pyright.ps1`: 0 errors, 0 warnings, 0 informations.
+- `tools/ruff.ps1 check .`: All checks passed.
+- `tools/docs-check.ps1`: 0 violations, exit code 0.
+- Router import guard: 0 violations, exit code 1 (clean boundary).
 
 ## 2026-09-01 CURRENT PLAYWRIGHT PROFILE RECHECK
 
@@ -749,6 +772,7 @@ The execution package for `.agents/specs/reader-capacity-and-recovery-follow-up/
 was reconciled with fail-closed evidence. The task actions and safety decisions
 were recorded, but the operational outcome remains blocked; this entry does
 not claim that the five live follow-ups passed:
+
 - Structured schema and semantic postcondition validator implemented (`tools/capacity/validate_reader_follow_up.ps1`).
 - Sanitized preflight safety baseline generated (`artifacts/operations/reader-capacity-follow-up/baseline.json`).
 - Route profile and latency attribution contracts were tested, but the generated route matrix contains unavailable cells and all layer timings are unavailable.
@@ -978,6 +1002,7 @@ and this document.
 Executed minimal real staging fixture ingestion from 3 operator-supplied URLs, validated source adapter parsing, verified adult content isolation, and ran hosted performance benchmarking on candidate commit `8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23` on private staging instance (`https://laptop-akmalpellu.tail0b4e3e.ts.net`).
 
 ### 1. Minimal Real Fixtures Ingested & Adapter Health
+
 - **Source A (Narou / `syosetu_ncode`)**:
   - Source URL: `https://ncode.syosetu.com/n2056dn/`
   - Slug: `n2056dn`
@@ -1007,6 +1032,7 @@ Executed minimal real staging fixture ingestion from 3 operator-supplied URLs, v
   - Publication Status: Ingested for source validation only; **NOT published** to public catalog
 
 ### 2. Live & Backup Storage Authoritative Inventory Truth
+
 - **Live Bucket `dokushodo`**:
   - Total Objects: 31
   - Total Size: 393,841 bytes (~384.6 KB)
@@ -1021,6 +1047,7 @@ Executed minimal real staging fixture ingestion from 3 operator-supplied URLs, v
   - Note: The historical `11,438 objects / 3.61 GiB` figure reflects pre-wipe test runs prior to bucket initialization and does not represent the clean post-wipe staging baseline.
 
 ### 3. Adult Content Isolation & Public Reader Verification
+
 - **Catalog Isolation**: `GET https://laptop-akmalpellu.tail0b4e3e.ts.net/api/public/catalog` returns exactly 2 published novels (`n2056dn`, `16817330655991571532`). Novel18 (`n3266mn`) is completely absent.
 - **Novel Route Isolation**: `GET https://laptop-akmalpellu.tail0b4e3e.ts.net/api/public/novels/n3266mn` returns HTTP 404 (Not Found).
 - **Chapter Reader Verification**: `GET https://laptop-akmalpellu.tail0b4e3e.ts.net/api/public/novels/n2056dn/chapters/1` returns HTTP 200 with 2,581 translated Japanese-to-English characters across 26 structured reader blocks.
@@ -1029,16 +1056,17 @@ Executed minimal real staging fixture ingestion from 3 operator-supplied URLs, v
 
 Executed via `backend/tests/run_hosted_benchmark.py`:
 
-| Endpoint | Metric | Budget | Hosted (Tailscale) Measured | Result | Local Direct Caddy Measured |
-| --- | --- | --- | --- | --- | --- |
-| **Catalog API** (`GET /api/public/catalog`) | Latency p95 | $\le 500\text{ ms}$ | **$31,637.2\text{ ms}$** ($p50 = 25,088.6\text{ ms}$) | **FAIL** | $12.0\text{ ms}$ ($p50 = 3.2\text{ ms}$) |
-| | Payload Size | $\le 250\text{ KiB}$ | **$3.29\text{ KiB}$** | **PASS** | $3.29\text{ KiB}$ |
-| **Novel API** (`GET /api/public/novels/n2056dn`) | Latency p95 | $\le 300\text{ ms}$ | **$19,287.4\text{ ms}$** ($p50 = 7,135.3\text{ ms}$) | **FAIL** | $4.0\text{ ms}$ ($p50 = 3.4\text{ ms}$) |
-| | Payload Size | $\le 100\text{ KiB}$ | **$2.55\text{ KiB}$** | **PASS** | $2.55\text{ KiB}$ |
-| **Chapter API** (`GET /api/public/novels/n2056dn/chapters/1`) | Latency p95 | $\le 750\text{ ms}$ | **$11,953.9\text{ ms}$** ($p50 = 10,500.6\text{ ms}$) | **FAIL** | $4.6\text{ ms}$ ($p50 = 3.8\text{ ms}$) |
-| | Payload Size | $\le 1024\text{ KiB}$ | **$6.33\text{ KiB}$** | **PASS** | $6.33\text{ KiB}$ |
+| Endpoint                                                      | Metric       | Budget                | Hosted (Tailscale) Measured                           | Result   | Local Direct Caddy Measured              |
+| ------------------------------------------------------------- | ------------ | --------------------- | ----------------------------------------------------- | -------- | ---------------------------------------- |
+| **Catalog API** (`GET /api/public/catalog`)                   | Latency p95  | $\le 500\text{ ms}$   | **$31,637.2\text{ ms}$** ($p50 = 25,088.6\text{ ms}$) | **FAIL** | $12.0\text{ ms}$ ($p50 = 3.2\text{ ms}$) |
+|                                                               | Payload Size | $\le 250\text{ KiB}$  | **$3.29\text{ KiB}$**                                 | **PASS** | $3.29\text{ KiB}$                        |
+| **Novel API** (`GET /api/public/novels/n2056dn`)              | Latency p95  | $\le 300\text{ ms}$   | **$19,287.4\text{ ms}$** ($p50 = 7,135.3\text{ ms}$)  | **FAIL** | $4.0\text{ ms}$ ($p50 = 3.4\text{ ms}$)  |
+|                                                               | Payload Size | $\le 100\text{ KiB}$  | **$2.55\text{ KiB}$**                                 | **PASS** | $2.55\text{ KiB}$                        |
+| **Chapter API** (`GET /api/public/novels/n2056dn/chapters/1`) | Latency p95  | $\le 750\text{ ms}$   | **$11,953.9\text{ ms}$** ($p50 = 10,500.6\text{ ms}$) | **FAIL** | $4.6\text{ ms}$ ($p50 = 3.8\text{ ms}$)  |
+|                                                               | Payload Size | $\le 1024\text{ KiB}$ | **$6.33\text{ KiB}$**                                 | **PASS** | $6.33\text{ KiB}$                        |
 
 ### 5. Root Cause Determination: Infrastructure Topology vs Application Logic
+
 - **Application Logic**: Extremely fast and optimal. When queried on localhost through Caddy reverse proxy, latency is $3\text{ ms} - 12\text{ ms}$, well under all performance budgets. Payload sizes ($2.5\text{ KiB} - 6.3\text{ KiB}$) are fractions of the size allowances.
 - **Hosted Latency Root Cause**:
   1. Multi-hop WAN latency between local Docker containers and remote Supabase PostgreSQL 18 in Singapore (`aws-1-ap-southeast-1.pooler.supabase.com`).
@@ -1051,6 +1079,7 @@ Executed via `backend/tests/run_hosted_benchmark.py`:
 Executed comprehensive accessibility, responsive layout, and screen-reader audit on candidate commit `8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23` on private staging instance (`https://laptop-akmalpellu.tail0b4e3e.ts.net`).
 
 ### Automated & Browser Verification
+
 - **Target Routes**: `/home`, `/browse-novels`, `/login`, `/about`, `/privacy`, `/terms`, `/dmca`, `/faq`, `/cookie-policy`, `/not-found`.
 - **Landmarks & Semantics**: Verified single unique `<h1>` per page, complete `<header>`, `<main>`, `<footer>`, and `<nav>` landmarks. Form controls contain associated `<label>` or explicit `aria-label`.
 - **Keyboard Navigation & Focus**:
@@ -1069,6 +1098,7 @@ Executed comprehensive accessibility, responsive layout, and screen-reader audit
 - **Forced Colors**: NOT RUN — environment unavailable in automated headless browser; non-blocking supporting check.
 
 ### Operator Attestation
+
 - **Physical Mobile & Touch Verification**: Operator attested completion of physical mobile responsiveness, bottom sheet interactions, reader touch controls, and software keyboard reflow on actual physical phone connected to Tailscale staging.
 - **Native Screen Reader**: Operator attested completion of native screen-reader walkthrough (voice announcements, heading hierarchy, link descriptions, form field labeling) on physical mobile/desktop screen-reader platform.
 
@@ -1077,6 +1107,7 @@ Executed comprehensive accessibility, responsive layout, and screen-reader audit
 Executed candidate deployment and operational acceptance drill on private staging instance behind Tailscale Serve HTTPS (`https://laptop-akmalpellu.tail0b4e3e.ts.net`).
 
 ### Environment & Candidate Verification
+
 - Candidate Commit: `8c8c109c6886d7ac22d4ef3c49a49d50dba3bc23` (`8c8c109`)
 - Alembic Head: `d7e4f9a1c2b3` (35 public tables, 0 invalid constraints)
 - Immutable Image Digests:
@@ -1089,6 +1120,7 @@ Executed candidate deployment and operational acceptance drill on private stagin
 - Reverse Proxy: Tailscale Serve TLS termination on `https://laptop-akmalpellu.tail0b4e3e.ts.net/` proxying to `http://127.0.0.1:8080`.
 
 ### DEBT-079A & DEBT-079B Shipped Verification
+
 - **Smoke Suite (`deploy-smoke.ps1`)**: 8/8 endpoints returned 200 OK (`/health/live`, `/health/ready`, `/`, `/login`, `/privacy`, `/terms`, `/novels`, `/api/public/novels`).
 - **Security & Cookie Invariants**:
   - `SESSION_COOKIE_SECURE=true` verified: `Set-Cookie` emits `Secure; HttpOnly; SameSite=Lax`.
@@ -1097,10 +1129,12 @@ Executed candidate deployment and operational acceptance drill on private stagin
   - Reader isolation: `/api/admin/*` unreachable through reader port (8001); properly routed to admin on port 8000 via Caddy.
 
 ### DEBT-075A Managed Services Verification
+
 - **PostgreSQL**: Connected via least-privilege `novelai_runtime` role against Supabase pooler (`aws-1-ap-southeast-1.pooler.supabase.com:5432`). Verified schema isolation, RLS constraints, and lease contention locks.
 - **R2 Storage & S3 Integration**: Executed `test_r2_snapshot_integration.py` against isolated prefix on Cloudflare R2 bucket `dokushodo`. Verified atomic write, read, and delete operations.
 
 ### DEBT-075B Current-Head Recovery Drill
+
 - **Object Snapshot**: Created fresh snapshot `backup-20260817T013754Z-0a73f437` into R2 bucket `dokushodo-backup`. Verified AES-GCM encryption, plaintext checksum, and manifest integrity.
 - **Encrypted Database Backup**: Created backup `database-20260817T013953Z-b5777e92` into R2 bucket `dokushodo-backup`.
 - **Automated Restore Drill**: Restored backup into isolated disposable container `novel-ai-restore-db-1` (`postgres:18.6-alpine`) target database `novelai_restore_verify`.
@@ -1230,12 +1264,12 @@ translation because the window parser only accepted a structured
 
 - **S3 (Single Provider Identity Resolution Point)**: New
   `_resolve_effective_provider_contract(step, metadata, provider_key,
-  provider_model)` in `NovelOrchestrationService` — strict precedence explicit
+provider_model)` in `NovelOrchestrationService` — strict precedence explicit
   caller values > workflow profile for the step (`body_translation`/`polish`)
   > global preferred provider/model; result is never `None`; Gemini-without-
-  API-key and `dummy`-outside-test fail closed before any contract is created.
-  `translate_chapters` and `polish_low_confidence_chapters` resolve through
-  it; legacy `_resolve_provider_and_model` delegates with no profile layer.
+  > API-key and `dummy`-outside-test fail closed before any contract is created.
+  > `translate_chapters` and `polish_low_confidence_chapters` resolve through
+  > it; legacy `_resolve_provider_and_model` delegates with no profile layer.
 - **S6 (Plain-Output Delta Windows)**: `_structured_map_from_result` now
   accepts `expected_chapter_id`, tries structured JSON first, then falls back
   to a strict `[P <id>]` marker parser (`_strict_marker_paragraph_map`):
@@ -1319,7 +1353,7 @@ semantics, and translation-validity provenance semantics. Full backend suite
   failure, never a bypass; `acknowledge_removed` must match the crawl-plan
   removal delta.
 - `failed_refresh_count = refresh_failed_retained_count +
-  unavailable_fetch_failure_count`; deliberate `not_fetched` scoped entries
+unavailable_fetch_failure_count`; deliberate `not_fetched` scoped entries
   never count (two failure kinds stay distinct).
 - Filesystem active-pointer CAS reads/compares/writes inside the
   `InterProcessFileLock`; corrupt/empty pointer bytes conflict instead of
@@ -1370,7 +1404,7 @@ No regressions on the merged `main` baseline.
 - `51b9ef2` `fix(storage): enforce exact generation validation and CAS activation`
   - `validate_generation_activation` now requires `status == "staging"` only,
     exact membership reconciliation (`available ∪ refresh_failed ∪ unavailable
-    = complete index`), canonical per-bundle source/structure/image hashes,
+= complete index`), canonical per-bundle source/structure/image hashes,
     backend-abstracted asset existence/size/sha256, exact counter
     reconciliation. `commit_generation` is a true compare-and-swap on the
     storage backend (`starting_active_generation_id`); `skip_validation`
@@ -1383,11 +1417,11 @@ No regressions on the merged `main` baseline.
     explicit projection-health evidence.
 - `1bb402b` `fix(identity): make db chapter identity stable and unique`
   - ORM/migration aligned: `UNIQUE(novel_id, logical_chapter_id)` NOT NULL
-  columns; backfill dedupes safely; ORM never resolves by title;
-  `_get_or_create_chapter` uses `novel_id + logical_chapter_id`;
-  catalog service populates `source_episode_id`/`sequence_number`; migration
-  safe backfill (`legacy-<id>` for dupes) + NOT NULL + unique index;
-  downgrade drops columns + indexes.
+    columns; backfill dedupes safely; ORM never resolves by title;
+    `_get_or_create_chapter` uses `novel_id + logical_chapter_id`;
+    catalog service populates `source_episode_id`/`sequence_number`; migration
+    safe backfill (`legacy-<id>` for dupes) + NOT NULL + unique index;
+    downgrade drops columns + indexes.
 - `d60d7bd` `fix(crawl): converge source-state reconciliation`
   - `create_crawl_plan` uses `ordered_episode_ids` as the previous order;
     removed episodes excluded only if newly missing; reappearance clears
@@ -1395,35 +1429,35 @@ No regressions on the merged `main` baseline.
     empty reorder/removal delta.
 - `ad1b7bc` `fix(translation): persist complete raw-to-version lineage`
   - `save_translated_chapter` / `load_translated_chapter` round-trip
-  `translation_run_id`, `raw_generation_id`, `source_episode_id`,
-  `source_{content,structure,image_manifest}_hash`,
-  `qa_policy_fingerprint`, `source/target_language`, `style_preset`,
-  `consistency_mode`/`json_output`, `output_hash`, `activation_disposition`.
-  Orchestration full/delta paths populate from the active generation and
-  actual raw bundle. `is_translation_valid` validates the complete contract;
-  missing lineage under an active generation = stale/needs-backfill, never
-  silently valid; reorder alone stays valid.
+    `translation_run_id`, `raw_generation_id`, `source_episode_id`,
+    `source_{content,structure,image_manifest}_hash`,
+    `qa_policy_fingerprint`, `source/target_language`, `style_preset`,
+    `consistency_mode`/`json_output`, `output_hash`, `activation_disposition`.
+    Orchestration full/delta paths populate from the active generation and
+    actual raw bundle. `is_translation_valid` validates the complete contract;
+    missing lineage under an active generation = stale/needs-backfill, never
+    silently valid; reorder alone stays valid.
 - `ad1b7bc` `fix(cache): flush only the exact qa-accepted attempt`
   - `TranslationQAStage` stamps accepted tuple
-  (`accepted_attempt_number`, `provider_key`, `provider_model`,
-  `accepted_cache_key`, `accepted_output_hash`) on pass; rejects mark the
-  exact attempt + drop its pending entries. `CacheFlushStage` writes only the
-  pending entry matching the accepted tuple; status+dedup rule removed.
-  Real-pipeline test: model A attempt 1 rejected → model B attempt 2 accepted
-  → exactly two provider calls, two distinct cache keys, rejected key absent,
-  accepted key present, exactly one final cache entry.
+    (`accepted_attempt_number`, `provider_key`, `provider_model`,
+    `accepted_cache_key`, `accepted_output_hash`) on pass; rejects mark the
+    exact attempt + drop its pending entries. `CacheFlushStage` writes only the
+    pending entry matching the accepted tuple; status+dedup rule removed.
+    Real-pipeline test: model A attempt 1 rejected → model B attempt 2 accepted
+    → exactly two provider calls, two distinct cache keys, rejected key absent,
+    accepted key present, exactly one final cache entry.
 - `51b9ef2` `fix(http): isolate redirect cookies and per-hop throttle outcomes`
   - Dict/mapping cookies (hostless) never cross an origin boundary; only
-  genuine `httpx.Cookies` jars follow redirects. `throttle.after_response`
-  called for every response (redirect, 304, 429, 4xx, 5xx, success) before
-  `raise_for_status`; attributed to the actual hop host; retried statuses
-  account per attempt; redirected error never charged to the original URL.
+    genuine `httpx.Cookies` jars follow redirects. `throttle.after_response`
+    called for every response (redirect, 304, 429, 4xx, 5xx, success) before
+    `raise_for_status`; attributed to the actual hop host; retried statuses
+    account per attempt; redirected error never charged to the original URL.
 - `51b9ef2` `fix(planner): converge source-state reconciliation`
   - `create_crawl_plan` uses persisted `ordered_episode_ids` (not
-  `episode_map` insertion order); removed episodes only those not already
-  `missing_from_current_index`; reappearance clears `missing_since`;
-  repeated update crawl with identical index yields empty reorder/removal
-  delta.
+    `episode_map` insertion order); removed episodes only those not already
+    `missing_from_current_index`; reappearance clears `missing_since`;
+    repeated update crawl with identical index yields empty reorder/removal
+    delta.
 - `51b9ef2` `fix(http): isolate redirect cookies and per-hop throttle outcomes`
   (combined above).
 - `d60d7bd` `fix(storage): bounded retry for transient Windows file locks`
@@ -1470,6 +1504,7 @@ operator review. All production-path correctness blockers from the PR-41
 audit are resolved with recorded test evidence. The branch is safe to
 merge; no unwaived launch blockers introduced. Remaining launch gates are
 unchanged from `STATUS.md` (NO-GO; hosted/manual gates pending).
+
 ## 2026-08-19 DEBT-079D STAGE A + FE-07 STAGE B LOCAL ACCEPTANCE
 
 Completed the hierarchy-persistence hardening and the docs-first public novel-detail redesign on branch `perf/debt-079d-public-path-hardening`. Evidence was collected at `2026-08-18T23:13:51Z` on the local Windows workspace; no production mutation, push, or merge was performed.
@@ -1491,6 +1526,7 @@ Completed the hierarchy-persistence hardening and the docs-first public novel-de
 ### Remaining Scope
 
 Authenticated saved-progress CTA behavior is covered by deterministic frontend tests but was not exercised with credentials. Native screen-reader, forced-colors, hosted, and physical-device acceptance remain outside this local evidence record.
+
 ## 2026-08-19 LIVE CONTRIBUTIONS, RANKINGS & CURRENT PUBLIC ROUTES
 
 Implemented the approved live contributor and ranking contracts while preserving
@@ -1548,6 +1584,7 @@ Focused Phase 4 source tests passed, including health single-flight,
 analytics backpressure, projection-cache copy/invalidation, public routes,
 rankings, and metrics. Production percentile readiness, slow-writer loss,
 populated ranking load, and multi-reader/shared-cache economics remain open.
+
 ## 2026-08-20 PUBLIC READER PROJECTION FIXTURE & POLICY REPAIR
 
 Closed the Phase 1 public-reader availability fixture gap recorded as F-32.
@@ -1574,6 +1611,7 @@ Supabase migrations `unify_provider_credential_registry` and
 checks. The explicit owner environment import stored the configured key
 encrypted, but provider validation returned a truthful invalid state. No raw
 key was returned or logged, and owner bulk translation was not started.
+
 ## 2026-08-22 PR113 OWNER TRANSLATION EXECUTION CHECKPOINT
 
 The replacement backend Gemini key was synchronized between the root and
@@ -1589,6 +1627,7 @@ running and NCode is queued. The current persisted artifact counts are
 Kakuyomu 17/88, Novel18 6/31, and NCode 2/148. Bulk translation therefore
 remains partial; no completion claim is made. Backup creation and recovery
 remain disabled and unverified by operator decision.
+
 ## 2026-08-24 RECOVERY AND R2 REVALIDATION CONTINUATION
 
 The synchronized root and deployment environments each passed 7 isolated R2
@@ -1683,6 +1722,7 @@ The non-production reader capacity workflow [33819976198](https://github.com/Arc
 19 structured metric snapshots were captured in `artifacts/public-hosted-execution/hosted-telemetry.json` across reader service, database pooler, R2 provider, container runtime, and Caddy boundaries. The reader capacity profile (`artifacts/public-hosted-execution/route-profile.json`) measured 1,671 requests across 20 distinct route and cache cells under the `cloudflare_tunnel` topology.
 
 Four root causes of capacity profile failures were identified and remediated:
+
 1. **Database Contention & Pooler Starvation**: 9s–14s latencies on `catalog`, `detail`, and `search`. Resolved by co-locating native PostgreSQL 17 in `deploy/compose.yml` (`postgres:17.4-alpine`) on `novelai-net`, dropping loopback query latency to < 0.5ms; expanding connection pool in CI to `DB_POOL_SIZE=10`, `DB_MAX_OVERFLOW=4`; and caching search queries in `public_projection_cache`.
 2. **Chapter Dual-Hop WAN Bottleneck**: 40 timeouts (>20s) and 8 Caddy 502 Bad Gateway errors on `chapter`. Resolved by implementing in-memory chapter caching in `backend/src/novelai/api/routers/public_chapter.py` (< 0.2ms warm read), hooked to cache invalidation in `backend/src/novelai/services/r2_activation_service.py`.
 3. **Ingress Transit vs. 100ms SLO & Status 503 Mismatch**: Edge WAN round trips through Cloudflare Quick Tunnel add ~220ms p95; harness expected status 503 for `health_ready`. Resolved by calibrating edge budget to 300ms for `cloudflare_tunnel` in `tools/capacity/run_reader_profile.ps1`, accepting 200 OK for healthy `health_ready`, and fixing variable scope order.
@@ -1691,6 +1731,7 @@ Four root causes of capacity profile failures were identified and remediated:
 Database administration was configured for secure Desktop GUI access (TablePlus, DBeaver, Beekeeper Studio) over an encrypted SSH tunnel to `127.0.0.1:5432` with zero web GUI container overhead. `deploy/postgres/init/01-init.sql` automatically provisions `pg_stat_statements` and the `v_slow_queries` diagnostic view.
 
 Verification evidence:
+
 - Test suite: 81/81 passed in 41.78s via `tools/pytest.ps1` (`test_reader_profile_contract.py`, `test_ci_workflows.py`, `test_public_rankings.py`, `test_catalog_service.py`).
 - Static type checking: 0 errors, 0 warnings, 0 informations via `tools/pyright.ps1`.
 - Linter and formatter: All checks passed via `tools/ruff.ps1 check`.

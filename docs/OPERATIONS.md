@@ -14,6 +14,7 @@ update_triggers:
 owned_concerns:
   - operations-runbooks-and-recovery
 ---
+
 # Operations
 
 This document owns authorized operational procedures, safety gates, health checks, queue control, backup/restore, cleanup, and incident coordination. It does not own deployment topology, application architecture, secret values, or dated result claims.
@@ -371,11 +372,11 @@ telemetry, recovery completeness, or production readiness.
 
 ## Health
 
-| Endpoint | Expected behavior |
-|---|---|
-| `GET /health/live` | Process-only, unauthenticated, always 200; no dependency calls. |
-| `GET /health/ready` | Redacted, short-TTL cached/single-flight DB/lightweight-storage/worker/disk probes; 503 when the cached result is unhealthy. |
-| `GET /api/admin/health` | Owner-only detailed but redacted probe status and latency. |
+| Endpoint                | Expected behavior                                                                                                            |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `GET /health/live`      | Process-only, unauthenticated, always 200; no dependency calls.                                                              |
+| `GET /health/ready`     | Redacted, short-TTL cached/single-flight DB/lightweight-storage/worker/disk probes; 503 when the cached result is unhealthy. |
+| `GET /api/admin/health` | Owner-only detailed but redacted probe status and latency.                                                                   |
 
 States: `healthy`, `degraded`, `unhealthy`. Investigate stale worker heartbeat,
 DB connectivity, storage reachability/capacity, and disk before restart. Public
@@ -529,14 +530,14 @@ GET /api/admin/maintenance/status
 Admin UI: /admin/maintenance
 ```
 
-| Field/state | Meaning |
-|---|---|
-| `never_run` | Registered task has no durable completed attempt. This is not success. |
-| `running` | Task recorded a start and has not recorded completion. Check heartbeat/lease when stale. |
-| `idle` / `succeeded` | Latest recorded attempt completed successfully. |
-| `failed` | Latest attempt failed. UI exposes generic redacted guidance only. |
-| `disabled` | Maintenance scheduling is disabled; no next eligibility is advertised. |
-| `next_eligible_at` | Next cron occurrence in UTC from configured cron/timezone and durable completion state. |
+| Field/state          | Meaning                                                                                  |
+| -------------------- | ---------------------------------------------------------------------------------------- |
+| `never_run`          | Registered task has no durable completed attempt. This is not success.                   |
+| `running`            | Task recorded a start and has not recorded completion. Check heartbeat/lease when stale. |
+| `idle` / `succeeded` | Latest recorded attempt completed successfully.                                          |
+| `failed`             | Latest attempt failed. UI exposes generic redacted guidance only.                        |
+| `disabled`           | Maintenance scheduling is disabled; no next eligibility is advertised.                   |
+| `next_eligible_at`   | Next cron occurrence in UTC from configured cron/timezone and durable completion state.  |
 
 Every allowlisted task records best-effort start/success/failure transitions in
 `SchedulerRuntimeState`. Observability-write failure is logged safely and does
@@ -698,14 +699,14 @@ SMTP construction tests and noop notifications are not delivery evidence.
 
 ## Reader Budgets
 
-| Surface | Budget |
-|---|---:|
-| Catalog API | p95 <= 500 ms; <= 250 KiB |
-| Novel API | p95 <= 300 ms; <= 100 KiB |
-| Chapter API | p95 <= 750 ms; <= 1 MiB |
-| Public route first-load JS | <= 250 KiB |
-| Catalog page size | default 24; maximum 100 |
-| Public annotations | maximum 50 |
+| Surface                    |                    Budget |
+| -------------------------- | ------------------------: |
+| Catalog API                | p95 <= 500 ms; <= 250 KiB |
+| Novel API                  | p95 <= 300 ms; <= 100 KiB |
+| Chapter API                |   p95 <= 750 ms; <= 1 MiB |
+| Public route first-load JS |                <= 250 KiB |
+| Catalog page size          |   default 24; maximum 100 |
+| Public annotations         |                maximum 50 |
 
 Guest-safe catalog/reader GETs may use short shared caching. Auth, account,
 admin, intake, errors, unavailable shells, owner previews, and HTTP 451 do not.
@@ -1066,18 +1067,31 @@ queue, recovery writes, or a production launch.
 ## Native PostgreSQL 17 administration, CloudBeaver, and backup/restore runbook
 
 ### 1. Database Web GUI (CloudBeaver)
+
 - **Container**: `dokushodo-cloudbeaver` (`dbeaver/cloudbeaver:24.3.0`) in `deploy/compose.yml`.
 - **URL**: `http://127.0.0.1:8978`.
 - **Network & Host**: Connects over internal `novelai-net` Docker network to host `db` on port `5432`.
-- **Authentication**: Connect with username `dokushodo` and the password configured in `deploy/.env`.
+- **Security & Governance Configuration**:
+  - Bound strictly to `${CLOUDBEAVER_BIND_ADDRESS:-127.0.0.1}`.
+  - Anonymous access disabled (`anonymousAccessEnabled: false` in `deploy/postgres/cloudbeaver/cloudbeaver.conf`).
+  - Schema filter hides internal `auth` and `private` schemas, exposing only `public`.
+  - Query result limit capped to 1,000 rows (`sqlResultSetRowsLimit: 1000`) to prevent frontend OOM.
+  - SQL editor configured with `autoSave: true` (autocommit enabled by default) to prevent idle transaction table locks.
+  - Data export file limit capped to 10MB (`dataExportFileSizeLimit: 10000000`).
+  - Pre-seeded read-only analyst connection profile `PostgreSQL@db-reader` (`novelai_reader` role) in `deploy/postgres/cloudbeaver/initial-data.conf`.
+- **Authentication**: Connect with username `dokushodo` or `cbadmin` and configured password.
 - **Desktop Alternative**: Desktop clients (TablePlus, DBeaver, Beekeeper Studio) connect via `127.0.0.1:5432` locally or via SSH tunnel in remote environments.
 
 ### 2. Database Initialization and Migration Runbook
+
 Run `tools/database/init_native_postgres.ps1` to orchestrate container spin-up, migration, and data seed:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools/database/init_native_postgres.ps1
 ```
+
 This script:
+
 1. Validates Docker engine availability.
 2. Ensures the `dokushodo-db` container is running and healthy.
 3. Dynamically resolves `DATABASE_URL` from `.env` and executes `alembic upgrade head`.
@@ -1085,17 +1099,22 @@ This script:
 5. Asserts post-migration row counts across novels, chapters, and glossaries.
 
 ### 3. Automated Database Backup Runbook
+
 Run `tools/database/backup_postgres.ps1` to generate a non-blocking, verified snapshot:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools/database/backup_postgres.ps1 -RetentionDays 14
 ```
+
 - Performs a custom-format dump (`pg_dump -Fc`) inside the container.
 - Copies the binary dump to `deploy/postgres/backups/dokushodo_backup_<timestamp>.dump`.
 - Verifies archive integrity and non-zero size.
 - Prunes backups older than the retention threshold (defaults to 14 days).
 
 ### 4. Database Restore Runbook
+
 Run `tools/database/restore_postgres.ps1` to recover from a backup:
+
 ```powershell
 # Restore the latest backup automatically:
 powershell -ExecutionPolicy Bypass -File tools/database/restore_postgres.ps1
@@ -1103,13 +1122,32 @@ powershell -ExecutionPolicy Bypass -File tools/database/restore_postgres.ps1
 # Or restore a specific backup archive:
 powershell -ExecutionPolicy Bypass -File tools/database/restore_postgres.ps1 -BackupFile deploy/postgres/backups/dokushodo_backup_2026-09-04_102004.dump
 ```
+
 - Safely terminates open client sessions (`pg_terminate_backend`) to eliminate table-lock contention.
 - Executes `pg_restore --clean --if-exists --no-owner --no-privileges`.
 - Validates row counts in `novels`, `chapters`, and `novel_glossary_entries` to confirm data integrity.
 
 ### 5. Performance Diagnostics (`v_slow_queries`)
+
 The PostgreSQL container automatically enables `pg_stat_statements` via `deploy/postgres/init/01-init.sql`.
 To diagnose query performance and slow executions:
+
 ```sql
 SELECT query, calls, total_ms, mean_ms, rows FROM v_slow_queries;
+```
+
+### 6. Automated Backup and Restore Drill
+
+Run `tools/database/verify_backup_drill.ps1` to execute an automated validation drill of container liveness, backup catalog consistency, and schema verification:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/database/verify_backup_drill.ps1 -DryRun
+```
+
+### 7. Alembic Migration Linearity and Reversibility Check
+
+Verify that the Alembic migration DAG remains strictly single-headed and fully reversible:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/database/test_alembic_reversibility.ps1
 ```

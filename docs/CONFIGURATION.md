@@ -14,6 +14,7 @@ update_triggers:
 owned_concerns:
   - configuration-runtime-settings
 ---
+
 # Configuration
 
 This document owns configuration meaning, precedence, validation, and secret classification. It does not own architecture decisions, release procedures, runtime evidence, or secret values.
@@ -51,22 +52,22 @@ files and synchronized the active/template key sets exactly for all three active
 application pairs. The root and deployment templates also share one ordered
 129-key contract; the frontend pair has four keys. The current counterparts are:
 
-| Active file | Counterpart | Special handling |
-|---|---|---|
-| `.env` | `.env.example` | Local backend/runtime profile; real credentials stay local and redacted |
-| `deploy/.env` | `deploy/.env.example` | Docker Compose development profile; `RUNTIME_HOST_DIR=../data/runtime` is local-only |
+| Active file              | Counterpart                      | Special handling                                                                                          |
+| ------------------------ | -------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `.env`                   | `.env.example`                   | Local backend/runtime profile; real credentials stay local and redacted                                   |
+| `deploy/.env`            | `deploy/.env.example`            | Docker Compose development profile; `RUNTIME_HOST_DIR=../data/runtime` is local-only                      |
 | `deploy/.env.production` | `deploy/.env.production.example` | Runtime file is not present locally; the production template remains the source for operator provisioning |
-| `frontend/.env.local` | `frontend/.env.example` | Local Next.js overlay; same-origin/public API defaults plus local backend/reader URLs |
-| root `.env.local` | No application counterpart | Runtime file is not present locally; do not create it for backend configuration |
+| `frontend/.env.local`    | `frontend/.env.example`          | Local Next.js overlay; same-origin/public API defaults plus local backend/reader URLs                     |
+| root `.env.local`        | No application counterpart       | Runtime file is not present locally; do not create it for backend configuration                           |
 
 ### Value ownership
 
-| Ownership | Variables | Source and rule |
-|---|---|---|
-| Locally generated or derived | `SESSION_SECRET_KEY`, `OWNER_BOOTSTRAP_SECRET`, `PROVIDER_CREDENTIAL_ENCRYPTION_KEY`, `DATABASE_BACKUP_ENCRYPTION_KEY` | Generate with a cryptographically secure local tool such as `secrets.token_hex`; store and rotate through the operator's secret store, never derive from a URL or password |
-| Build/runtime generated | `VERSION`, local `RUNTIME_HOST_DIR`, local Compose `REDIS_URL`, `GOOGLE_OAUTH_REDIRECT_URI` | Git/CI, Compose defaults, or derivation from the confirmed public URL; the operator still reviews the result before deployment |
-| External service values | `DATABASE_URL`, `MIGRATION_DATABASE_URL`, `DATABASE_BACKUP_URL`, `DATABASE_RESTORE_TARGET_URL`, `R2_GATEWAY_URL`, `R2_GATEWAY_CLIENT_ID`, `R2_GATEWAY_CLIENT_SECRET`, `R2_RECOVERY_GATEWAY_URL`, `R2_RECOVERY_CLIENT_ID`, `R2_RECOVERY_CLIENT_SECRET`, `PROVIDER_GEMINI_API_KEY`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `SMTP_*` | Issued by Supabase/PostgreSQL, the private Cloudflare Worker/Access boundary, Google AI/OAuth, or the selected SMTP provider; never fabricate or reuse across scopes |
-| Operator decisions | `ENV`, `DEPLOY_MODE`, domains/origins/hosts, `R2_BACKUP_ENABLED`, backup/restore/maintenance flags, quotas, schedules, pool sizes, `PROVIDER_DEFAULT`, model, target language, and retention values including `BACKUP_SAFETY_GRACE_DAYS` | Chosen and approved for the target environment; safe defaults may be supplied by the examples, but production activation is an operator decision |
+| Ownership                    | Variables                                                                                                                                                                                                                                                                                                                                                                                         | Source and rule                                                                                                                                                            |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Locally generated or derived | `SESSION_SECRET_KEY`, `OWNER_BOOTSTRAP_SECRET`, `PROVIDER_CREDENTIAL_ENCRYPTION_KEY`, `DATABASE_BACKUP_ENCRYPTION_KEY`                                                                                                                                                                                                                                                                            | Generate with a cryptographically secure local tool such as `secrets.token_hex`; store and rotate through the operator's secret store, never derive from a URL or password |
+| Build/runtime generated      | `VERSION`, local `RUNTIME_HOST_DIR`, local Compose `REDIS_URL`, `GOOGLE_OAUTH_REDIRECT_URI`                                                                                                                                                                                                                                                                                                       | Git/CI, Compose defaults, or derivation from the confirmed public URL; the operator still reviews the result before deployment                                             |
+| External service values      | `DATABASE_URL`, `MIGRATION_DATABASE_URL`, `READER_DATABASE_URL`, `DATABASE_REPLICA_URL`, `DATABASE_BACKUP_URL`, `DATABASE_RESTORE_TARGET_URL`, `R2_GATEWAY_URL`, `R2_GATEWAY_CLIENT_ID`, `R2_GATEWAY_CLIENT_SECRET`, `R2_RECOVERY_GATEWAY_URL`, `R2_RECOVERY_CLIENT_ID`, `R2_RECOVERY_CLIENT_SECRET`, `PROVIDER_GEMINI_API_KEY`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `SMTP_*` | Issued by Supabase/PostgreSQL, the private Cloudflare Worker/Access boundary, Google AI/OAuth, or the selected SMTP provider; never fabricate or reuse across scopes       |
+| Operator decisions           | `ENV`, `DEPLOY_MODE`, domains/origins/hosts, `R2_BACKUP_ENABLED`, backup/restore/maintenance flags, quotas, schedules, pool sizes, `PROVIDER_DEFAULT`, model, target language, and retention values including `BACKUP_SAFETY_GRACE_DAYS`                                                                                                                                                          | Chosen and approved for the target environment; safe defaults may be supplied by the examples, but production activation is an operator decision                           |
 
 Optional external/operator values may remain absent. SMTP settings and the
 production migration URL remain unset where no approved source value exists.
@@ -123,17 +124,17 @@ Generate secrets with `python -c "import secrets; print(secrets.token_hex(32))"`
 
 ## Required Production Settings
 
-| Area | Required contract |
-|---|---|
-| Runtime | `ENV=production`; `DEPLOY_MODE=monolith|split`. |
-| Database | `DATABASE_URL` uses `postgresql+psycopg://`; TLS mode and deployment-wide connection budget are reviewed across backend, reader, worker, migrations, and operator reserve. |
-| Sessions | Strong `SESSION_SECRET_KEY`, `OWNER_BOOTSTRAP_SECRET`, HTTPS cookie behavior. |
-| Public URL | HTTPS `PUBLIC_FRONTEND_URL`; exact OAuth redirect when OAuth enabled. |
-| Origins | Explicit `WEB_CORS_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, `ALLOWED_HOSTS`; no wildcard with credentials. |
-| Provider | Gemini key/model configuration; production never uses dummy provider. |
-| Credentials | `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` before storing provider keys. |
-| Storage | R2-only: `R2_BUCKET=dokushodo`, private HTTPS `R2_GATEWAY_URL`, application Access identity, fixed `R2_BACKUP_BUCKET=dokushodo-backup`, and separate recovery gateway identity; no filesystem content backend. |
-| Distributed runtime | Redis URL and Redis rate limiter for split/multi-instance mode. |
+| Area                | Required contract                                                                                                                                                                                              |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Runtime             | `ENV=production`; `DEPLOY_MODE=monolith                                                                                                                                                                        | split`. |
+| Database            | `DATABASE_URL` uses `postgresql+psycopg://`; TLS mode and deployment-wide connection budget are reviewed across backend, reader, worker, migrations, and operator reserve.                                     |
+| Sessions            | Strong `SESSION_SECRET_KEY`, `OWNER_BOOTSTRAP_SECRET`, HTTPS cookie behavior.                                                                                                                                  |
+| Public URL          | HTTPS `PUBLIC_FRONTEND_URL`; exact OAuth redirect when OAuth enabled.                                                                                                                                          |
+| Origins             | Explicit `WEB_CORS_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, `ALLOWED_HOSTS`; no wildcard with credentials.                                                                                                            |
+| Provider            | Gemini key/model configuration; production never uses dummy provider.                                                                                                                                          |
+| Credentials         | `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` before storing provider keys.                                                                                                                                             |
+| Storage             | R2-only: `R2_BUCKET=dokushodo`, private HTTPS `R2_GATEWAY_URL`, application Access identity, fixed `R2_BACKUP_BUCKET=dokushodo-backup`, and separate recovery gateway identity; no filesystem content backend. |
+| Distributed runtime | Redis URL and Redis rate limiter for split/multi-instance mode.                                                                                                                                                |
 
 ## Cloudflare HTTPS Staging
 
@@ -177,17 +178,17 @@ setting.
 
 Required R2 settings:
 
-| Setting | Meaning |
-|---|---|
-| `R2_BUCKET` | Application bucket; production must be `dokushodo`. |
-| `R2_GATEWAY_URL` | Private versioned Worker HTTPS endpoint for application R2 operations. |
-| `R2_GATEWAY_CLIENT_ID` / `R2_GATEWAY_CLIENT_SECRET` | Application Cloudflare Access service identity. |
-| `R2_BACKUP_BUCKET` | Independent recovery bucket; production must be `dokushodo-backup`. |
-| `R2_RECOVERY_GATEWAY_URL` | Private versioned Worker HTTPS endpoint for recovery operations. |
-| `R2_RECOVERY_CLIENT_ID` / `R2_RECOVERY_CLIENT_SECRET` | Separate recovery Cloudflare Access service identity. |
-| `R2_BACKUP_PREFIX` | Fixed snapshot namespace under the recovery bucket. |
-| `RUNTIME_DIR` | Disposable local cache/checkpoint/log/scratch root. It is not a content library. |
-| `RUNTIME_HOST_DIR` | Compose-only host directory mounted to `RUNTIME_DIR`; use `../data/runtime` for local Windows Compose and a provisioned writable path such as `/opt/novelai/shared/data/runtime` in production. It must contain only disposable runtime state. |
+| Setting                                               | Meaning                                                                                                                                                                                                                                        |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `R2_BUCKET`                                           | Application bucket; production must be `dokushodo`.                                                                                                                                                                                            |
+| `R2_GATEWAY_URL`                                      | Private versioned Worker HTTPS endpoint for application R2 operations.                                                                                                                                                                         |
+| `R2_GATEWAY_CLIENT_ID` / `R2_GATEWAY_CLIENT_SECRET`   | Application Cloudflare Access service identity.                                                                                                                                                                                                |
+| `R2_BACKUP_BUCKET`                                    | Independent recovery bucket; production must be `dokushodo-backup`.                                                                                                                                                                            |
+| `R2_RECOVERY_GATEWAY_URL`                             | Private versioned Worker HTTPS endpoint for recovery operations.                                                                                                                                                                               |
+| `R2_RECOVERY_CLIENT_ID` / `R2_RECOVERY_CLIENT_SECRET` | Separate recovery Cloudflare Access service identity.                                                                                                                                                                                          |
+| `R2_BACKUP_PREFIX`                                    | Fixed snapshot namespace under the recovery bucket.                                                                                                                                                                                            |
+| `RUNTIME_DIR`                                         | Disposable local cache/checkpoint/log/scratch root. It is not a content library.                                                                                                                                                               |
+| `RUNTIME_HOST_DIR`                                    | Compose-only host directory mounted to `RUNTIME_DIR`; use `../data/runtime` for local Windows Compose and a provisioned writable path such as `/opt/novelai/shared/data/runtime` in production. It must contain only disposable runtime state. |
 
 `R2_*` credentials are never returned by diagnostics. Rotate application,
 source-read, and backup-write tokens independently and verify access scopes
@@ -386,11 +387,11 @@ configured and the verification flow is completed.
 
 ## Profiles
 
-| Profile | Key choices |
-|---|---|
-| Local | `ENV=development`, memory limiter allowed, worker optional, noop email. |
-| Preview | HTTPS session, exact domains/OAuth, development-only R2; worker/scheduler/backups/SMTP disabled on sleeping free host. |
-| Production | `ENV=production`, always-on backend, Redis, private R2 scopes, backups, monitoring, tested alerts. |
+| Profile    | Key choices                                                                                                            |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Local      | `ENV=development`, memory limiter allowed, worker optional, noop email.                                                |
+| Preview    | HTTPS session, exact domains/OAuth, development-only R2; worker/scheduler/backups/SMTP disabled on sleeping free host. |
+| Production | `ENV=production`, always-on backend, Redis, private R2 scopes, backups, monitoring, tested alerts.                     |
 
 ## Request Body Limits
 
@@ -398,12 +399,12 @@ App bounds every API request body, validates JSON mutation content types, and
 emits route-specific 413/415 responses. Caddy outer guard
 (`request_body { max_size 34MiB }`) emits 413 before routing.
 
-| Setting | Group | Max | Accepts |
-|---|---|---|---|
-| `WEB_MAX_AUTH_BODY_BYTES` | Auth (login, register) | 64 KiB | `application/json`, `application/*+json` |
-| `WEB_MAX_JSON_BODY_BYTES` | General JSON API | 1 MiB | `application/json`, `application/*+json` |
-| `ANALYTICS_INGEST_MAX_BODY_BYTES` | Analytics events | 32 KiB (configurable) | `application/json` |
-| `WEB_MAX_DOCUMENT_BODY_BYTES` | Reserved doc upload | 32 MiB | – (no route) |
+| Setting                           | Group                  | Max                   | Accepts                                  |
+| --------------------------------- | ---------------------- | --------------------- | ---------------------------------------- |
+| `WEB_MAX_AUTH_BODY_BYTES`         | Auth (login, register) | 64 KiB                | `application/json`, `application/*+json` |
+| `WEB_MAX_JSON_BODY_BYTES`         | General JSON API       | 1 MiB                 | `application/json`, `application/*+json` |
+| `ANALYTICS_INGEST_MAX_BODY_BYTES` | Analytics events       | 32 KiB (configurable) | `application/json`                       |
+| `WEB_MAX_DOCUMENT_BODY_BYTES`     | Reserved doc upload    | 32 MiB                | – (no route)                             |
 
 App enforcement authoritative for direct Uvicorn access.
 
@@ -431,16 +432,16 @@ the current schema. Startup never imports `PROVIDER_GEMINI_API_KEY`; an owner
 must explicitly invoke the protected environment-import operation, which
 validates the key before owner-scoped translation may use it:
 
-| Setting | Purpose | Default |
-|---|---|---:|
-| `CONTRIBUTOR_CREDENTIALS_ENABLED` | Enable user contribution intake and contributor-pool jobs | `true` |
-| `CONTRIBUTOR_CONSENT_VERSION` | Consent text/version required on every replacement | `2026-08-19` |
-| `CONTRIBUTOR_MAX_ACTIVE_PER_USER` | Maximum credentials per user in v1 | `1` |
-| `CONTRIBUTOR_RPM_LIMIT` | Per-credential requests per minute | `15` |
-| `CONTRIBUTOR_TPM_LIMIT` | Per-credential tokens per minute | `250000` |
-| `CONTRIBUTOR_RPD_LIMIT` | Per-credential requests per day | `500` |
-| `CONTRIBUTOR_CONCURRENCY_LIMIT` | Per-credential in-flight provider calls | `2` |
-| `CONTRIBUTOR_USAGE_RETENTION_DAYS` | Contributor ledger retention window | `365` |
+| Setting                            | Purpose                                                   |      Default |
+| ---------------------------------- | --------------------------------------------------------- | -----------: |
+| `CONTRIBUTOR_CREDENTIALS_ENABLED`  | Enable user contribution intake and contributor-pool jobs |       `true` |
+| `CONTRIBUTOR_CONSENT_VERSION`      | Consent text/version required on every replacement        | `2026-08-19` |
+| `CONTRIBUTOR_MAX_ACTIVE_PER_USER`  | Maximum credentials per user in v1                        |          `1` |
+| `CONTRIBUTOR_RPM_LIMIT`            | Per-credential requests per minute                        |         `15` |
+| `CONTRIBUTOR_TPM_LIMIT`            | Per-credential tokens per minute                          |     `250000` |
+| `CONTRIBUTOR_RPD_LIMIT`            | Per-credential requests per day                           |        `500` |
+| `CONTRIBUTOR_CONCURRENCY_LIMIT`    | Per-credential in-flight provider calls                   |          `2` |
+| `CONTRIBUTOR_USAGE_RETENTION_DAYS` | Contributor ledger retention window                       |        `365` |
 
 These values are local safety ceilings, not a claim that each key
 has an independent Gemini quota. Google limits vary by model and usage tier,
@@ -492,16 +493,16 @@ rebuild it only through a controlled cache maintenance window.
 The async persistence and runtime-telemetry controls are configured in
 `settings.py`, all environment examples, and Compose wiring:
 
-| Setting | Default | Bound or rollback |
-|---|---:|---|
-| `TRANSLATION_PERSISTENCE_EXPANSION_ENABLED` | `false` | `false` is the rollback profile: one persistence worker and no queue |
-| `TRANSLATION_PERSISTENCE_WORKERS` | `2` | `1..8`, used only when expansion is enabled |
-| `TRANSLATION_PERSISTENCE_QUEUE_SIZE` | `8` | `0..64`; `0` is the rollback value |
-| `TRANSLATION_PERSISTENCE_OBSERVATION_LIMIT` | `256` | `32..4096` bounded observations |
-| `TRANSLATION_PERSISTENCE_SHUTDOWN_TIMEOUT_SECONDS` | `30` | `1..300` seconds |
-| `RUNTIME_TELEMETRY_SAMPLE_INTERVAL_SECONDS` | `0.25` | `0.05..60` seconds |
-| `RUNTIME_TELEMETRY_MAX_OBSERVATIONS` | `256` | `32..4096` bounded observations |
-| `RUNTIME_EVENT_LOOP_LAG_THRESHOLD_MS` | `1000` | `1..60000` ms; stop threshold, not an auto-restart |
+| Setting                                            | Default | Bound or rollback                                                    |
+| -------------------------------------------------- | ------: | -------------------------------------------------------------------- |
+| `TRANSLATION_PERSISTENCE_EXPANSION_ENABLED`        | `false` | `false` is the rollback profile: one persistence worker and no queue |
+| `TRANSLATION_PERSISTENCE_WORKERS`                  |     `2` | `1..8`, used only when expansion is enabled                          |
+| `TRANSLATION_PERSISTENCE_QUEUE_SIZE`               |     `8` | `0..64`; `0` is the rollback value                                   |
+| `TRANSLATION_PERSISTENCE_OBSERVATION_LIMIT`        |   `256` | `32..4096` bounded observations                                      |
+| `TRANSLATION_PERSISTENCE_SHUTDOWN_TIMEOUT_SECONDS` |    `30` | `1..300` seconds                                                     |
+| `RUNTIME_TELEMETRY_SAMPLE_INTERVAL_SECONDS`        |  `0.25` | `0.05..60` seconds                                                   |
+| `RUNTIME_TELEMETRY_MAX_OBSERVATIONS`               |   `256` | `32..4096` bounded observations                                      |
+| `RUNTIME_EVENT_LOOP_LAG_THRESHOLD_MS`              |  `1000` | `1..60000` ms; stop threshold, not an auto-restart                   |
 
 `TRANSLATION_CONCURRENCY` is validated to `1..256`; chapter concurrency and
 provider/DB budgets remain separate. Production startup rejects an aggregate
