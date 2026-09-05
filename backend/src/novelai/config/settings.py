@@ -400,7 +400,7 @@ class AppSettings(BaseSettings):
             "operator access outside long-lived application pool ceilings."
         ),
     )
-    DB_CONNECTION_BUDGET: int = Field(default=20, ge=1)
+    DB_CONNECTION_BUDGET: int = Field(default=32, ge=1)
     DB_POOL_TIMEOUT_SECONDS: int = Field(default=30, ge=1)
     DB_POOL_RECYCLE_SECONDS: int = Field(default=1800, ge=0)
     DB_CONNECT_TIMEOUT_SECONDS: int = Field(default=10, ge=1)

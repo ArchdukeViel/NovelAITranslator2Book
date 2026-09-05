@@ -56,6 +56,10 @@ target_metadata = Base.metadata
 
 def _get_url() -> str:
     """Return the DATABASE_URL from settings, with env override support."""
+    # Prioritize sqlalchemy.url if explicitly set on the config (e.g. from tests)
+    cfg_url = config.get_main_option("sqlalchemy.url")
+    if cfg_url and cfg_url != "driver://user:pass@localhost/dbname":
+        return cfg_url
     # Allow DATABASE_URL to be overridden via environment (e.g. in CI or Docker).
     url = os.environ.get("MIGRATION_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if url:
@@ -91,9 +95,10 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        # Zero-downtime DDL safety: prevent migration from locking tables indefinitely
-        connection.exec_driver_sql("SET LOCAL lock_timeout = '2s'")
-        connection.exec_driver_sql("SET LOCAL statement_timeout = '10s'")
+        # Zero-downtime DDL safety: prevent migration from locking tables indefinitely (PostgreSQL only)
+        if connection.dialect.name == "postgresql":
+            connection.exec_driver_sql("SET LOCAL lock_timeout = '2s'")
+            connection.exec_driver_sql("SET LOCAL statement_timeout = '10s'")
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
