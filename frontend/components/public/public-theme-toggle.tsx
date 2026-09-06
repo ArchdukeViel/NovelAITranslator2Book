@@ -115,7 +115,7 @@ export function PublicThemeSegmentedControl() {
         className={cn(
           "inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm py-1 font-medium transition-all",
           theme === "light"
-            ?             "bg-primary text-primary-foreground shadow-xs"
+            ? "bg-primary text-primary-foreground shadow-xs motion-safe:animate-[theme-segment-settle_240ms_ease-out]"
             : "text-muted-foreground hover:text-foreground",
         )}
       >
@@ -129,7 +129,7 @@ export function PublicThemeSegmentedControl() {
         className={cn(
           "inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm py-1 font-medium transition-all",
           theme === "dark"
-            ?             "bg-primary text-primary-foreground shadow-xs"
+            ? "bg-primary text-primary-foreground shadow-xs motion-safe:animate-[theme-segment-settle_240ms_ease-out]"
             : "text-muted-foreground hover:text-foreground",
         )}
       >

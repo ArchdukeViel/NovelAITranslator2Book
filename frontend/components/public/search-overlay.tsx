@@ -295,13 +295,13 @@ function SearchOverlayContent() {
         type="button"
         aria-label="Close search"
         onClick={() => close()}
-        className="absolute inset-0 cursor-default bg-background/70 backdrop-blur-sm md:bg-black/40"
+        className="absolute inset-0 cursor-default bg-background/70 backdrop-blur-sm motion-safe:animate-[search-overlay-fade-in_150ms_ease-out] md:bg-black/40"
         tabIndex={-1}
       />
 
       <div
         className={cn(
-          "relative z-10 flex w-full flex-col overflow-hidden bg-background shadow-xl",
+          "relative z-10 flex w-full flex-col overflow-hidden bg-background shadow-xl motion-safe:animate-[search-overlay-panel-rise_200ms_ease-out]",
           "h-full md:h-auto md:max-h-[min(70vh,480px)] md:max-w-lg md:rounded-xl md:border md:border-primary/25 md:shadow-2xl"
         )}
       >

@@ -231,6 +231,27 @@ textarea {
   text-decoration: none;
 }
 
+/* Search overlay entrance — backdrop fades in, panel rises 8px and
+   fades. Both gated on motion-safe: in the component; duration capped
+   ≤200ms so reduced-motion users get an instant open via the global
+   rule below. */
+@keyframes search-overlay-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes search-overlay-panel-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Theme segmented control — single settle beat on the active segment so a
+   Light/Dark swap feels continuous. 240ms, no decoration. */
+@keyframes theme-segment-settle {
+  from { transform: scale(0.985); }
+  to   { transform: scale(1); }
+}
+
 /* Reduced motion — disable animations/transitions for vestibular-safe reading */
 @media (prefers-reduced-motion: reduce) {
   *,
