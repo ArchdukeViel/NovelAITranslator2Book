@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Panel, PanelHeader, PanelTitle, PanelBody } from "@/components/ui/panel";
 
 describe("UI Primitives Component Contracts", () => {
@@ -40,6 +41,17 @@ describe("UI Primitives Component Contracts", () => {
       const iconBtn = screen.getByRole("button", { name: "Icon Action" });
       expect(iconBtn.className).toContain("border-border");
       expect(iconBtn.className).toContain("w-9");
+    });
+
+    it("expands coarse-pointer hit area to 44px without changing visuals", () => {
+      const { rerender } = render(<Button size="sm">Compact</Button>);
+      const smBtn = screen.getByRole("button", { name: "Compact" });
+      expect(smBtn.className).toContain("h-8");
+      expect(smBtn.className).toContain("pointer-coarse:after:-inset-1.5");
+
+      rerender(<Button size="icon" aria-label="Icon Action">X</Button>);
+      const iconBtn = screen.getByRole("button", { name: "Icon Action" });
+      expect(iconBtn.className).toContain("pointer-coarse:after:-inset-1");
     });
   });
 
@@ -81,6 +93,35 @@ describe("UI Primitives Component Contracts", () => {
       render(<Input disabled placeholder="Disabled input" />);
       const input = screen.getByPlaceholderText("Disabled input");
       expect(input).toBeDisabled();
+    });
+
+    it("links error text to the field", () => {
+      render(<Input aria-label="Email" id="email" error="Enter an email like you@example.com" />);
+      const input = screen.getByLabelText("Email");
+      expect(input).toHaveAttribute("aria-invalid", "true");
+      expect(input).toHaveAttribute("aria-describedby", "email-error");
+      expect(input.className).toContain("text-base");
+      expect(screen.getByText("Enter an email like you@example.com")).toBeInTheDocument();
+    });
+
+    it("links helper text to the field", () => {
+      render(<Input aria-label="Name" id="name" helperText="Use your legal name." />);
+      const input = screen.getByLabelText("Name");
+      expect(input).not.toHaveAttribute("aria-invalid");
+      expect(input).toHaveAttribute("aria-describedby", "name-helper");
+      expect(screen.getByText("Use your legal name.")).toBeInTheDocument();
+    });
+  });
+
+  describe("Textarea", () => {
+    it("links error text to the field", () => {
+      render(
+        <Textarea aria-label="Message" id="message" error="Describe the issue in a few words." />
+      );
+      const field = screen.getByLabelText("Message");
+      expect(field).toHaveAttribute("aria-invalid", "true");
+      expect(field).toHaveAttribute("aria-describedby", "message-error");
+      expect(screen.getByText("Describe the issue in a few words.")).toBeInTheDocument();
     });
   });
 

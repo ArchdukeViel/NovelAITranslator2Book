@@ -145,7 +145,10 @@ textarea {
 /* Primary-colored buttons use a two-layer focus treatment: a Shuji Vermillion
    ring around a vermillion fill does not separate by color alone, so the
    inner ring is a high-contrast neutral (--primary-foreground) and the outer
-   offset ring is --focus-ring. Every other control keeps the single ring. */
+   offset ring is --focus-ring. Every other control keeps the single ring.
+   Cascade-layer coupling: this rule is deliberately unlayered so it defeats
+   the layered `focus-visible:outline-none` in the Button primitive. Do not
+   move it into a cascade layer without re-verifying primary-button focus. */
 .bg-primary:focus-visible {
   outline: 2px solid hsl(var(--foreground));
   outline-offset: 2px;
