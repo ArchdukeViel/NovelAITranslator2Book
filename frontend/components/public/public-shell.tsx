@@ -18,7 +18,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
   const isNovelDetailRoute = /^\/novels\/[^/]+\/?$/.test(pathname);
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="shell-chrome flex min-h-screen flex-col bg-background">
       {/* Skip link — first focusable element for keyboard users */}
       <a href="#main-content" className="skip-link">
         Skip to main content

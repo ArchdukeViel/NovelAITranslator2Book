@@ -11,25 +11,41 @@ type PublicTheme = "light" | "dark";
 const STORAGE_KEY = "dokushodo-theme";
 const THEME_EVENT = "dokushodo-theme-change";
 
+function getStoredTheme(): PublicTheme | null {
+  try {
+    const stored = window.localStorage?.getItem(STORAGE_KEY);
+    if (stored === "light" || stored === "dark") return stored;
+  } catch {
+    // Blocked storage (private mode, disabled cookies) — fall through.
+  }
+  return null;
+}
+
 function getInitialTheme(): PublicTheme {
   if (typeof window === "undefined") {
     return "dark";
   }
 
-  const stored = window.localStorage?.getItem(STORAGE_KEY);
-  if (stored === "light" || stored === "dark") {
-    return stored;
-  }
+  const stored = getStoredTheme();
+  if (stored) return stored;
 
-  return typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-color-scheme: light)").matches
-    ? "light"
-    : "dark";
+  try {
+    return typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-color-scheme: light)").matches
+      ? "light"
+      : "dark";
+  } catch {
+    return "dark";
+  }
 }
 
 function applyTheme(theme: PublicTheme) {
   document.documentElement.classList.toggle("dark", theme === "dark");
-  window.localStorage?.setItem(STORAGE_KEY, theme);
+  try {
+    window.localStorage?.setItem(STORAGE_KEY, theme);
+  } catch {
+    // Storage unavailable — theme still applies for this session.
+  }
 }
 
 function subscribeToTheme(onChange: () => void) {
@@ -99,7 +115,7 @@ export function PublicThemeSegmentedControl() {
         className={cn(
           "inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm py-1 font-medium transition-all",
           theme === "light"
-            ? "bg-background text-foreground shadow-xs"
+            ?             "bg-primary text-primary-foreground shadow-xs"
             : "text-muted-foreground hover:text-foreground",
         )}
       >
@@ -113,7 +129,7 @@ export function PublicThemeSegmentedControl() {
         className={cn(
           "inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm py-1 font-medium transition-all",
           theme === "dark"
-            ? "bg-background text-foreground shadow-xs"
+            ?             "bg-primary text-primary-foreground shadow-xs"
             : "text-muted-foreground hover:text-foreground",
         )}
       >

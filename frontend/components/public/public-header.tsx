@@ -67,7 +67,7 @@ export function PublicHeader() {
   return (
     <header
       className={cn(
-        "fixed inset-x-0 top-0 z-40 border-b border-border/40 bg-background/95 backdrop-blur transition-transform duration-200",
+        "fixed inset-x-0 top-0 z-40 border-b border-primary/20 bg-background/95 backdrop-blur transition-transform duration-200",
         isVisible ? "translate-y-0" : "-translate-y-full",
       )}
     >
@@ -91,7 +91,7 @@ export function PublicHeader() {
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-sm font-medium transition-colors",
                   isActive
-                    ? "text-primary"
+                    ? "bg-primary/10 font-semibold text-primary"
                     : "text-muted-foreground hover:bg-card/70 hover:text-foreground",
                 )}
               >

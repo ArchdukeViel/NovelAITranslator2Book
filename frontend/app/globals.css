@@ -155,6 +155,18 @@ textarea {
   box-shadow: 0 0 0 4px hsl(var(--focus-ring));
 }
 
+/* Shell chrome focus ring: every P1 link, button, and input inside header,
+   sidebar, nav, footer, and the search dialog shares one vermilion
+   --focus-ring. Unlayered so it defeats the layered
+   focus-visible:outline-none in the Button primitive (same technique as
+   .bg-primary:focus-visible above). Scoped under .shell-chrome (PublicShell
+   root) so page content keeps its own treatment; .bg-primary is excluded so
+   primary buttons keep their double-ring treatment. */
+.shell-chrome :is(header, aside, nav, footer, [role="dialog"]) :is(a, button:not(.bg-primary), input):focus-visible {
+  outline: 2px solid hsl(var(--focus-ring));
+  outline-offset: 2px;
+}
+
 .seamless-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--muted)) hsl(var(--card));

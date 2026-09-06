@@ -269,8 +269,7 @@ function SearchOverlayContent() {
     if (count === 0) return null;
     return (
       <p
-        className="px-3 pb-1 pt-2.5 text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground"
-        aria-hidden="true"
+        className="px-3 pb-1 pt-2.5 font-literary text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground"
       >
         {label}
       </p>
@@ -279,8 +278,8 @@ function SearchOverlayContent() {
 
   function rowClass(active: boolean) {
     return cn(
-      "flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors",
-      active ? "bg-accent/60 text-foreground" : "text-foreground/90 hover:bg-accent/40"
+      "flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors",
+      active ? "bg-primary/10 text-primary" : "text-foreground/90 hover:bg-accent/40"
     );
   }
 
@@ -303,21 +302,21 @@ function SearchOverlayContent() {
       <div
         className={cn(
           "relative z-10 flex w-full flex-col overflow-hidden bg-background shadow-xl",
-          "h-full md:h-auto md:max-h-[min(70vh,480px)] md:max-w-lg md:rounded-xl md:border md:border-border md:shadow-2xl"
+          "h-full md:h-auto md:max-h-[min(70vh,480px)] md:max-w-lg md:rounded-xl md:border md:border-primary/25 md:shadow-2xl"
         )}
       >
         {/* Search input */}
-        <div className="flex items-center gap-2 border-b border-border/80 px-3">
-          <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <div className="flex items-center gap-2 border-b border-primary/20 px-3">
+          <Search className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
           <input
             ref={inputRef}
             type="search"
             value={query}
             onChange={(e) => updateQuery(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Search novels, authors, tags…"
+            placeholder="Search novels…"
             aria-label="Search"
-            className="h-12 w-full bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground/60"
+            className="h-12 w-full bg-transparent text-base text-foreground placeholder:text-muted-foreground/60"
           />
           {query && (
             <button
@@ -326,7 +325,7 @@ function SearchOverlayContent() {
               onClick={() => {
                 updateQuery("");
               }}
-              className="rounded-sm p-1 text-muted-foreground hover:text-foreground"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-sm text-muted-foreground hover:text-foreground"
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -342,6 +341,33 @@ function SearchOverlayContent() {
           {/* Empty query: recent searches + genre shortcuts */}
           {!shouldSearch && (
             <div>
+              {/* First-run teach-by-action: returning users have recents and
+                  never see this; a first-timer gets one tap that runs a real
+                  search from real taxonomy — no tutorial, fully skippable. */}
+              {recents.length === 0 &&
+                allGenres.length > 0 &&
+                (allGenres[0].name_en ?? allGenres[0].name_ja) && (
+                  <div className="px-1.5 pb-1 pt-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        runRecent(allGenres[0].name_en ?? allGenres[0].name_ja ?? "")
+                      }
+                      className="flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm text-foreground hover:bg-accent/40"
+                    >
+                      <Search
+                        className="h-3.5 w-3.5 shrink-0 text-primary"
+                        aria-hidden="true"
+                      />
+                      <span className="truncate">
+                        Try{" "}
+                        <span dir="auto">
+                          “{allGenres[0].name_en ?? allGenres[0].name_ja}”
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                )}
               {recents.length > 0 && (
                 <>
                   <div className="flex items-center justify-between px-3 pb-1 pt-2.5">
@@ -354,7 +380,7 @@ function SearchOverlayContent() {
                         clearRecentSearches();
                         setRecents([]);
                       }}
-                      className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      className="inline-flex min-h-[44px] items-center px-2 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                     >
                       Clear
                     </button>
@@ -365,10 +391,10 @@ function SearchOverlayContent() {
                         <button
                           type="button"
                           onClick={() => runRecent(term)}
-                          className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm hover:bg-accent/40"
+                          className="flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm hover:bg-accent/40"
                         >
                           <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                          <span className="truncate">{term}</span>
+                          <span dir="auto" className="truncate">{term}</span>
                         </button>
                       </li>
                     ))}
@@ -388,7 +414,7 @@ function SearchOverlayContent() {
                             close();
                             router.push(`/genres/${encodeURIComponent(genre.slug)}`);
                           }}
-                          className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm hover:bg-accent/40"
+                          className="flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm hover:bg-accent/40"
                         >
                           <span className="truncate">
                             {genre.name_en ?? genre.name_ja}
@@ -415,9 +441,19 @@ function SearchOverlayContent() {
           {shouldSearch && (
             <>
               {error && (
-                <p className="px-3 py-4 text-center text-sm text-muted-foreground" role="status">
-                  Search&apos;s unavailable right now.
-                </p>
+                <div className="px-3 py-4 text-center text-sm text-muted-foreground" role="status">
+                  <p>Search&apos;s unavailable right now.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      close();
+                      router.push("/browse-novels");
+                    }}
+                    className="mt-1 inline-flex min-h-[44px] items-center justify-center px-2 underline underline-offset-2 hover:text-foreground"
+                  >
+                    Browse all novels instead
+                  </button>
+                </div>
               )}
 
               {!error && renderGroupHeader("Novels", results.novels.length)}
@@ -432,7 +468,7 @@ function SearchOverlayContent() {
                         className={rowClass(activeIndex === i)}
                       >
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">{novel.title}</span>
+                          <span dir="auto" className="block truncate font-literary font-medium">{novel.title}</span>
                           {novel.source_title && (
                             <span className="block truncate text-xs text-muted-foreground">
                               {novel.source_title}
@@ -440,7 +476,7 @@ function SearchOverlayContent() {
                           )}
                         </span>
                         {novel.author && (
-                          <span className="shrink-0 text-xs text-muted-foreground">{novel.author}</span>
+                          <span dir="auto" className="shrink-0 text-xs text-muted-foreground">{novel.author}</span>
                         )}
                       </button>
                     </li>
@@ -461,7 +497,7 @@ function SearchOverlayContent() {
                           onMouseEnter={() => setActiveIndex(rowIndex)}
                           className={rowClass(activeIndex === rowIndex)}
                         >
-                          <span className="truncate">{name}</span>
+                          <span dir="auto" className="truncate">{name}</span>
                         </button>
                       </li>
                     );
@@ -482,7 +518,7 @@ function SearchOverlayContent() {
                           onMouseEnter={() => setActiveIndex(rowIndex)}
                           className={rowClass(activeIndex === rowIndex)}
                         >
-                          <span className="truncate">#{tag.name}</span>
+                          <span dir="auto" className="truncate">#{tag.name}</span>
                           {tag.name_ja && tag.name_ja !== tag.name ? (
                             <span className="ml-1.5 text-muted-foreground">{tag.name_ja}</span>
                           ) : null}
@@ -511,9 +547,61 @@ function SearchOverlayContent() {
 
               {!error && rows.length === 0 && !loading && completedQuery === trimmedQuery && (
                 <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  No matches for “{trimmedQuery}”.
+                  No matches for <span dir="auto">“{trimmedQuery}”</span>.
                 </p>
               )}
+
+              {/* Initial-load skeletons: only when no stale results exist to
+                  hold the space (stale-in-place stays untouched). Same row
+                  geometry as real rows so arrival causes no layout shift.
+                  Pulse is opacity-only and motion-gated; the sr-only status
+                  preserves state meaning under reduced motion. */}
+              {!error &&
+                loading &&
+                results.novels.length === 0 &&
+                results.authors.length === 0 &&
+                results.tags.length === 0 &&
+                results.genres.length === 0 && (
+                  <>
+                    <p role="status" className="sr-only">
+                      Searching…
+                    </p>
+                    <div aria-hidden="true">
+                      {renderGroupHeader("Novels", 1)}
+                      <div className="space-y-0.5">
+                        {[0, 1].map((i) => (
+                          <div
+                            key={`novel-skeleton-${i}`}
+                            className="flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 py-2"
+                          >
+                            <span className="min-w-0 flex-1">
+                              <span className="block h-4 w-3/4 rounded bg-muted motion-safe:animate-pulse" />
+                              <span className="mt-1.5 block h-3 w-1/2 rounded bg-muted/70 motion-safe:animate-pulse" />
+                            </span>
+                            <span className="h-3 w-16 shrink-0 rounded bg-muted/70 motion-safe:animate-pulse" />
+                          </div>
+                        ))}
+                      </div>
+                      {renderGroupHeader("Authors", 1)}
+                      <div className="space-y-0.5">
+                        <div className="flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 py-2">
+                          <span className="block h-4 w-2/5 rounded bg-muted motion-safe:animate-pulse" />
+                        </div>
+                      </div>
+                      {renderGroupHeader("Genres & Tags", 1)}
+                      <div className="space-y-0.5">
+                        {[0, 1].map((i) => (
+                          <div
+                            key={`tag-skeleton-${i}`}
+                            className="flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 py-2"
+                          >
+                            <span className="block h-4 w-1/3 rounded bg-muted motion-safe:animate-pulse" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
 
               {/* Always-last "see all" row */}
               {!error && rows.length > 0 && (
@@ -525,7 +613,7 @@ function SearchOverlayContent() {
                     className={rowClass(activeIndex === rows.length - 1)}
                   >
                     <span className="truncate">
-                      See all results for “{trimmedQuery}”
+                      See all results for <span dir="auto">“{trimmedQuery}”</span>
                     </span>
                   </button>
                 </div>

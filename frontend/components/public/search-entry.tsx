@@ -16,7 +16,7 @@ export function SearchEntry() {
     <button
       type="button"
       onClick={open}
-      className="flex h-9 w-9 items-center justify-center gap-2.5 rounded-full bg-muted/40 p-0 text-left text-xs text-muted-foreground transition-all hover:bg-muted sm:w-full sm:max-w-[180px] sm:px-3.5 md:max-w-md md:text-sm"
+      className="flex h-9 w-9 items-center justify-center gap-2.5 rounded-full bg-muted/40 p-0 text-left text-xs text-muted-foreground transition-all hover:bg-muted sm:w-full sm:max-w-[180px] sm:px-3.5 md:max-w-md md:text-sm pointer-coarse:relative pointer-coarse:after:absolute pointer-coarse:after:-inset-1 pointer-coarse:after:content-['']"
       aria-label="Search novels"
     >
       <Search className="h-4 w-4 shrink-0 opacity-70" aria-hidden="true" />
