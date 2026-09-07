@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, act, fireEvent, within } from "@testing-library/react";
+import {
+  render,
+  screen,
+  cleanup,
+  act,
+  fireEvent,
+  within,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowsePage } from "@/components/public/browse-page";
 
@@ -9,6 +16,7 @@ import { BrowsePage } from "@/components/public/browse-page";
 
 const mocks = vi.hoisted(() => ({
   genresQuery: vi.fn(),
+  tagsQuery: vi.fn(),
   catalogQuery: vi.fn(),
   pushFn: vi.fn(),
   refreshFn: vi.fn(),
@@ -16,11 +24,13 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/hooks/public", async () => {
-  const actual = await vi.importActual<typeof import("@/hooks/public")>("@/hooks/public");
+  const actual =
+    await vi.importActual<typeof import("@/hooks/public")>("@/hooks/public");
   return {
     ...actual,
     useCatalog: () => mocks.catalogQuery(),
     useGenres: () => mocks.genresQuery(),
+    useTags: () => mocks.tagsQuery(),
   };
 });
 
@@ -35,6 +45,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => searchParamsMock(),
   useRouter: () => ({
     push: mocks.pushFn,
+    replace: mocks.pushFn,
     refresh: mocks.refreshFn,
   }),
 }));
@@ -52,9 +63,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   searchParamsMock.mockReturnValue(new URLSearchParams(""));
   mocks.genresQuery.mockReturnValue({
-    data: [
-      { slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" },
-    ],
+    data: [{ slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" }],
     isPending: false,
     isError: false,
   });
@@ -64,6 +73,11 @@ beforeEach(() => {
     isError: false,
     error: null,
   });
+  mocks.tagsQuery.mockReturnValue({
+    data: [],
+    isPending: false,
+    isError: false,
+  });
   mocks.searchTags.mockResolvedValue([]);
 });
 
@@ -72,14 +86,20 @@ afterEach(() => cleanup());
 function renderPage() {
   return render(
     <QueryClientProvider client={queryClient}>
-      <BrowsePage basePath="/browse-novels" title="Browse" description="Find novels" />
-    </QueryClientProvider>
+      <BrowsePage
+        basePath="/browse-novels"
+        title="Browse"
+        description="Find novels"
+      />
+    </QueryClientProvider>,
   );
 }
 
 function openAdvancedSearch() {
-  const btns = screen.getAllByRole("button", { name: /filters/i });
-  act(() => { btns[0].click(); });
+  const btns = screen.getAllByRole("button", { name: /^filters/i });
+  act(() => {
+    btns[0].click();
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -89,23 +109,27 @@ function openAdvancedSearch() {
 describe("BrowsePage visual honesty", () => {
   it("renders desktop filter sidebar and mobile filter trigger", () => {
     renderPage();
-    expect(screen.getByRole("region", { name: "Browse filters" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^filters$/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Browse filters" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^filters$/i }),
+    ).toBeInTheDocument();
   });
 
   it("shows active-filter count and opens/closes the mobile sheet", () => {
-    searchParamsMock.mockReturnValue(new URLSearchParams("q=dragon&genre_include=fantasy"));
+    searchParamsMock.mockReturnValue(
+      new URLSearchParams("q=dragon&genre_include=fantasy"),
+    );
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: "Filters (2)" }));
-    expect(screen.getByRole("dialog", { name: "Browse filters" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Browse filters" }),
+    ).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("dialog", { name: "Browse filters" })).not.toBeInTheDocument();
-  });
-
-  it("keeps list view in the URL", () => {
-    renderPage();
-    fireEvent.click(screen.getByRole("button", { name: "List view" }));
-    expect(mocks.pushFn).toHaveBeenCalledWith("/browse-novels?view=list");
+    expect(
+      screen.queryByRole("dialog", { name: "Browse filters" }),
+    ).not.toBeInTheDocument();
   });
 
   it("removing a canonical genre preset exits to the general catalog", () => {
@@ -117,17 +141,37 @@ describe("BrowsePage visual honesty", () => {
           description="Fantasy"
           preset={{ genre_include: "fantasy" }}
         />
-      </QueryClientProvider>
+      </QueryClientProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove included genre fantasy" }));
-    expect(mocks.pushFn).toHaveBeenCalledWith("/browse-novels");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove included genre fantasy" }),
+    );
+    expect(mocks.pushFn).toHaveBeenCalledWith("/browse-novels", {
+      scroll: false,
+    });
   });
 
   it("opens a loaded novel from Surprise me", () => {
     vi.spyOn(Math, "random").mockReturnValue(0);
     mocks.catalogQuery.mockReturnValue({
-      data: { novels: [{ novel_id: "n1", slug: "dragon", title: "Dragon", author: null, language: "ja", publication_status: "ongoing", chapter_count: 1, translated_count: 1 }], total: 1, page: 1, page_size: 20 },
+      data: {
+        novels: [
+          {
+            novel_id: "n1",
+            slug: "dragon",
+            title: "Dragon",
+            author: null,
+            language: "ja",
+            publication_status: "ongoing",
+            chapter_count: 1,
+            translated_count: 1,
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      },
       isPending: false,
       isError: false,
       error: null,
@@ -149,36 +193,47 @@ describe("BrowsePage visual honesty", () => {
     expect(screen.queryByText(/reviews?/i)).not.toBeInTheDocument();
   });
 
-  it("renders honest catalog header with Japanese eyebrow", () => {
+  it("renders accessible catalog heading without extraneous header", () => {
     renderPage();
-    expect(screen.getByText("探索")).toBeInTheDocument();
-    // h1 renders title prop; renderPage passes title="Browse"
-    expect(screen.getByRole("heading", { level: 1, name: "Browse" })).toBeInTheDocument();
+    // h1 renders title prop as screen-reader accessible heading
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Browse" }),
+    ).toBeInTheDocument();
   });
 
   it("does not display unsupported metric filter controls", () => {
     renderPage();
     // Rating/views/reviews filter buttons should not exist
-    expect(screen.queryByRole("button", { name: /rating/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /popular/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /trending/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /rating/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /popular/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /trending/i }),
+    ).not.toBeInTheDocument();
   });
 
-  it("sort options do not include unsupported metric labels", () => {
+  it("toolbar keeps only surprise me, removing sort select and grid/list view toggle", () => {
     renderPage();
-    const sortSelect = screen.getByLabelText("Sort by") as HTMLSelectElement;
-    const options = Array.from(sortSelect.options).map((o) => o.textContent?.trim() ?? "");
-    // Allowed: "Recently added", "Title", "Chapter count"
-    expect(options).not.toContain("Popular");
-    expect(options).not.toContain("Top Rated");
-    expect(options).not.toContain("Most Viewed");
-    expect(options).not.toContain("Trending");
-    expect(options).not.toContain("Addition date");
+    expect(
+      screen.queryByRole("button", { name: "Grid view" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "List view" }),
+    ).not.toBeInTheDocument();
+    const surpriseMeBtn = screen.getByRole("button", { name: /surprise me/i });
+    expect(surpriseMeBtn).toBeInTheDocument();
+    const toolbar = surpriseMeBtn.parentElement;
+    expect(within(toolbar!).queryByRole("combobox")).not.toBeInTheDocument();
   });
 
   it("clear filters resets all visible filter indicators", () => {
     searchParamsMock.mockReturnValue(
-      new URLSearchParams("q=test&status=Ongoing&min_chapters=5&max_chapters=50")
+      new URLSearchParams(
+        "q=test&status=Ongoing&min_chapters=5&max_chapters=50",
+      ),
     );
     renderPage();
     // Verify filter indicators are present
@@ -187,7 +242,9 @@ describe("BrowsePage visual honesty", () => {
     expect(screen.getByText(/5[-–]50 ch\.?/)).toBeInTheDocument();
     // Click clear
     const clearBtns = screen.getAllByText("Clear filters");
-    act(() => { clearBtns[0].click(); });
+    act(() => {
+      clearBtns[0].click();
+    });
     // Verify pushParams cleared them (only sort/order/page survive)
     const url = mocks.pushFn.mock.calls[0][0] as string;
     expect(url).not.toContain("q=");
@@ -216,15 +273,20 @@ describe("BrowsePage genre filter UI", () => {
     expect(screen.getAllByText("Exclude").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("explains the tri-state genre cycle without adding separate genre rows", () => {
+  it("renders genre filters in 2-state toggle without separate genre rows", () => {
     renderPage();
     openAdvancedSearch();
-    expect(screen.getByText("Click once to include. Click again to exclude.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Fantasy: not selected/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Fantasy: not selected/i }),
+    ).toBeInTheDocument();
   });
 
   it("shows loading/error/empty states", () => {
-    mocks.genresQuery.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    mocks.genresQuery.mockReturnValue({
+      data: undefined,
+      isPending: true,
+      isError: false,
+    });
     renderPage();
     openAdvancedSearch();
     expect(screen.getByText("Loading genres…")).toBeInTheDocument();
@@ -234,55 +296,74 @@ describe("BrowsePage genre filter UI", () => {
     renderPage();
     openAdvancedSearch();
     const genreGroup = screen.getByRole("group", { name: /genre filters/i });
-    act(() => { genreGroup.querySelector("button")!.click(); });
+    act(() => {
+      genreGroup.querySelector("button")!.click();
+    });
     expect(mocks.pushFn.mock.calls[0][0]).toContain("genre_include=fantasy");
     expect(mocks.pushFn.mock.calls[0][0]).not.toContain("genre_exclude");
   });
 
-  it("second click moves from include to exclude param", () => {
+  it("second click removes from include param (2-state toggle)", () => {
     // Start with fantasy included — advanced opens auto
-    searchParamsMock.mockReturnValue(new URLSearchParams("genre_include=fantasy"));
+    searchParamsMock.mockReturnValue(
+      new URLSearchParams("genre_include=fantasy"),
+    );
     renderPage();
     const btn = screen.getByRole("button", { name: /Fantasy: included/i });
-    act(() => { btn.click(); });
+    act(() => {
+      btn.click();
+    });
     const url = mocks.pushFn.mock.calls[0][0] as string;
-    expect(url).toContain("genre_exclude=fantasy");
     expect(url).not.toContain("genre_include=fantasy");
   });
 
-  it("third click removes genre from both params (back to neutral)", () => {
+  it("click on excluded genre removes it back to neutral", () => {
     // Start with fantasy excluded — advanced opens auto
-    searchParamsMock.mockReturnValue(new URLSearchParams("genre_exclude=fantasy"));
+    searchParamsMock.mockReturnValue(
+      new URLSearchParams("genre_exclude=fantasy"),
+    );
     renderPage();
     const btn = screen.getByRole("button", { name: /Fantasy: excluded/i });
-    act(() => { btn.click(); });
+    act(() => {
+      btn.click();
+    });
     const url = mocks.pushFn.mock.calls[0][0] as string;
     expect(url).not.toContain("genre_include=fantasy");
     expect(url).not.toContain("genre_exclude=fantasy");
   });
 
   it("genre cannot be both include and exclude simultaneously", () => {
-    searchParamsMock.mockReturnValue(new URLSearchParams("genre_include=fantasy"));
+    searchParamsMock.mockReturnValue(
+      new URLSearchParams("genre_include=fantasy&genre_exclude=fantasy"),
+    );
     renderPage();
-    // Fantasy is included — click to move to exclude
     const btn = screen.getByRole("button", { name: /Fantasy: included/i });
-    act(() => { btn.click(); });
+    act(() => {
+      btn.click();
+    });
     const url = mocks.pushFn.mock.calls[0][0] as string;
-    // Should be in exclude only, not both
-    expect(url).toContain("genre_exclude=fantasy");
     expect(url).not.toContain("genre_include=fantasy");
+    expect(url).not.toContain("genre_exclude=fantasy");
   });
 
   it("URL with genre_include initializes include state", () => {
-    searchParamsMock.mockReturnValue(new URLSearchParams("genre_include=fantasy"));
+    searchParamsMock.mockReturnValue(
+      new URLSearchParams("genre_include=fantasy"),
+    );
     renderPage();
-    expect(screen.getByRole("button", { name: /Fantasy: included/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Fantasy: included/i }),
+    ).toBeInTheDocument();
   });
 
   it("URL with genre_exclude initializes exclude state", () => {
-    searchParamsMock.mockReturnValue(new URLSearchParams("genre_exclude=fantasy"));
+    searchParamsMock.mockReturnValue(
+      new URLSearchParams("genre_exclude=fantasy"),
+    );
     renderPage();
-    expect(screen.getByRole("button", { name: /Fantasy: excluded/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Fantasy: excluded/i }),
+    ).toBeInTheDocument();
   });
 
   it("multiple genres can have different states", () => {
@@ -295,45 +376,71 @@ describe("BrowsePage genre filter UI", () => {
       isError: false,
     });
     // Both params in URL — advanced opens auto
-    searchParamsMock.mockReturnValue(new URLSearchParams("genre_include=fantasy&genre_exclude=romance"));
+    searchParamsMock.mockReturnValue(
+      new URLSearchParams("genre_include=fantasy&genre_exclude=romance"),
+    );
     renderPage();
-    expect(screen.getByRole("button", { name: /Fantasy: included/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Romance: excluded/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Fantasy: included/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Romance: excluded/i }),
+    ).toBeInTheDocument();
   });
 
   it("neutral genre has accessible 'not selected' label", () => {
     renderPage();
     openAdvancedSearch();
-    expect(screen.getByRole("button", { name: /Fantasy: not selected/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Fantasy: not selected/i }),
+    ).toBeInTheDocument();
   });
 
   it("clearing filters removes genre params", () => {
-    searchParamsMock.mockReturnValue(new URLSearchParams("genre_include=fantasy"));
+    searchParamsMock.mockReturnValue(
+      new URLSearchParams("genre_include=fantasy"),
+    );
     renderPage();
     const clearBtns = screen.getAllByText("Clear filters");
-    act(() => { clearBtns[0].click(); });
+    act(() => {
+      clearBtns[0].click();
+    });
     const url = mocks.pushFn.mock.calls[0][0] as string;
     expect(url).not.toContain("genre_include");
     expect(url).not.toContain("genre_exclude");
   });
 
   it("Browse still works when genres fail to load", () => {
-    mocks.genresQuery.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    mocks.genresQuery.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+    });
     renderPage();
     openAdvancedSearch();
-    expect(screen.getByText("Genres temporarily unavailable.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Genres temporarily unavailable."),
+    ).toBeInTheDocument();
   });
 
   it("genre filter indicator shows in results header", () => {
-    searchParamsMock.mockReturnValue(new URLSearchParams("genre_include=fantasy"));
+    searchParamsMock.mockReturnValue(
+      new URLSearchParams("genre_include=fantasy"),
+    );
     renderPage();
-    expect(screen.getByRole("button", { name: "Remove included genre fantasy" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Remove included genre fantasy" }),
+    ).toBeInTheDocument();
   });
 
   it("opens advanced search automatically when genre filters in URL", () => {
-    searchParamsMock.mockReturnValue(new URLSearchParams("genre_include=fantasy"));
+    searchParamsMock.mockReturnValue(
+      new URLSearchParams("genre_include=fantasy"),
+    );
     renderPage();
-    expect(screen.getByRole("group", { name: /genre filters/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("group", { name: /genre filters/i }),
+    ).toBeInTheDocument();
   });
 
   it("does not pass include_adult=true", () => {
@@ -341,7 +448,9 @@ describe("BrowsePage genre filter UI", () => {
     openAdvancedSearch();
     // No genre chip click should cause include_adult in URL
     const genreGroup = screen.getByRole("group", { name: /genre filters/i });
-    act(() => { genreGroup.querySelector("button")!.click(); });
+    act(() => {
+      genreGroup.querySelector("button")!.click();
+    });
     const url = mocks.pushFn.mock.calls[0][0] as string;
     expect(url).not.toContain("include_adult");
   });
@@ -381,10 +490,14 @@ describe("BrowsePage tag filter UI", () => {
     renderPage();
     openAdvancedSearch();
     expect(screen.getByText("Tags")).toBeInTheDocument();
-    expect(screen.getByText("Add required tags on the left, blocked tags on the right.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Add required tags on the left, blocked tags on the right.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("Required")).toBeInTheDocument();
     expect(screen.getByText("Blocked")).toBeInTheDocument();
-    const inputs = screen.getAllByPlaceholderText("Type to search tags…");
+    const inputs = screen.getAllByPlaceholderText("Select...");
     expect(inputs.length).toBe(2);
   });
 
@@ -392,7 +505,9 @@ describe("BrowsePage tag filter UI", () => {
     renderPage();
     openAdvancedSearch();
 
-    const inputs = screen.getAllByPlaceholderText("Type to search tags…") as HTMLInputElement[];
+    const inputs = screen.getAllByPlaceholderText(
+      "Select...",
+    ) as HTMLInputElement[];
     fireEvent.input(inputs[0], { target: { value: "i" } });
 
     // After a short wait, searchTags should NOT have been called
@@ -403,14 +518,14 @@ describe("BrowsePage tag filter UI", () => {
   });
 
   it("search fires for >= 2 character query", async () => {
-    mocks.searchTags.mockResolvedValue([
-      { name: "isekai", name_ja: null },
-    ]);
+    mocks.searchTags.mockResolvedValue([{ name: "isekai", name_ja: null }]);
 
     renderPage();
     openAdvancedSearch();
 
-    const inputs = screen.getAllByPlaceholderText("Type to search tags…") as HTMLInputElement[];
+    const inputs = screen.getAllByPlaceholderText(
+      "Select...",
+    ) as HTMLInputElement[];
     fireEvent.input(inputs[0], { target: { value: "is" } });
 
     await flushTagDebounce();
@@ -429,7 +544,9 @@ describe("BrowsePage tag filter UI", () => {
     renderPage();
     openAdvancedSearch();
 
-    const inputs = screen.getAllByPlaceholderText("Type to search tags…") as HTMLInputElement[];
+    const inputs = screen.getAllByPlaceholderText(
+      "Select...",
+    ) as HTMLInputElement[];
     fireEvent.input(inputs[0], { target: { value: "is" } });
 
     await flushTagDebounce();
@@ -439,41 +556,49 @@ describe("BrowsePage tag filter UI", () => {
   });
 
   it("selecting include tag pushes tag_include param and resets page", async () => {
-    mocks.searchTags.mockResolvedValue([
-      { name: "isekai", name_ja: null },
-    ]);
+    mocks.searchTags.mockResolvedValue([{ name: "isekai", name_ja: null }]);
 
     renderPage();
     openAdvancedSearch();
 
-    const inputs = screen.getAllByPlaceholderText("Type to search tags…") as HTMLInputElement[];
+    const inputs = screen.getAllByPlaceholderText(
+      "Select...",
+    ) as HTMLInputElement[];
     fireEvent.input(inputs[0], { target: { value: "is" } });
 
     await flushTagDebounce();
 
-    act(() => { screen.getByText("isekai").click(); });
+    act(() => {
+      screen.getByText("isekai").click();
+    });
 
-    const lastCall = mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0] as string;
+    const lastCall = mocks.pushFn.mock.calls[
+      mocks.pushFn.mock.calls.length - 1
+    ][0] as string;
     expect(lastCall).toContain("tag_include=isekai");
     expect(lastCall).not.toContain("page=");
   });
 
   it("selecting exclude tag pushes tag_exclude param", async () => {
-    mocks.searchTags.mockResolvedValue([
-      { name: "action", name_ja: null },
-    ]);
+    mocks.searchTags.mockResolvedValue([{ name: "action", name_ja: null }]);
 
     renderPage();
     openAdvancedSearch();
 
-    const inputs = screen.getAllByPlaceholderText("Type to search tags…") as HTMLInputElement[];
+    const inputs = screen.getAllByPlaceholderText(
+      "Select...",
+    ) as HTMLInputElement[];
     fireEvent.input(inputs[1], { target: { value: "ac" } });
 
     await flushTagDebounce();
 
-    act(() => { screen.getByText("action").click(); });
+    act(() => {
+      screen.getByText("action").click();
+    });
 
-    const lastCall = mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0] as string;
+    const lastCall = mocks.pushFn.mock.calls[
+      mocks.pushFn.mock.calls.length - 1
+    ][0] as string;
     expect(lastCall).toContain("tag_exclude=action");
   });
 
@@ -497,7 +622,9 @@ describe("BrowsePage tag filter UI", () => {
     renderPage();
     // Advanced search opens auto when tag params in URL
 
-    const inputs = screen.getAllByPlaceholderText("Type to search tags…") as HTMLInputElement[];
+    const inputs = screen.getAllByPlaceholderText(
+      "Select...",
+    ) as HTMLInputElement[];
     fireEvent.input(inputs[0], { target: { value: "is" } });
 
     await flushTagDebounce();
@@ -513,7 +640,9 @@ describe("BrowsePage tag filter UI", () => {
     searchParamsMock.mockReturnValue(new URLSearchParams("tag_include=isekai"));
     renderPage();
     const clearBtns = screen.getAllByText("Clear filters");
-    act(() => { clearBtns[0].click(); });
+    act(() => {
+      clearBtns[0].click();
+    });
     const url = mocks.pushFn.mock.calls[0][0] as string;
     expect(url).not.toContain("tag_include");
     expect(url).not.toContain("tag_exclude");
@@ -522,21 +651,25 @@ describe("BrowsePage tag filter UI", () => {
   it("changing tag filter resets page to 1", async () => {
     searchParamsMock.mockReturnValue(new URLSearchParams("page=3"));
 
-    mocks.searchTags.mockResolvedValue([
-      { name: "isekai", name_ja: null },
-    ]);
+    mocks.searchTags.mockResolvedValue([{ name: "isekai", name_ja: null }]);
 
     renderPage();
     openAdvancedSearch();
 
-    const inputs = screen.getAllByPlaceholderText("Type to search tags…") as HTMLInputElement[];
+    const inputs = screen.getAllByPlaceholderText(
+      "Select...",
+    ) as HTMLInputElement[];
     fireEvent.input(inputs[0], { target: { value: "is" } });
 
     await flushTagDebounce();
 
-    act(() => { screen.getByText("isekai").click(); });
+    act(() => {
+      screen.getByText("isekai").click();
+    });
 
-    const lastCall = mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0] as string;
+    const lastCall = mocks.pushFn.mock.calls[
+      mocks.pushFn.mock.calls.length - 1
+    ][0] as string;
     expect(lastCall).not.toContain("page=");
     expect(lastCall).toContain("tag_include=isekai");
   });
@@ -553,7 +686,9 @@ describe("BrowsePage tag filter UI", () => {
     renderPage();
     openAdvancedSearch();
 
-    const inputs = screen.getAllByPlaceholderText("Type to search tags…") as HTMLInputElement[];
+    const inputs = screen.getAllByPlaceholderText(
+      "Select...",
+    ) as HTMLInputElement[];
     fireEvent.input(inputs[0], { target: { value: "xy" } });
 
     await flushTagDebounce();
@@ -564,24 +699,34 @@ describe("BrowsePage tag filter UI", () => {
   it("tag filter indicator shows in results header for included tags", () => {
     searchParamsMock.mockReturnValue(new URLSearchParams("tag_include=isekai"));
     renderPage();
-    expect(screen.getByRole("button", { name: "Remove included tag isekai" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Remove included tag isekai" }),
+    ).toBeInTheDocument();
   });
 
   it("tag filter indicator shows in results header for excluded tags", () => {
     searchParamsMock.mockReturnValue(new URLSearchParams("tag_exclude=action"));
     renderPage();
-    expect(screen.getByRole("button", { name: "Remove excluded tag action" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Remove excluded tag action" }),
+    ).toBeInTheDocument();
   });
 
   it("removing a tag chip updates URL params", () => {
-    searchParamsMock.mockReturnValue(new URLSearchParams("tag_include=isekai&tag_exclude=action"));
+    searchParamsMock.mockReturnValue(
+      new URLSearchParams("tag_include=isekai&tag_exclude=action"),
+    );
     renderPage();
     // Advanced search opens auto when tag params in URL
 
     const removeBtn = screen.getByLabelText("Remove tag isekai");
-    act(() => { removeBtn.click(); });
+    act(() => {
+      removeBtn.click();
+    });
 
-    const lastCall = mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0] as string;
+    const lastCall = mocks.pushFn.mock.calls[
+      mocks.pushFn.mock.calls.length - 1
+    ][0] as string;
     expect(lastCall).toContain("tag_exclude=action");
     // isekai was the only include tag, so tag_include should be absent
     expect(lastCall).not.toContain("tag_include");
@@ -633,10 +778,12 @@ describe("BrowsePage genre/tag pass-through", () => {
           title="Browse"
           description="Find novels"
         />
-      </QueryClientProvider>
+      </QueryClientProvider>,
     );
 
-    const results = within(screen.getByRole("region", { name: "Catalog results" }));
+    const results = within(
+      screen.getByRole("region", { name: "Catalog results" }),
+    );
     expect(results.getByText("Fantasy")).toBeInTheDocument();
     expect(results.getByText("Isekai")).toBeInTheDocument();
     expect(results.getByText("magic")).toBeInTheDocument();
@@ -677,7 +824,7 @@ describe("BrowsePage genre/tag pass-through", () => {
           title="Browse"
           description="Find novels"
         />
-      </QueryClientProvider>
+      </QueryClientProvider>,
     );
 
     expect(screen.queryByText("fantasy")).not.toBeInTheDocument();
@@ -716,7 +863,7 @@ describe("BrowsePage genre/tag pass-through", () => {
           title="Browse"
           description="Find novels"
         />
-      </QueryClientProvider>
+      </QueryClientProvider>,
     );
 
     expect(screen.getAllByText("Novel One").length).toBeGreaterThanOrEqual(1);
@@ -757,10 +904,12 @@ describe("BrowsePage genre/tag pass-through", () => {
           title="Browse"
           description="Find novels"
         />
-      </QueryClientProvider>
+      </QueryClientProvider>,
     );
 
-    const results = within(screen.getByRole("region", { name: "Catalog results" }));
+    const results = within(
+      screen.getByRole("region", { name: "Catalog results" }),
+    );
     expect(results.queryByText("Fantasy")).not.toBeInTheDocument();
     expect(results.queryByText("Isekai")).not.toBeInTheDocument();
     expect(screen.queryByText("Popular")).not.toBeInTheDocument();
@@ -779,14 +928,18 @@ describe("BrowsePage catalog search", () => {
 
     renderPage();
 
-    const input = screen.getByPlaceholderText("Search by title or author") as HTMLInputElement;
+    const input = screen.getByPlaceholderText(
+      "Search by title or author",
+    ) as HTMLInputElement;
     expect(input.value).toBe("test query");
   });
 
   it("search input is empty when no q param", () => {
     renderPage();
 
-    const input = screen.getByPlaceholderText("Search by title or author") as HTMLInputElement;
+    const input = screen.getByPlaceholderText(
+      "Search by title or author",
+    ) as HTMLInputElement;
     expect(input.value).toBe("");
   });
 
@@ -813,7 +966,9 @@ describe("BrowsePage catalog search", () => {
     fireEvent.change(input, { target: { value: "novel" } });
     fireEvent.click(screen.getByRole("button", { name: /^search$/i }));
 
-    const lastCall = mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0] as string;
+    const lastCall = mocks.pushFn.mock.calls[
+      mocks.pushFn.mock.calls.length - 1
+    ][0] as string;
     expect(lastCall).toContain("q=novel");
     expect(lastCall).not.toContain("page=");
   });
@@ -827,17 +982,23 @@ describe("BrowsePage catalog search", () => {
     fireEvent.change(input, { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: /^search$/i }));
 
-    const lastCall = mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0] as string;
+    const lastCall = mocks.pushFn.mock.calls[
+      mocks.pushFn.mock.calls.length - 1
+    ][0] as string;
     expect(lastCall).not.toContain("q=");
   });
 
   it("clear filters removes q param", () => {
-    searchParamsMock.mockReturnValue(new URLSearchParams("q=test&status=Ongoing"));
+    searchParamsMock.mockReturnValue(
+      new URLSearchParams("q=test&status=Ongoing"),
+    );
 
     renderPage();
 
     const clearBtns = screen.getAllByText("Clear filters");
-    act(() => { clearBtns[0].click(); });
+    act(() => {
+      clearBtns[0].click();
+    });
 
     const url = mocks.pushFn.mock.calls[0][0] as string;
     expect(url).not.toContain("q=");
@@ -850,7 +1011,7 @@ describe("BrowsePage catalog search", () => {
     renderPage();
 
     expect(
-      screen.getByText(/No novels matched this search/)
+      screen.getByText(/No novels matched this search/),
     ).toBeInTheDocument();
     // Multiple "Clear filters" elements appear (filter bar + empty state)
     const clearButtons = screen.getAllByText("Clear filters");
@@ -862,9 +1023,7 @@ describe("BrowsePage catalog search", () => {
 
     renderPage();
 
-    expect(
-      screen.getByText(/catalog is empty right now/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/catalog is empty right now/)).toBeInTheDocument();
   });
 
   it("does not pass include_adult=true in URL on search", () => {
@@ -874,7 +1033,98 @@ describe("BrowsePage catalog search", () => {
     fireEvent.change(input, { target: { value: "test" } });
     fireEvent.click(screen.getByRole("button", { name: /^search$/i }));
 
-    const lastCall = mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0] as string;
+    const lastCall = mocks.pushFn.mock.calls[
+      mocks.pushFn.mock.calls.length - 1
+    ][0] as string;
     expect(lastCall).not.toContain("include_adult");
+  });
+
+  describe("5 UX Filter improvements", () => {
+    it("synopsis search checkbox toggles search_synopsis query param and displays pill", () => {
+      searchParamsMock.mockReturnValue(
+        new URLSearchParams("search_synopsis=true"),
+      );
+      renderPage();
+      expect(
+        screen.getByRole("button", { name: /remove synopsis search filter/i }),
+      ).toBeInTheDocument();
+
+      const checkbox = screen.getByLabelText(/search in synopsis/i);
+      expect(checkbox).toBeChecked();
+
+      act(() => {
+        fireEvent.click(checkbox);
+      });
+      const lastCall = mocks.pushFn.mock.calls[
+        mocks.pushFn.mock.calls.length - 1
+      ][0] as string;
+      expect(lastCall).not.toContain("search_synopsis");
+    });
+
+    it("sort by and order direction pills update sort_by and order params", () => {
+      renderPage();
+      const sortSelect = screen.getByLabelText("Sort by");
+      act(() => {
+        fireEvent.change(sortSelect, { target: { value: "chapter_count" } });
+      });
+      expect(
+        mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0],
+      ).toContain("sort_by=chapter_count");
+
+      const ascButton = screen.getByRole("button", { name: "Asc" });
+      act(() => {
+        fireEvent.click(ascButton);
+      });
+      expect(
+        mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0],
+      ).toContain("order=asc");
+    });
+
+    it("genre and tag match mode toggles update genre_op and tag_op params", () => {
+      renderPage();
+      openAdvancedSearch();
+
+      const genreGroup = screen.getByRole("group", {
+        name: "Genre match mode",
+      });
+      const genreOrButton = within(genreGroup).getByRole("button", {
+        name: "OR",
+      });
+      act(() => {
+        fireEvent.click(genreOrButton);
+      });
+      expect(
+        mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0],
+      ).toContain("genre_op=or");
+
+      const tagGroup = screen.getByRole("group", { name: "Tag match mode" });
+      const tagOrButton = within(tagGroup).getByRole("button", { name: "OR" });
+      act(() => {
+        fireEvent.click(tagOrButton);
+      });
+      expect(
+        mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0],
+      ).toContain("tag_op=or");
+    });
+
+    it("applies chapter count filter via unified submit button", () => {
+      renderPage();
+      openAdvancedSearch();
+
+      const minInput = screen.getByLabelText("Minimum");
+      const maxInput = screen.getByLabelText("Maximum");
+      fireEvent.change(minInput, { target: { value: "10" } });
+      fireEvent.change(maxInput, { target: { value: "100" } });
+
+      const applyBtn = screen.getByRole("button", { name: "Apply filters" });
+      act(() => {
+        fireEvent.click(applyBtn);
+      });
+      const lastCall = mocks.pushFn.mock.calls[
+        mocks.pushFn.mock.calls.length - 1
+      ][0] as string;
+      expect(lastCall).toContain("min_chapters=10");
+      expect(lastCall).toContain("max_chapters=100");
+    });
   });
 });

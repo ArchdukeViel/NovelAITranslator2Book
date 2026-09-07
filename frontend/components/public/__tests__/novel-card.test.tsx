@@ -98,7 +98,7 @@ describe("NovelCard genre/tag rendering", () => {
 
     const image = screen.getByRole("img", { name: "Cover for Test Novel" });
     expect(image.getAttribute("src")).toContain(
-      encodeURIComponent("https://assets.example.test/test-cover.jpg")
+      encodeURIComponent("https://assets.example.test/test-cover.jpg"),
     );
     expect(
       screen.queryByRole("img", {
@@ -263,5 +263,126 @@ describe("NovelCard genre/tag rendering", () => {
     expect(
       screen.queryByRole("img", { name: "Cover for Test Novel" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("NovelCard list layout", () => {
+  it("renders English title on top and Japanese title below in list mode", () => {
+    const novel = makeNovel({
+      title: "Solo Leveling",
+      source_title: "俺だけレベルアップな件",
+    });
+    renderWithClient(<NovelCard novel={novel} layout="list" />);
+
+    expect(
+      screen.getByRole("heading", { level: 2, name: /Solo Leveling/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText("俺だけレベルアップな件").length,
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders status, chapters, views, and ratings grid in list mode", () => {
+    const novel = {
+      ...makeNovel({
+        publication_status: "ongoing",
+        chapter_count: 120,
+      }),
+      views: 24300,
+      rating: 4.8,
+    };
+    renderWithClient(<NovelCard novel={novel} layout="list" />);
+
+    expect(screen.getByText("Status")).toBeInTheDocument();
+    expect(screen.getByText("ongoing")).toBeInTheDocument();
+    expect(screen.getByText("Chapters")).toBeInTheDocument();
+    expect(screen.getByText("120")).toBeInTheDocument();
+    expect(screen.getByText("Views")).toBeInTheDocument();
+    expect(screen.getByText("24.3k")).toBeInTheDocument();
+    expect(screen.getByText("Rating")).toBeInTheDocument();
+    expect(screen.getByText("4.8")).toBeInTheDocument();
+  });
+
+  it("renders 0 for views and rating when not provided in list mode", () => {
+    const novel = makeNovel({
+      publication_status: "ongoing",
+      chapter_count: 50,
+    });
+    renderWithClient(<NovelCard novel={novel} layout="list" />);
+
+    const zeroValues = screen.getAllByText("0");
+    expect(zeroValues.length).toBeGreaterThanOrEqual(2); // Views is 0, Rating is 0
+    expect(screen.getByText("50")).toBeInTheDocument(); // Chapters is 50
+  });
+
+  it("renders Start Reading link directing to latest chapter when present", () => {
+    const novel = makeNovel({
+      slug: "test-slug",
+      latest_chapter_id: "ch-42",
+    });
+    renderWithClient(<NovelCard novel={novel} layout="list" />);
+
+    const startReading = screen.getByRole("link", { name: /start reading/i });
+    expect(startReading).toHaveAttribute(
+      "href",
+      "/novels/test-slug/chapter/ch-42",
+    );
+  });
+
+  it("renders Start Reading link directing to novel detail when no latest chapter", () => {
+    const novel = makeNovel({
+      slug: "test-slug",
+      latest_chapter_id: null,
+    });
+    renderWithClient(<NovelCard novel={novel} layout="list" />);
+
+    const startReading = screen.getByRole("link", { name: /start reading/i });
+    expect(startReading).toHaveAttribute("href", "/novels/test-slug");
+  });
+
+  it("renders Novel Details link and toggles Show more / Show less for synopsis in list mode", () => {
+    const novel = makeNovel({
+      slug: "shadow-slave",
+      synopsis:
+        "Growing up in poverty, Sunny never expected anything good from life.",
+    });
+    renderWithClient(<NovelCard novel={novel} layout="list" />);
+
+    const detailsLink = screen.getByRole("link", { name: /novel details/i });
+    expect(detailsLink).toHaveAttribute("href", "/novels/shadow-slave");
+
+    const toggleButton = screen.getByRole("button", { name: /show more/i });
+    expect(toggleButton).toBeInTheDocument();
+
+    fireEvent.click(toggleButton);
+    expect(
+      screen.getByRole("button", { name: /show less/i }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /show less/i }));
+    expect(
+      screen.getByRole("button", { name: /show more/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders all genres and tags without truncation in list mode", () => {
+    const novel = makeNovel({
+      genres: ["fantasy", "isekai", "romance", "sf", "horror"].map(genre),
+      tags: ["magic", "hero", "dragon", "castle"].map(tag),
+    });
+    renderWithClient(<NovelCard novel={novel} layout="list" />);
+
+    expect(screen.getByText("fantasy")).toBeInTheDocument();
+    expect(screen.getByText("isekai")).toBeInTheDocument();
+    expect(screen.getByText("romance")).toBeInTheDocument();
+    expect(screen.getByText("sf")).toBeInTheDocument();
+    expect(screen.getByText("horror")).toBeInTheDocument();
+
+    expect(screen.getByText("magic")).toBeInTheDocument();
+    expect(screen.getByText("hero")).toBeInTheDocument();
+    expect(screen.getByText("dragon")).toBeInTheDocument();
+    expect(screen.getByText("castle")).toBeInTheDocument();
+
+    expect(screen.queryByText(/\+\d+/)).not.toBeInTheDocument();
   });
 });

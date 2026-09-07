@@ -50,8 +50,17 @@ import type {
   UserReviewItem,
 } from "@/lib/public-types";
 
+const rawApiBase = (
+  process.env.NEXT_PUBLIC_API_URL ||
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  ""
+).replace(/\/+$/, "");
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "";
+  rawApiBase === "/api"
+    ? ""
+    : rawApiBase.endsWith("/api")
+      ? rawApiBase.slice(0, -4)
+      : rawApiBase;
 const DEFAULT_PUBLIC_RETURN_TO = "/";
 const CSRF_HEADER_NAME = "X-CSRF-Token";
 export const PUBLIC_REQUEST_TIMEOUT_MS = 15_000;
@@ -407,6 +416,7 @@ export const publicApi = {
   ): Promise<PublicCatalogResponse> {
     const search = new URLSearchParams();
     if (params.q) search.set("q", params.q);
+    if (params.search_synopsis) search.set("search_synopsis", "true");
     if (params.publication_status)
       search.set("publication_status", params.publication_status);
     if (params.source_key) search.set("source_key", params.source_key);
@@ -418,8 +428,12 @@ export const publicApi = {
       search.set("max_chapters", String(params.max_chapters));
     if (params.genre_include) search.set("genre_include", params.genre_include);
     if (params.genre_exclude) search.set("genre_exclude", params.genre_exclude);
+    if (params.genre_op && params.genre_op !== "and")
+      search.set("genre_op", params.genre_op);
     if (params.tag_include) search.set("tag_include", params.tag_include);
     if (params.tag_exclude) search.set("tag_exclude", params.tag_exclude);
+    if (params.tag_op && params.tag_op !== "and")
+      search.set("tag_op", params.tag_op);
     if (params.page !== undefined) search.set("page", String(params.page));
     if (params.page_size !== undefined)
       search.set("page_size", String(params.page_size));
@@ -465,6 +479,21 @@ export const publicApi = {
     const qs = search.toString();
     return publicGet<PublicGenreResponse[]>(
       `/api/public/genres${qs ? `?${qs}` : ""}`,
+    );
+  },
+
+  tags(
+    params?: { include_adult?: boolean; limit?: number },
+    signal?: AbortSignal,
+  ): Promise<PublicTagSearchResult[]> {
+    const search = new URLSearchParams();
+    if (params?.include_adult !== undefined)
+      search.set("include_adult", String(params.include_adult));
+    if (params?.limit !== undefined) search.set("limit", String(params.limit));
+    const qs = search.toString();
+    return publicGet<PublicTagSearchResult[]>(
+      `/api/public/tags${qs ? `?${qs}` : ""}`,
+      signal,
     );
   },
 

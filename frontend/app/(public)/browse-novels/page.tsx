@@ -9,16 +9,23 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q.trim() : "";
-  const entries = Object.entries(params).sort(([left], [right]) => left.localeCompare(right));
+  const entries = Object.entries(params).sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
   const utilityFilters = entries.filter(
     ([key, value]) =>
-      !["sort_by", "order", "page", "view"].includes(key) &&
+      !["sort_by", "order", "page"].includes(key) &&
       typeof value === "string" &&
       value.length > 0,
   );
   const canonicalParams = new URLSearchParams();
   for (const [key, value] of entries) {
-    if (["sort_by", "order", "view"].includes(key) || typeof value !== "string" || !value) continue;
+    if (
+      ["sort_by", "order"].includes(key) ||
+      typeof value !== "string" ||
+      !value
+    )
+      continue;
     canonicalParams.set(key, value);
   }
   const canonicalQuery = canonicalParams.toString();
@@ -33,7 +40,8 @@ export async function generateMetadata({
   }
   return {
     title: "Browse Novels",
-    description: "Browse the translated novel library on Dokushodo: search by title or author, narrow by status, genre, or chapter count.",
+    description:
+      "Browse the translated novel library on Dokushodo: search by title or author, narrow by status, genre, or chapter count.",
     robots: utilityFilters.length ? { index: false, follow: true } : undefined,
     alternates: { canonical },
   };
@@ -44,17 +52,23 @@ function BrowseNovelsSkeleton() {
     <div
       role="status"
       aria-label="Loading catalog"
-      className="mx-auto grid max-w-7xl gap-4 px-4 py-10 sm:grid-cols-2 lg:grid-cols-3 sm:px-6 lg:px-8"
+      className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-10 sm:px-6 lg:px-8"
     >
-      {Array.from({ length: 6 }).map((_, index) => (
+      {Array.from({ length: 5 }).map((_, index) => (
         <div
           key={index}
-          className="overflow-hidden rounded-lg border border-border bg-card/70"
+          className="overflow-hidden rounded-xl border border-border/80 bg-card p-3.5 sm:p-4"
         >
-          <div className="aspect-[2/3] animate-pulse bg-muted" />
-          <div className="space-y-3 p-4">
-            <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
-            <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+          <div className="space-y-3">
+            <div className="h-5 w-2/3 animate-pulse rounded bg-muted" />
+            <div className="flex gap-3 sm:gap-4">
+              <div className="aspect-2/3 w-24 sm:w-28 md:w-32 shrink-0 animate-pulse rounded-lg bg-muted" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 w-1/3 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-full animate-pulse rounded bg-muted" />
+                <div className="h-3 w-4/5 animate-pulse rounded bg-muted" />
+              </div>
+            </div>
           </div>
         </div>
       ))}

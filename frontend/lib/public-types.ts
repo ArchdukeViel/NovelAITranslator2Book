@@ -107,11 +107,16 @@ export interface PublicRankingResponse {
   items: PublicRankingItem[];
 }
 
-export type CatalogSortField = "added_at" | "updated_at" | "title" | "chapter_count";
+export type CatalogSortField =
+  | "added_at"
+  | "updated_at"
+  | "title"
+  | "chapter_count";
 export type CatalogOrder = "asc" | "desc";
 
 export interface CatalogParams {
   q?: string;
+  search_synopsis?: boolean;
   publication_status?: PublicationStatus;
   source_key?: string;
   sort_by?: CatalogSortField;
@@ -120,8 +125,10 @@ export interface CatalogParams {
   max_chapters?: number;
   genre_include?: string;
   genre_exclude?: string;
+  genre_op?: "and" | "or";
   tag_include?: string;
   tag_exclude?: string;
+  tag_op?: "and" | "or";
   page?: number;
   page_size?: number;
 }
@@ -131,7 +138,12 @@ export interface PublicChapterSummary {
   title: string | null;
   chapter_number: number | null; // sort ascending (Req 4.3)
   translated: boolean; // false -> pending indicator (Req 4.5)
-  availability_status?: "available" | "not_translated" | "unavailable" | "refresh_failed" | string;
+  availability_status?:
+    | "available"
+    | "not_translated"
+    | "unavailable"
+    | "refresh_failed"
+    | string;
   part?: string | null; // optional volume/part grouping label
   section_title?: string | null;
   section_source_id?: string | null;
@@ -324,7 +336,11 @@ export interface PublicReviewListResponse {
 
 // ---- Legacy contribution compatibility types (not used by the live UI) ----
 
-export type ContributionStatus = "Unchecked" | "Checking" | "Working" | "Failed";
+export type ContributionStatus =
+  | "Unchecked"
+  | "Checking"
+  | "Working"
+  | "Failed";
 
 export interface ContributionStatusResponse {
   present: boolean; // whether a credential exists
@@ -337,7 +353,11 @@ export interface ContributionStatusResponse {
 
 // ---- Contributor credentials (from /api/user/contributions) ----
 
-export type ContributorCredentialStatus = "active" | "paused" | "invalid" | "revoked";
+export type ContributorCredentialStatus =
+  | "active"
+  | "paused"
+  | "invalid"
+  | "revoked";
 
 export interface ContributorCredential {
   credential_id: string;
