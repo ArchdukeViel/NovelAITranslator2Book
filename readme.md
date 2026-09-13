@@ -32,7 +32,7 @@ product scope. Recovery backups remain supported.
 ## Requirements
 
 - Python 3.14+
-- Node.js 26.8.1 and npm for local, CI, and Docker development
+- Node.js 26.8.2 and npm for local, CI, and Docker development
 - PostgreSQL 17+ or compatible managed PostgreSQL
 - Gemini API key for real translation
 - Docker Desktop when using Redis/Compose

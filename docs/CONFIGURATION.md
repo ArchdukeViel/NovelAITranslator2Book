@@ -99,7 +99,7 @@ deployment and CI artifacts and must be regenerated with
 `deploy/update-lockfiles.ps1`; never edit either generated lock manually.
 Frontend and Worker dependencies are independently locked by their respective
 `package-lock.json` files. Local, CI, and Docker JavaScript runtime is pinned
-to Node.js 26.8.1, and Python CI/runtime images are pinned to Python 3.14.7.
+to Node.js 26.8.2, and Python CI/runtime images are pinned to Python 3.14.7.
 
 At the current candidate, TypeScript 6.0.3 and ESLint 9.39.5 remain explicit
 compatibility holds because the installed TypeScript-ESLint and import/React

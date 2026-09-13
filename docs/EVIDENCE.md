@@ -1753,7 +1753,7 @@ explicit compatibility holds because the current peer ranges do not admit the
 next major releases.
 
 Repository tooling regenerated the Python lockfiles and the frontend/Worker
-npm lockfiles. The candidate pins Python 3.14.7, Node.js 26.8.1, immutable
+npm lockfiles. The candidate pins Python 3.14.7, Node.js 26.8.2, immutable
 workflow action references, and immutable container image references. Worker
 tests, binding tests, type checking, test-only deployment dry run, frontend
 install/typecheck/lint/test/build/audit, affected backend checks, the full

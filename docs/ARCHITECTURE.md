@@ -131,7 +131,7 @@ The production topology is the target.
 
 ### Cloudflare-protected production target (WSL/Docker + split containers + managed PostgreSQL + R2)
 
-- **Frontend**: pinned Node.js 26.8.1 Next.js container behind Caddy on the
+- **Frontend**: pinned Node.js 26.8.2 Next.js container behind Caddy on the
   WSL/Docker host, with explicit
   `WEB_CORS_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, `ALLOWED_HOSTS`, CSP,
   and HSTS. Operators reach the public site through the selected Cloudflare

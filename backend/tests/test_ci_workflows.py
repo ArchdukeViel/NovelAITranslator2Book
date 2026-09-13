@@ -59,7 +59,7 @@ def test_ci_setup_uv_pin_is_consistent() -> None:
 
     assert pins
     assert len(set(pins)) == 1, f"setup-uv uses inconsistent commit pins: {sorted(set(pins))}"
-    assert set(pins) == {"20cfd1bf945f4377ade1205e4dbc17946fc9a30d"}
+    assert set(pins) == {"bec219d24cd3e171d82865faccec33120bb574f4"}
 
 
 def test_r2_worker_integration_has_bounded_execution_policy() -> None:
@@ -433,10 +433,10 @@ def test_node_version_alignment() -> None:
     package_json = (WORKFLOWS_DIR.parent.parent / "frontend" / "package.json").read_text(encoding="utf-8")
     dockerfile = (WORKFLOWS_DIR.parent.parent / "deploy" / "frontend.Dockerfile").read_text(encoding="utf-8")
 
-    assert nvmrc == "26.8.1"
+    assert nvmrc == "26.8.2"
     assert '"node": ">=26 <27"' in package_json
-    assert "node:26.8.1-alpine" in dockerfile
-    assert "sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3" in dockerfile
+    assert "node:26.8.2-alpine" in dockerfile
+    assert "sha256:ef24c5053d50fdc3e4e56eb4e7ddb7861874ab0fdc797046ba897581deb8e868" in dockerfile
     assert "/usr/local/lib/node_modules/npm" in dockerfile
     assert "/usr/local/bin/npm" in dockerfile
 
@@ -506,7 +506,7 @@ def test_ci_and_static_analysis_security_contracts() -> None:
     assert "--format=github" in static
     assert "--min-severity=medium" in static
     assert "S102,S307,S324,S501,S506,S602,S605,S608,S609" in static
-    assert "node-version: 26.8.1" in static
+    assert "node-version: 26.8.2" in static
     assert "npm ci" in static
 
 

@@ -35,9 +35,9 @@ test = [
   "pytest-asyncio>=1.4.0",
   "pytest-xdist>=3.8.0",
   "aiosqlite>=0.22.1",
-  "hypothesis>=6.167.1",
+  "hypothesis>=6.168.0",
 ]
-db = ["sqlalchemy>=2.0.52", "alembic>=1.19.1", "psycopg[binary]>=3.3.4"]
+db = ["sqlalchemy>=2.0.52", "alembic>=1.19.2", "psycopg[binary]>=3.3.4"]
 worker = ["rq>=2.12.0", "redis>=8.1.0"]
 auth = ["itsdangerous>=2.2.0"]
 dev = [
@@ -45,7 +45,7 @@ dev = [
   "cryptography>=50.0.1",
   "croniter>=6.2.4",
   "google-genai>=2.22.0",
-  "hypothesis>=6.167.1",
+  "hypothesis>=6.168.0",
   "httpx2>=2.12.0",
   "itsdangerous>=2.2.0",
   "pip-tools>=7.6.1",
@@ -55,11 +55,11 @@ dev = [
   "pytest-xdist>=3.8.0",
   "ruff>=0.16.6",
   "sqlalchemy>=2.0.52",
-  "alembic>=1.19.1",
+  "alembic>=1.19.2",
   "psycopg[binary]>=3.3.4",
   "rq>=2.12.0",
   "redis>=8.1.0",
-  "fakeredis>=2.37.0",
+  "fakeredis>=2.38.0",
   "pre-commit>=4.6.2",
   "pyasn1>=0.6.4",
 ]
