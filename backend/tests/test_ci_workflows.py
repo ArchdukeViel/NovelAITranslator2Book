@@ -59,7 +59,7 @@ def test_ci_setup_uv_pin_is_consistent() -> None:
 
     assert pins
     assert len(set(pins)) == 1, f"setup-uv uses inconsistent commit pins: {sorted(set(pins))}"
-    assert set(pins) == {"20cfd1bf945f4377ade1205e4dbc17946fc9a30d"}
+    assert set(pins) == {"bec219d24cd3e171d82865faccec33120bb574f4"}
 
 
 def test_r2_worker_integration_has_bounded_execution_policy() -> None:
