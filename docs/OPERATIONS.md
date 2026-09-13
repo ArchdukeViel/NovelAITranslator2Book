@@ -323,7 +323,7 @@ not treated as proof that an update had landed. The obsolete boto3/moto/S3
 proposals are classified as superseded by the hard R2-only cutover.
 
 The candidate uses the regenerated Python locks, frontend and Worker npm
-locks, Python 3.14.7, Node.js 26.8.1, immutable workflow action references,
+locks, Python 3.14.7, Node.js 26.8.2, immutable workflow action references,
 and immutable container image references. TypeScript 6.0.3 and ESLint 9.39.5
 remain explicit compatibility holds because their current peer constraints do
 not admit the next major releases. No provider, production resource, secret,
