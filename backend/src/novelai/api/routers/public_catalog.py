@@ -75,32 +75,46 @@ async def catalog(
     """Paginated public novel catalog with optional search, filter, and sort."""
     from novelai.sources.status import normalize_publication_status
 
-    publication_status_filter = normalize_publication_status(publication_status) if publication_status else None
+    publication_status_filter = (
+        normalize_publication_status(publication_status)
+        if isinstance(publication_status, str) and publication_status.strip()
+        else None
+    )
 
-    effective_sort_by = sort_by if sort_by and sort_by in VALID_SORT_FIELDS else DEFAULT_SORT_BY
-    effective_order = order if order and order in VALID_ORDER_VALUES else DEFAULT_ORDER
-    effective_genre_op = genre_op.lower() if genre_op and genre_op.lower() in ("and", "or") else "and"
-    effective_tag_op = tag_op.lower() if tag_op and tag_op.lower() in ("and", "or") else "and"
-    genre_include_set = set(_parse_csv_filter(genre_include))
-    genre_exclude_set = set(_parse_csv_filter(genre_exclude))
-    tag_include_set = set(_parse_csv_filter(tag_include))
-    tag_exclude_set = set(_parse_csv_filter(tag_exclude))
+    sort_by_str = _optional_str(sort_by)
+    order_str = _optional_str(order)
+    effective_sort_by = sort_by_str if sort_by_str and sort_by_str in VALID_SORT_FIELDS else DEFAULT_SORT_BY
+    effective_order = order_str if order_str and order_str in VALID_ORDER_VALUES else DEFAULT_ORDER
+    raw_genre_op = _optional_str(genre_op)
+    raw_tag_op = _optional_str(tag_op)
+    effective_genre_op = raw_genre_op.lower() if raw_genre_op and raw_genre_op.lower() in ("and", "or") else "and"
+    effective_tag_op = raw_tag_op.lower() if raw_tag_op and raw_tag_op.lower() in ("and", "or") else "and"
+    genre_include_set = set(_parse_csv_filter(genre_include if isinstance(genre_include, str) else None))
+    genre_exclude_set = set(_parse_csv_filter(genre_exclude if isinstance(genre_exclude, str) else None))
+    tag_include_set = set(_parse_csv_filter(tag_include if isinstance(tag_include, str) else None))
+    tag_exclude_set = set(_parse_csv_filter(tag_exclude if isinstance(tag_exclude, str) else None))
+    min_chapters_val = min_chapters if isinstance(min_chapters, int) else None
+    max_chapters_val = max_chapters if isinstance(max_chapters, int) else None
+    is_include_adult = include_adult is True
+    is_search_synopsis = search_synopsis is True
+    page_val = page if isinstance(page, int) and page >= 1 else 1
+    page_size_val = page_size if isinstance(page_size, int) and page_size >= 1 else 24
 
     response: PublicCatalogResponse
     source_key_filter = _optional_str(source_key)
-    query_str = (q or "").strip()
+    query_str = (q or "").strip() if isinstance(q, str) else ""
     cacheable = not any(
         (
             publication_status_filter,
             source_key_filter,
-            min_chapters is not None,
-            max_chapters is not None,
+            min_chapters_val is not None,
+            max_chapters_val is not None,
             genre_include_set,
             genre_exclude_set,
             tag_include_set,
             tag_exclude_set,
-            include_adult,
-            search_synopsis,
+            is_include_adult,
+            is_search_synopsis,
             effective_genre_op != "and",
             effective_tag_op != "and",
         )
@@ -108,8 +122,8 @@ async def catalog(
     base_cache_key = service.public_catalog_cache_key(
         sort_by=effective_sort_by,
         order=effective_order,
-        page=page,
-        page_size=page_size,
+        page=page_val,
+        page_size=page_size_val,
     )
     cache_key = (*base_cache_key, query_str) if query_str else base_cache_key
     cached = public_projection_cache.get(cache_key) if cacheable else None
@@ -117,39 +131,39 @@ async def catalog(
         response = PublicCatalogResponse.model_validate(cached)
     else:
         novels, total, degraded = service.get_public_catalog_page(
-            q=q,
+            q=query_str or None,
             publication_status=publication_status_filter,
             source_key=source_key_filter,
             effective_sort_by=effective_sort_by,
-            min_chapters=min_chapters,
-            max_chapters=max_chapters,
+            min_chapters=min_chapters_val,
+            max_chapters=max_chapters_val,
             genre_include_set=genre_include_set,
             genre_exclude_set=genre_exclude_set,
             tag_include_set=tag_include_set,
             tag_exclude_set=tag_exclude_set,
-            include_adult=include_adult,
-            page=page,
-            page_size=page_size,
+            include_adult=is_include_adult,
+            page=page_val,
+            page_size=page_size_val,
             order=effective_order,
-            search_synopsis=search_synopsis,
+            search_synopsis=is_search_synopsis,
             genre_op=effective_genre_op,
             tag_op=effective_tag_op,
         )
         public_novels: list[PublicNovelSummary] = []
         for novel in novels:
-            summary = service.build_public_novel_summary(novel, include_adult=include_adult)
+            summary = service.build_public_novel_summary(novel, include_adult=is_include_adult)
             if summary is not None:
                 public_novels.append(PublicNovelSummary(**summary))
         response = PublicCatalogResponse(
             novels=public_novels,
             total=total,
-            page=page,
-            page_size=page_size,
+            page=page_val,
+            page_size=page_size_val,
             degraded=degraded,
         )
         if cacheable and response.novels and not response.degraded:
             public_projection_cache.set(cache_key, response.model_dump(mode="json"))
-    if q and q.strip():
+    if query_str:
         record_server_event(
             "search.performed",
             user_id=user.user_id,
