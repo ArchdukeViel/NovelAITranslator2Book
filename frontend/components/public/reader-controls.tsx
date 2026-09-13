@@ -28,7 +28,8 @@ export function isEditableTarget(target: EventTarget | null): boolean {
 export function ReaderControls() {
   const [open, setOpen] = useState(false);
   const { isAuthenticated } = usePublicAuth();
-  const { fontSize, theme, width, setFontSize, setTheme, setWidth } = useReaderUiStore();
+  const { fontSize, theme, width, setFontSize, setTheme, setWidth } =
+    useReaderUiStore();
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {

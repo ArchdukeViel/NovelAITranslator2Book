@@ -17,8 +17,16 @@ import { SortableHeader } from "@/components/admin/sortable-header";
 import { TableCheckbox } from "@/components/admin/table-checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
-import { compareSortableValues, useSortableTable } from "@/hooks/use-sortable-table";
+import {
+  Panel,
+  PanelBody,
+  PanelHeader,
+  PanelTitle,
+} from "@/components/ui/panel";
+import {
+  compareSortableValues,
+  useSortableTable,
+} from "@/hooks/use-sortable-table";
 import {
   adminApi,
   api,
@@ -31,7 +39,15 @@ import {
   type NovelSummary,
 } from "@/lib/api";
 
-type LibrarySortKey = "novel" | "source" | "listed" | "raw" | "translated" | "failed" | "pending" | "status";
+type LibrarySortKey =
+  | "novel"
+  | "source"
+  | "listed"
+  | "raw"
+  | "translated"
+  | "failed"
+  | "pending"
+  | "status";
 type LibraryAction = "translate" | "recrawl" | "delete";
 
 const TRANSLATION_LANGUAGES = ["English", "Indonesian"] as const;
@@ -93,7 +109,10 @@ function translationBadge(novel: NovelWithSummary) {
   return <Badge tone="neutral">Untranslated</Badge>;
 }
 
-function getCount(novel: NovelWithSummary, field: keyof LibrarySummaryItem): number | null {
+function getCount(
+  novel: NovelWithSummary,
+  field: keyof LibrarySummaryItem,
+): number | null {
   const summary = getSummary(novel);
   if (summary.state !== "ready") {
     return null;
@@ -105,7 +124,10 @@ function formatCount(count: number | null): string {
   return count === null ? "—" : String(count);
 }
 
-function formatPercent(numerator: number | null, denominator: number | null): string {
+function formatPercent(
+  numerator: number | null,
+  denominator: number | null,
+): string {
   if (numerator === null || denominator === null || denominator === 0) {
     return "—";
   }
@@ -154,7 +176,10 @@ function metadataText(metadata: NovelMetadata | undefined, key: string) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function applyPublicationSummary(row: NovelSummary, result: NovelPublicationSummary): NovelSummary {
+function applyPublicationSummary(
+  row: NovelSummary,
+  result: NovelPublicationSummary,
+): NovelSummary {
   return {
     ...row,
     title: result.title,
@@ -177,16 +202,31 @@ function chapterSortValue(chapter: ChapterSummary) {
 export default function LibraryPage() {
   const queryClient = useQueryClient();
 
-  const [selectedNovelIds, setSelectedNovelIds] = React.useState<Set<string>>(new Set());
-  const { sortKey, sortDirection, handleSort } = useSortableTable<LibrarySortKey>("novel", "asc");
-  const [pendingDeleteRows, setPendingDeleteRows] = React.useState<NovelSummary[] | null>(null);
-  const [translationNovel, setTranslationNovel] = React.useState<NovelSummary | null>(null);
-  const [taxonomyNovel, setTaxonomyNovel] = React.useState<NovelSummary | null>(null);
-  const [publicationNotice, setPublicationNotice] = React.useState<string | null>(null);
-  const [translationLanguage, setTranslationLanguage] = React.useState<(typeof TRANSLATION_LANGUAGES)[number]>("English");
-  const [selectedTranslationChapterIds, setSelectedTranslationChapterIds] = React.useState<Set<string>>(new Set());
-  const [retranslateStaleNovel, setRetranslateStaleNovel] = React.useState<NovelSummary | null>(null);
-  const [coverUploadNovelId, setCoverUploadNovelId] = React.useState<string | null>(null);
+  const [selectedNovelIds, setSelectedNovelIds] = React.useState<Set<string>>(
+    new Set(),
+  );
+  const { sortKey, sortDirection, handleSort } =
+    useSortableTable<LibrarySortKey>("novel", "asc");
+  const [pendingDeleteRows, setPendingDeleteRows] = React.useState<
+    NovelSummary[] | null
+  >(null);
+  const [translationNovel, setTranslationNovel] =
+    React.useState<NovelSummary | null>(null);
+  const [taxonomyNovel, setTaxonomyNovel] = React.useState<NovelSummary | null>(
+    null,
+  );
+  const [publicationNotice, setPublicationNotice] = React.useState<
+    string | null
+  >(null);
+  const [translationLanguage, setTranslationLanguage] =
+    React.useState<(typeof TRANSLATION_LANGUAGES)[number]>("English");
+  const [selectedTranslationChapterIds, setSelectedTranslationChapterIds] =
+    React.useState<Set<string>>(new Set());
+  const [retranslateStaleNovel, setRetranslateStaleNovel] =
+    React.useState<NovelSummary | null>(null);
+  const [coverUploadNovelId, setCoverUploadNovelId] = React.useState<
+    string | null
+  >(null);
 
   const translationNovelId = translationNovel?.novel_id;
 
@@ -245,7 +285,9 @@ export default function LibraryPage() {
 
   const allTranslationChaptersSelected =
     translationChapterRows.length > 0 &&
-    translationChapterRows.every((chapter) => selectedTranslationChapterIds.has(chapter.id));
+    translationChapterRows.every((chapter) =>
+      selectedTranslationChapterIds.has(chapter.id),
+    );
 
   const translationChapterSelection = React.useMemo(() => {
     return [...selectedTranslationChapterIds]
@@ -253,7 +295,11 @@ export default function LibraryPage() {
         const leftNumber = Number(left);
         const rightNumber = Number(right);
 
-        if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber !== rightNumber) {
+        if (
+          Number.isFinite(leftNumber) &&
+          Number.isFinite(rightNumber) &&
+          leftNumber !== rightNumber
+        ) {
           return leftNumber - rightNumber;
         }
 
@@ -273,7 +319,9 @@ export default function LibraryPage() {
     }
 
     const nextSelection = new Set(
-      translationChapters.data.filter((chapter) => !chapter.translated).map((chapter) => chapter.id),
+      translationChapters.data
+        .filter((chapter) => !chapter.translated)
+        .map((chapter) => chapter.id),
     );
     queueMicrotask(() => setSelectedTranslationChapterIds(nextSelection));
   }, [translationNovelId, translationChapters.data]);
@@ -296,7 +344,9 @@ export default function LibraryPage() {
   // window reliably).
   const summaryBackgroundError =
     Boolean(summary.isRefetchError) ||
-    (summary.status === "error" && summary.data !== undefined && summary.fetchStatus === "idle");
+    (summary.status === "error" &&
+      summary.data !== undefined &&
+      summary.fetchStatus === "idle");
 
   const mergedRows = React.useMemo(() => {
     return rows.map((novel) => {
@@ -310,10 +360,17 @@ export default function LibraryPage() {
           !summaryAvailable && summaryInitialLoading && !summaryInitialError,
         // Unavailable — initial failure OR backend omitted the row.
         summaryError:
-          !summaryAvailable && (summaryInitialError || summary.data !== undefined),
+          !summaryAvailable &&
+          (summaryInitialError || summary.data !== undefined),
       };
     });
-  }, [rows, summary.data, summaryMap, summaryInitialError, summaryInitialLoading]);
+  }, [
+    rows,
+    summary.data,
+    summaryMap,
+    summaryInitialError,
+    summaryInitialLoading,
+  ]);
 
   const sortedRows = React.useMemo(() => {
     return [...mergedRows].sort((left, right) => {
@@ -323,7 +380,9 @@ export default function LibraryPage() {
     });
   }, [mergedRows, sortDirection, sortKey]);
 
-  const allRowsSelected = rows.length > 0 && rows.every((novel) => selectedNovelIds.has(novel.novel_id));
+  const allRowsSelected =
+    rows.length > 0 &&
+    rows.every((novel) => selectedNovelIds.has(novel.novel_id));
 
   const invalidateLibrary = () => {
     void queryClient.invalidateQueries({ queryKey: ["novels"] });
@@ -332,7 +391,13 @@ export default function LibraryPage() {
   };
 
   const runLibraryAction = useMutation({
-    mutationFn: async ({ action, novels: actionRows }: { action: LibraryAction; novels: NovelSummary[] }) => {
+    mutationFn: async ({
+      action,
+      novels: actionRows,
+    }: {
+      action: LibraryAction;
+      novels: NovelSummary[];
+    }) => {
       const completed: Array<ActivityRecord | void> = [];
 
       for (const novel of actionRows) {
@@ -414,7 +479,9 @@ export default function LibraryPage() {
     },
     onSuccess: () => {
       invalidateLibrary();
-      void queryClient.invalidateQueries({ queryKey: ["chapters", translationNovelId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["chapters", translationNovelId],
+      });
       setTranslationNovel(null);
       setSelectedTranslationChapterIds(new Set());
     },
@@ -443,13 +510,25 @@ export default function LibraryPage() {
   });
 
   const publishNovel = useMutation({
-    mutationFn: async ({ novel, publish }: { novel: NovelSummary; publish: boolean }) => {
-      return publish ? api.publishNovel(novel.novel_id) : api.unpublishNovel(novel.novel_id);
+    mutationFn: async ({
+      novel,
+      publish,
+    }: {
+      novel: NovelSummary;
+      publish: boolean;
+    }) => {
+      return publish
+        ? api.publishNovel(novel.novel_id)
+        : api.unpublishNovel(novel.novel_id);
     },
     onSuccess: (result) => {
       queryClient.setQueryData<NovelSummary[]>(["novels"], (current) =>
         Array.isArray(current)
-          ? current.map((row) => (row.novel_id === result.novel_id ? applyPublicationSummary(row, result) : row))
+          ? current.map((row) =>
+              row.novel_id === result.novel_id
+                ? applyPublicationSummary(row, result)
+                : row,
+            )
           : current,
       );
 
@@ -463,21 +542,27 @@ export default function LibraryPage() {
   });
 
   const resumeOnboarding = useMutation({
-    mutationFn: async (novel: NovelSummary) => adminApi.resumeOnboarding(novel.novel_id),
+    mutationFn: async (novel: NovelSummary) =>
+      adminApi.resumeOnboarding(novel.novel_id),
     onSuccess: () => {
       invalidateLibrary();
     },
   });
 
   const cancelOnboarding = useMutation({
-    mutationFn: async (novel: NovelSummary) => adminApi.cancelOnboarding(novel.novel_id),
+    mutationFn: async (novel: NovelSummary) =>
+      adminApi.cancelOnboarding(novel.novel_id),
     onSuccess: () => {
       invalidateLibrary();
     },
   });
 
   const toggleAllRows = () => {
-    setSelectedNovelIds(allRowsSelected ? new Set() : new Set(rows.map((novel) => novel.novel_id)));
+    setSelectedNovelIds(
+      allRowsSelected
+        ? new Set()
+        : new Set(rows.map((novel) => novel.novel_id)),
+    );
   };
 
   const toggleNovel = (novelId: string) => {
@@ -526,7 +611,9 @@ export default function LibraryPage() {
 
   const toggleAllTranslationChapters = () => {
     setSelectedTranslationChapterIds(
-      allTranslationChaptersSelected ? new Set() : new Set(translationChapterRows.map((chapter) => chapter.id)),
+      allTranslationChaptersSelected
+        ? new Set()
+        : new Set(translationChapterRows.map((chapter) => chapter.id)),
     );
   };
 
@@ -583,8 +670,10 @@ export default function LibraryPage() {
     metadataText(translationMetadata.data, "synopsis") ||
     "-";
 
-  const translationDialogLoading = translationMetadata.isLoading || translationChapters.isLoading;
-  const translationDialogError = translationMetadata.error || translationChapters.error;
+  const translationDialogLoading =
+    translationMetadata.isLoading || translationChapters.isLoading;
+  const translationDialogError =
+    translationMetadata.error || translationChapters.error;
 
   return (
     <>
@@ -598,7 +687,9 @@ export default function LibraryPage() {
           <div>
             <PanelTitle>Novel Library</PanelTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              {selectedRows.length ? `${selectedRows.length} selected` : `${rows.length} novel(s) stored`}
+              {selectedRows.length
+                ? `${selectedRows.length} selected`
+                : `${rows.length} novel(s) stored`}
             </p>
           </div>
 
@@ -608,8 +699,16 @@ export default function LibraryPage() {
               size="sm"
               className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               onClick={() => runAction("translate", selectedRows)}
-              disabled={selectedRows.length !== 1 || runLibraryAction.isPending || runTranslationDialog.isPending}
-              title={selectedRows.length === 1 ? "Choose chapters to translate" : "Select one novel to translate"}
+              disabled={
+                selectedRows.length !== 1 ||
+                runLibraryAction.isPending ||
+                runTranslationDialog.isPending
+              }
+              title={
+                selectedRows.length === 1
+                  ? "Choose chapters to translate"
+                  : "Select one novel to translate"
+              }
             >
               <Languages className="h-4 w-4" />
               Translate selected
@@ -661,10 +760,22 @@ export default function LibraryPage() {
           </div>
         </PanelHeader>
 
-        <ErrorBanner error={runLibraryAction.error} fallback="Failed to run library action." />
-        <ErrorBanner error={publishNovel.error} fallback="Failed to update publication state." />
-        <ErrorBanner error={resumeOnboarding.error} fallback="Failed to resume onboarding." />
-        <ErrorBanner error={cancelOnboarding.error} fallback="Failed to cancel onboarding." />
+        <ErrorBanner
+          error={runLibraryAction.error}
+          fallback="Failed to run library action."
+        />
+        <ErrorBanner
+          error={publishNovel.error}
+          fallback="Failed to update publication state."
+        />
+        <ErrorBanner
+          error={resumeOnboarding.error}
+          fallback="Failed to resume onboarding."
+        />
+        <ErrorBanner
+          error={cancelOnboarding.error}
+          fallback="Failed to cancel onboarding."
+        />
         <ErrorBanner error={novels.error} fallback="Failed to load novels." />
 
         {/* Summary error states — exactly one message per scenario. */}
@@ -733,7 +844,11 @@ export default function LibraryPage() {
               <thead className="sticky top-0 z-[1] border-b bg-muted/55 text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="w-12 px-4 py-3">
-                    <TableCheckbox checked={allRowsSelected} onChange={toggleAllRows} aria-label="Select all novels" />
+                    <TableCheckbox
+                      checked={allRowsSelected}
+                      onChange={toggleAllRows}
+                      aria-label="Select all novels"
+                    />
                   </th>
                   <SortableHeader
                     label="Novel"
@@ -820,10 +935,15 @@ export default function LibraryPage() {
                     const pendingChapters = getCount(novel, "pending");
                     const missingSource = !novel.source_key;
                     const onboardingStatus = novel.onboarding_status;
-                    const showOnboardingBadge = onboardingStatus != null && onboardingStatus !== "ready_for_translation";
+                    const showOnboardingBadge =
+                      onboardingStatus != null &&
+                      onboardingStatus !== "ready_for_translation";
 
                     return (
-                      <tr className="border-b last:border-0" key={novel.novel_id}>
+                      <tr
+                        className="border-b last:border-0"
+                        key={novel.novel_id}
+                      >
                         <td className="px-4 py-3">
                           <TableCheckbox
                             checked={selectedNovelIds.has(novel.novel_id)}
@@ -833,13 +953,23 @@ export default function LibraryPage() {
                         </td>
 
                         <td className="px-4 py-3">
-                          <div className="font-medium">{novel.title || novel.novel_id}</div>
-                          <div className="mt-1 font-mono text-xs text-muted-foreground">{novel.novel_id}</div>
-                          {novel.author ? <div className="mt-1 text-xs text-muted-foreground">{novel.author}</div> : null}
+                          <div className="font-medium">
+                            {novel.title || novel.novel_id}
+                          </div>
+                          <div className="mt-1 font-mono text-xs text-muted-foreground">
+                            {novel.novel_id}
+                          </div>
+                          {novel.author ? (
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {novel.author}
+                            </div>
+                          ) : null}
                         </td>
 
                         <td className="max-w-[240px] px-4 py-3">
-                          <div className="font-medium">{novel.source_key || "-"}</div>
+                          <div className="font-medium">
+                            {novel.source_key || "-"}
+                          </div>
                           {sourceUrl ? (
                             <a
                               className="mt-1 block truncate text-xs text-muted-foreground hover:text-primary"
@@ -853,19 +983,26 @@ export default function LibraryPage() {
                           ) : null}
                         </td>
 
-                        <td className="px-4 py-3 font-medium">{formatCount(listedChapters)}</td>
+                        <td className="px-4 py-3 font-medium">
+                          {formatCount(listedChapters)}
+                        </td>
 
                         <td className="px-4 py-3">
-                          <div className="font-medium">{formatCount(rawChapters)}</div>
+                          <div className="font-medium">
+                            {formatCount(rawChapters)}
+                          </div>
                           <div className="mt-1 text-xs text-muted-foreground">
                             {formatPercent(rawChapters, listedChapters)} raw
                           </div>
                         </td>
 
                         <td className="px-4 py-3">
-                          <div className="font-medium">{formatCount(translatedChapters)}</div>
+                          <div className="font-medium">
+                            {formatCount(translatedChapters)}
+                          </div>
                           <div className="mt-1 text-xs text-muted-foreground">
-                            {formatPercent(translatedChapters, listedChapters)} translated
+                            {formatPercent(translatedChapters, listedChapters)}{" "}
+                            translated
                           </div>
                         </td>
 
@@ -886,8 +1023,10 @@ export default function LibraryPage() {
                                 tone={
                                   onboardingStatus === "failed"
                                     ? "red"
-                                    : onboardingStatus === "scraping_chapters" ||
-                                        onboardingStatus === "chapters_pending" ||
+                                    : onboardingStatus ===
+                                          "scraping_chapters" ||
+                                        onboardingStatus ===
+                                          "chapters_pending" ||
                                         onboardingStatus === "glossary_pending"
                                       ? "amber"
                                       : "neutral"
@@ -901,15 +1040,20 @@ export default function LibraryPage() {
                                       ? "Glossary pending"
                                       : onboardingStatus === "failed"
                                         ? "Failed"
-                                        : onboardingStatus === "metadata_discovered"
+                                        : onboardingStatus ===
+                                            "metadata_discovered"
                                           ? "Metadata ready"
                                           : onboardingStatus === "cancelled"
                                             ? "Cancelled"
                                             : onboardingStatus}
                               </Badge>
 
-                              {onboardingStatus === "failed" && novel.onboarding_error_message ? (
-                                <div className="max-w-[200px] truncate text-xs text-destructive" title={novel.onboarding_error_message}>
+                              {onboardingStatus === "failed" &&
+                              novel.onboarding_error_message ? (
+                                <div
+                                  className="max-w-[200px] truncate text-xs text-destructive"
+                                  title={novel.onboarding_error_message}
+                                >
                                   {novel.onboarding_error_message}
                                 </div>
                               ) : null}
@@ -928,7 +1072,9 @@ export default function LibraryPage() {
                               cancelOnboarding.isPending
                             }
                             translationPending={runTranslationDialog.isPending}
-                            coverUploadOpen={coverUploadNovelId === novel.novel_id}
+                            coverUploadOpen={
+                              coverUploadNovelId === novel.novel_id
+                            }
                             onToggleCoverUpload={(row) =>
                               setCoverUploadNovelId((current) =>
                                 current === row.novel_id ? null : row.novel_id,
@@ -956,14 +1102,19 @@ export default function LibraryPage() {
                             onUnpublish={(row) => runPublishAction(row, false)}
                             onResume={(row) => resumeOnboarding.mutate(row)}
                             onCancel={(row) => cancelOnboarding.mutate(row)}
-                            onRetranslateStale={(row) => setRetranslateStaleNovel(row)}
+                            onRetranslateStale={(row) =>
+                              setRetranslateStaleNovel(row)
+                            }
                           />
                         </td>
                       </tr>
                     );
                   })
                 ) : (
-                  <EmptyState title="No novels in the library yet." colSpan={9} />
+                  <EmptyState
+                    title="No novels in the library yet."
+                    colSpan={9}
+                  />
                 )}
               </tbody>
             </table>
@@ -990,7 +1141,11 @@ export default function LibraryPage() {
         loadError={translationDialogError}
         runError={runTranslationDialog.error}
         pending={runTranslationDialog.isPending}
-        onLanguageChange={(language) => setTranslationLanguage(language as (typeof TRANSLATION_LANGUAGES)[number])}
+        onLanguageChange={(language) =>
+          setTranslationLanguage(
+            language as (typeof TRANSLATION_LANGUAGES)[number],
+          )
+        }
         onToggleAll={toggleAllTranslationChapters}
         onToggleChapter={toggleTranslationChapter}
         onCancel={closeTranslationDialog}
@@ -1006,14 +1161,21 @@ export default function LibraryPage() {
         pending={runLibraryAction.isPending}
         onConfirm={() => {
           if (pendingDeleteRows) {
-            runLibraryAction.mutate({ action: "delete", novels: pendingDeleteRows });
+            runLibraryAction.mutate({
+              action: "delete",
+              novels: pendingDeleteRows,
+            });
           }
         }}
         onCancel={() => setPendingDeleteRows(null)}
         auditNotice="This action is recorded in the audit log."
       />
 
-      <TaxonomyDialog open={Boolean(taxonomyNovel)} novel={taxonomyNovel} onClose={closeTaxonomyDialog} />
+      <TaxonomyDialog
+        open={Boolean(taxonomyNovel)}
+        novel={taxonomyNovel}
+        onClose={closeTaxonomyDialog}
+      />
 
       <RetranslateStaleDialog
         open={Boolean(retranslateStaleNovel)}

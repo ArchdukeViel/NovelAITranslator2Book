@@ -1,6 +1,19 @@
 "use client";
 
-import { BookMarked, BookOpen, Eye, EyeOff, FileEdit, ImageUp, Languages, RefreshCw, RotateCw, Tags, Trash2, X } from "lucide-react";
+import {
+  BookMarked,
+  BookOpen,
+  Eye,
+  EyeOff,
+  FileEdit,
+  ImageUp,
+  Languages,
+  RefreshCw,
+  RotateCw,
+  Tags,
+  Trash2,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 
 import { CoverUploader } from "@/components/admin/cover-uploader";
@@ -79,13 +92,20 @@ export function LibraryRowActions({
   const latest = latestChapterText(novel);
 
   const onboardingStatus = novel.onboarding_status;
-  const onboardingResumable = onboardingStatus !== null &&
+  const onboardingResumable =
+    onboardingStatus !== null &&
     onboardingStatus !== undefined &&
-    !["ready_for_translation", "cancelled", "not_started"].includes(onboardingStatus);
-  const onboardingCancellable = onboardingStatus !== null &&
+    !["ready_for_translation", "cancelled", "not_started"].includes(
+      onboardingStatus,
+    );
+  const onboardingCancellable =
+    onboardingStatus !== null &&
     onboardingStatus !== undefined &&
-    !["ready_for_translation", "cancelled", "not_started"].includes(onboardingStatus);
-  const showOnboardingError = onboardingStatus === "failed" && novel.onboarding_error_message;
+    !["ready_for_translation", "cancelled", "not_started"].includes(
+      onboardingStatus,
+    );
+  const showOnboardingError =
+    onboardingStatus === "failed" && novel.onboarding_error_message;
 
   return (
     <div className="space-y-2">
@@ -101,14 +121,30 @@ export function LibraryRowActions({
           compact
         />
         {onboardingStatus && onboardingStatus !== "ready_for_translation" ? (
-          <Badge tone={onboardingStatus === "failed" ? "red" : onboardingStatus === "scraping_chapters" || onboardingStatus === "chapters_pending" || onboardingStatus === "glossary_pending" ? "amber" : "neutral"}>
-            {onboardingStatus === "scraping_chapters" ? "Scraping" :
-             onboardingStatus === "chapters_pending" ? "Scrape pending" :
-             onboardingStatus === "glossary_pending" ? "Glossary pending" :
-             onboardingStatus === "failed" ? "Failed" :
-             onboardingStatus === "metadata_discovered" ? "Metadata ready" :
-             onboardingStatus === "cancelled" ? "Cancelled" :
-             onboardingStatus}
+          <Badge
+            tone={
+              onboardingStatus === "failed"
+                ? "red"
+                : onboardingStatus === "scraping_chapters" ||
+                    onboardingStatus === "chapters_pending" ||
+                    onboardingStatus === "glossary_pending"
+                  ? "amber"
+                  : "neutral"
+            }
+          >
+            {onboardingStatus === "scraping_chapters"
+              ? "Scraping"
+              : onboardingStatus === "chapters_pending"
+                ? "Scrape pending"
+                : onboardingStatus === "glossary_pending"
+                  ? "Glossary pending"
+                  : onboardingStatus === "failed"
+                    ? "Failed"
+                    : onboardingStatus === "metadata_discovered"
+                      ? "Metadata ready"
+                      : onboardingStatus === "cancelled"
+                        ? "Cancelled"
+                        : onboardingStatus}
           </Badge>
         ) : null}
         {novel.publication_status ? (
@@ -144,7 +180,11 @@ export function LibraryRowActions({
             className="rounded-lg pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
             onClick={() => onPublish(novel)}
             disabled={!canPublish || pending}
-            title={canPublish ? "Publish this novel" : "Translate at least one chapter before publishing."}
+            title={
+              canPublish
+                ? "Publish this novel"
+                : "Translate at least one chapter before publishing."
+            }
           >
             <Eye className="h-4 w-4" />
             {pending ? "Publishing" : "Publish"}
@@ -155,7 +195,11 @@ export function LibraryRowActions({
           className="rounded-lg pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           onClick={() => onTranslate(novel)}
           disabled={missingSource || pending || translationPending}
-          title={missingSource ? "Source key missing" : "Choose chapters to translate"}
+          title={
+            missingSource
+              ? "Source key missing"
+              : "Choose chapters to translate"
+          }
         >
           <Languages className="h-4 w-4" />
           Translate
@@ -179,7 +223,11 @@ export function LibraryRowActions({
           className="rounded-lg pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           onClick={() => onRecrawl(novel)}
           disabled={missingSource || pending}
-          title={missingSource ? "Source key missing" : "Check and scrape latest chapters"}
+          title={
+            missingSource
+              ? "Source key missing"
+              : "Check and scrape latest chapters"
+          }
         >
           <RefreshCw className="h-4 w-4" />
           Recrawl
@@ -196,7 +244,7 @@ export function LibraryRowActions({
         </Button>
         <Link
           className={cn(
-            "inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+            "inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary",
           )}
           href={publicNovelHref(novel.novel_id)}
         >
@@ -205,7 +253,7 @@ export function LibraryRowActions({
         </Link>
         <Link
           className={cn(
-            "inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+            "inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary",
           )}
           href={`/admin/editor?novel=${encodeURIComponent(novel.novel_id)}`}
         >
@@ -214,7 +262,7 @@ export function LibraryRowActions({
         </Link>
         <Link
           className={cn(
-            "inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+            "inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary",
           )}
           href={`/admin/novels/${encodeURIComponent(novel.novel_id)}/glossary`}
         >
@@ -277,7 +325,9 @@ export function LibraryRowActions({
           className="rounded-md border border-border/60 bg-muted/30 p-3"
         >
           <CoverUploader
-            onValidatedFile={(file, format) => onValidatedCover(novel, file, format)}
+            onValidatedFile={(file, format) =>
+              onValidatedCover(novel, file, format)
+            }
           />
         </div>
       ) : null}

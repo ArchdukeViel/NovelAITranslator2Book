@@ -488,7 +488,8 @@ export default function ChapterPage() {
         target instanceof HTMLTextAreaElement ||
         target instanceof HTMLSelectElement ||
         (target instanceof HTMLElement &&
-          (target.isContentEditable || Boolean(target.closest("[contenteditable='true']"))))
+          (target.isContentEditable ||
+            Boolean(target.closest("[contenteditable='true']"))))
       )
         return;
       if (event.key === "ArrowLeft" && previousChapterId)
