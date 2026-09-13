@@ -17,6 +17,9 @@ updates:
       - "javascript"
     commit-message:
       prefix: "chore(deps)"
+    ignore:
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "npm"
     directory: "/workers/r2-gateway"
     schedule:
@@ -26,6 +29,9 @@ updates:
       - "javascript"
     commit-message:
       prefix: "chore(deps)"
+    ignore:
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
