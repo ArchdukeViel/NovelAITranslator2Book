@@ -1,3 +1,5 @@
+import type { PublicationStatus } from "@/lib/public-types";
+
 export type ApiErrorPayload = {
   status: number;
   code: string;
@@ -15,7 +17,7 @@ export type NovelSummary = {
   author?: string | null;
   source_key?: string | null;
   source_url?: string | null;
-  publication_status?: string | null;
+  publication_status?: PublicationStatus | null;
   chapter_count: number;
   scraped_count?: number;
   translated_count?: number;
@@ -147,7 +149,7 @@ export type NovelPublicationSummary = {
   latest_chapter_id?: string | null;
   latest_chapter_number?: number | null;
   latest_chapter_title?: string | null;
-  publication_status: string;
+  publication_status: PublicationStatus;
   visibility_warnings: string[];
 };
 

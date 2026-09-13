@@ -39,15 +39,35 @@ export function ImportNowPanel({
       </PanelHeader>
       <PanelBody className="flex flex-1 flex-col justify-between gap-3">
         <div className="space-y-3">
-          <Input value={novelId} onChange={(event) => onNovelIdChange(event.target.value)} placeholder="Novel ID" />
-          <Input value={sourceUrl} onChange={(event) => onSourceUrlChange(event.target.value)} placeholder="Novel source URL" />
-          <Input value={maxUnits} onChange={(event) => onMaxUnitsChange(event.target.value)} placeholder="Max units" />
-          <Button className="w-full" variant="outline" onClick={onSubmit} disabled={!novelId || !sourceUrl || pending}>
+          <Input
+            value={novelId}
+            onChange={(event) => onNovelIdChange(event.target.value)}
+            placeholder="Novel ID"
+            className="min-h-11 h-11 px-3.5 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+          />
+          <Input
+            value={sourceUrl}
+            onChange={(event) => onSourceUrlChange(event.target.value)}
+            placeholder="Novel source URL"
+            className="min-h-11 h-11 px-3.5 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+          />
+          <Input
+            value={maxUnits}
+            onChange={(event) => onMaxUnitsChange(event.target.value)}
+            placeholder="Max units"
+            className="min-h-11 h-11 px-3.5 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+          />
+          <Button
+            className="w-full min-h-11 h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+            variant="outline"
+            onClick={onSubmit}
+            disabled={!novelId || !sourceUrl || pending}
+          >
             <Upload className="h-4 w-4" />
             Import
           </Button>
           {result ? (
-            <div className="rounded-md border bg-muted/40 p-3 text-sm">
+            <div className="rounded-lg border border-border/70 bg-muted/40 p-3 text-sm">
               {result.chapters} unit(s) imported from the source URL
             </div>
           ) : null}

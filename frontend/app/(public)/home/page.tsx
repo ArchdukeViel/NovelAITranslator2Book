@@ -2,6 +2,7 @@
 
 import {
   useDeferredValue,
+  useEffect,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -13,6 +14,8 @@ import {
   Compass,
   FilePlus2,
   Newspaper,
+  Pause,
+  Play,
   Shuffle,
   Trophy,
   TrendingUp,
@@ -163,8 +166,9 @@ function RailCard({
     <article role="listitem" className="w-44 shrink-0 snap-start">
       <Link href={targetHref} className="group block">
         <div className="relative overflow-hidden rounded-md bg-card p-1.5 shadow-card transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-raised hover:ring-1 hover:ring-primary/40">
-          {isNewlyAdded(novel.added_at, nowMs) &&
-            !lastReadChapter && <NewBadge />}
+          {isNewlyAdded(novel.added_at, nowMs) && !lastReadChapter && (
+            <NewBadge />
+          )}
           {lastReadChapter && (
             <span className="absolute left-2 top-2 z-10 rounded-sm bg-primary px-1.5 py-0.5 font-metadata text-[10px] font-bold uppercase tracking-wider text-primary-foreground shadow-sm">
               {lastReadChapter.chapter_number
@@ -191,7 +195,7 @@ function RailCard({
               novel.genres?.[0]?.slug ??
               "Web Novel"}
           </span>
-          <span>
+          <span className="tabular-nums">
             {novel.translated_count > 0
               ? `${novel.translated_count} Ch`
               : "Pending"}
@@ -222,46 +226,33 @@ function ImageBannerTile({
   icon: Icon,
   title,
   subtitle,
-  bgImage,
 }: {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   subtitle?: string;
-  bgImage: string;
+  bgImage?: string;
 }) {
   return (
     <Link
       href={href}
-      className="group relative flex h-24 sm:h-28 flex-1 min-w-[45%] md:min-w-[20%] items-center justify-center overflow-hidden rounded-xl bg-card shadow-md transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:ring-1 hover:ring-primary/40"
-      style={{
-        backgroundImage: `url(${bgImage})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-      }}
+      className={cn(
+        CARD_SURFACE,
+        CARD_LIFT,
+        "group relative flex min-h-[44px] h-24 sm:h-28 flex-1 min-w-[45%] md:min-w-[20%] flex-col items-center justify-center gap-1.5 rounded-xl border border-border/60 p-3 text-center transition-all duration-200 hover:border-primary/50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary",
+      )}
     >
-      {/* Dark overlay with hover reaction */}
-      <div
-        className="absolute inset-0 bg-black/45 transition-opacity duration-200 group-hover:bg-black/60"
-        aria-hidden="true"
-      />
-      {/* Subtle vignette border */}
-      <div className="absolute inset-0 ring-1 ring-inset ring-white/10 rounded-xl" />
-
-      {/* Content */}
-      <div className="relative z-10 flex flex-col items-center gap-1.5 px-3 text-center text-white">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 backdrop-blur-xs transition-transform duration-300 group-hover:scale-110">
-          <Icon className="h-4.5 w-4.5 text-white" />
-        </div>
-        <span className="font-literary text-base sm:text-lg font-bold tracking-wide text-white drop-shadow-sm">
-          {title}
-        </span>
-        {subtitle && (
-          <span className="font-metadata text-[10px] sm:text-[11px] font-medium tracking-wider text-white/80 uppercase">
-            {subtitle}
-          </span>
-        )}
+      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary transition-transform duration-300 group-hover:scale-110">
+        <Icon className="h-4.5 w-4.5" />
       </div>
+      <span className="font-literary text-sm sm:text-base font-semibold tracking-wide text-foreground transition-colors group-hover:text-primary">
+        {title}
+      </span>
+      {subtitle && (
+        <span className="font-metadata text-[10px] sm:text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+          {subtitle}
+        </span>
+      )}
     </Link>
   );
 }
@@ -286,7 +277,7 @@ function RecentUpdateItem({
     <div className="flex items-start gap-4 border-b border-border/20 p-4 transition-colors last:border-0 hover:bg-muted/50">
       <Link
         href={publicNovelHref(novel.slug)}
-        className="block w-12 shrink-0 overflow-hidden rounded"
+        className="block w-12 shrink-0 overflow-hidden rounded focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
         aria-hidden="true"
         tabIndex={-1}
       >
@@ -308,7 +299,7 @@ function RecentUpdateItem({
         </div>
         <Link
           href={publicNovelHref(novel.slug)}
-          className="block truncate font-literary text-base font-medium leading-tight text-foreground transition-colors hover:text-primary"
+          className="block truncate font-literary text-base font-medium leading-tight text-foreground transition-colors hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
         >
           {novel.title}
         </Link>
@@ -316,7 +307,7 @@ function RecentUpdateItem({
           {chapterHref && chapterText ? (
             <Link
               href={chapterHref}
-              className="truncate font-metadata text-[13px] text-muted-foreground transition-colors hover:text-primary"
+              className="truncate font-metadata text-[13px] text-muted-foreground transition-colors hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
             >
               {chapterTitle ? `${chapterText} · ${chapterTitle}` : chapterText}
             </Link>
@@ -333,17 +324,13 @@ function RecentUpdateItem({
 
 /* ------------------------------ ranked sidebar item --------------------------- */
 
-function RankedItem({
-  ranking,
-}: {
-  ranking: PublicRankingItem;
-}) {
+function RankedItem({ ranking }: { ranking: PublicRankingItem }) {
   const { novel } = ranking;
   return (
     <li>
       <Link
         href={publicNovelHref(novel.slug)}
-        className="group flex items-center gap-3 rounded p-2 transition-colors hover:bg-muted/50"
+        className="group flex items-center gap-3 rounded p-2 transition-colors hover:bg-muted/50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
       >
         <div className="relative w-10 shrink-0 overflow-hidden rounded">
           <FallbackCover
@@ -356,7 +343,7 @@ function RankedItem({
           />
           <span
             className={cn(
-              "absolute left-0 top-0 rounded-br px-1 text-[10px] font-bold",
+              "absolute left-0 top-0 rounded-br px-1 text-[10px] font-bold tabular-nums",
               ranking.rank === 1
                 ? "bg-primary text-primary-foreground"
                 : "bg-background/90 text-foreground",
@@ -366,11 +353,14 @@ function RankedItem({
           </span>
         </div>
         <div className="min-w-0 flex-1">
-          <h4 className="truncate text-[13px] font-semibold text-foreground transition-colors group-hover:text-primary">
+          <h4 className="truncate font-literary text-[13px] font-semibold text-foreground transition-colors group-hover:text-primary">
             {novel.title}
           </h4>
           <p className="mt-0.5 truncate font-metadata text-[11px] text-muted-foreground">
-            {ranking.unique_views.toLocaleString()} unique novel views
+            <span className="tabular-nums">
+              {ranking.unique_views.toLocaleString()}
+            </span>{" "}
+            active readers
           </p>
         </div>
       </Link>
@@ -380,21 +370,17 @@ function RankedItem({
 
 /* ------------------------------ trending sidebar item ------------------------- */
 
-function TrendingItem({
-  ranking,
-}: {
-  ranking: PublicRankingItem;
-}) {
+function TrendingItem({ ranking }: { ranking: PublicRankingItem }) {
   const { novel, rank } = { novel: ranking.novel, rank: ranking.rank };
   return (
     <li>
       <Link
         href={publicNovelHref(novel.slug)}
-        className="group flex items-center gap-4"
+        className="group flex items-center gap-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-md"
       >
         <span
           className={cn(
-            "w-8 text-center font-literary text-3xl font-bold",
+            "w-8 text-center font-literary text-3xl font-bold tabular-nums",
             rank === 1 ? "text-primary" : "text-muted-foreground/60",
           )}
         >
@@ -409,8 +395,8 @@ function TrendingItem({
               className="h-3.5 w-3.5 text-muted-foreground"
               aria-hidden="true"
             />
-            <span className="font-metadata text-xs text-muted-foreground">
-              {ranking.unique_views.toLocaleString()} unique novel views
+            <span className="font-metadata text-xs text-muted-foreground tabular-nums">
+              {ranking.unique_views.toLocaleString()} active readers
             </span>
           </div>
         </div>
@@ -448,7 +434,8 @@ function WidgetCard({
 /* ------------------------------------ page ----------------------------------- */
 
 export default function HomePage() {
-  const { data, isPending, isError, error, refetch } = useCatalog(HOME_CATALOG_PARAMS);
+  const { data, isPending, isError, error, refetch } =
+    useCatalog(HOME_CATALOG_PARAMS);
 
   const novels = data?.novels ?? [];
   const spotlightNovels = novels.filter((novel) =>
@@ -456,20 +443,47 @@ export default function HomePage() {
   );
   const spotlightNovel = spotlightNovels[0];
   const [heroIndex, setHeroIndex] = useState(0);
+  const [heroPaused, setHeroPaused] = useState(false);
+  const [userPaused, setUserPaused] = useState(false);
   const [rankingTab, setRankingTab] = useState<"daily" | "weekly" | "monthly">(
     HOME_RANKING_PERIOD,
   );
   const nowMs = useHydratedNow();
   const rankingQuery = usePublicRankings(rankingTab, HOME_RANKING_LIMIT);
-  const trendingQuery = usePublicRankings(HOME_RANKING_PERIOD, HOME_RANKING_LIMIT, {
-    enabled: rankingTab !== HOME_RANKING_PERIOD,
-  });
-  const currentSpotlight = spotlightNovels[heroIndex] ?? spotlightNovel;
+  const trendingQuery = usePublicRankings(
+    HOME_RANKING_PERIOD,
+    HOME_RANKING_LIMIT,
+    {
+      enabled: rankingTab !== HOME_RANKING_PERIOD,
+    },
+  );
+
+  // Auto-advance spotlight carousel with pause-on-hover/focus/manual and reduced-motion guard
+  useEffect(() => {
+    if (heroPaused || userPaused || spotlightNovels.length <= 1) return;
+    if (
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return;
+    }
+    const timer = setInterval(() => {
+      setHeroIndex((prev) => (prev + 1) % spotlightNovels.length);
+    }, 7000);
+    return () => clearInterval(timer);
+  }, [heroPaused, userPaused, spotlightNovels.length]);
+
+  const activeHeroIndex =
+    spotlightNovels.length > 0 ? heroIndex % spotlightNovels.length : 0;
+  const currentSpotlight = spotlightNovels[activeHeroIndex] ?? spotlightNovel;
 
   // Keep personalization out of the first render. The server-hydrated catalog
   // and weekly ranking are useful to guests before auth/history are needed.
   const personalizationEnabled = useDeferredValue(!isPending);
-  const { isAuthenticated } = usePublicAuth({ enabled: personalizationEnabled });
+  const { isAuthenticated } = usePublicAuth({
+    enabled: personalizationEnabled,
+  });
   const heroSourceTitle = currentSpotlight
     ? usefulSourceTitle(currentSpotlight.source_title, currentSpotlight.title)
     : null;
@@ -499,7 +513,7 @@ export default function HomePage() {
   const trending =
     rankingTab === HOME_RANKING_PERIOD
       ? ranked
-      : trendingQuery.data?.items ?? [];
+      : (trendingQuery.data?.items ?? []);
   const trendingPending =
     rankingTab === HOME_RANKING_PERIOD
       ? rankingQuery.isPending
@@ -549,45 +563,79 @@ export default function HomePage() {
           {/* Spotlight hero carousel */}
           <section
             aria-label="Dokushodo spotlight novel"
+            onMouseEnter={() => setHeroPaused(true)}
+            onMouseLeave={() => setHeroPaused(false)}
+            onFocus={() => setHeroPaused(true)}
+            onBlur={() => setHeroPaused(false)}
             className="group relative min-h-[420px] w-full overflow-hidden rounded-xl bg-card shadow-lg"
           >
             {currentSpotlight ? (
               <>
                 {/* Atmospheric background layer (subtle palette wash, not a stretched bookplate) */}
                 <div
-                  className="absolute inset-0 bg-gradient-to-br from-primary/10 via-card to-background"
+                  className="absolute inset-0 bg-gradient-to-br from-primary/10 via-card to-background transition-opacity duration-500 ease-out"
                   aria-hidden="true"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/25 to-transparent" />
 
                 {/* Content Overlay */}
-                <div className="relative flex flex-col gap-8 p-6 sm:p-8 lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-12 lg:p-10">
+                <div
+                  key={currentSpotlight.slug}
+                  className="relative flex flex-col gap-8 p-6 sm:p-8 lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-12 lg:p-10 transition-all duration-500 ease-out animate-in fade-in slide-in-from-right-1 motion-reduce:animate-none motion-reduce:transition-none"
+                >
                   <div className="order-2 flex min-w-0 flex-col lg:order-1">
                     <div className="mb-3 flex items-center justify-between">
                       <span className="font-metadata text-xs font-semibold uppercase tracking-wider text-primary">
-                        Featured Series{" "}
-                        {spotlightNovels.length > 1
-                          ? `(${heroIndex + 1}/${spotlightNovels.length})`
-                          : ""}
+                        Featured Series
+                        {spotlightNovels.length > 1 && (
+                          <span className="ml-1.5 tabular-nums">
+                            ({activeHeroIndex + 1}/{spotlightNovels.length})
+                          </span>
+                        )}
                       </span>
                       {spotlightNovels.length > 1 && (
                         <div
-                          className="z-10 flex gap-1.5"
+                          className="z-10 flex items-center gap-1"
                           aria-label="Featured series carousel controls"
                         >
+                          <button
+                            type="button"
+                            onClick={() => setUserPaused((prev) => !prev)}
+                            className="relative flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+                            aria-label={
+                              userPaused
+                                ? "Resume carousel rotation"
+                                : "Pause carousel rotation"
+                            }
+                            title={
+                              userPaused ? "Resume rotation" : "Pause rotation"
+                            }
+                          >
+                            {userPaused ? (
+                              <Play className="h-4 w-4" aria-hidden="true" />
+                            ) : (
+                              <Pause className="h-4 w-4" aria-hidden="true" />
+                            )}
+                          </button>
                           {spotlightNovels.slice(0, 5).map((_, idx) => (
                             <button
                               key={idx}
                               type="button"
                               onClick={() => setHeroIndex(idx)}
-                              className={cn(
-                                "h-2 rounded-full transition-all",
-                                idx === heroIndex
-                                  ? "w-6 bg-primary"
-                                  : "w-2 bg-muted-foreground/40 hover:bg-muted-foreground",
-                              )}
+                              className="relative flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                               aria-label={`Go to slide ${idx + 1}`}
-                            />
+                            >
+                              {/* ponytail: visible dot inside 44px invisible hit area */}
+                              <span
+                                aria-hidden="true"
+                                className={cn(
+                                  "block h-2 rounded-full transition-all duration-300 ease-out motion-reduce:transition-none",
+                                  idx === activeHeroIndex
+                                    ? "w-6 bg-primary"
+                                    : "w-2 bg-muted-foreground/40 hover:bg-muted-foreground",
+                                )}
+                              />
+                            </button>
                           ))}
                         </div>
                       )}
@@ -627,7 +675,7 @@ export default function HomePage() {
                       {heroReadableHref && (
                         <Link
                           href={heroReadableHref}
-                          className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-foreground px-6 text-sm font-semibold text-background shadow-md transition-colors hover:bg-primary hover:text-primary-foreground"
+                          className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-foreground px-6 text-sm font-semibold text-background shadow-md transition-colors hover:bg-primary hover:text-primary-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                         >
                           <BookOpen className="h-4 w-4" aria-hidden="true" />
                           Start Reading
@@ -635,7 +683,7 @@ export default function HomePage() {
                       )}
                       <Link
                         href={publicNovelHref(currentSpotlight.slug)}
-                        className="inline-flex h-11 items-center justify-center gap-1.5 rounded-md bg-card/60 px-5 text-sm font-medium text-foreground backdrop-blur-sm transition-colors hover:bg-muted"
+                        className="inline-flex h-11 items-center justify-center gap-1.5 rounded-md bg-card/60 px-5 text-sm font-medium text-foreground backdrop-blur-sm transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                       >
                         Novel Details
                         <ChevronRight
@@ -651,7 +699,7 @@ export default function HomePage() {
                     <Link
                       href={publicNovelHref(currentSpotlight.slug)}
                       aria-label={`Open details for ${currentSpotlight.title}`}
-                      className="block w-36 shrink-0 rounded-md bg-card p-1.5 shadow-raised ring-1 ring-border/40 transition-transform duration-300 ease-out hover:-rotate-1 hover:scale-[1.02] sm:w-44 lg:w-56"
+                      className="block w-36 shrink-0 rounded-md bg-card p-1.5 shadow-raised ring-1 ring-border/40 transition-transform duration-300 ease-out hover:-rotate-1 hover:scale-[1.02] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary motion-reduce:hover:scale-100 motion-reduce:hover:rotate-0 motion-reduce:transition-none sm:w-44 lg:w-56"
                     >
                       <FallbackCover
                         title={currentSpotlight.title}
@@ -664,6 +712,22 @@ export default function HomePage() {
                     </Link>
                   </div>
                 </div>
+
+                {/* 7-second reading progress bar */}
+                {spotlightNovels.length > 1 && !userPaused && (
+                  <div
+                    aria-hidden="true"
+                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary/10 overflow-hidden"
+                  >
+                    <div
+                      key={activeHeroIndex}
+                      style={{
+                        animationPlayState: heroPaused ? "paused" : "running",
+                      }}
+                      className="h-full bg-primary/40 motion-reduce:hidden animate-[spotlight-progress_7000ms_linear]"
+                    />
+                  </div>
+                )}
               </>
             ) : (
               /* Catalog Fallback Hero when catalog has 0 novels or loading error */
@@ -747,7 +811,7 @@ export default function HomePage() {
               </div>
               <Link
                 href="/login"
-                className="inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-foreground px-4 text-xs font-semibold text-background shadow-xs transition-colors hover:bg-primary hover:text-primary-foreground"
+                className="inline-flex min-h-[44px] h-11 shrink-0 items-center justify-center rounded-md bg-foreground px-4 text-xs font-semibold text-background shadow-xs transition-colors hover:bg-primary hover:text-primary-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               >
                 Sign In
               </Link>
@@ -764,28 +828,24 @@ export default function HomePage() {
               icon={Compass}
               title="Browse Novels"
               subtitle="Full Catalog"
-              bgImage="/assets/shortcuts/browse-novels.svg"
             />
             <ImageBannerTile
               href="/ranking"
               icon={Trophy}
               title="Ranking"
               subtitle="Top Series"
-              bgImage="/assets/shortcuts/ranking.svg"
             />
             <ImageBannerTile
               href="/random"
               icon={Shuffle}
               title="Random Novel"
               subtitle="Let chance decide"
-              bgImage="/assets/shortcuts/random-novel.svg"
             />
             <ImageBannerTile
               href="/account/request-novels"
               icon={FilePlus2}
               title="Request Novel"
               subtitle="Ask for a translation"
-              bgImage="/assets/shortcuts/request-novel.svg"
             />
           </section>
 
@@ -797,7 +857,7 @@ export default function HomePage() {
               </h2>
               <Link
                 href="/browse-novels?sort_by=added_at&order=desc"
-                className="rounded-sm bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                className="inline-flex min-h-[44px] items-center rounded-sm bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               >
                 See More
               </Link>
@@ -824,7 +884,7 @@ export default function HomePage() {
                     className={cn(
                       CARD_SURFACE,
                       CARD_LIFT,
-                      "group flex flex-col gap-2 rounded-lg p-2.5",
+                      "group flex flex-col gap-2 rounded-lg p-2.5 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary",
                     )}
                   >
                     <div className="relative aspect-[2/3] w-full overflow-hidden rounded-sm bg-muted">
@@ -839,7 +899,7 @@ export default function HomePage() {
                       />
                     </div>
                     <div className="mt-1">
-                      <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
+                      <h3 className="line-clamp-2 font-literary text-sm font-semibold leading-snug text-foreground transition-colors group-hover:text-primary">
                         {novel.title}
                       </h3>
                       <div className="mt-2 flex items-center justify-between">
@@ -848,14 +908,15 @@ export default function HomePage() {
                             novel.genres?.[0]?.slug ??
                             "Web Novel"}
                         </span>
-                        <span className="font-metadata text-[10px] text-muted-foreground">
+                        <span className="font-metadata text-[10px] text-muted-foreground tabular-nums">
                           {novel.translated_count > 0
                             ? `${novel.translated_count} Ch`
                             : "Pending"}
                         </span>
                       </div>
-                      <p className="mt-1 font-metadata text-[10px] text-muted-foreground">
-                        Added {relativeTime(novel.added_at, nowMs) ?? "recently"}
+                      <p className="mt-1 font-metadata text-[10px] text-muted-foreground tabular-nums">
+                        Added{" "}
+                        {relativeTime(novel.added_at, nowMs) ?? "recently"}
                       </p>
                     </div>
                   </Link>
@@ -879,7 +940,7 @@ export default function HomePage() {
               </h2>
               <Link
                 href="/browse-novels?sort_by=updated_at&order=desc"
-                className="rounded-sm bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                className="inline-flex min-h-[44px] items-center rounded-sm bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               >
                 See More
               </Link>
@@ -917,11 +978,7 @@ export default function HomePage() {
                 )
                 .slice(0, 12)
                 .map((novel) => (
-                  <RailCard
-                    key={novel.novel_id}
-                    novel={novel}
-                    nowMs={nowMs}
-                  />
+                  <RailCard key={novel.novel_id} novel={novel} nowMs={nowMs} />
                 ))}
             </NovelRail>
           ))}
@@ -933,11 +990,6 @@ export default function HomePage() {
           >
             <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
-                <div className="inline-flex items-center gap-1.5 text-xs font-medium text-primary">
-                  <span className="font-metadata uppercase tracking-wider">
-                    Community Requests
-                  </span>
-                </div>
                 <h2 className="font-literary text-2xl font-semibold text-foreground">
                   Can&apos;t find the novel you&apos;re looking for?
                 </h2>
@@ -948,7 +1000,7 @@ export default function HomePage() {
               </div>
               <Link
                 href="/account/request-novels"
-                className="inline-flex h-11 shrink-0 items-center justify-center gap-2.5 rounded-md border border-primary/30 bg-primary/10 px-6 font-medium text-primary shadow-sm transition-all hover:bg-primary hover:text-primary-foreground"
+                className="inline-flex h-11 shrink-0 items-center justify-center gap-2.5 rounded-md border border-primary/30 bg-primary/10 px-6 font-medium text-primary shadow-sm transition-all hover:bg-primary hover:text-primary-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <FilePlus2 className="h-4 w-4" />
                 <span>Request Translation</span>
@@ -966,18 +1018,18 @@ export default function HomePage() {
             action={
               <Link
                 href={`/ranking?period=${rankingTab}`}
-                className="rounded-sm bg-muted/50 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                className="inline-flex min-h-[44px] items-center rounded-sm bg-muted/50 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               >
                 See More
               </Link>
             }
           >
-            <div className="flex gap-4 border-b border-border/20 px-4 pt-3 pb-2 text-xs font-medium text-muted-foreground">
+            <div className="flex gap-4 border-b border-border/20 px-4 text-xs font-medium text-muted-foreground">
               <button
                 type="button"
                 onClick={() => setRankingTab("daily")}
                 className={cn(
-                  "pb-1 transition-colors cursor-pointer",
+                  "inline-flex min-h-[44px] items-center pb-1 transition-colors cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs",
                   rankingTab === "daily"
                     ? "border-b-2 border-primary font-semibold text-primary"
                     : "hover:text-foreground",
@@ -989,7 +1041,7 @@ export default function HomePage() {
                 type="button"
                 onClick={() => setRankingTab("weekly")}
                 className={cn(
-                  "pb-1 transition-colors cursor-pointer",
+                  "inline-flex min-h-[44px] items-center pb-1 transition-colors cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs",
                   rankingTab === "weekly"
                     ? "border-b-2 border-primary font-semibold text-primary"
                     : "hover:text-foreground",
@@ -1001,7 +1053,7 @@ export default function HomePage() {
                 type="button"
                 onClick={() => setRankingTab("monthly")}
                 className={cn(
-                  "pb-1 transition-colors cursor-pointer",
+                  "inline-flex min-h-[44px] items-center pb-1 transition-colors cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs",
                   rankingTab === "monthly"
                     ? "border-b-2 border-primary font-semibold text-primary"
                     : "hover:text-foreground",
@@ -1012,12 +1064,19 @@ export default function HomePage() {
             </div>
             <ul className="flex flex-col gap-1 p-2">
               {ranked.length > 0 ? (
-                ranked.slice(0, 3).map((ranking) => (
-                  <RankedItem key={ranking.novel.novel_id} ranking={ranking} />
-                ))
+                ranked
+                  .slice(0, 3)
+                  .map((ranking) => (
+                    <RankedItem
+                      key={ranking.novel.novel_id}
+                      ranking={ranking}
+                    />
+                  ))
               ) : (
                 <li className="p-4 text-center text-xs text-muted-foreground">
-                  {rankingQuery.isPending ? "Loading ranking data…" : "Ranking data unavailable"}
+                  {rankingQuery.isPending
+                    ? "Loading ranking data…"
+                    : "Ranking data unavailable"}
                 </li>
               )}
             </ul>
@@ -1029,7 +1088,7 @@ export default function HomePage() {
             action={
               <Link
                 href="/news"
-                className="rounded-sm bg-muted/50 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                className="inline-flex min-h-[44px] items-center rounded-sm bg-muted/50 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               >
                 View All
               </Link>
@@ -1037,7 +1096,7 @@ export default function HomePage() {
           >
             <ul className="flex flex-col gap-3 p-4">
               <li>
-                <Link href="/news" className="group block">
+                <Link href="/news" className="group block focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs">
                   <span className="font-literary text-xs font-medium text-foreground transition-colors group-hover:text-primary">
                     FAQ, news, and your reviews
                   </span>
@@ -1047,7 +1106,7 @@ export default function HomePage() {
                 </Link>
               </li>
               <li>
-                <Link href="/news" className="group block">
+                <Link href="/news" className="group block focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs">
                   <span className="font-literary text-xs font-medium text-foreground transition-colors group-hover:text-primary">
                     Library board and account shell
                   </span>
@@ -1057,7 +1116,7 @@ export default function HomePage() {
                 </Link>
               </li>
               <li>
-                <Link href="/news" className="group block">
+                <Link href="/news" className="group block focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs">
                   <span className="font-literary text-xs font-medium text-foreground transition-colors group-hover:text-primary">
                     Reader settings, progress, and resume
                   </span>
@@ -1073,7 +1132,10 @@ export default function HomePage() {
           <WidgetCard
             title="Trending"
             action={
-              <Link href="/ranking?period=weekly" className="text-xs text-muted-foreground hover:text-primary">
+              <Link
+                href="/ranking?period=weekly"
+                className="inline-flex min-h-[44px] items-center text-xs text-muted-foreground hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
+              >
                 Weekly
               </Link>
             }
@@ -1089,13 +1151,15 @@ export default function HomePage() {
                 ))
               ) : (
                 <li className="py-4 text-center text-xs text-muted-foreground">
-                  {trendingPending ? "Loading ranking data…" : "Ranking data unavailable"}
+                  {trendingPending
+                    ? "Loading ranking data…"
+                    : "Ranking data unavailable"}
                 </li>
               )}
             </ul>
             <Link
               href="/ranking?period=weekly"
-              className="mt-6 inline-flex w-full items-center justify-center rounded-md bg-muted/50 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="mt-6 inline-flex min-h-[44px] w-full items-center justify-center rounded-md bg-muted/50 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
             >
               View Full Ranking
             </Link>

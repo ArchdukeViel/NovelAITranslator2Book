@@ -1710,13 +1710,27 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
         <PanelHeader className="flex flex-row items-center justify-between gap-3">
           <PanelTitle>Entries</PanelTitle>
           <div className="flex flex-wrap justify-end gap-2">
-            <Button size="sm" variant="outline" onClick={openCandidateImport}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+              onClick={openCandidateImport}
+            >
               Import review candidates
             </Button>
-            <Button size="sm" variant="secondary" onClick={openProviderSuggestions}>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+              onClick={openProviderSuggestions}
+            >
               Suggest with provider
             </Button>
-            <Button size="sm" onClick={openCreate}>
+            <Button
+              size="sm"
+              className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+              onClick={openCreate}
+            >
               Create entry
             </Button>
           </div>
@@ -1755,7 +1769,7 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
           </div>
           <div className="seamless-scrollbar overflow-auto">
             <table className="w-full text-left text-sm">
-              <thead className="border-b bg-muted/55 text-xs uppercase text-muted-foreground">
+              <thead className="border-b bg-muted/55 text-xs uppercase tracking-wider font-metadata text-muted-foreground">
                 <tr>
                   <th className="min-w-[220px] px-4 py-3">Term</th>
                   <th className="min-w-[220px] px-4 py-3">Translation</th>
@@ -1784,26 +1798,39 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
                       }}
                     >
                       <td className="px-4 py-3">
-                        <div className="font-medium">{entry.canonical_term}</div>
+                        <div className="font-medium font-metadata">{entry.canonical_term}</div>
                       </td>
-                      <td className="px-4 py-3">{translationFor(entry)}</td>
+                      <td className="px-4 py-3 font-literary">{translationFor(entry)}</td>
                       <td className="px-4 py-3 text-muted-foreground">{formatStatus(entry.term_type)}</td>
                       <td className="px-4 py-3">
                         <Badge tone={ownerStatusTone(entry.status)}>{ownerStatusLabel(entry.status)}</Badge>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          <Button size="sm" variant="outline" onClick={(event) => {
-                            event.stopPropagation();
-                            openEdit(entry);
-                          }}>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-lg pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openEdit(entry);
+                            }}
+                          >
                             Edit
                           </Button>
                           {ownerStatusFromBackend(entry.status) === "approved" ? (
-                            <Button size="sm" variant="secondary" disabled>Approved</Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="rounded-lg pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px]"
+                              disabled
+                            >
+                              Approved
+                            </Button>
                           ) : (
                             <Button
                               size="sm"
+                              className="rounded-lg pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                               onClick={(event) => {
                                 event.stopPropagation();
                                 changeStatus.mutate({ entryId: entry.id, status: "approved" });

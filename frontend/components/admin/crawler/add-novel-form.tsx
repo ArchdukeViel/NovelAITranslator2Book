@@ -26,9 +26,14 @@ export function AddNovelForm({ value, detectedSource, canSubmit, pending, error,
       </PanelHeader>
       <PanelBody className="flex flex-1 flex-col justify-between gap-4">
         <div className="space-y-4">
-          <Input value={value} onChange={(event) => onChange(event.target.value)} placeholder="Novel link or novel ID" />
+          <Input
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="Novel link or novel ID"
+            className="min-h-11 h-11 px-3.5 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+          />
 
-          <div className="rounded-md border bg-muted/25 px-3 py-2 text-sm">
+          <div className="rounded-lg border border-border/70 bg-muted/25 px-3 py-2 text-sm">
             <span className="text-muted-foreground">Source:</span>
             <span className="ml-2 font-medium">{sourceLabel(detectedSource)}</span>
           </div>
@@ -36,7 +41,11 @@ export function AddNovelForm({ value, detectedSource, canSubmit, pending, error,
           <ErrorBanner error={error} fallback="Failed to discover chapters. Verify the source URL or novel ID, then try again." />
         </div>
 
-        <Button className="w-full" onClick={onSubmit} disabled={!canSubmit || pending}>
+        <Button
+          className="w-full min-h-11 h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+          onClick={onSubmit}
+          disabled={!canSubmit || pending}
+        >
           <Plus className="h-4 w-4" />
           Add novel
         </Button>

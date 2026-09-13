@@ -85,9 +85,9 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
                   <Link
                     href={link.href}
                     aria-current={isActive ? "page" : undefined}
-                    className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors ${
+                    className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
                       isActive
-                        ? "bg-primary text-primary-foreground"
+                        ? "bg-primary text-primary-foreground font-semibold"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     }`}
                   >
@@ -100,7 +100,7 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
 
             {unavailableLinks.map((link) => (
               <li key={link.label}>
-                <div className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground">
+                <div className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground">
                   <link.icon className="h-4 w-4" aria-hidden="true" />
                   <span>{link.label}</span>
                   <span className="ml-auto text-xs text-muted-foreground/60">
@@ -112,7 +112,7 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
           </ul>
 
           <div className="mt-auto border-t border-border pt-4">
-            <div className="flex items-center justify-between rounded-md border border-border bg-card p-3">
+            <div className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
               <p className="text-sm font-medium">Theme</p>
               <PublicThemeToggle />
             </div>
@@ -120,7 +120,7 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={() => logout.mutate()}
               disabled={logout.isPending}
-              className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-md border border-destructive/40 px-3 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+              className="mt-3 w-full inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-destructive/40 px-3 py-2.5 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-destructive disabled:opacity-50"
             >
               {logout.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -147,9 +147,9 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
                 key={link.href}
                 href={link.href}
                 aria-current={isActive ? "page" : undefined}
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
                   isActive
-                    ? "bg-primary text-primary-foreground"
+                    ? "bg-primary text-primary-foreground font-semibold"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 }`}
               >

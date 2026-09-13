@@ -118,7 +118,7 @@ export default function AccountRequestNovelsPage() {
           </section>
 
           {authPending ? (
-            <div className="rounded-xl bg-card p-6 shadow-card dark:ring-1 dark:ring-white/5">
+            <div className="rounded-xl border border-border/70 bg-card/70 p-6 shadow-card">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 Checking session...
@@ -132,7 +132,7 @@ export default function AccountRequestNovelsPage() {
         </div>
 
         <aside className="space-y-6">
-          <div className="rounded-xl bg-card p-5 shadow-card dark:ring-1 dark:ring-white/5">
+          <div className="rounded-xl border border-border/70 bg-card/70 p-5 shadow-card">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="font-literary text-base font-semibold text-foreground">
                 Supported Sources
@@ -151,7 +151,7 @@ export default function AccountRequestNovelsPage() {
                     href={source.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="group flex items-center justify-between rounded-lg bg-muted/40 p-2.5 transition-colors hover:bg-muted"
+                    className="group flex min-h-11 items-center justify-between rounded-lg bg-muted/40 px-3 py-2 transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <div>
                       <span className="block text-xs font-semibold text-foreground group-hover:text-primary">
@@ -168,7 +168,7 @@ export default function AccountRequestNovelsPage() {
             </ul>
           </div>
 
-          <div className="rounded-xl bg-card p-5 shadow-card dark:ring-1 dark:ring-white/5">
+          <div className="rounded-xl border border-border/70 bg-card/70 p-5 shadow-card">
             <h2 className="mb-3 flex items-center gap-2 font-literary text-base font-semibold text-foreground">
               <HelpCircle className="h-4 w-4 text-primary" />
               Request Guidelines
@@ -206,7 +206,7 @@ function RequestHistoryList() {
 
   if (requests.isPending) {
     return (
-      <div className="rounded-xl bg-card p-6 shadow-card dark:ring-1 dark:ring-white/5">
+      <div className="rounded-xl border border-border/70 bg-card/70 p-6 shadow-card">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin text-primary" />
           Loading request history...
@@ -217,7 +217,7 @@ function RequestHistoryList() {
 
   if (requests.isError) {
     return (
-      <div className="rounded-xl bg-card p-6 shadow-card dark:ring-1 dark:ring-white/5">
+      <div className="rounded-xl border border-border/70 bg-card/70 p-6 shadow-card">
         <p className="text-sm text-destructive">Could not load request history.</p>
       </div>
     );
@@ -230,7 +230,7 @@ function RequestHistoryList() {
       : items.filter((item) => item.status === statusFilter);
 
   return (
-    <div className="rounded-xl bg-card shadow-card dark:ring-1 dark:ring-white/5">
+    <div className="rounded-xl border border-border/70 bg-card/70 shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/20 p-5">
         <div>
           <h2 className="font-literary text-xl font-semibold text-foreground">My Submissions</h2>
@@ -246,10 +246,10 @@ function RequestHistoryList() {
               type="button"
               onClick={() => setStatusFilter(status)}
               className={cn(
-                "rounded-md px-3 py-1 font-metadata text-xs capitalize transition-colors",
+                "inline-flex min-h-11 items-center justify-center rounded-lg px-3.5 py-1.5 font-metadata text-xs capitalize transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary",
                 statusFilter === status
-                  ? "bg-primary text-primary-foreground font-medium"
-                  : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? "bg-primary font-medium text-primary-foreground shadow-xs"
+                  : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
               {status}
@@ -299,13 +299,13 @@ function RequestHistoryList() {
                       {request.slug ? (
                         <Link
                           href={publicNovelHref(request.slug)}
-                          className="inline-flex items-center gap-1 font-metadata text-xs font-medium text-primary hover:underline"
+                          className="inline-flex min-h-11 items-center justify-end gap-1 font-metadata text-xs font-medium text-primary underline transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
                         >
                           View Novel
                           <ExternalLink className="h-3 w-3" />
                         </Link>
                       ) : (
-                        <span className="font-metadata text-xs text-muted-foreground">In Review</span>
+                        <span className="inline-flex min-h-11 items-center justify-end font-metadata text-xs text-muted-foreground">In Review</span>
                       )}
                     </td>
                   </tr>

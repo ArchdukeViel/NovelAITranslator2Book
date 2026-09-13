@@ -10,11 +10,11 @@
  */
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
-import { useUiStore } from "@/lib/store";
+import { useAdminUiStore } from "@/lib/store";
 
 // Helper to reset store state for testing
 function resetStore() {
-  useUiStore.setState({
+  useAdminUiStore.setState({
     darkMode: false,
     sidebarCollapsed: false
   });
@@ -28,16 +28,16 @@ describe("Property 2: Persisted boolean UI toggle round-trip", () => {
         fc.nat({ max: 100 }),
         (initialDarkMode, toggleCount) => {
           resetStore();
-          useUiStore.setState({ darkMode: initialDarkMode });
+          useAdminUiStore.setState({ darkMode: initialDarkMode });
 
           // Apply toggleCount toggles
           for (let i = 0; i < toggleCount; i++) {
-            useUiStore.getState().toggleDarkMode();
+            useAdminUiStore.getState().toggleDarkMode();
           }
 
           // Final value should be parity of toggle count applied to initial
           const expectedDarkMode = toggleCount % 2 === 0 ? initialDarkMode : !initialDarkMode;
-          expect(useUiStore.getState().darkMode).toBe(expectedDarkMode);
+          expect(useAdminUiStore.getState().darkMode).toBe(expectedDarkMode);
         }
       ),
       { numRuns: 100 }
@@ -51,16 +51,16 @@ describe("Property 2: Persisted boolean UI toggle round-trip", () => {
         fc.nat({ max: 100 }),
         (initialSidebarCollapsed, toggleCount) => {
           resetStore();
-          useUiStore.setState({ sidebarCollapsed: initialSidebarCollapsed });
+          useAdminUiStore.setState({ sidebarCollapsed: initialSidebarCollapsed });
 
           // Apply toggleCount toggles
           for (let i = 0; i < toggleCount; i++) {
-            useUiStore.getState().toggleSidebar();
+            useAdminUiStore.getState().toggleSidebar();
           }
 
           // Final value should be parity of toggle count applied to initial
           const expectedSidebarCollapsed = toggleCount % 2 === 0 ? initialSidebarCollapsed : !initialSidebarCollapsed;
-          expect(useUiStore.getState().sidebarCollapsed).toBe(expectedSidebarCollapsed);
+          expect(useAdminUiStore.getState().sidebarCollapsed).toBe(expectedSidebarCollapsed);
         }
       ),
       { numRuns: 100 }
@@ -76,26 +76,26 @@ describe("Property 2: Persisted boolean UI toggle round-trip", () => {
         fc.nat({ max: 50 }),
         (initialDarkMode, initialSidebarCollapsed, darkModeToggles, sidebarToggles) => {
           resetStore();
-          useUiStore.setState({
+          useAdminUiStore.setState({
             darkMode: initialDarkMode,
             sidebarCollapsed: initialSidebarCollapsed
           });
 
           // Apply darkMode toggles
           for (let i = 0; i < darkModeToggles; i++) {
-            useUiStore.getState().toggleDarkMode();
+            useAdminUiStore.getState().toggleDarkMode();
           }
 
           // Apply sidebar toggles
           for (let i = 0; i < sidebarToggles; i++) {
-            useUiStore.getState().toggleSidebar();
+            useAdminUiStore.getState().toggleSidebar();
           }
 
           // Verify both persisted values match expected parity
           const expectedDarkMode = darkModeToggles % 2 === 0 ? initialDarkMode : !initialDarkMode;
           const expectedSidebarCollapsed = sidebarToggles % 2 === 0 ? initialSidebarCollapsed : !initialSidebarCollapsed;
 
-          const state = useUiStore.getState();
+          const state = useAdminUiStore.getState();
           expect(state.darkMode).toBe(expectedDarkMode);
           expect(state.sidebarCollapsed).toBe(expectedSidebarCollapsed);
         }

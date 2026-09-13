@@ -31,34 +31,37 @@ export default function MaintenancePage() {
       {status.isLoading ? (
         <LoadingState label="Loading maintenance status..." />
       ) : status.data ? (
-        <Panel>
+        <Panel className="rounded-xl border border-border/70 bg-card/70 shadow-card overflow-hidden">
           <PanelBody className="p-0">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3">Task</th>
-                  <th className="px-4 py-3">Schedule</th>
-                  <th className="px-4 py-3">State</th>
-                  <th className="px-4 py-3">Last completed</th>
-                  <th className="px-4 py-3">Next eligible</th>
-                  <th className="px-4 py-3">Result</th>
-                </tr>
-              </thead>
-              <tbody>
-                {status.data.tasks.map((task) => (
-                  <tr className="border-b last:border-0" key={task.task_key}>
-                    <td className="px-4 py-3 font-medium">{label(task.task_key)}</td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      <div>{task.schedule}</div><div className="text-xs">{task.timezone}</div>
-                    </td>
-                    <td className="px-4 py-3"><Badge tone={task.state === "failed" ? "red" : "neutral"}>{label(task.state)}</Badge></td>
-                    <td className="px-4 py-3 text-muted-foreground">{task.last_finished_at ? formatDateTime(task.last_finished_at) : "Never"}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{task.next_eligible_at ? formatDateTime(task.next_eligible_at) : "—"}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{task.failure_summary ?? (task.result ? label(task.result) : "—")}</td>
+            <div className="seamless-scrollbar overflow-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b bg-muted/55 text-xs uppercase tracking-wider font-metadata text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3">Task</th>
+                    <th className="px-4 py-3">Schedule</th>
+                    <th className="px-4 py-3">State</th>
+                    <th className="px-4 py-3">Last completed</th>
+                    <th className="px-4 py-3">Next eligible</th>
+                    <th className="px-4 py-3">Result</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {status.data.tasks.map((task) => (
+                    <tr className="border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors" key={task.task_key}>
+                      <td className="px-4 py-3 font-medium font-metadata">{label(task.task_key)}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        <div className="font-metadata tabular-nums text-xs">{task.schedule}</div>
+                        <div className="text-xs text-muted-foreground/80">{task.timezone}</div>
+                      </td>
+                      <td className="px-4 py-3"><Badge tone={task.state === "failed" ? "red" : "neutral"}>{label(task.state)}</Badge></td>
+                      <td className="px-4 py-3 text-muted-foreground tabular-nums text-xs">{task.last_finished_at ? formatDateTime(task.last_finished_at) : "Never"}</td>
+                      <td className="px-4 py-3 text-muted-foreground tabular-nums text-xs">{task.next_eligible_at ? formatDateTime(task.next_eligible_at) : "—"}</td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs">{task.failure_summary ?? (task.result ? label(task.result) : "—")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </PanelBody>
         </Panel>
       ) : null}

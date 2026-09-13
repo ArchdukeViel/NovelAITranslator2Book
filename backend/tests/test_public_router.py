@@ -2167,6 +2167,24 @@ class TestCatalogGenreTagFilter:
         assert data["total"] == 1
         assert data["novels"][0]["novel_id"] == "n001"
 
+    def test_genre_include_or_matches_either(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+    ) -> None:
+        _seed_db_catalog_novel(db_session, "n001")
+        _seed_db_catalog_novel(db_session, "n002")
+        _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
+        _seed_genre_for_tests(db_session, "romance", "恋愛")
+        _assign_genre_for_tests(db_session, "n001", "fantasy")
+        _assign_genre_for_tests(db_session, "n002", "romance")
+        # n001 has fantasy, n002 has romance - OR mode returns both
+        resp = client.get("/api/public/catalog?genre_include=fantasy,romance&genre_op=or")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+
     def test_unknown_genre_include_returns_zero(
         self,
         client: TestClient,
@@ -2233,6 +2251,41 @@ class TestCatalogGenreTagFilter:
         resp = client.get("/api/public/catalog?tag_include=魔法,勇者")
         assert resp.status_code == 200
         data = resp.json()
+        assert data["total"] == 1
+        assert data["novels"][0]["novel_id"] == "n001"
+
+    def test_tag_include_or_matches_either(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+    ) -> None:
+        _seed_db_catalog_novel(db_session, "n001")
+        _seed_db_catalog_novel(db_session, "n002")
+        _assign_tag_for_tests(db_session, "n001", "魔法")
+        _assign_tag_for_tests(db_session, "n002", "勇者")
+        resp = client.get("/api/public/catalog?tag_include=魔法,勇者&tag_op=or")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+
+    def test_catalog_search_in_synopsis(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+    ) -> None:
+        _seed_db_catalog_novel(db_session, "n001", title="Alpha", synopsis="Contains ancient artifact power")
+        _seed_db_catalog_novel(db_session, "n002", title="Beta", synopsis="Just an ordinary life")
+        # Without search_synopsis: does not match synopsis
+        resp_default = client.get("/api/public/catalog?q=artifact")
+        assert resp_default.status_code == 200
+        assert resp_default.json()["total"] == 0
+
+        # With search_synopsis=true: matches synopsis
+        resp_synopsis = client.get("/api/public/catalog?q=artifact&search_synopsis=true")
+        assert resp_synopsis.status_code == 200
+        data = resp_synopsis.json()
         assert data["total"] == 1
         assert data["novels"][0]["novel_id"] == "n001"
 

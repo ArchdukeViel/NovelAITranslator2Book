@@ -55,3 +55,4 @@ export {
 } from "./use-engagement";
 export { useGenreLabelMap } from "./use-genre-labels";
 export { useGenres } from "./use-genres";
+export { useTags } from "./use-tags";

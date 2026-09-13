@@ -18,7 +18,10 @@ interface SaveToLibraryProps {
   slug: string;
 }
 
-export function SaveToLibrary({ compactGuest = false, slug }: SaveToLibraryProps) {
+export function SaveToLibrary({
+  compactGuest = false,
+  slug,
+}: SaveToLibraryProps) {
   const { isAuthenticated, isPending: authPending } = usePublicAuth();
   const libraryItem = useLibraryItem(slug);
   const addToLibrary = useAddToLibrary(slug);
@@ -37,10 +40,10 @@ export function SaveToLibrary({ compactGuest = false, slug }: SaveToLibraryProps
     if (compactGuest) {
       return (
         <Link
-          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-border/70 bg-background px-3 text-xs font-semibold transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           href={`/login?mode=signin&callbackUrl=${encodeURIComponent(`/novels/${slug}`)}`}
         >
-          <Bookmark className="h-4 w-4" />
+          <Bookmark className="h-3.5 w-3.5" />
           Save to Library
         </Link>
       );
@@ -54,7 +57,9 @@ export function SaveToLibrary({ compactGuest = false, slug }: SaveToLibraryProps
     libraryItem.error.status === 404;
   const isSaved = !!libraryItem.data && !isMissing;
   const isBusy =
-    libraryItem.isPending || addToLibrary.isPending || removeFromLibrary.isPending;
+    libraryItem.isPending ||
+    addToLibrary.isPending ||
+    removeFromLibrary.isPending;
   const error =
     addToLibrary.error ||
     removeFromLibrary.error ||
@@ -78,7 +83,11 @@ export function SaveToLibrary({ compactGuest = false, slug }: SaveToLibraryProps
           <Button
             variant="secondary"
             size={compactGuest ? "default" : "sm"}
-            className={compactGuest ? "h-11 w-full" : undefined}
+            className={
+              compactGuest
+                ? "h-11 w-full text-xs font-semibold rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+                : undefined
+            }
             disabled={!slug || isBusy}
             onClick={onClick}
             type="button"
@@ -86,7 +95,7 @@ export function SaveToLibrary({ compactGuest = false, slug }: SaveToLibraryProps
             {isBusy ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <Bookmark className="h-4 w-4 fill-current" />
+              <Bookmark className="h-3.5 w-3.5 fill-current" />
             )}
             Saved
           </Button>
@@ -101,7 +110,11 @@ export function SaveToLibrary({ compactGuest = false, slug }: SaveToLibraryProps
         <Button
           variant="outline"
           size={compactGuest ? "default" : "sm"}
-          className={compactGuest ? "h-11 w-full" : undefined}
+          className={
+            compactGuest
+              ? "h-11 w-full text-xs font-semibold rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+              : undefined
+          }
           disabled={!slug || isBusy}
           onClick={onClick}
           type="button"

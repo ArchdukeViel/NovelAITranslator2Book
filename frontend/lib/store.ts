@@ -3,8 +3,50 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-// Admin-scoped UI state (persisted under "novelai-ui" key)
-// These control the admin dashboard appearance
+import { clampReaderFontSize } from "@/lib/public-format";
+
+export const READER_UI_STORAGE_KEY = "dokushodo-reader-ui";
+export const ADMIN_UI_STORAGE_KEY = "dokushodo-admin-ui";
+export const LEGACY_UI_STORAGE_KEY = "novelai-ui";
+
+// Zero-legacy policy: the deprecated monolithic key is purged on boot and
+// never read, parsed, or migrated.
+if (typeof window !== "undefined") {
+  try {
+    window.localStorage.removeItem(LEGACY_UI_STORAGE_KEY);
+  } catch {
+    // Storage may be unavailable (private mode); stores still work in memory.
+  }
+}
+
+// Public reader UI state (persisted under "dokushodo-reader-ui")
+type ReaderUiState = {
+  theme: "light" | "dark" | "sepia";
+  fontSize: number;
+  width: "compact" | "comfortable" | "wide";
+  setTheme: (theme: ReaderUiState["theme"]) => void;
+  setFontSize: (size: number) => void;
+  setWidth: (width: ReaderUiState["width"]) => void;
+};
+
+export const useReaderUiStore = create<ReaderUiState>()(
+  persist(
+    (set) => ({
+      theme: "light",
+      fontSize: 18,
+      width: "comfortable",
+      setTheme: (theme) => set({ theme }),
+      setFontSize: (fontSize) =>
+        set({ fontSize: clampReaderFontSize(fontSize) }),
+      setWidth: (width) => set({ width }),
+    }),
+    {
+      name: READER_UI_STORAGE_KEY,
+    },
+  ),
+);
+
+// Admin-scoped UI state (persisted under "dokushodo-admin-ui")
 type AdminUiState = {
   darkMode: boolean;
   sidebarCollapsed: boolean;
@@ -12,50 +54,18 @@ type AdminUiState = {
   toggleSidebar: () => void;
 };
 
-// Public reader UI state (persisted under "novelai-ui" key)
-// These control the public reader appearance - never cross-written with admin state
-type ReaderUiState = {
-  readerTheme: "light" | "dark" | "sepia";
-  readerFontSize: number;
-  readerWidth: "compact" | "comfortable" | "wide";
-  setReaderTheme: (theme: ReaderUiState["readerTheme"]) => void;
-  setReaderFontSize: (size: number) => void;
-  setReaderWidth: (width: ReaderUiState["readerWidth"]) => void;
-};
-
-type UiState = AdminUiState & ReaderUiState;
-
-function createId() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-export const useUiStore = create<UiState>()(
+export const useAdminUiStore = create<AdminUiState>()(
   persist(
     (set) => ({
-      // Admin-scoped state (Task 4: decommission client-side auth token)
       darkMode: false,
       sidebarCollapsed: false,
-
-      // Reader state (Task 4: keep untouched, never cross-write with admin)
-      readerTheme: "light",
-      readerFontSize: 18,
-      readerWidth: "comfortable",
-
-      // Admin UI actions
-      toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
-      toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
-
-      // Reader UI actions
-      setReaderTheme: (readerTheme) => set({ readerTheme }),
-      setReaderFontSize: (readerFontSize) =>
-        set({ readerFontSize: Math.min(24, Math.max(15, Math.round(readerFontSize))) }),
-      setReaderWidth: (readerWidth) => set({ readerWidth })
+      toggleDarkMode: () =>
+        set((state) => ({ darkMode: !state.darkMode })),
+      toggleSidebar: () =>
+        set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
     }),
     {
-      name: "novelai-ui"
-    }
-  )
+      name: ADMIN_UI_STORAGE_KEY,
+    },
+  ),
 );

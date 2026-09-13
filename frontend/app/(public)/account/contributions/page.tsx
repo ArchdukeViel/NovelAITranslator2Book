@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Activity,
@@ -28,6 +28,53 @@ import {
   PanelTitle,
 } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
+
+export const CONTRIBUTOR_TOKEN_STORAGE_KEY = "dokushodo-contributor-token";
+export const CONTRIBUTOR_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+export interface StoredContributorToken {
+  token: string;
+  cachedAt: number;
+  expiresAt: number;
+}
+
+export function getStoredContributorToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(CONTRIBUTOR_TOKEN_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredContributorToken>;
+    if (!parsed.expiresAt || typeof parsed.expiresAt !== "number" || Date.now() > parsed.expiresAt) {
+      window.localStorage.removeItem(CONTRIBUTOR_TOKEN_STORAGE_KEY);
+      return null;
+    }
+    return parsed.token ?? null;
+  } catch {
+    window.localStorage.removeItem(CONTRIBUTOR_TOKEN_STORAGE_KEY);
+    return null;
+  }
+}
+
+export function saveStoredContributorToken(token: string): void {
+  if (typeof window === "undefined") return;
+  const now = Date.now();
+  const record: StoredContributorToken = {
+    token,
+    cachedAt: now,
+    expiresAt: now + CONTRIBUTOR_TOKEN_TTL_MS,
+  };
+  window.localStorage.setItem(CONTRIBUTOR_TOKEN_STORAGE_KEY, JSON.stringify(record));
+}
+
+export function purgeStoredContributorToken(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(CONTRIBUTOR_TOKEN_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 function dateLabel(value: string | null | undefined): string {
   if (!value) return "Not yet";
@@ -47,8 +94,14 @@ export default function AccountContributionsPage() {
   const remove = useDeleteContribution();
   const [apiKey, setApiKey] = useState("");
   const [consentAccepted, setConsentAccepted] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const credential = contributions.data?.credentials[0] ?? null;
   const usage = useContributionUsage(credential?.credential_id ?? null);
+
+  useEffect(() => {
+    // Evict expired contributor tokens on mount
+    getStoredContributorToken();
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -62,9 +115,11 @@ export default function AccountContributionsPage() {
     setConsentAccepted(false);
   };
 
-  const handleRemove = async () => {
-    if (!credential || !window.confirm("Permanently delete this contributor credential?")) return;
+  const handleConfirmDelete = async () => {
+    if (!credential) return;
     await remove.mutateAsync(credential.credential_id);
+    purgeStoredContributorToken();
+    setDeleteConfirmOpen(false);
   };
 
   return (
@@ -227,7 +282,7 @@ export default function AccountContributionsPage() {
                           <Play className="h-3.5 w-3.5" /> Resume
                         </Button>
                       ) : null}
-                      <Button size="sm" variant="destructive" disabled={remove.isPending} onClick={handleRemove}>
+                      <Button size="sm" variant="destructive" disabled={remove.isPending} onClick={() => setDeleteConfirmOpen(true)}>
                         <Trash2 className="h-3.5 w-3.5" /> Delete permanently
                       </Button>
                     </div>
@@ -276,6 +331,18 @@ export default function AccountContributionsPage() {
           </aside>
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Permanently delete credential?"
+        description="Permanently delete this contributor credential? This action cannot be undone."
+        confirmLabel="Delete permanently"
+        cancelLabel="Cancel"
+        destructive
+        pending={remove.isPending}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
     </main>
   );
 }

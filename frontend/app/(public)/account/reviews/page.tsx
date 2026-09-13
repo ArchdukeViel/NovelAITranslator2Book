@@ -22,7 +22,7 @@ function formatUpdatedAt(value: string): string {
 
 function RatingStars({ rating }: { rating: number | null }) {
   if (rating == null) {
-    return <span className="text-xs text-muted-foreground">Unrated</span>;
+    return <span className="font-metadata text-xs text-muted-foreground">Unrated</span>;
   }
   return (
     <span
@@ -33,7 +33,11 @@ function RatingStars({ rating }: { rating: number | null }) {
       {[1, 2, 3, 4, 5].map((star) => (
         <Star
           aria-hidden="true"
-          className={`h-4 w-4 ${rating >= star ? "fill-accent text-accent-foreground" : "text-muted-foreground"}`}
+          className={`h-4 w-4 ${
+            rating >= star
+              ? "fill-amber-400 text-amber-500 dark:fill-amber-400 dark:text-amber-400"
+              : "text-muted-foreground/30"
+          }`}
           key={star}
         />
       ))}
@@ -78,21 +82,21 @@ export default function MyReviewsPage() {
           </p>
         </section>
       ) : reviews.data.length === 0 ? (
-        <section className="rounded-md border border-border bg-muted/40 p-6 text-center">
+        <section className="rounded-xl border border-border/70 bg-card/70 p-8 text-center shadow-card">
           <Star className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" />
-          <p className="mt-3 text-sm font-medium">No reviews yet.</p>
+          <p className="mt-3 font-literary text-base font-medium text-foreground">No reviews yet.</p>
           <p className="mt-1 text-sm text-muted-foreground">
             Rate a novel from its detail page and it will show up here.
           </p>
           <Link
             href="/browse-novels"
-            className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+            className="mt-4 inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-primary underline hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
           >
             Browse novels
           </Link>
         </section>
       ) : (
-        <div className="divide-y rounded-md border border-border bg-card">
+        <div className="divide-y divide-border/60 rounded-xl border border-border/70 bg-card/70 shadow-card">
           {reviews.data.map((review) => {
             const editHref = `${publicNovelHref(review.slug)}?tab=reviews`;
             return (
@@ -134,22 +138,22 @@ function ReviewRow({
   const deleteReview = useDeleteReview(onDeleteSlug);
 
   return (
-    <div className="px-4 py-4">
+    <div className="px-5 py-4">
       <div className="flex items-center justify-between gap-3">
         <Link
           href={editHref}
-          className="min-w-0 flex-1 truncate text-sm font-medium text-foreground hover:text-accent hover:underline"
+          className="min-w-0 flex-1 truncate font-literary text-base font-medium text-foreground transition-colors hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
         >
           {title}
         </Link>
         <div className="flex shrink-0 items-center gap-2">
           <span
-            className={`rounded px-2 py-0.5 text-xs font-medium ${
+            className={`rounded-sm border px-2 py-0.5 font-metadata text-xs font-medium ${
               status === "published"
-                ? "bg-success-bg text-success-text"
+                ? "border-primary/20 bg-primary/10 text-primary"
                 : status === "rejected"
-                  ? "bg-destructive/10 text-destructive"
-                  : "bg-muted text-muted-foreground"
+                  ? "border-destructive/20 bg-destructive/10 text-destructive"
+                  : "border-border/60 bg-muted text-muted-foreground"
             }`}
           >
             {status === "published" ? "Published" : status === "rejected" ? "Not published" : "Pending review"}
@@ -157,6 +161,7 @@ function ReviewRow({
           <RatingStars rating={rating} />
           <Button
             aria-label={`Delete review for ${title}`}
+            className="min-h-11 min-w-11 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-destructive"
             disabled={deleteReview.isPending}
             onClick={() => deleteReview.mutate()}
             size="sm"
@@ -178,7 +183,10 @@ function ReviewRow({
         <p className="mt-2 text-xs italic text-muted-foreground">No written review: rating only.</p>
       )}
       <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-        <Link href={editHref} className="font-medium text-primary hover:underline">
+        <Link
+          href={editHref}
+          className="inline-flex min-h-11 items-center font-medium text-primary underline transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
+        >
           Edit review
         </Link>
         <span aria-hidden="true">·</span>

@@ -26,8 +26,10 @@ export function PublicHeader() {
   // Auto-hide header on scroll down, reveal on scroll up or at top
   useEffect(() => {
     let lastScrollY = window.scrollY;
+    let ticking = false;
+    let rafId: number | null = null;
 
-    function handleScroll() {
+    function updateVisibility() {
       const currentScrollY = window.scrollY;
       const scrollDifference = currentScrollY - lastScrollY;
 
@@ -43,16 +45,29 @@ export function PublicHeader() {
       }
 
       lastScrollY = currentScrollY;
+      ticking = false;
+    }
+
+    function handleScroll() {
+      if (!ticking) {
+        ticking = true;
+        rafId = window.requestAnimationFrame(updateVisibility);
+      }
     }
 
     window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
   }, []);
 
   return (
     <header
       className={cn(
-        "fixed inset-x-0 top-0 z-40 border-b border-border/40 bg-background/95 backdrop-blur transition-transform duration-200",
+        "fixed inset-x-0 top-0 z-40 border-b border-primary/20 bg-background/95 backdrop-blur transition-transform duration-200",
         isVisible ? "translate-y-0" : "-translate-y-full",
       )}
     >
@@ -74,10 +89,10 @@ export function PublicHeader() {
                 href={item.href}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-sm font-medium transition-colors",
+                  "inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium transition-colors",
                   isActive
-                    ? "text-primary"
-                    : "text-muted-foreground hover:bg-card/70 hover:text-foreground",
+                    ? "font-semibold text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Icon className="h-4 w-4" aria-hidden="true" />

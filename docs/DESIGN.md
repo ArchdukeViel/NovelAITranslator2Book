@@ -409,8 +409,10 @@ Rules:
 
 ### 6.3 Line length and reading typography
 
-- Reading column widths: default 680px, narrow 560px, wide 800px.
-- Chapter reader body: Noto Serif JP, line-height 1.8, justified narration with left-aligned last line on desktop, left-aligned on mobile, strict line-breaking for CJK (kinsoku shori).
+- Reading column widths: default 680px (`max-w-[680px]`), narrow 560px (`max-w-[560px]`), wide 800px (`max-w-[800px]`).
+- Chapter reader body: Noto Serif JP and EB Garamond (`font-literary`), line-height 1.8 (`leading-[1.8]`), justified narration with left-aligned last line on desktop, left-aligned on mobile, strict line-breaking for CJK (kinsoku shori).
+- Type size ladder: small (16px / `text-base`), normal (18px / `text-lg`), large (20px / `text-xl`), extra-large (24px / `text-2xl`).
+- Reader theme parity: independent light (washi paper), dark (midnight slate), and sepia (aged parchment) palettes with zero contrast regression across all sizes.
 - Dialogue paragraphs are always left-aligned.
 - Long titles wrap cleanly and are never truncated on primary displays; truncation is allowed only in compact card contexts.
 - CJK text uses safe word wrapping; mixed Japanese and English inline text wraps naturally.
@@ -434,13 +436,14 @@ Rules:
 | `xl` | >= 1280px | Wide desktop |
 | `2xl` | >= 1536px | Ultra-wide; content never exceeds its max width |
 
-### 7.2 Maximum widths and gutters
+### 7.2 Maximum widths, gutters, and touch targets
 
 - Public page content: max 1280px (`max-w-7xl`); gutters 16px mobile, 24px at `md` and wider.
 - Reading columns: 560 / 680 / 800px.
 - Content and legal pages: max 896px (`max-w-4xl`) or 768px (`max-w-3xl`).
 - Admin content: fluid, constrained by the fixed sidebar; page padding 20px.
 - Browse grids: fill available width with responsive columns.
+- Touch target rules: WCAG 2.1 AA 44x44px minimum touch target size enforced across mobile and coarse-pointer devices (`pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px]` or `min-h-11 h-11 px-3.5`). Fine-pointer desktop environments may use compact 24px to 36px controls, with hit-slop expanding to 44px when a coarse pointer is detected.
 
 ### 7.3 Shells
 
@@ -463,7 +466,8 @@ Rules:
 
 - Base radius: 6px (`0.375rem`). Derived: large 6px (cards, modals), medium 4px (buttons, inputs, badges), small 2px (chips, compact elements), full pill for status badges and avatars.
 - The PR #38 overhaul returned to this base radius system; no oversized rounded containers.
-- Prefer flat surfaces: cards are distinguished by border, not shadow. Elevation is reserved for overlays: small shadow for popovers and dropdowns, medium for elevated cards, large for complex menus, 2xl for modals and drawers.
+- Washi card elevation: public and account cards employ the canonical washi paper standard (`bg-card/70 border-border/70 shadow-card`). The subtle resting shadow (`shadow-card`, `0 1px 2px 0 rgb(28 28 24 / 0.06)`) simulates weighted paper resting on a table without heavy drop shadows. Interactive cards lift subtly on hover (`hover:shadow-raised`, `0 12px 28px -8px rgb(28 28 24 / 0.18)`), while admin operational surfaces remain flat and border-distinguished (`border-border/70`).
+- Overlays and depth: elevation is reserved for overlays: small shadow for popovers and dropdowns, medium for elevated cards, large for complex menus, 2xl for modals and drawers.
 - Overlay backdrops may use subtle blur; static surfaces must not.
 - Prohibited: decorative glow, colored shadows, or elevation on non-overlay UI surfaces.
 - Icon sizing: 16 to 20px inline icons; 24px+ for touch-primary icons.
@@ -495,7 +499,8 @@ All component contracts below are global. Do not create component Markdown files
 
 ### 9.4 Cards and novel cards
 
-- Cards: bordered flat surfaces with comfortable padding on public surfaces; dense on admin.
+- Washi paper cards: standard container across discovery, library, and account surfaces (`bg-card/70 border-border/70 shadow-card`). The semi-translucent card surface allows the warm washi background (`--background`) to show through subtly while maintaining WCAG 2.1 AA text contrast.
+- Cards: bordered surfaces with comfortable padding on public surfaces (16px to 24px); dense on admin (12px to 16px).
 - Novel cards: cover (real cover image or bookplate fallback generated from title), literary title, one metadata line, hover indication that never includes scale or tilt on the whole card. Whole-card link nesting is prohibited; the title and an explicit action carry the link behavior.
 - Bookplate fallback covers: restrained initials-and-borders bookplate; they exist only until real cover art is available.
 
@@ -536,12 +541,14 @@ All component contracts below are global. Do not create component Markdown files
 
 ### 9.13 Admin tables and confirmation flows
 
-- Tables: sticky muted uppercase headers, hover row highlight, compact cells, bulk selection checkboxes, selected-row action bar, horizontal scroll on narrow viewports.
-- Admin confirmation flows: every destructive, crawler, or bulk action requires an explicit modal confirming the affected target; confirm button uses the active verb.
+- Operational density: admin surfaces prioritize high information density and quick scanning; table row heights 32px to 36px (`py-2 px-3`), compact typography (12px to 14px), monospace numbers and timestamps (`font-mono text-xs tabular-nums`).
+- Tables: sticky muted uppercase headers (`text-[11px] uppercase tracking-wider text-muted-foreground font-mono sticky top-0 bg-background/95 z-10`), hover row highlight (`hover:bg-muted/30`), compact cells, bulk selection checkboxes, selected-row action bar, horizontal scroll on narrow viewports.
+- Admin confirmation flows: every destructive, crawler trigger, or bulk action requires an explicit modal wrapped in `DialogShell` confirming the affected target; confirm button uses the active verb ("Remove", "Delete", "Reject", "Clear State", "Trigger"). Modals trap focus, lock body scroll, and support Escape and backdrop dismissal.
+- Coarse pointer compliance: action buttons on admin surfaces expand to 44px minimum hit area on coarse-pointer devices (`pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px]`).
 
 ### 9.14 Keyboard, focus, and disabled behavior
 
-- Everything interactive is keyboard operable; visible focus on all controls; two-layer focus on primary buttons (dark inner ring plus vermillion outer ring).
+- Everything interactive is keyboard operable; visible focus on all controls; two-layer focus on primary buttons (`focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background`), destructive actions use destructive ring (`focus-visible:ring-destructive`).
 - Pending mutations disable the triggering control and show an inline spinner; focus returns to the triggering control after dialogs close.
 - No nested interactive controls anywhere (no link inside link, no button inside link).
 
@@ -576,12 +583,12 @@ Stitch variants: loading, empty, recoverable error, and unavailable are the stat
 Target: WCAG 2.2 Level AA.
 
 - Contrast: 4.5:1 normal text, 3:1 large text and non-text controls, 3:1 focus indicators, 3:1 meaningful icons. Verified automatically for token pairs in both modes (34 contrast checks).
-- Keyboard: full keyboard operability, visible focus everywhere, focus never obscured by sticky or fixed chrome.
+- Keyboard: full keyboard operability, visible focus everywhere with two-layer focus rings (`focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2`), focus never obscured by sticky or fixed chrome.
 - Landmarks: main, header, nav, footer, complementary as applicable; one h1 per page; heading hierarchy reflects visual hierarchy.
 - Forms: labels on all fields, errors linked to fields, autofill compatible, no redundant entry.
 - Live regions: polite for status and results, assertive for errors and destructive confirmations.
-- Dialogs: focus trapped, focus restored on close, Escape supported.
-- Target sizes: minimum 24x24px, 44x44px preferred on touch.
+- Dialogs: wrapped in `DialogShell`, focus trapped, focus restored on close, Escape and backdrop click supported, body scroll locked.
+- Target sizes: 44x44px touch targets enforced across coarse pointers (`pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px]` or `min-h-11 h-11`), desktop fine pointers permit compact 24px to 36px controls.
 - Reduced motion: all animation and transition durations collapse to near zero under `prefers-reduced-motion`; no functionality depends on motion.
 - Forced colors: borders, focus rings, and status text remain visible in Windows High Contrast mode.
 - Zoom and reflow: no content loss at 200% zoom; 320px minimum width with intentional mobile composition.

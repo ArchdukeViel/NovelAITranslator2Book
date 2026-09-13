@@ -2,7 +2,7 @@
 
 import React, { Component, type ReactNode } from "react";
 import Link from "next/link";
-import { BookOpen, RefreshCw } from "lucide-react";
+import { BookOpen, FileText, RefreshCw } from "lucide-react";
 
 import { ErrorState } from "@/components/ui/page-state";
 import { errorToProps } from "@/lib/api-error";
@@ -13,6 +13,8 @@ export interface ReaderErrorBoundaryProps {
   fallback?: ReactNode | ((error: Error, reset: () => void) => ReactNode);
   novelSlug?: string;
   chapterId?: number | string;
+  /** Raw chapter text rendered without rich annotations when the rich view crashes. */
+  plainText?: string | null;
   onReset?: () => void;
   onError?: (error: Error, info: React.ErrorInfo) => void;
 }
@@ -20,6 +22,7 @@ export interface ReaderErrorBoundaryProps {
 interface ReaderErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
+  showPlainText: boolean;
 }
 
 /**
@@ -36,11 +39,12 @@ export class ReaderErrorBoundary extends Component<
     this.state = {
       hasError: false,
       error: null,
+      showPlainText: false,
     };
   }
 
   static getDerivedStateFromError(error: Error): ReaderErrorBoundaryState {
-    return { hasError: true, error };
+    return { hasError: true, error, showPlainText: false };
   }
 
   override componentDidCatch(error: Error, info: React.ErrorInfo): void {
@@ -52,7 +56,11 @@ export class ReaderErrorBoundary extends Component<
 
   reset = (): void => {
     this.props.onReset?.();
-    this.setState({ hasError: false, error: null });
+    this.setState({ hasError: false, error: null, showPlainText: false });
+  };
+
+  showPlainText = (): void => {
+    this.setState({ showPlainText: true });
   };
 
   override render(): ReactNode {
@@ -71,6 +79,40 @@ export class ReaderErrorBoundary extends Component<
     }
 
     const { title, description } = errorToProps(error);
+    const { novelSlug: slug, plainText } = this.props;
+
+    if (this.state.showPlainText) {
+      return (
+        <article className="mx-auto my-12 max-w-2xl px-4">
+          <p className="text-xs text-muted-foreground">
+            Plain-text recovery mode. Rich formatting is disabled because the
+            formatted view failed to render.
+          </p>
+          <div className="mt-4 whitespace-pre-wrap text-sm leading-relaxed">
+            {plainText?.trim() ? plainText : "Chapter text is unavailable in plain-text mode."}
+          </div>
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={this.reset}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Try rich view again
+            </button>
+            {slug ? (
+              <Link
+                href={publicNovelHref(slug)}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-card px-5 text-sm font-medium transition-colors hover:bg-muted"
+              >
+                <BookOpen className="h-4 w-4" />
+                Return to table of contents
+              </Link>
+            ) : null}
+          </div>
+        </article>
+      );
+    }
 
     return (
       <div className="mx-auto my-12 max-w-2xl px-4">
@@ -89,6 +131,14 @@ export class ReaderErrorBoundary extends Component<
               >
                 <RefreshCw className="h-4 w-4" />
                 Retry chapter
+              </button>
+              <button
+                type="button"
+                onClick={this.showPlainText}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-card px-5 text-sm font-medium transition-colors hover:bg-muted"
+              >
+                <FileText className="h-4 w-4" />
+                View plain text
               </button>
               {novelSlug ? (
                 <Link

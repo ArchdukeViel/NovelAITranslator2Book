@@ -37,7 +37,7 @@ export function ContinueReading({ slug, firstChapterId, hasHeroCta = false, allo
     if (allowGuestStart && firstChapterId) {
       return (
         <Link
-          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          className="inline-flex min-h-[44px] h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           href={publicChapterHref(slug, firstChapterId)}
         >
           <BookOpen className="h-4 w-4" />
@@ -50,7 +50,7 @@ export function ContinueReading({ slug, firstChapterId, hasHeroCta = false, allo
 
   if (progress.isPending) {
     return (
-      <Button variant="outline" disabled>
+      <Button variant="outline" disabled className="min-h-[44px]">
         <Loader2 className="h-4 w-4 animate-spin" />
         Loading progress
       </Button>
@@ -81,7 +81,7 @@ export function ContinueReading({ slug, firstChapterId, hasHeroCta = false, allo
     return (
       <Link
         aria-label={chapterNumber != null ? `Continue Reading from Ch. ${chapterNumber}` : "Continue Reading"}
-        className={primary ? "inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90" : "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"}
+        className={primary ? "inline-flex min-h-[44px] h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary" : "inline-flex min-h-[44px] h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"}
         href={href}
       >
         <BookOpen className="h-4 w-4" />
@@ -98,7 +98,7 @@ export function ContinueReading({ slug, firstChapterId, hasHeroCta = false, allo
     const href = publicChapterHref(slug, firstChapterId);
     return (
       <Link
-        className={primary ? "inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90" : "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"}
+        className={primary ? "inline-flex min-h-[44px] h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary" : "inline-flex min-h-[44px] h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"}
         href={href}
       >
         <BookOpen className="h-4 w-4" />

@@ -186,6 +186,7 @@ export default function LibraryPage() {
   const [translationLanguage, setTranslationLanguage] = React.useState<(typeof TRANSLATION_LANGUAGES)[number]>("English");
   const [selectedTranslationChapterIds, setSelectedTranslationChapterIds] = React.useState<Set<string>>(new Set());
   const [retranslateStaleNovel, setRetranslateStaleNovel] = React.useState<NovelSummary | null>(null);
+  const [coverUploadNovelId, setCoverUploadNovelId] = React.useState<string | null>(null);
 
   const translationNovelId = translationNovel?.novel_id;
 
@@ -605,6 +606,7 @@ export default function LibraryPage() {
             <Button
               variant="outline"
               size="sm"
+              className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               onClick={() => runAction("translate", selectedRows)}
               disabled={selectedRows.length !== 1 || runLibraryAction.isPending || runTranslationDialog.isPending}
               title={selectedRows.length === 1 ? "Choose chapters to translate" : "Select one novel to translate"}
@@ -616,6 +618,7 @@ export default function LibraryPage() {
             <Button
               variant="outline"
               size="sm"
+              className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               onClick={() => runAction("recrawl", selectedRows)}
               disabled={selectedRows.length === 0 || runLibraryAction.isPending}
             >
@@ -626,6 +629,7 @@ export default function LibraryPage() {
             <Button
               variant="destructive"
               size="sm"
+              className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-destructive"
               onClick={() => runAction("delete", selectedRows)}
               disabled={selectedRows.length === 0 || runLibraryAction.isPending}
             >
@@ -633,7 +637,13 @@ export default function LibraryPage() {
               Delete selected
             </Button>
 
-            <Button variant="outline" size="sm" onClick={() => void novels.refetch()} disabled={novels.isFetching}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+              onClick={() => void novels.refetch()}
+              disabled={novels.isFetching}
+            >
               <RotateCw className="h-4 w-4" />
               Refresh
             </Button>
@@ -641,6 +651,7 @@ export default function LibraryPage() {
             <Button
               variant="outline"
               size="sm"
+              className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               onClick={() => refreshSummary.mutate()}
               disabled={refreshSummary.isPending}
             >
@@ -917,6 +928,26 @@ export default function LibraryPage() {
                               cancelOnboarding.isPending
                             }
                             translationPending={runTranslationDialog.isPending}
+                            coverUploadOpen={coverUploadNovelId === novel.novel_id}
+                            onToggleCoverUpload={(row) =>
+                              setCoverUploadNovelId((current) =>
+                                current === row.novel_id ? null : row.novel_id,
+                              )
+                            }
+                            onValidatedCover={(row, file, format) => {
+                              // Transport wire-up is out of scope for this audit
+                              // remediation; the validator boundary is the
+                              // security control. Surface the validated file
+                              // to the owner console until a backend upload
+                              // endpoint is added in a follow-up product task.
+                              console.info(
+                                "[cover] validated for",
+                                row.novel_id,
+                                file.name,
+                                format,
+                                file.size,
+                              );
+                            }}
                             onTranslate={(row) => runAction("translate", [row])}
                             onRecrawl={(row) => runAction("recrawl", [row])}
                             onDelete={(row) => runAction("delete", [row])}

@@ -98,7 +98,7 @@ export function NotificationList({
           size="sm"
           onClick={onReadAll}
           disabled={isReadingAll}
-          className="w-full justify-start"
+          className="w-full min-h-11 justify-start rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
         >
           {isReadingAll ? (
             <>
@@ -122,8 +122,8 @@ export function NotificationList({
           <article
             key={notification.id}
             className={cn(
-              "relative flex gap-3 rounded-lg border p-4 transition-colors",
-              isUnread ? "bg-card ring-1 ring-info/20" : "bg-card/50",
+              "relative flex gap-3 rounded-xl border p-4 transition-colors shadow-card",
+              isUnread ? "bg-card ring-1 ring-info/20" : "bg-card/70",
               statusStyles[notification.status]
             )}
             role="listitem"
@@ -135,7 +135,7 @@ export function NotificationList({
               <div className="flex items-start gap-2">
                 <span
                   className={cn(
-                    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium",
+                    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-metadata text-xs font-medium",
                     severityStyles[notification.severity]
                   )}
                 >
@@ -143,18 +143,18 @@ export function NotificationList({
                 </span>
                 <span
                   className={cn(
-                    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium",
+                    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-metadata text-xs font-medium",
                     statusStyles[notification.status]
                   )}
                 >
                   {notification.status}
                 </span>
               </div>
-              <h3 className={cn("mt-1 font-medium text-sm", isUnread ? "font-semibold" : "")}>
+              <h3 className={cn("mt-1 font-literary text-base font-medium text-foreground", isUnread ? "font-semibold" : "")}>
                 {notification.title}
               </h3>
               <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{notification.body}</p>
-              <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+              <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground font-metadata">
                 <span className="flex items-center gap-1">
                   <Mail className="h-3 w-3" aria-hidden="true" />
                   {eventTypeLabels[notification.event_type]}
@@ -167,7 +167,7 @@ export function NotificationList({
               {actionUrl && (
                 <Link
                   href={actionUrl}
-                  className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+                  className="inline-flex min-h-11 items-center justify-center gap-1 rounded-lg px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   View
                 </Link>
@@ -177,7 +177,7 @@ export function NotificationList({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8"
+                  className="min-h-11 min-w-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                   aria-label="More actions"
                   aria-expanded={expandedId === notification.id}
                   aria-haspopup="true"
@@ -192,11 +192,11 @@ export function NotificationList({
                       onClick={() => setExpandedId(null)}
                       aria-hidden="true"
                     />
-                    <div className="absolute right-0 z-20 mt-1 w-40 rounded-md border bg-popover p-1 shadow-md">
+                    <div className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-border/70 bg-popover p-1 shadow-md">
                       {isUnread && (
                         <button
                           type="button"
-                          className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-sm text-left hover:bg-accent"
+                          className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                           onClick={() => onRead(notification.id)}
                         >
                           <Check className="h-4 w-4" aria-hidden="true" />
@@ -205,7 +205,7 @@ export function NotificationList({
                       )}
                       <button
                         type="button"
-                        className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-sm text-left text-destructive hover:bg-accent"
+                        className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-destructive/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-destructive"
                         onClick={() => onArchive(notification.id)}
                       >
                         <X className="h-4 w-4" aria-hidden="true" />

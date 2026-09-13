@@ -2,17 +2,55 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {}
+export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  error?: string;
+  helperText?: React.ReactNode;
+}
 
-export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className, ...props }, ref) => (
-  <input
-    ref={ref}
-    className={cn(
-      "flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
-      className
-    )}
-    {...props}
-  />
-));
+export const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ className, id, error, helperText, "aria-describedby": describedBy, ...props }, ref) => {
+    const fallbackId = React.useId();
+    const fieldId = id ?? fallbackId;
+    const errorId = `${fieldId}-error`;
+    const helperId = `${fieldId}-helper`;
+    const describedIds =
+      [error ? errorId : null, helperText ? helperId : null, describedBy ?? null]
+        .filter(Boolean)
+        .join(" ") || undefined;
+
+    const input = (
+      <input
+        ref={ref}
+        id={id}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedIds}
+        className={cn(
+          "flex h-9 w-full rounded-md border border-input bg-background px-3 text-base outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+          error && "border-destructive-text focus-visible:ring-destructive-text",
+          className
+        )}
+        {...props}
+      />
+    );
+
+    if (!error && !helperText) return input;
+
+    return (
+      <div className="w-full">
+        {input}
+        {error ? (
+          <p id={errorId} className="mt-1.5 text-xs font-medium text-destructive-text">
+            {error}
+          </p>
+        ) : null}
+        {helperText ? (
+          <p id={helperId} className="mt-1.5 text-xs text-muted-foreground">
+            {helperText}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+);
 
 Input.displayName = "Input";

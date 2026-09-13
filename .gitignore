@@ -43,6 +43,9 @@ graphify-out/
 # CodeGraph generated local index
 .codegraph/
 
+# Impeccable local critique snapshots
+.impeccable/
+
 # Frontend
 frontend/node_modules/
 frontend/.next/

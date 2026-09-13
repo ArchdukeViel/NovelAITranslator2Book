@@ -145,11 +145,56 @@ textarea {
 /* Primary-colored buttons use a two-layer focus treatment: a Shuji Vermillion
    ring around a vermillion fill does not separate by color alone, so the
    inner ring is a high-contrast neutral (--primary-foreground) and the outer
-   offset ring is --focus-ring. Every other control keeps the single ring. */
+   offset ring is --focus-ring. Every other control keeps the single ring.
+   Cascade-layer coupling: this rule is deliberately unlayered so it defeats
+   the layered `focus-visible:outline-none` in the Button primitive. Do not
+   move it into a cascade layer without re-verifying primary-button focus. */
 .bg-primary:focus-visible {
   outline: 2px solid hsl(var(--foreground));
   outline-offset: 2px;
   box-shadow: 0 0 0 4px hsl(var(--focus-ring));
+}
+
+/* Shell chrome focus ring: every P1 link, button, and input inside header,
+   sidebar, nav, footer, and the search dialog shares one vermilion
+   --focus-ring. Unlayered so it defeats the layered
+   focus-visible:outline-none in the Button primitive (same technique as
+   .bg-primary:focus-visible above). Scoped under .shell-chrome (PublicShell
+   root) so page content keeps its own treatment; .bg-primary is excluded so
+   primary buttons keep their double-ring treatment. */
+.shell-chrome :is(header, aside, nav, footer, [role="dialog"]) :is(a, button:not(.bg-primary), input):focus-visible {
+  outline: 2px solid hsl(var(--focus-ring));
+  outline-offset: 2px;
+}
+
+/* Discrete global scrollbars */
+html,
+body,
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.25) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.25);
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.45);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .seamless-scrollbar {
@@ -214,6 +259,33 @@ textarea {
   font-weight: 500;
   outline: none;
   text-decoration: none;
+}
+
+/* Search overlay entrance — backdrop fades in, panel rises 8px and
+   fades. Both gated on motion-safe: in the component; duration capped
+   ≤200ms so reduced-motion users get an instant open via the global
+   rule below. */
+@keyframes search-overlay-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes search-overlay-panel-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Theme segmented control — single settle beat on the active segment so a
+   Light/Dark swap feels continuous. 240ms, no decoration. */
+@keyframes theme-segment-settle {
+  from { transform: scale(0.985); }
+  to   { transform: scale(1); }
+}
+
+/* Spotlight carousel reading progress — subtle bottom-edge indicator showing slide duration */
+@keyframes spotlight-progress {
+  from { width: 0%; }
+  to   { width: 100%; }
 }
 
 /* Reduced motion — disable animations/transitions for vestibular-safe reading */

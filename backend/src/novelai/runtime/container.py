@@ -296,8 +296,8 @@ class Container:
     def health_service(self) -> HealthService:
         if self._health_service is None:
             self._health_service = HealthService(
-                storage=self.storage,
-                activity_runner=self.activity_runner,
+                storage=lambda: self.storage,
+                activity_runner=self.activity_runner if settings.JOB_WORKER_ENABLED else None,
                 backup_service=self.backup_service if settings.BACKUP_ENABLED else None,
                 database_backup_service=self.database_backup_service if settings.DATABASE_BACKUP_ENABLED else None,
                 operator_alert_service=self.operator_alert_service,

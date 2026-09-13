@@ -68,12 +68,17 @@ export default function DashboardPage() {
               <StatusBadge status={workerStatus?.running ? "running" : "stopped"} />
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <Button onClick={() => start.mutate()} disabled={start.isPending}>
+              <Button
+                className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+                onClick={() => start.mutate()}
+                disabled={start.isPending}
+              >
                 <Play className="h-4 w-4" />
                 Start
               </Button>
               <Button
                 variant="outline"
+                className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                 onClick={() => setShowStopConfirm(true)}
                 disabled={stop.isPending}
               >
@@ -82,6 +87,7 @@ export default function DashboardPage() {
               </Button>
               <Button
                 variant="secondary"
+                className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                 onClick={() => runOnce.mutate()}
                 disabled={runOnce.isPending}
                 title="Processes one pending batch/activity without starting the continuous worker."
@@ -93,16 +99,16 @@ export default function DashboardPage() {
             </div>
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <div>
-                <dt className="text-muted-foreground">Processed</dt>
-                <dd className="font-medium">{workerStatus?.activity_processed ?? 0}</dd>
+                <dt className="text-xs uppercase tracking-wider font-metadata text-muted-foreground">Processed</dt>
+                <dd className="mt-0.5 font-medium tabular-nums font-mono">{workerStatus?.activity_processed ?? 0}</dd>
               </div>
               <div>
-                <dt className="text-muted-foreground">Idle ticks</dt>
-                <dd className="font-medium">{workerStatus?.idle_ticks ?? 0}</dd>
+                <dt className="text-xs uppercase tracking-wider font-metadata text-muted-foreground">Idle ticks</dt>
+                <dd className="mt-0.5 font-medium tabular-nums font-mono">{workerStatus?.idle_ticks ?? 0}</dd>
               </div>
               <div className="col-span-2">
-                <dt className="text-muted-foreground">Last error</dt>
-                <dd className="break-words font-medium">{workerStatus?.last_error || "-"}</dd>
+                <dt className="text-xs uppercase tracking-wider font-metadata text-muted-foreground">Last error</dt>
+                <dd className="mt-0.5 break-words font-medium text-xs text-muted-foreground">{workerStatus?.last_error || "-"}</dd>
               </div>
             </dl>
           </PanelBody>

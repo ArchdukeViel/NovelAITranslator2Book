@@ -24,7 +24,7 @@ import type {
   PublicGlossaryAnnotation,
   PublicReaderBlock,
 } from "@/lib/public-types";
-import { useReaderPrefsStore } from "@/lib/reader-prefs";
+import { useReaderUiStore } from "@/lib/store";
 
 import "../../../../reader.css";
 
@@ -301,7 +301,7 @@ function ReaderMessage({
           <div className="mt-3 text-sm reader-muted">{children}</div>
           <Link
             href="/browse-novels"
-            className="mt-6 inline-flex items-center gap-1 text-sm underline reader-muted transition-colors hover:text-foreground"
+            className="mt-6 inline-flex min-h-[44px] items-center gap-1.5 text-sm underline reader-muted transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
           >
             <BookOpen className="h-4 w-4" />
             Browse the library
@@ -338,7 +338,7 @@ export default function ChapterPage() {
   const prefetchedNextRef = useRef<string | null>(null);
   const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [scrollProgress, setScrollProgress] = useState(0);
-  const { theme, fontSize, width } = useReaderPrefsStore();
+  const { theme, fontSize, width } = useReaderUiStore();
 
   useEffect(() => {
     const nextId = data?.next_chapter_id;
@@ -451,12 +451,26 @@ export default function ChapterPage() {
         });
       else localStorage.setItem(localKey, String(percent));
     }
-    window.addEventListener("scroll", update, { passive: true });
+    let ticking = false;
+    let rafId: number | null = null;
+    function throttledUpdate() {
+      if (!ticking) {
+        ticking = true;
+        rafId = window.requestAnimationFrame(() => {
+          update();
+          ticking = false;
+        });
+      }
+    }
+    window.addEventListener("scroll", throttledUpdate, { passive: true });
     window.addEventListener("pagehide", flush);
     requestAnimationFrame(update);
     return () => {
-      window.removeEventListener("scroll", update);
+      window.removeEventListener("scroll", throttledUpdate);
       window.removeEventListener("pagehide", flush);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
       if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
     };
   }, [chapterId, data, fontSize, isAuthenticated, slug, updateProgress, width]);
@@ -468,9 +482,13 @@ export default function ChapterPage() {
     const nextChapterId = chapter.next_chapter_id;
     const publicSlug = chapter.slug?.trim() || slug;
     function navigate(event: KeyboardEvent) {
+      const target = event.target;
       if (
-        event.target instanceof HTMLInputElement ||
-        event.target instanceof HTMLTextAreaElement
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement &&
+          (target.isContentEditable || Boolean(target.closest("[contenteditable='true']"))))
       )
         return;
       if (event.key === "ArrowLeft" && previousChapterId)
@@ -574,6 +592,7 @@ export default function ChapterPage() {
         <ReaderErrorBoundary
           novelSlug={typeof slug === "string" ? slug : undefined}
           chapterId={typeof chapterId === "string" ? chapterId : undefined}
+          plainText={data.text}
         >
           <article className="reader-article">
             <header className="reader-title-block">
@@ -614,7 +633,7 @@ export default function ChapterPage() {
             Found a problem with this chapter?{" "}
             <Link
               href="/contact"
-              className="underline transition-colors hover:text-foreground"
+              className="underline transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
             >
               Contact us
             </Link>{" "}
