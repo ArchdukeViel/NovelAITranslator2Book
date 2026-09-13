@@ -60,7 +60,10 @@ const navItems: NavItem[] = [
  * Select the active nav item using most-specific (longest prefix) matching.
  * Returns at most one active item.
  */
-function selectActiveNav(pathname: string, items: NavItem[]): NavItem | undefined {
+function selectActiveNav(
+  pathname: string,
+  items: NavItem[],
+): NavItem | undefined {
   let bestMatch: NavItem | undefined;
   let bestMatchLength = -1;
 
@@ -79,7 +82,8 @@ function selectActiveNav(pathname: string, items: NavItem[]): NavItem | undefine
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { darkMode, sidebarCollapsed, toggleDarkMode, toggleSidebar } = useAdminUiStore();
+  const { darkMode, sidebarCollapsed, toggleDarkMode, toggleSidebar } =
+    useAdminUiStore();
   const activeItem = selectActiveNav(pathname, navItems);
 
   React.useEffect(() => {
@@ -91,7 +95,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-20 flex flex-col border-r bg-card transition-[width]",
-          sidebarCollapsed ? "w-16" : "w-64"
+          sidebarCollapsed ? "w-16" : "w-64",
         )}
       >
         <div className="flex h-14 items-center justify-between border-b px-3">
@@ -100,7 +104,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             className="flex min-w-0 items-center gap-2 rounded-lg p-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           >
             <Bot className="h-5 w-5 text-primary" />
-            {!sidebarCollapsed && <span className="truncate font-literary text-sm font-semibold tracking-normal">Novel AI Admin</span>}
+            {!sidebarCollapsed && (
+              <span className="truncate font-literary text-sm font-semibold tracking-normal">
+                Novel AI Admin
+              </span>
+            )}
           </Link>
           <Button
             variant="ghost"
@@ -109,7 +117,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             aria-label="Toggle sidebar"
             className="h-11 w-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           >
-            {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            {sidebarCollapsed ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
           </Button>
         </div>
 
@@ -123,12 +135,15 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 href={item.href}
                 className={cn(
                   "flex min-h-11 h-11 items-center gap-3 rounded-lg px-3.5 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary",
-                  active && "bg-primary text-primary-foreground hover:bg-primary shadow-xs"
+                  active &&
+                    "bg-primary text-primary-foreground hover:bg-primary shadow-xs",
                 )}
                 title={sidebarCollapsed ? item.label : undefined}
               >
                 <Icon className="h-4 w-4 shrink-0" />
-                {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                {!sidebarCollapsed && (
+                  <span className="truncate">{item.label}</span>
+                )}
               </Link>
             );
           })}
@@ -145,7 +160,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <div className={cn("transition-[padding]", sidebarCollapsed ? "pl-16" : "pl-64")}>
+      <div
+        className={cn(
+          "transition-[padding]",
+          sidebarCollapsed ? "pl-16" : "pl-64",
+        )}
+      >
         <header className="sticky top-0 z-10 flex min-h-14 items-center justify-between gap-3 border-b bg-background/95 px-5 backdrop-blur">
           <div className="flex items-center gap-2 font-metadata text-sm font-medium text-muted-foreground">
             <Activity className="h-4 w-4 text-primary" />
@@ -161,7 +181,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               aria-label={darkMode ? "Dark mode" : "Light mode"}
               title={darkMode ? "Dark mode" : "Light mode"}
             >
-              {darkMode ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+              {darkMode ? (
+                <Moon className="h-4 w-4" />
+              ) : (
+                <Sun className="h-4 w-4" />
+              )}
             </Button>
             <OwnerSessionIndicator />
             <LogoutControl />

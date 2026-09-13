@@ -415,7 +415,9 @@ export default function NovelDetailPage() {
     <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
+        }}
       />
       <BackToBrowse />
 
@@ -680,7 +682,8 @@ export default function NovelDetailPage() {
                         </span>
                       </div>
                       <span className="shrink-0 rounded-full bg-muted/60 px-2.5 py-0.5 font-metadata text-xs text-muted-foreground">
-                        {group.chapters.length} {group.chapters.length === 1 ? "chapter" : "chapters"}
+                        {group.chapters.length}{" "}
+                        {group.chapters.length === 1 ? "chapter" : "chapters"}
                       </span>
                     </summary>
                     <div className="border-t border-border/40">
