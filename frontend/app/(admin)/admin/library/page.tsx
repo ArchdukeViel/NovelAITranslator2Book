@@ -606,6 +606,7 @@ export default function LibraryPage() {
             <Button
               variant="outline"
               size="sm"
+              className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               onClick={() => runAction("translate", selectedRows)}
               disabled={selectedRows.length !== 1 || runLibraryAction.isPending || runTranslationDialog.isPending}
               title={selectedRows.length === 1 ? "Choose chapters to translate" : "Select one novel to translate"}
@@ -617,6 +618,7 @@ export default function LibraryPage() {
             <Button
               variant="outline"
               size="sm"
+              className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               onClick={() => runAction("recrawl", selectedRows)}
               disabled={selectedRows.length === 0 || runLibraryAction.isPending}
             >
@@ -627,6 +629,7 @@ export default function LibraryPage() {
             <Button
               variant="destructive"
               size="sm"
+              className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-destructive"
               onClick={() => runAction("delete", selectedRows)}
               disabled={selectedRows.length === 0 || runLibraryAction.isPending}
             >
@@ -634,7 +637,13 @@ export default function LibraryPage() {
               Delete selected
             </Button>
 
-            <Button variant="outline" size="sm" onClick={() => void novels.refetch()} disabled={novels.isFetching}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+              onClick={() => void novels.refetch()}
+              disabled={novels.isFetching}
+            >
               <RotateCw className="h-4 w-4" />
               Refresh
             </Button>
@@ -642,6 +651,7 @@ export default function LibraryPage() {
             <Button
               variant="outline"
               size="sm"
+              className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               onClick={() => refreshSummary.mutate()}
               disabled={refreshSummary.isPending}
             >

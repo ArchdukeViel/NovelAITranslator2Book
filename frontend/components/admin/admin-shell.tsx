@@ -95,11 +95,20 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         )}
       >
         <div className="flex h-14 items-center justify-between border-b px-3">
-          <Link href="/admin/dashboard" className="flex min-w-0 items-center gap-2">
+          <Link
+            href="/admin/dashboard"
+            className="flex min-w-0 items-center gap-2 rounded-lg p-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+          >
             <Bot className="h-5 w-5 text-primary" />
-            {!sidebarCollapsed && <span className="truncate text-sm font-semibold">Novel AI Admin</span>}
+            {!sidebarCollapsed && <span className="truncate font-literary text-sm font-semibold tracking-normal">Novel AI Admin</span>}
           </Link>
-          <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Toggle sidebar">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            aria-label="Toggle sidebar"
+            className="h-11 w-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+          >
             {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </Button>
         </div>
@@ -113,8 +122,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex h-10 items-center gap-3 rounded-md px-3 text-sm transition-colors hover:bg-muted",
-                  active && "bg-primary text-primary-foreground hover:bg-primary"
+                  "flex min-h-11 h-11 items-center gap-3 rounded-lg px-3.5 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary",
+                  active && "bg-primary text-primary-foreground hover:bg-primary shadow-xs"
                 )}
                 title={sidebarCollapsed ? item.label : undefined}
               >
@@ -126,7 +135,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="border-t p-3">
-          <Link className="flex h-9 items-center gap-3 rounded-md px-3 text-sm hover:bg-muted" href="/">
+          <Link
+            className="flex min-h-11 h-11 items-center gap-3 rounded-lg px-3.5 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+            href="/"
+          >
             <BookOpen className="h-4 w-4" />
             {!sidebarCollapsed && <span>Public reader</span>}
           </Link>
@@ -135,7 +147,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
       <div className={cn("transition-[padding]", sidebarCollapsed ? "pl-16" : "pl-64")}>
         <header className="sticky top-0 z-10 flex min-h-14 items-center justify-between gap-3 border-b bg-background/95 px-5 backdrop-blur">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 font-metadata text-sm font-medium text-muted-foreground">
             <Activity className="h-4 w-4 text-primary" />
             <span>{activeItem?.label ?? "Dashboard"}</span>
           </div>
@@ -144,6 +156,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <Button
               variant="outline"
               size="icon"
+              className="h-11 w-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               onClick={toggleDarkMode}
               aria-label={darkMode ? "Dark mode" : "Light mode"}
               title={darkMode ? "Dark mode" : "Light mode"}

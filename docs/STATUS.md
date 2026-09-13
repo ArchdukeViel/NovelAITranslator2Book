@@ -685,6 +685,8 @@ evidence by itself.
 
 ### DEBT-FE-01 — Frontend design rework
 
+Status: **Implementation complete across P0 through P5** (foundation design tokens, public shell and navigation, discovery and catalog surfaces, novel detail and chapter reader, account and library, and admin operational surfaces). All 48 routes, 955 unit tests across 94 test files, typecheck, and linting pass clean locally. `DEBT-FE-01A` manual acceptance remains the sole open operator gate for physical-device, native screen-reader, and 200% zoom validation.
+
 Keep the full rework out of one giant change. Bounded slices, one per
 PR/change, each with exact tests:
 
@@ -1204,7 +1206,7 @@ fail-closed gate.
 6. `DEBT-079C` + `DEBT-079D` + `DEBT-079E` — monitoring, manual acceptance,
    rollback rehearsal.
 7. `FE-02` — FE-01 manual accessibility/contrast acceptance.
-8. Remaining `DEBT-FE-01` slices.
+8. Remaining `DEBT-FE-01` operator acceptance (`DEBT-FE-01A` on deployed candidate).
 9. Deferred specs (`DEBT-SC-01`, `DEBT-QA-01`, `DEBT-REV-01`, and
    `DEBT-COM-01`) only after launch blockers close.
 

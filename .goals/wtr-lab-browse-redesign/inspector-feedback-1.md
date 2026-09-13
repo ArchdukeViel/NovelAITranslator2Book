@@ -10,12 +10,15 @@
 - [x] Criterion 4 — verified: All quality gates passed with 0 errors (`npm --prefix frontend run typecheck`, `npm --prefix frontend run lint`, `npm --prefix frontend run test` targeted suite 83/83 passing).
 
 ## Quality Gate
+
 - Command: `npm --prefix frontend run typecheck && npm --prefix frontend run lint && npm --prefix frontend run test -- components/public/__tests__/browse-page.test.tsx components/public/__tests__/novel-card.test.tsx`
 - Result: PASS
 - Details: Typecheck clean, ESLint clean, 83/83 targeted unit tests passed across browse-page and novel-card suites.
 
 ## Issues Found
+
 None.
 
 ## What Must Be Fixed (FAIL only)
+
 N/A

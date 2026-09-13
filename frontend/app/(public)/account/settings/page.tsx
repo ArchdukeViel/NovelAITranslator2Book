@@ -105,7 +105,7 @@ export default function AccountSettingsPage() {
               </p>
               <Link
                 href="/browse-novels"
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-primary underline hover:text-foreground"
+                className="inline-flex min-h-11 items-center gap-1.5 text-xs font-medium text-primary underline hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
               >
                 Open a novel to adjust reading settings
               </Link>
@@ -130,7 +130,7 @@ export default function AccountSettingsPage() {
                 </p>
                 <Link
                   href="/account/notifications"
-                  className="inline-block text-xs font-medium text-primary underline hover:text-foreground"
+                  className="inline-flex min-h-11 items-center text-xs font-medium text-primary underline hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
                 >
                   Manage notifications →
                 </Link>
@@ -153,7 +153,7 @@ export default function AccountSettingsPage() {
                 </p>
                 <Link
                   href="/account/contributions"
-                  className="inline-block text-xs font-medium text-primary underline hover:text-foreground"
+                  className="inline-flex min-h-11 items-center text-xs font-medium text-primary underline hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
                 >
                   View Dashboard →
                 </Link>
@@ -179,7 +179,7 @@ export default function AccountSettingsPage() {
               <button
                 type="button"
                 disabled
-                className="inline-flex h-8 items-center justify-center rounded-md border border-destructive/40 bg-destructive/10 px-3 text-xs font-medium text-destructive opacity-50 cursor-not-allowed"
+                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-destructive/40 bg-destructive/10 px-4 text-xs font-medium text-destructive opacity-50 cursor-not-allowed"
                 aria-label="Delete account (disabled)"
               >
                 Delete Account (Unavailable)

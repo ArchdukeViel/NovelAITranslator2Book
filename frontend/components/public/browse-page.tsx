@@ -291,7 +291,7 @@ function TagFilterCombobox({
                   e.stopPropagation();
                   onRemove(tag);
                 }}
-                className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                className="relative inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5"
                 aria-label={`Remove tag ${tag}`}
               >
                 <X className="h-3 w-3" />
@@ -359,7 +359,7 @@ function TagFilterCombobox({
                 Array.from(selectedSet).forEach(onRemove);
               }}
               aria-label={`Clear all ${label}`}
-              className="rounded p-0.5 hover:text-foreground"
+              className="relative rounded p-0.5 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -373,7 +373,7 @@ function TagFilterCombobox({
               if (!isOpen) inputRef.current?.focus();
             }}
             aria-label={`Toggle ${label} dropdown`}
-            className="p-0.5 hover:text-foreground"
+            className="relative p-0.5 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5"
           >
             <ChevronDown
               className={`h-4 w-4 transition-transform duration-150 ${
@@ -403,7 +403,7 @@ function TagFilterCombobox({
                   setHighlightedIndex(-1);
                   inputRef.current?.focus();
                 }}
-                className={`rounded px-2 py-0.5 text-[11px] font-medium whitespace-nowrap transition-colors ${
+                className={`rounded px-2 py-0.5 text-[11px] font-medium whitespace-nowrap transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
                   selectedCategory === cat
                     ? "bg-foreground text-background font-semibold"
                     : "border border-border/60 bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -443,10 +443,10 @@ function TagFilterCombobox({
                         inputRef.current?.focus();
                       }}
                       onMouseEnter={() => setHighlightedIndex(idx)}
-                      className={`flex w-full items-center justify-between rounded px-2.5 py-1.5 text-left text-xs transition-colors ${
+                      className={`flex w-full items-center justify-between rounded px-2.5 py-2 text-left text-xs transition-colors pointer-coarse:min-h-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
                         isHighlighted
-                          ? "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-200"
-                          : "text-foreground hover:bg-blue-50/70 hover:text-blue-700 dark:hover:bg-blue-950/30 dark:hover:text-blue-200"
+                          ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary font-medium"
+                          : "text-foreground hover:bg-primary/10 hover:text-primary dark:hover:bg-primary/20 dark:hover:text-primary"
                       }`}
                     >
                       <span>{tag.name}</span>
@@ -899,7 +899,7 @@ function BrowseContent({
             <button
               type="button"
               onClick={handleClearFilters}
-              className="text-xs font-medium text-primary transition-colors duration-150 hover:underline cursor-pointer motion-reduce:transition-none"
+              className="relative text-xs font-medium text-primary transition-colors duration-150 hover:underline cursor-pointer motion-reduce:transition-none focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5"
             >
               Clear all
             </button>
@@ -921,12 +921,12 @@ function BrowseContent({
                 type="search"
                 defaultValue={q ?? ""}
                 placeholder="Search by title or author"
-                className="h-10 w-full rounded-lg border border-border/60 bg-muted/40 pl-9 pr-9 text-xs sm:text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-border focus:bg-card focus:ring-1 focus:ring-ring"
+                className="h-10 w-full rounded-lg border border-border/60 bg-muted/40 pl-9 pr-9 text-xs sm:text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-border focus:bg-card focus:ring-2 focus:ring-primary"
               />
               <button
                 type="submit"
                 aria-label="Search"
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+                className="relative absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary cursor-pointer pointer-coarse:after:absolute pointer-coarse:after:-inset-2"
               >
                 <Search className="h-3.5 w-3.5" />
                 <span className="sr-only">Search</span>
@@ -939,7 +939,7 @@ function BrowseContent({
                 type="checkbox"
                 checked={search_synopsis}
                 onChange={(e) => handleSearchSynopsisChange(e.target.checked)}
-                className="h-4 w-4 rounded border-border/60 text-primary focus:ring-primary"
+                className="h-4 w-4 rounded border-border/60 text-primary focus:ring-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               />
               <label
                 htmlFor="search-synopsis"
@@ -964,7 +964,7 @@ function BrowseContent({
                 type="button"
                 onClick={() => handleStatusChange("")}
                 className={cn(
-                  "flex-1 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-medium text-center transition-all duration-150 cursor-pointer",
+                  "flex-1 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-medium text-center transition-all duration-150 cursor-pointer pointer-coarse:min-h-[44px] pointer-coarse:inline-flex pointer-coarse:items-center pointer-coarse:justify-center focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary",
                   !publicationStatus
                     ? "bg-background text-foreground shadow-xs font-semibold"
                     : "text-muted-foreground hover:text-foreground hover:bg-background/50",
@@ -983,7 +983,7 @@ function BrowseContent({
                       type="button"
                       onClick={() => handleStatusChange(value)}
                       className={cn(
-                        "flex-1 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-medium text-center transition-all duration-150 cursor-pointer",
+                        "flex-1 whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs font-medium text-center transition-all duration-150 cursor-pointer pointer-coarse:min-h-[44px] pointer-coarse:inline-flex pointer-coarse:items-center pointer-coarse:justify-center focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary",
                         isSelected
                           ? "bg-background text-foreground shadow-xs font-semibold"
                           : "text-muted-foreground hover:text-foreground hover:bg-background/50",
@@ -1013,7 +1013,7 @@ function BrowseContent({
                 onChange={(e) =>
                   handleSortChange(e.target.value as CatalogSortField)
                 }
-                className="h-9 w-full rounded-lg border border-border/60 bg-muted/40 px-2.5 text-xs text-foreground outline-none transition-colors focus:border-border focus:bg-card cursor-pointer"
+                className="h-9 w-full rounded-lg border border-border/60 bg-muted/40 px-2.5 text-xs text-foreground outline-none transition-colors focus:border-border focus:bg-card focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
               >
                 {SORT_OPTIONS.map(({ value, label }) => (
                   <option key={value} value={value}>
@@ -1030,7 +1030,7 @@ function BrowseContent({
                   type="button"
                   onClick={() => handleOrderChange("desc")}
                   aria-pressed={effectiveOrder === "desc"}
-                  className={`h-full w-full rounded-md text-center text-xs font-medium transition-colors cursor-pointer ${
+                  className={`h-full w-full rounded-md text-center text-xs font-medium transition-colors cursor-pointer pointer-coarse:min-h-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
                     effectiveOrder === "desc"
                       ? "bg-background text-foreground shadow-xs font-semibold"
                       : "text-muted-foreground hover:text-foreground"
@@ -1042,7 +1042,7 @@ function BrowseContent({
                   type="button"
                   onClick={() => handleOrderChange("asc")}
                   aria-pressed={effectiveOrder === "asc"}
-                  className={`h-full w-full rounded-md text-center text-xs font-medium transition-colors cursor-pointer ${
+                  className={`h-full w-full rounded-md text-center text-xs font-medium transition-colors cursor-pointer pointer-coarse:min-h-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
                     effectiveOrder === "asc"
                       ? "bg-background text-foreground shadow-xs font-semibold"
                       : "text-muted-foreground hover:text-foreground"
@@ -1077,7 +1077,7 @@ function BrowseContent({
                   defaultValue={min_chapters ?? ""}
                   placeholder="Min"
                   aria-label="Minimum"
-                  className="h-9 w-full rounded-lg border border-border/60 bg-muted/40 px-3 text-center text-xs text-foreground outline-none transition-colors focus:border-border focus:bg-card [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="h-9 w-full rounded-lg border border-border/60 bg-muted/40 px-3 text-center text-xs text-foreground outline-none transition-colors focus:border-border focus:bg-card focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
                 <span className="text-sm font-medium text-muted-foreground">
                   –
@@ -1094,7 +1094,7 @@ function BrowseContent({
                   defaultValue={max_chapters ?? ""}
                   placeholder="Max"
                   aria-label="Maximum"
-                  className="h-9 w-full rounded-lg border border-border/60 bg-muted/40 px-3 text-center text-xs text-foreground outline-none transition-colors focus:border-border focus:bg-card [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="h-9 w-full rounded-lg border border-border/60 bg-muted/40 px-3 text-center text-xs text-foreground outline-none transition-colors focus:border-border focus:bg-card focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
               </div>
             </div>
@@ -1115,7 +1115,7 @@ function BrowseContent({
                     onClick={() => handleGenreOpChange("and")}
                     aria-pressed={genre_op === "and"}
                     aria-label="AND"
-                    className={`rounded-md px-2.5 py-0.5 text-[11px] font-medium transition-colors cursor-pointer ${
+                    className={`rounded-md px-2.5 py-0.5 text-[11px] font-medium transition-colors cursor-pointer pointer-coarse:min-h-[44px] pointer-coarse:inline-flex pointer-coarse:items-center pointer-coarse:justify-center focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
                       genre_op === "and"
                         ? "bg-background text-foreground shadow-xs font-semibold"
                         : "text-muted-foreground hover:text-foreground"
@@ -1128,7 +1128,7 @@ function BrowseContent({
                     onClick={() => handleGenreOpChange("or")}
                     aria-pressed={genre_op === "or"}
                     aria-label="OR"
-                    className={`rounded-md px-2.5 py-0.5 text-[11px] font-medium transition-colors cursor-pointer ${
+                    className={`rounded-md px-2.5 py-0.5 text-[11px] font-medium transition-colors cursor-pointer pointer-coarse:min-h-[44px] pointer-coarse:inline-flex pointer-coarse:items-center pointer-coarse:justify-center focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
                       genre_op === "or"
                         ? "bg-background text-foreground shadow-xs font-semibold"
                         : "text-muted-foreground hover:text-foreground"
@@ -1179,7 +1179,7 @@ function BrowseContent({
                               : `${genre.name_en ?? genre.slug}: not selected`
                         }
                         aria-pressed={isSelected}
-                        className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs transition-colors select-none cursor-pointer ${
+                        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors select-none cursor-pointer pointer-coarse:min-h-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
                           isSelected
                             ? "bg-primary/10 font-medium text-foreground"
                             : isExcluded
@@ -1231,7 +1231,7 @@ function BrowseContent({
                       onClick={() => handleTagOpChange("and")}
                       aria-pressed={tag_op === "and"}
                       aria-label="AND"
-                      className={`rounded-md px-2.5 py-0.5 text-[11px] font-medium transition-colors cursor-pointer ${
+                      className={`rounded-md px-2.5 py-0.5 text-[11px] font-medium transition-colors cursor-pointer pointer-coarse:min-h-[44px] pointer-coarse:inline-flex pointer-coarse:items-center pointer-coarse:justify-center focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
                         tag_op === "and"
                           ? "bg-background text-foreground shadow-xs font-semibold"
                           : "text-muted-foreground hover:text-foreground"
@@ -1244,7 +1244,7 @@ function BrowseContent({
                       onClick={() => handleTagOpChange("or")}
                       aria-pressed={tag_op === "or"}
                       aria-label="OR"
-                      className={`rounded-md px-2.5 py-0.5 text-[11px] font-medium transition-colors cursor-pointer ${
+                      className={`rounded-md px-2.5 py-0.5 text-[11px] font-medium transition-colors cursor-pointer pointer-coarse:min-h-[44px] pointer-coarse:inline-flex pointer-coarse:items-center pointer-coarse:justify-center focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
                         tag_op === "or"
                           ? "bg-background text-foreground shadow-xs font-semibold"
                           : "text-muted-foreground hover:text-foreground"
@@ -1301,7 +1301,7 @@ function BrowseContent({
             <div className="pt-2">
               <button
                 type="submit"
-                className="inline-flex h-9.5 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-xs sm:text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90 cursor-pointer"
+                className="inline-flex min-h-[44px] h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-xs sm:text-sm font-semibold text-primary-foreground shadow-xs transition-colors hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
               >
                 Apply filters
               </button>
@@ -1312,7 +1312,7 @@ function BrowseContent({
           <button
             type="button"
             onClick={handleClearFilters}
-            className="h-10 flex-1 rounded-lg border border-border/60 text-xs font-semibold text-foreground hover:bg-muted/60 cursor-pointer"
+            className="min-h-[44px] h-11 flex-1 rounded-lg border border-border/60 text-xs font-semibold text-foreground hover:bg-muted/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
           >
             Clear
           </button>
@@ -1320,7 +1320,7 @@ function BrowseContent({
             type="submit"
             form="catalog-filters-form"
             onClick={() => setFiltersOpen(false)}
-            className="h-10 flex-1 rounded-lg bg-primary text-xs font-semibold text-primary-foreground shadow-xs hover:bg-primary/90 cursor-pointer"
+            className="min-h-[44px] h-11 flex-1 rounded-lg bg-primary text-xs font-semibold text-primary-foreground shadow-xs hover:bg-primary/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
           >
             Apply
           </button>
@@ -1332,7 +1332,7 @@ function BrowseContent({
           <button
             type="button"
             onClick={() => setFiltersOpen(true)}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border/60 px-3 text-xs font-medium transition-all duration-150 ease-out hover:bg-muted/60 active:scale-95 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 motion-reduce:transition-none lg:hidden cursor-pointer"
+            className="inline-flex min-h-[44px] h-11 items-center gap-1.5 rounded-lg border border-border/60 px-3 text-xs font-medium transition-all duration-150 ease-out hover:bg-muted/60 active:scale-95 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary motion-reduce:active:scale-100 motion-reduce:transition-none lg:hidden cursor-pointer"
           >
             <Filter className="h-3.5 w-3.5" /> Filters
             {activeFilterCount ? ` (${activeFilterCount})` : ""}
@@ -1349,7 +1349,7 @@ function BrowseContent({
                   ),
                 )
               }
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border/60 bg-card px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 cursor-pointer"
+              className="inline-flex min-h-[44px] h-11 items-center gap-1.5 rounded-lg border border-border/60 bg-card px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 cursor-pointer"
             >
               <Shuffle className="h-3.5 w-3.5" /> Surprise me
             </button>
@@ -1362,7 +1362,7 @@ function BrowseContent({
               type="button"
               aria-label="Remove search filter"
               onClick={() => removeParam("q")}
-              className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1"
+              className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 pointer-coarse:min-h-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
             >
               <Search className="h-3.5 w-3.5" />
               &ldquo;{q}&rdquo;
@@ -1374,7 +1374,7 @@ function BrowseContent({
               type="button"
               aria-label="Remove synopsis search filter"
               onClick={() => removeParam("search_synopsis")}
-              className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs"
+              className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs pointer-coarse:min-h-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
             >
               <Search className="h-3.5 w-3.5" />
               Synopsis search
@@ -1386,6 +1386,7 @@ function BrowseContent({
               type="button"
               aria-label="Remove status filter"
               onClick={() => removeParam("publication_status")}
+              className="pointer-coarse:min-h-[44px] pointer-coarse:inline-flex pointer-coarse:items-center focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-md"
             >
               <StatusBadge status={publicationStatus} />
             </button>
@@ -1403,7 +1404,7 @@ function BrowseContent({
                   scroll: false,
                 });
               }}
-              className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs"
+              className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs pointer-coarse:min-h-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
             >
               <BookOpen className="h-3.5 w-3.5" />
               {min_chapters ?? 0}–{max_chapters ?? "∞"} ch.
@@ -1416,7 +1417,7 @@ function BrowseContent({
               type="button"
               aria-label={`Remove included genre ${slug}`}
               onClick={() => removeParam("genre_include", slug)}
-              className="inline-flex min-h-11 min-w-11 items-center justify-center text-xs text-primary lg:min-h-0 lg:min-w-0"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center text-xs text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
             >
               × {slug}
             </button>
@@ -1427,7 +1428,7 @@ function BrowseContent({
               type="button"
               aria-label={`Remove excluded genre ${slug}`}
               onClick={() => removeParam("genre_exclude", slug)}
-              className="inline-flex min-h-11 min-w-11 items-center justify-center text-xs text-primary lg:min-h-0 lg:min-w-0"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center text-xs text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
             >
               × {slug}
             </button>
@@ -1438,7 +1439,7 @@ function BrowseContent({
               type="button"
               aria-label={`Remove included tag ${tag}`}
               onClick={() => removeParam("tag_include", tag)}
-              className="inline-flex min-h-11 min-w-11 items-center justify-center text-xs text-primary lg:min-h-0 lg:min-w-0"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center text-xs text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
             >
               × {tag}
             </button>
@@ -1449,14 +1450,14 @@ function BrowseContent({
               type="button"
               aria-label={`Remove excluded tag ${tag}`}
               onClick={() => removeParam("tag_exclude", tag)}
-              className="inline-flex min-h-11 min-w-11 items-center justify-center text-xs text-primary lg:min-h-0 lg:min-w-0"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center text-xs text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
             >
               × {tag}
             </button>
           ))}
           {hasActiveFilters && (
             <button
-              className="inline-flex items-center gap-1.5 text-sm text-primary transition-colors hover:text-accent"
+              className="relative inline-flex items-center gap-1.5 text-sm text-primary transition-colors hover:text-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5"
               onClick={handleClearFilters}
               type="button"
             >
@@ -1475,7 +1476,7 @@ function BrowseContent({
               Could not load novels right now. This is usually temporary.
             </p>
             <button
-              className="text-sm text-primary transition-colors hover:text-accent"
+              className="relative text-sm text-primary transition-colors hover:text-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5"
               onClick={() => router.refresh()}
               type="button"
             >
@@ -1497,7 +1498,7 @@ function BrowseContent({
             </p>
             {hasActiveFilters && (
               <button
-                className="inline-flex items-center gap-1.5 text-sm text-primary transition-colors hover:text-accent"
+                className="relative inline-flex items-center gap-1.5 text-sm text-primary transition-colors hover:text-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5"
                 onClick={handleClearFilters}
                 type="button"
               >
@@ -1519,7 +1520,7 @@ function BrowseContent({
             {hasNextPage(total, page, pageSize) && (
               <div className="mt-8 flex justify-center">
                 <button
-                  className="inline-flex h-10 items-center justify-center rounded-md border border-border bg-card px-6 text-sm font-medium transition-colors hover:bg-muted"
+                  className="inline-flex min-h-[44px] h-11 items-center justify-center rounded-md border border-border bg-card px-6 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                   onClick={handleNextPage}
                   type="button"
                 >

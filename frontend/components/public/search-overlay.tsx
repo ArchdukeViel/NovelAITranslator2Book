@@ -14,7 +14,11 @@ import {
   clearRecentSearches,
 } from "@/lib/search-overlay";
 import { cn } from "@/lib/utils";
-import type { PublicGenreResponse, PublicNovelSummary, PublicTagSearchResult } from "@/lib/public-types";
+import type {
+  PublicGenreResponse,
+  PublicNovelSummary,
+  PublicTagSearchResult,
+} from "@/lib/public-types";
 
 // One shared search overlay (DESIGN.md — Search contract). Opened from the
 // desktop header search field, the mobile Search tab, or the `/` shortcut.
@@ -41,7 +45,12 @@ interface SearchResults {
   genres: PublicGenreResponse[];
 }
 
-const EMPTY_RESULTS: SearchResults = { novels: [], authors: [], tags: [], genres: [] };
+const EMPTY_RESULTS: SearchResults = {
+  novels: [],
+  authors: [],
+  tags: [],
+  genres: [],
+};
 
 export function SearchOverlay() {
   const isOpen = useSearchOverlay((state) => state.isOpen);
@@ -133,37 +142,58 @@ function SearchOverlayContent() {
       try {
         const [catalogResult, tagsResult] = await Promise.allSettled([
           publicApi.catalog(
-            { q: debouncedTrimmed, page_size: GROUP_CAP * 2, sort_by: "title", order: "asc" },
-            controller.signal
+            {
+              q: debouncedTrimmed,
+              page_size: GROUP_CAP * 2,
+              sort_by: "title",
+              order: "asc",
+            },
+            controller.signal,
           ),
-          publicApi.searchTags({ q: debouncedTrimmed, limit: GROUP_CAP }, controller.signal),
+          publicApi.searchTags(
+            { q: debouncedTrimmed, limit: GROUP_CAP },
+            controller.signal,
+          ),
         ]);
         if (controller.signal.aborted) return;
 
         const novels =
-          catalogResult.status === "fulfilled" ? catalogResult.value.novels.slice(0, GROUP_CAP) : [];
+          catalogResult.status === "fulfilled"
+            ? catalogResult.value.novels.slice(0, GROUP_CAP)
+            : [];
         const matchedAuthors =
           catalogResult.status === "fulfilled"
             ? catalogResult.value.novels
                 .map((novel) => novel.author)
                 .filter(
                   (author): author is string =>
-                    !!author && author.toLowerCase().includes(debouncedTrimmed.toLowerCase())
+                    !!author &&
+                    author
+                      .toLowerCase()
+                      .includes(debouncedTrimmed.toLowerCase()),
                 )
             : [];
         const authors = [...new Set(matchedAuthors)].slice(0, GROUP_CAP);
-        const tags = tagsResult.status === "fulfilled" ? tagsResult.value.slice(0, GROUP_CAP) : [];
+        const tags =
+          tagsResult.status === "fulfilled"
+            ? tagsResult.value.slice(0, GROUP_CAP)
+            : [];
 
         // Genres matched client-side from the (small, cached) genre list.
         const ql = debouncedTrimmed.toLowerCase();
         const genres = allGenres
           .filter((genre) => {
-            const hay = [genre.name_ja, genre.name_en].filter(Boolean).join(" ").toLowerCase();
+            const hay = [genre.name_ja, genre.name_en]
+              .filter(Boolean)
+              .join(" ")
+              .toLowerCase();
             return hay.includes(ql);
           })
           .slice(0, GROUP_CAP - tags.length);
 
-        const failed = catalogResult.status === "rejected" && tagsResult.status === "rejected";
+        const failed =
+          catalogResult.status === "rejected" &&
+          tagsResult.status === "rejected";
         setResults({ novels, authors, tags, genres });
         setError(failed && !controller.signal.aborted);
         setActiveIndex(-1);
@@ -216,7 +246,7 @@ function SearchOverlayContent() {
           return;
       }
     },
-    [trimmedQuery, close, router]
+    [trimmedQuery, close, router],
   );
 
   const onKeyDown = useCallback(
@@ -246,7 +276,7 @@ function SearchOverlayContent() {
         }
       }
     },
-    [rows, activeIndex, trimmedQuery, close, router, activateRow]
+    [rows, activeIndex, trimmedQuery, close, router, activateRow],
   );
 
   function runRecent(term: string) {
@@ -268,9 +298,7 @@ function SearchOverlayContent() {
   function renderGroupHeader(label: string, count: number) {
     if (count === 0) return null;
     return (
-      <p
-        className="px-3 pb-1 pt-2.5 font-literary text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground"
-      >
+      <p className="px-3 pb-1 pt-2.5 font-literary text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
         {label}
       </p>
     );
@@ -279,7 +307,9 @@ function SearchOverlayContent() {
   function rowClass(active: boolean) {
     return cn(
       "flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors",
-      active ? "bg-primary/10 text-primary" : "text-foreground/90 hover:bg-accent/40"
+      active
+        ? "bg-primary/10 text-primary"
+        : "text-foreground/90 hover:bg-accent/40",
     );
   }
 
@@ -302,12 +332,15 @@ function SearchOverlayContent() {
       <div
         className={cn(
           "relative z-10 flex w-full flex-col overflow-hidden bg-background shadow-xl motion-safe:animate-[search-overlay-panel-rise_200ms_ease-out]",
-          "h-full md:h-auto md:max-h-[min(70vh,480px)] md:max-w-lg md:rounded-xl md:border md:border-primary/25 md:shadow-2xl"
+          "h-full md:h-auto md:max-h-[min(70vh,480px)] md:max-w-lg md:rounded-xl md:border md:border-primary/25 md:shadow-2xl",
         )}
       >
         {/* Search input */}
         <div className="flex items-center gap-2 border-b border-primary/20 px-3">
-          <Search className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+          <Search
+            className="h-4 w-4 shrink-0 text-primary"
+            aria-hidden="true"
+          />
           <input
             ref={inputRef}
             type="search"
@@ -351,7 +384,9 @@ function SearchOverlayContent() {
                     <button
                       type="button"
                       onClick={() =>
-                        runRecent(allGenres[0].name_en ?? allGenres[0].name_ja ?? "")
+                        runRecent(
+                          allGenres[0].name_en ?? allGenres[0].name_ja ?? "",
+                        )
                       }
                       className="flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm text-foreground hover:bg-accent/40"
                     >
@@ -393,8 +428,13 @@ function SearchOverlayContent() {
                           onClick={() => runRecent(term)}
                           className="flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm hover:bg-accent/40"
                         >
-                          <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                          <span dir="auto" className="truncate">{term}</span>
+                          <Search
+                            className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                            aria-hidden="true"
+                          />
+                          <span dir="auto" className="truncate">
+                            {term}
+                          </span>
                         </button>
                       </li>
                     ))}
@@ -412,14 +452,19 @@ function SearchOverlayContent() {
                           type="button"
                           onClick={() => {
                             close();
-                            router.push(`/genres/${encodeURIComponent(genre.slug)}`);
+                            router.push(
+                              `/genres/${encodeURIComponent(genre.slug)}`,
+                            );
                           }}
                           className="flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm hover:bg-accent/40"
                         >
                           <span className="truncate">
                             {genre.name_en ?? genre.name_ja}
-                            {genre.name_en && genre.name_ja !== genre.name_en ? (
-                              <span className="ml-1.5 text-muted-foreground">{genre.name_ja}</span>
+                            {genre.name_en &&
+                            genre.name_ja !== genre.name_en ? (
+                              <span className="ml-1.5 text-muted-foreground">
+                                {genre.name_ja}
+                              </span>
                             ) : null}
                           </span>
                         </button>
@@ -441,7 +486,10 @@ function SearchOverlayContent() {
           {shouldSearch && (
             <>
               {error && (
-                <div className="px-3 py-4 text-center text-sm text-muted-foreground" role="status">
+                <div
+                  className="px-3 py-4 text-center text-sm text-muted-foreground"
+                  role="status"
+                >
                   <p>Search&apos;s unavailable right now.</p>
                   <button
                     type="button"
@@ -468,7 +516,12 @@ function SearchOverlayContent() {
                         className={rowClass(activeIndex === i)}
                       >
                         <span className="min-w-0 flex-1">
-                          <span dir="auto" className="block truncate font-literary font-medium">{novel.title}</span>
+                          <span
+                            dir="auto"
+                            className="block truncate font-literary font-medium"
+                          >
+                            {novel.title}
+                          </span>
                           {novel.source_title && (
                             <span className="block truncate text-xs text-muted-foreground">
                               {novel.source_title}
@@ -476,7 +529,12 @@ function SearchOverlayContent() {
                           )}
                         </span>
                         {novel.author && (
-                          <span dir="auto" className="shrink-0 text-xs text-muted-foreground">{novel.author}</span>
+                          <span
+                            dir="auto"
+                            className="shrink-0 text-xs text-muted-foreground"
+                          >
+                            {novel.author}
+                          </span>
                         )}
                       </button>
                     </li>
@@ -497,7 +555,9 @@ function SearchOverlayContent() {
                           onMouseEnter={() => setActiveIndex(rowIndex)}
                           className={rowClass(activeIndex === rowIndex)}
                         >
-                          <span dir="auto" className="truncate">{name}</span>
+                          <span dir="auto" className="truncate">
+                            {name}
+                          </span>
                         </button>
                       </li>
                     );
@@ -505,11 +565,16 @@ function SearchOverlayContent() {
                 </ul>
               )}
 
-              {!error && renderGroupHeader("Genres & Tags", results.genres.length + results.tags.length)}
+              {!error &&
+                renderGroupHeader(
+                  "Genres & Tags",
+                  results.genres.length + results.tags.length,
+                )}
               {!error && (
                 <ul className="space-y-0.5">
                   {results.tags.map((tag, i) => {
-                    const rowIndex = results.novels.length + results.authors.length + i;
+                    const rowIndex =
+                      results.novels.length + results.authors.length + i;
                     return (
                       <li key={`tag-${tag.name}`}>
                         <button
@@ -518,9 +583,13 @@ function SearchOverlayContent() {
                           onMouseEnter={() => setActiveIndex(rowIndex)}
                           className={rowClass(activeIndex === rowIndex)}
                         >
-                          <span dir="auto" className="truncate">#{tag.name}</span>
+                          <span dir="auto" className="truncate">
+                            #{tag.name}
+                          </span>
                           {tag.name_ja && tag.name_ja !== tag.name ? (
-                            <span className="ml-1.5 text-muted-foreground">{tag.name_ja}</span>
+                            <span className="ml-1.5 text-muted-foreground">
+                              {tag.name_ja}
+                            </span>
                           ) : null}
                         </button>
                       </li>
@@ -528,7 +597,10 @@ function SearchOverlayContent() {
                   })}
                   {results.genres.map((genre, i) => {
                     const rowIndex =
-                      results.novels.length + results.authors.length + results.tags.length + i;
+                      results.novels.length +
+                      results.authors.length +
+                      results.tags.length +
+                      i;
                     return (
                       <li key={`genre-${genre.slug}`}>
                         <button
@@ -537,7 +609,9 @@ function SearchOverlayContent() {
                           onMouseEnter={() => setActiveIndex(rowIndex)}
                           className={rowClass(activeIndex === rowIndex)}
                         >
-                          <span className="truncate">{genre.name_en ?? genre.name_ja}</span>
+                          <span className="truncate">
+                            {genre.name_en ?? genre.name_ja}
+                          </span>
                         </button>
                       </li>
                     );
@@ -545,11 +619,14 @@ function SearchOverlayContent() {
                 </ul>
               )}
 
-              {!error && rows.length === 0 && !loading && completedQuery === trimmedQuery && (
-                <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  No matches for <span dir="auto">“{trimmedQuery}”</span>.
-                </p>
-              )}
+              {!error &&
+                rows.length === 0 &&
+                !loading &&
+                completedQuery === trimmedQuery && (
+                  <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    No matches for <span dir="auto">“{trimmedQuery}”</span>.
+                  </p>
+                )}
 
               {/* Initial-load skeletons: only when no stale results exist to
                   hold the space (stale-in-place stays untouched). Same row
@@ -613,7 +690,8 @@ function SearchOverlayContent() {
                     className={rowClass(activeIndex === rows.length - 1)}
                   >
                     <span className="truncate">
-                      See all results for <span dir="auto">“{trimmedQuery}”</span>
+                      See all results for{" "}
+                      <span dir="auto">“{trimmedQuery}”</span>
                     </span>
                   </button>
                 </div>

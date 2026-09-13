@@ -471,11 +471,19 @@ export default function CrawlerPage() {
           footer={
             <div className="flex items-center justify-end gap-3">
               {(activeErrorKey.includes("SCRAPE_ACTIVITY_STILL_RUNNING") || activeErrorKey.includes("SCRAPE_ACTIVITY_FAILED")) && (
-                <Button variant="outline" onClick={() => router.push("/admin/activity")}>
+                <Button
+                  variant="outline"
+                  className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+                  onClick={() => router.push("/admin/activity")}
+                >
                   View Activity Log
                 </Button>
               )}
-              <Button variant="default" onClick={() => setDismissedErrorKey(activeErrorKey)}>
+              <Button
+                variant="default"
+                className="min-h-11 rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+                onClick={() => setDismissedErrorKey(activeErrorKey)}
+              >
                 Close
               </Button>
             </div>

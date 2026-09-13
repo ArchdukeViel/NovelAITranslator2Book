@@ -167,6 +167,36 @@ textarea {
   outline-offset: 2px;
 }
 
+/* Discrete global scrollbars */
+html,
+body,
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.25) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.25);
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.45);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .seamless-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--muted)) hsl(var(--card));
@@ -250,6 +280,12 @@ textarea {
 @keyframes theme-segment-settle {
   from { transform: scale(0.985); }
   to   { transform: scale(1); }
+}
+
+/* Spotlight carousel reading progress — subtle bottom-edge indicator showing slide duration */
+@keyframes spotlight-progress {
+  from { width: 0%; }
+  to   { width: 100%; }
 }
 
 /* Reduced motion — disable animations/transitions for vestibular-safe reading */

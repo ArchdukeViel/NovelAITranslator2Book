@@ -25,6 +25,39 @@ Related contracts: [`STATUS.md`](STATUS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md
 
 Maintenance: append dated entries in reverse chronological order, preserve their meaning, never overwrite historical provenance, and keep secrets and raw provider data out of the record.
 
+## 2026-09-06 DOKUSHODO COMPLETE DESIGN SYSTEM AND FRONTEND VERIFICATION (P0-P5)
+
+Scope: Full design system overhaul and surface implementation across P0 through P5 (foundation tokens, public shell and navigation, discovery and catalog surfaces, novel detail and chapter reader, account and library, and admin operational surfaces).
+Authority: Canonical design authority [`DESIGN.md`](DESIGN.md) and [`AGENTS.md`](../AGENTS.md).
+
+Verified automated checks, test matrix, and compliance outcomes:
+
+- **Frontend Test Suite**: 955 passed tests across 94 test files (`npm run test --prefix frontend -- --run`), 0 failures, 0 regressions.
+- **Frontend Typecheck**: `npm run typecheck --prefix frontend`: 0 errors, clean TypeScript build across all 48 App Router routes.
+- **Frontend Linter**: `npm run lint --prefix frontend`: 0 errors, 0 warnings (clean ESLint 9 configuration).
+- **Documentation Contracts**: `tools/docs-check.ps1`: 0 violations, exit code 0.
+- **Backend Regression Suite**: `tools/pytest.ps1 backend/tests/test_public_router.py`: 125 passed tests in 5.82s.
+- **Router Import Guard**: 0 violations, exit code 1 (clean backend architectural boundaries).
+
+Phase Implementation Matrix:
+
+1. **P0 - Foundation & Design Tokens**: Implemented Tailwind configuration with semantic color tokens (Shuji Vermillion, Sakura, Soft Teal, Washi Warm Paper, Midnight Slate), typography scale (`font-literary` serif, `font-sans`, `font-mono`), washi paper card utility tokens (`bg-card/70 border-border/70 shadow-card`), and resting/hover shadow elevation.
+2. **P1 - Public Shell & Navigation**: Header with auto-hide/reveal scroll interaction, collapsible drawer with backdrop and Escape dismissal, mobile bottom tab bar with safe-area insets (`env(safe-area-inset-bottom)`), reader chrome suppression on chapter routes, and 44x44px minimum touch targets.
+3. **P2 - Discovery & Catalog Surfaces**: Home editorial spotlight hero, responsive novel rails with horizontal scroll and arrow navigation, catalog filter state with taxonomy badges, genre/tag/source routes, search overlay with debounced API queries, and deterministic bookplate fallback covers.
+4. **P3 - Novel Detail & Chapter Reader**: Reading-first hero with truthful metadata, semantic tabs (Overview, Chapters, Reviews), chapter search and grouping, reading typography (`font-literary leading-[1.8]` with CJK kinsoku shori), reader Aa controls drawer (theme, font size, column width, brightness), and sepia/dark/light theme parity.
+5. **P4 - Account & Library Surfaces**: Library board and list views with reading progress chips, reading history with resume links, user reviews management with delete confirmation, novel request submission with status disclosure, provider credential management with encrypted storage validation, and account settings panels.
+6. **P5 - Admin & Backoffice Operational Surfaces**: High-density admin shell, dashboard queue and worker metrics, crawler and import panels, novel management and chapter editor, glossary terms table, maintenance controls, reviews moderation, user management, and audit log. Enforced dense 32-36px table rows, sticky headers, subtle hover row highlights, `DialogShell` focus-trapped confirmation modals for all destructive/crawler actions, and coarse-pointer 44px hit-slop (`pointer-coarse:min-h-[44px]`).
+
+Accessibility and Ergonomic Compliance:
+
+- **WCAG 2.1 AA Token Contrast**: 34 automated token contrast checks passed across light and dark modes (4.5:1 normal text, 3:1 controls/focus indicators).
+- **Touch Targets**: 44x44px minimum touch targets enforced across coarse pointers (`pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px]` or `min-h-11 h-11 px-3.5`).
+- **Focus Rings**: Two-layer focus ring (`focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background`) and destructive ring on all interactive elements.
+- **Modal Accessibility**: `DialogShell` wrapping all dialogs with focus trapping, body scroll locking, and Escape/backdrop dismissal.
+- **Reduced Motion**: All animations and transitions collapse under `prefers-reduced-motion: reduce`.
+- **Forced Colors**: Windows High Contrast mode borders, focus rings, and status text visibility preserved.
+- **Limitations**: Physical-device testing, native screen-reader (NVDA/VoiceOver) verification, and manual 200% zoom reflow remain tracked under open operator gate `DEBT-FE-01A` in [`STATUS.md`](STATUS.md). `production_capacity_claim` remains `not_established`.
+
 ## 2026-09-05 POSTGRESQL AND CLOUDFLARE R2 DATABASE AND STORAGE HARDENING AUDIT VERIFICATION
 
 Specification: `.agents/specs/database-and-storage-hardening/` (Tasks 1 through 16).

@@ -128,13 +128,20 @@ export function LibraryRowActions({
       </div>
       <div className="flex flex-wrap gap-2">
         {published ? (
-          <Button size="sm" variant="outline" onClick={() => onUnpublish(novel)} disabled={pending}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="rounded-lg pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+            onClick={() => onUnpublish(novel)}
+            disabled={pending}
+          >
             <EyeOff className="h-4 w-4" />
             {pending ? "Unpublishing" : "Unpublish"}
           </Button>
         ) : (
           <Button
             size="sm"
+            className="rounded-lg pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
             onClick={() => onPublish(novel)}
             disabled={!canPublish || pending}
             title={canPublish ? "Publish this novel" : "Translate at least one chapter before publishing."}
@@ -145,6 +152,7 @@ export function LibraryRowActions({
         )}
         <Button
           size="sm"
+          className="rounded-lg pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           onClick={() => onTranslate(novel)}
           disabled={missingSource || pending || translationPending}
           title={missingSource ? "Source key missing" : "Choose chapters to translate"}
@@ -156,6 +164,7 @@ export function LibraryRowActions({
           <Button
             size="sm"
             variant="outline"
+            className="rounded-lg pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
             onClick={() => onRetranslateStale(novel)}
             disabled={missingSource || pending}
             title="Retranslate chapters with stale glossary"
@@ -167,6 +176,7 @@ export function LibraryRowActions({
         <Button
           size="sm"
           variant="outline"
+          className="rounded-lg pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           onClick={() => onRecrawl(novel)}
           disabled={missingSource || pending}
           title={missingSource ? "Source key missing" : "Check and scrape latest chapters"}
@@ -174,13 +184,19 @@ export function LibraryRowActions({
           <RefreshCw className="h-4 w-4" />
           Recrawl
         </Button>
-        <Button size="sm" variant="destructive" onClick={() => onDelete(novel)} disabled={pending}>
+        <Button
+          size="sm"
+          variant="destructive"
+          className="rounded-lg pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-destructive"
+          onClick={() => onDelete(novel)}
+          disabled={pending}
+        >
           <Trash2 className="h-4 w-4" />
           Delete
         </Button>
         <Link
           className={cn(
-            "inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+            "inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           )}
           href={publicNovelHref(novel.novel_id)}
         >
@@ -189,7 +205,7 @@ export function LibraryRowActions({
         </Link>
         <Link
           className={cn(
-            "inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+            "inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           )}
           href={`/admin/editor?novel=${encodeURIComponent(novel.novel_id)}`}
         >
@@ -198,25 +214,45 @@ export function LibraryRowActions({
         </Link>
         <Link
           className={cn(
-            "inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+            "inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           )}
           href={`/admin/novels/${encodeURIComponent(novel.novel_id)}/glossary`}
         >
           <BookMarked className="h-4 w-4" />
           Glossary
         </Link>
-        <Button size="sm" variant="outline" onClick={() => onEditTaxonomy(novel)} disabled={pending}>
+        <Button
+          size="sm"
+          variant="outline"
+          className="rounded-lg pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+          onClick={() => onEditTaxonomy(novel)}
+          disabled={pending}
+        >
           <Tags className="h-4 w-4" />
           Taxonomy
         </Button>
         {onboardingResumable && onResume ? (
-          <Button size="sm" variant="outline" onClick={() => onResume(novel)} disabled={pending} title="Resume onboarding">
+          <Button
+            size="sm"
+            variant="outline"
+            className="rounded-lg pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+            onClick={() => onResume(novel)}
+            disabled={pending}
+            title="Resume onboarding"
+          >
             <RotateCw className="h-4 w-4" />
             Resume
           </Button>
         ) : null}
         {onboardingCancellable && onCancel ? (
-          <Button size="sm" variant="outline" onClick={() => onCancel(novel)} disabled={pending} title="Cancel onboarding">
+          <Button
+            size="sm"
+            variant="outline"
+            className="rounded-lg pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+            onClick={() => onCancel(novel)}
+            disabled={pending}
+            title="Cancel onboarding"
+          >
             <X className="h-4 w-4" />
             Cancel
           </Button>
@@ -224,6 +260,7 @@ export function LibraryRowActions({
         <Button
           size="sm"
           variant="outline"
+          className="rounded-lg pointer-coarse:min-h-[44px] pointer-coarse:min-w-[44px] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           onClick={() => onToggleCoverUpload(novel)}
           disabled={pending}
           aria-expanded={coverUploadOpen}

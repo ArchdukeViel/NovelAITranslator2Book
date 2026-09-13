@@ -323,7 +323,10 @@ class StorageService:
             from novelai.storage.backends.r2_gateway import InMemoryR2GatewayStorage
 
             self._backend = InMemoryR2GatewayStorage()
-        elif settings.ENV == "test":
+        elif settings.ENV == "test" or (
+            settings.ENV in ("development", "staging")
+            and not (settings.R2_GATEWAY_URL and settings.R2_GATEWAY_CLIENT_ID and settings.R2_GATEWAY_CLIENT_SECRET)
+        ):
             from novelai.storage.backends.r2_gateway import InMemoryR2GatewayStorage
 
             self._backend = InMemoryR2GatewayStorage()

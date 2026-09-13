@@ -125,13 +125,13 @@ export function NotificationPreferences({ className }: NotificationPreferencesPr
 
               return (
                 <div key={channel} className="flex items-center justify-center">
-                  <label className="flex items-center gap-2 cursor-pointer">
+                  <label className="flex min-h-11 min-w-11 items-center justify-center gap-2 cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50">
                     <input
                       type="checkbox"
                       checked={isEnabled}
                       disabled={saving}
                       onChange={(e) => handleToggle(eventType, channel, e.target.checked)}
-                      className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                      className="h-5 w-5 rounded border-input text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 cursor-pointer"
                       aria-label={`${channelLabel(channel)} notifications for ${eventTypeKey(eventType)}`}
                     />
                     {saving && (

@@ -72,6 +72,14 @@ class HealthService:
         self._readiness_cache_hits = 0
         self._readiness_cache_misses = 0
 
+    def _resolve_storage(self) -> Any | None:
+        if callable(self._storage):
+            try:
+                return self._storage()
+            except Exception:
+                return None
+        return self._storage
+
     def liveness(self) -> dict[str, Any]:
         """Process-only liveness check. No DB/storage/worker calls.
 
@@ -283,14 +291,15 @@ class HealthService:
     async def _probe_storage(self) -> dict[str, Any]:
         """Probe configured storage with bounded write/read/delete."""
         start = time.monotonic()
-        if self._storage is None:
+        storage = self._resolve_storage()
+        if storage is None:
             return {
                 "status": STATE_DEGRADED,
                 "message": "Storage service not available",
                 "latency_ms": 0,
             }
         try:
-            responsive = await asyncio.to_thread(self._storage.probe)
+            responsive = await asyncio.to_thread(storage.probe)
             latency = int((time.monotonic() - start) * 1000)
             if responsive:
                 return {
@@ -315,15 +324,16 @@ class HealthService:
     async def _probe_storage_readiness(self) -> dict[str, Any]:
         """Probe storage availability without a write/delete round trip."""
         start = time.monotonic()
-        if self._storage is None:
+        storage = self._resolve_storage()
+        if storage is None:
             return {
                 "status": STATE_DEGRADED,
                 "message": "Storage service not available",
                 "latency_ms": 0,
             }
         try:
-            probe = getattr(self._storage, "probe_readiness", None)
-            responsive = await asyncio.to_thread(probe if callable(probe) else self._storage.probe)
+            probe = getattr(storage, "probe_readiness", None)
+            responsive = await asyncio.to_thread(probe if callable(probe) else storage.probe)
             latency = int((time.monotonic() - start) * 1000)
             if responsive:
                 return {
@@ -388,8 +398,9 @@ class HealthService:
         """Probe disk space at the storage root."""
         start = time.monotonic()
         try:
-            if self._storage is not None:
-                path = Path(self._storage.base_dir)
+            storage = self._resolve_storage()
+            if storage is not None:
+                path = Path(storage.base_dir)
             else:
                 path = Path(settings.RUNTIME_DIR)
             usage = shutil.disk_usage(str(path))

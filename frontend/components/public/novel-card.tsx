@@ -22,7 +22,7 @@ type DiscoveryNovel = PublicNovelSummary & {
   rating?: number | null;
 };
 
-const CARD_SURFACE = "bg-card shadow-card dark:ring-1 dark:ring-white/5";
+const CARD_SURFACE = "bg-card shadow-card dark:ring-1 dark:ring-border/40";
 const CARD_LIFT =
   "transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-raised motion-reduce:hover:translate-y-0 motion-reduce:transition-none";
 
@@ -94,7 +94,7 @@ export function NovelCard({ novel, layout = "card" }: NovelCardProps) {
     return (
       <div
         className={cn(
-          "group relative flex flex-col justify-between overflow-hidden rounded-xl border border-border/60 bg-card p-3.5 sm:p-4 shadow-card hover:shadow-raised transition-all duration-300 ease-out dark:border-white/10 motion-reduce:transition-none",
+          "group relative flex flex-col justify-between overflow-hidden rounded-xl border border-border/60 bg-card p-3.5 sm:p-4 shadow-card hover:shadow-raised transition-all duration-300 ease-out dark:border-border/60 motion-reduce:transition-none",
         )}
       >
         <div className="space-y-3">
@@ -104,13 +104,13 @@ export function NovelCard({ novel, layout = "card" }: NovelCardProps) {
               href={publicNovelHref(novel.slug)}
               className="group/title block rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
             >
-              <h2 className="line-clamp-2 font-sans text-base sm:text-lg font-semibold leading-snug text-foreground transition-colors group-hover/title:text-primary motion-reduce:transition-none">
+              <h2 className="line-clamp-2 font-literary text-lg sm:text-xl font-medium tracking-tight text-foreground transition-colors group-hover/title:text-primary motion-reduce:transition-none">
                 {title}
               </h2>
               {showSourceTitle && (
                 <p
                   lang="ja"
-                  className="mt-0.5 line-clamp-1 font-sans text-xs text-muted-foreground/80"
+                  className="mt-0.5 line-clamp-1 font-literary text-xs sm:text-sm text-accent/90"
                 >
                   {sourceTitle}
                 </p>
@@ -118,7 +118,7 @@ export function NovelCard({ novel, layout = "card" }: NovelCardProps) {
             </Link>
           </div>
 
-          {/* Middle Row: Cover + Stats Grid & Action Buttons */}
+          {/* Middle Row: Cover + Quiet Metadata & Action Buttons */}
           <div className="flex gap-3 sm:gap-4">
             {/* Cover image on left */}
             <Link
@@ -150,78 +150,46 @@ export function NovelCard({ novel, layout = "card" }: NovelCardProps) {
               </div>
             </Link>
 
-            {/* Right side: Stats Grid + Action Buttons */}
+            {/* Right side: Quiet Metadata + Action Buttons */}
             <div className="flex flex-1 min-w-0 flex-col justify-between self-stretch">
-              {/* Stats Grid - 3-column stats pill grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
-                {/* Status */}
-                <div className="col-span-2 sm:col-span-3 flex items-center justify-center rounded-lg border border-border/60 bg-muted/40 px-2.5 py-1.5 text-center gap-1.5 dark:border-white/10">
-                  <span className="font-sans text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Status
-                  </span>
-                  <span className="text-muted-foreground/40">•</span>
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "h-2 w-2 rounded-full shrink-0",
-                        novel.publication_status === "ongoing"
-                          ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.4)]"
-                          : novel.publication_status === "completed"
-                            ? "bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.4)]"
-                            : novel.publication_status === "hiatus"
-                              ? "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.4)]"
-                              : novel.publication_status === "cancelled"
-                                ? "bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.4)]"
-                                : "bg-muted-foreground",
-                      )}
-                    />
-                    <span className="text-xs font-semibold leading-none capitalize text-foreground">
-                      {novel.publication_status || "Unknown"}
-                    </span>
+              <div className="space-y-2">
+                {novel.author && (
+                  <p className="text-xs sm:text-sm text-muted-foreground">
+                    {authorOrFallback(novel.author)}
+                  </p>
+                )}
+                <NovelMetadataRow
+                  chapterCount={novel.chapter_count}
+                  translatedCount={novel.translated_count}
+                  source={novel.source_key ?? novel.language}
+                  status={novel.publication_status}
+                  updatedAt={novel.updated_at}
+                />
+                {((novel.views != null && novel.views > 0) ||
+                  (novel.rating != null && novel.rating > 0)) && (
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground font-metadata">
+                    {novel.views != null && novel.views > 0 && (
+                      <span>
+                        {novel.views >= 1000
+                          ? `${(novel.views / 1000).toFixed(1)}k`
+                          : novel.views.toLocaleString()}{" "}
+                        views
+                      </span>
+                    )}
+                    {novel.rating != null && novel.rating > 0 && (
+                      <span className="inline-flex items-center gap-1">
+                        <span aria-hidden="true" className="text-primary">
+                          ★
+                        </span>
+                        <span>{novel.rating.toFixed(1)}</span>
+                      </span>
+                    )}
                   </div>
-                </div>
-
-                {/* Views */}
-                <div className="flex flex-col items-center justify-center rounded-lg border border-border/60 bg-muted/40 px-2 sm:px-2.5 py-1.5 text-center gap-0.5 dark:border-white/10">
-                  <span className="font-sans text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Views
-                  </span>
-                  <span className="text-xs font-semibold leading-none tabular-nums text-foreground">
-                    {novel.views
-                      ? novel.views >= 1000
-                        ? `${(novel.views / 1000).toFixed(1)}k`
-                        : novel.views.toLocaleString()
-                      : "0"}
-                  </span>
-                </div>
-
-                {/* Chapters */}
-                <div className="flex flex-col items-center justify-center rounded-lg border border-border/60 bg-muted/40 px-2 sm:px-2.5 py-1.5 text-center gap-0.5 dark:border-white/10">
-                  <span className="font-sans text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Chapters
-                  </span>
-                  <span className="text-xs font-semibold leading-none tabular-nums text-foreground">
-                    {novel.chapter_count}
-                  </span>
-                </div>
-
-                {/* Rating */}
-                <div className="col-span-2 sm:col-span-1 flex flex-col items-center justify-center rounded-lg border border-border/60 bg-muted/40 px-2 sm:px-2.5 py-1.5 text-center gap-0.5 dark:border-white/10">
-                  <span className="font-sans text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Rating
-                  </span>
-                  <div className="flex items-center justify-center gap-1 text-xs font-semibold leading-none tabular-nums text-foreground">
-                    <span aria-hidden="true" className="text-amber-500">
-                      ★
-                    </span>
-                    <span>{novel.rating ? novel.rating.toFixed(1) : "0"}</span>
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Action Buttons: Add to Library + Start Reading */}
-              <div className="flex flex-col gap-1.5 mt-2">
+              <div className="flex flex-col gap-2 pt-2">
                 <div
                   className="w-full"
                   onClick={(e) => e.preventDefault()}
@@ -233,7 +201,7 @@ export function NovelCard({ novel, layout = "card" }: NovelCardProps) {
                 </div>
                 <Link
                   href={readHref}
-                  className="inline-flex h-9 sm:h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-border/70 bg-muted/30 text-xs font-semibold text-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
+                  className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-border/70 bg-muted/30 text-xs font-semibold text-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   <BookOpen className="h-3.5 w-3.5" />
                   Start Reading
@@ -283,7 +251,7 @@ export function NovelCard({ novel, layout = "card" }: NovelCardProps) {
               <button
                 type="button"
                 onClick={() => setExpanded((prev) => !prev)}
-                className="cursor-pointer text-xs font-semibold text-foreground underline underline-offset-4 hover:text-foreground/80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
+                className="relative cursor-pointer text-xs font-semibold text-foreground underline underline-offset-4 hover:text-foreground/80 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5"
               >
                 {expanded ? "Show less" : "Show more"}
               </button>
@@ -292,7 +260,7 @@ export function NovelCard({ novel, layout = "card" }: NovelCardProps) {
             )}
             <Link
               href={publicNovelHref(novel.slug)}
-              className="group/details inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:underline underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
+              className="group/details relative inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground hover:underline underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5"
             >
               <span>Novel Details</span>
               <ChevronRight
@@ -317,7 +285,7 @@ export function NovelCard({ novel, layout = "card" }: NovelCardProps) {
       {/* Title and metadata - primary click target */}
       <Link
         href={publicNovelHref(novel.slug)}
-        className="flex min-w-0 flex-1 flex-col"
+        className="flex min-w-0 flex-1 flex-col focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-lg"
       >
         <div className="relative aspect-2/3 shrink-0 overflow-hidden bg-muted">
           {novel.cover_url ? (

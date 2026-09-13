@@ -282,7 +282,7 @@ describe("NovelCard list layout", () => {
     ).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders status, chapters, views, and ratings grid in list mode", () => {
+  it("renders status, chapters, views, and ratings in quiet metadata row in list mode", () => {
     const novel = {
       ...makeNovel({
         publication_status: "ongoing",
@@ -293,26 +293,23 @@ describe("NovelCard list layout", () => {
     };
     renderWithClient(<NovelCard novel={novel} layout="list" />);
 
-    expect(screen.getByText("Status")).toBeInTheDocument();
     expect(screen.getByText("ongoing")).toBeInTheDocument();
-    expect(screen.getByText("Chapters")).toBeInTheDocument();
-    expect(screen.getByText("120")).toBeInTheDocument();
-    expect(screen.getByText("Views")).toBeInTheDocument();
-    expect(screen.getByText("24.3k")).toBeInTheDocument();
-    expect(screen.getByText("Rating")).toBeInTheDocument();
+    expect(screen.getByText(/120 ch\./i)).toBeInTheDocument();
+    expect(screen.getByText(/24\.3k\s+views/i)).toBeInTheDocument();
     expect(screen.getByText("4.8")).toBeInTheDocument();
   });
 
-  it("renders 0 for views and rating when not provided in list mode", () => {
+  it("renders quiet status and chapters without zero metrics when not provided in list mode", () => {
     const novel = makeNovel({
       publication_status: "ongoing",
       chapter_count: 50,
     });
     renderWithClient(<NovelCard novel={novel} layout="list" />);
 
-    const zeroValues = screen.getAllByText("0");
-    expect(zeroValues.length).toBeGreaterThanOrEqual(2); // Views is 0, Rating is 0
-    expect(screen.getByText("50")).toBeInTheDocument(); // Chapters is 50
+    expect(screen.getByText("ongoing")).toBeInTheDocument();
+    expect(screen.getByText(/50 ch\./i)).toBeInTheDocument();
+    expect(screen.queryByText(/views/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/★/i)).not.toBeInTheDocument();
   });
 
   it("renders Start Reading link directing to latest chapter when present", () => {

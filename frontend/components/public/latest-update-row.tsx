@@ -46,7 +46,7 @@ export function LatestUpdateRow({
   return (
     <Link
       href={href}
-      className="group flex items-center gap-4 px-4 py-4 transition-colors hover:bg-card"
+      className="group flex items-center gap-4 px-4 py-4 transition-colors hover:bg-card focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
     >
       <div className="flex h-12 w-9 shrink-0 items-center justify-center rounded-sm border border-border/70 bg-muted text-muted-foreground">
         <BookOpen className="h-4 w-4" />

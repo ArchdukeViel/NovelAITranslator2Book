@@ -1,6 +1,6 @@
 # This is an internal hop. Cloudflare Tunnel terminates HTTPS for the
 # development hostname before forwarding to this loopback listener.
-http://{$SITE_DOMAIN:localhost} {
+http://{$SITE_DOMAIN:localhost}, :80 {
   encode zstd gzip
 
   header {

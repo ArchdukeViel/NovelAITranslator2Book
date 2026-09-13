@@ -301,7 +301,7 @@ function ReaderMessage({
           <div className="mt-3 text-sm reader-muted">{children}</div>
           <Link
             href="/browse-novels"
-            className="mt-6 inline-flex items-center gap-1 text-sm underline reader-muted transition-colors hover:text-foreground"
+            className="mt-6 inline-flex min-h-[44px] items-center gap-1.5 text-sm underline reader-muted transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
           >
             <BookOpen className="h-4 w-4" />
             Browse the library
@@ -633,7 +633,7 @@ export default function ChapterPage() {
             Found a problem with this chapter?{" "}
             <Link
               href="/contact"
-              className="underline transition-colors hover:text-foreground"
+              className="underline transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
             >
               Contact us
             </Link>{" "}

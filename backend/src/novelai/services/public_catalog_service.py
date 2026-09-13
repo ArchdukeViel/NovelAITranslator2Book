@@ -108,7 +108,7 @@ class PublicCatalogService:
     # -- read helpers (static) --------------------------------------------------
 
     @staticmethod
-    def novel_matches_search(meta: dict[str, Any], query: str) -> bool:
+    def novel_matches_search(meta: dict[str, Any], query: str, search_synopsis: bool = False) -> bool:
         q = query.lower()
         # Match the translated title and the original (Japanese) title
         # independently — a search for either should surface the novel
@@ -116,7 +116,11 @@ class PublicCatalogService:
         translated_title = (_optional_str(meta.get("translated_title")) or "").lower()
         original_title = (_optional_str(meta.get("title")) or "").lower()
         author = (_optional_str(meta.get("translated_author")) or _optional_str(meta.get("author")) or "").lower()
-        return q in translated_title or q in original_title or q in author
+        matched = q in translated_title or q in original_title or q in author
+        if not matched and search_synopsis:
+            synopsis = (_optional_str(meta.get("synopsis")) or _optional_str(meta.get("description")) or "").lower()
+            matched = q in synopsis
+        return matched
 
     @staticmethod
     def novel_added_at(meta: dict[str, Any]) -> str | None:
@@ -241,6 +245,9 @@ class PublicCatalogService:
         page: int,
         page_size: int,
         order: str,
+        search_synopsis: bool = False,
+        genre_op: str = "and",
+        tag_op: str = "and",
     ) -> tuple[list[Novel], int, bool]:
         """Return a filtered page of published catalog projection rows."""
         if self.db_session is None:
@@ -253,9 +260,10 @@ class PublicCatalogService:
         search_text = _optional_str(q)
         if search_text:
             pattern = f"%{search_text}%"
-            query = query.filter(
-                Novel.title.ilike(pattern) | Novel.original_title.ilike(pattern) | Novel.author.ilike(pattern)
-            )
+            search_cond = Novel.title.ilike(pattern) | Novel.original_title.ilike(pattern) | Novel.author.ilike(pattern)
+            if search_synopsis:
+                search_cond = search_cond | Novel.synopsis.ilike(pattern)
+            query = query.filter(search_cond)
         if publication_status:
             query = query.filter(Novel.publication_status == publication_status)
         if source_key:
@@ -269,15 +277,26 @@ class PublicCatalogService:
             Genre.is_active.is_(True) if include_adult else and_(Genre.is_active.is_(True), Genre.is_adult.is_(False))
         )
         public_tag = true() if include_adult else Tag.is_adult.is_(False)
-        for genre_slug in sorted(genre_include_set):
-            query = query.filter(
-                Novel.genres.any(
-                    and_(
-                        Genre.slug == genre_slug,
-                        active_public_genre,
+        if genre_include_set:
+            if genre_op == "or":
+                query = query.filter(
+                    Novel.genres.any(
+                        and_(
+                            Genre.slug.in_(genre_include_set),
+                            active_public_genre,
+                        )
                     )
                 )
-            )
+            else:
+                for genre_slug in sorted(genre_include_set):
+                    query = query.filter(
+                        Novel.genres.any(
+                            and_(
+                                Genre.slug == genre_slug,
+                                active_public_genre,
+                            )
+                        )
+                    )
         if genre_exclude_set:
             query = query.filter(
                 ~Novel.genres.any(
@@ -287,15 +306,26 @@ class PublicCatalogService:
                     )
                 )
             )
-        for tag_name in sorted(tag_include_set):
-            query = query.filter(
-                Novel.tags.any(
-                    and_(
-                        Tag.name == tag_name,
-                        public_tag,
+        if tag_include_set:
+            if tag_op == "or":
+                query = query.filter(
+                    Novel.tags.any(
+                        and_(
+                            Tag.name.in_(tag_include_set),
+                            public_tag,
+                        )
                     )
                 )
-            )
+            else:
+                for tag_name in sorted(tag_include_set):
+                    query = query.filter(
+                        Novel.tags.any(
+                            and_(
+                                Tag.name == tag_name,
+                                public_tag,
+                            )
+                        )
+                    )
         if tag_exclude_set:
             query = query.filter(
                 ~Novel.tags.any(
@@ -354,6 +384,21 @@ class PublicCatalogService:
                 "name_en": genre.name_en,
             }
             for genre in query.order_by(Genre.display_order, Genre.name_ja).all()
+        ]
+
+    def list_public_tags(self, *, include_adult: bool = False, limit: int = 200) -> list[dict[str, Any]]:
+        """Return available public tags in alphabetical order."""
+        if self.db_session is None:
+            return []
+        query = self.db_session.query(Tag)
+        if not include_adult:
+            query = query.filter(Tag.is_adult.is_(False))
+        return [
+            {
+                "name": tag.name,
+                "name_ja": tag.name_ja,
+            }
+            for tag in query.order_by(Tag.name).limit(limit).all()
         ]
 
     # -- instance helpers (need storage / db) ----------------------------------

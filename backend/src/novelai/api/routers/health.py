@@ -11,6 +11,7 @@ raw exceptions, bucket names, or signed URLs.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, status
@@ -24,11 +25,13 @@ router = APIRouter()
 
 
 @router.get("/health/live", tags=["health"])
-async def health_live(
-    service: Any = Depends(get_health_service),
-) -> dict[str, Any]:
+async def health_live() -> dict[str, Any]:
     """Process-only liveness check. No DB/storage/worker calls."""
-    return service.liveness()
+    return {
+        "status": "ok",
+        "service": "novelai",
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
 
 
 @router.get("/health/ready", tags=["health"])

@@ -89,10 +89,10 @@ export function PublicHeader() {
                 href={item.href}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-sm font-medium transition-colors",
+                  "inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium transition-colors",
                   isActive
-                    ? "bg-primary/10 font-semibold text-primary"
-                    : "text-muted-foreground hover:bg-card/70 hover:text-foreground",
+                    ? "font-semibold text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Icon className="h-4 w-4" aria-hidden="true" />

@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   BookOpen,
   CalendarDays,
+  ChevronRight,
   Clock,
   Flag,
   Library,
@@ -212,7 +213,7 @@ function PageLoadingState() {
 function BackToBrowse() {
   return (
     <Link
-      className="inline-flex min-h-11 items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      className="inline-flex min-h-11 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
       href="/browse-novels"
     >
       <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -264,7 +265,7 @@ function ChapterRow({
       className={`group flex flex-col gap-3 border-b border-border/70 py-4 last:border-b-0 sm:flex-row sm:items-center sm:justify-between ${isRead ? "opacity-70" : ""}`}
     >
       <div className="min-w-0">
-        <h3 className="break-words font-literary text-base font-medium transition-colors group-hover:text-accent">
+        <h3 className="break-words font-literary text-base font-medium transition-colors group-hover:text-primary">
           {chapterDisplayTitle(chapter)}
         </h3>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -274,7 +275,7 @@ function ChapterRow({
             </span>
           )}
           {canRead && (
-            <span className="font-metadata text-accent">Translated</span>
+            <span className="font-metadata text-primary">Translated</span>
           )}
           {isRead && <span className="font-metadata">Read</span>}
           {isLastRead && (
@@ -286,7 +287,7 @@ function ChapterRow({
       </div>
       {canRead ? (
         <Link
-          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-muted"
+          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-border/70 bg-card px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           href={chapterHref(slug, chapter.chapter_id)}
         >
           <BookOpen className="h-4 w-4" aria-hidden="true" />
@@ -433,11 +434,11 @@ export default function NovelDetailPage() {
           <h1 className="font-literary text-3xl font-medium leading-tight sm:text-4xl">
             {title}
           </h1>
-          <p className="mt-3 text-base text-muted-foreground">
+          <p className="mt-3 font-literary text-base text-muted-foreground">
             {authorOrFallback(data.author)}
           </p>
           {showSourceTitle && (
-            <p className="mt-2 break-words font-literary text-sm text-accent">
+            <p className="mt-2 break-words font-literary text-sm text-primary">
               <span className="mr-2 font-metadata text-xs uppercase text-muted-foreground">
                 Source title
               </span>
@@ -477,7 +478,7 @@ export default function NovelDetailPage() {
             <button
               aria-controls={`novel-panel-${tab.id}`}
               aria-selected={isActive}
-              className={`min-h-11 shrink-0 rounded-md px-4 py-2 text-sm font-medium transition-colors ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              className={`min-h-11 shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${isActive ? "bg-primary text-primary-foreground font-semibold shadow-xs" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`}
               id={`novel-tab-${tab.id}`}
               key={tab.id}
               onClick={() => setTab(tab.id)}
@@ -527,7 +528,7 @@ export default function NovelDetailPage() {
                   <Link
                     href={`/genres/${encodeURIComponent(genre.slug)}`}
                     key={genre.slug}
-                    className="min-h-11 inline-flex items-center"
+                    className="inline-flex min-h-11 items-center rounded-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <GenreChip
                       label={genreLabels?.get(genre.slug) ?? genre.slug}
@@ -549,7 +550,7 @@ export default function NovelDetailPage() {
                   <Link
                     href={`/tags/${encodeURIComponent(tag.name)}`}
                     key={tag.name}
-                    className="min-h-11 inline-flex items-center"
+                    className="inline-flex min-h-11 items-center rounded-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <TagChip
                       label={tag.name}
@@ -563,7 +564,7 @@ export default function NovelDetailPage() {
 
           <div className="border-t border-border/60 pt-4">
             <Link
-              className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+              className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
               href="/contact"
             >
               <Flag className="h-4 w-4" aria-hidden="true" />
@@ -591,7 +592,7 @@ export default function NovelDetailPage() {
             <div className="flex flex-wrap gap-2">
               {firstUnread && (
                 <a
-                  className="inline-flex min-h-11 items-center rounded-md border border-border px-3 py-2 text-xs"
+                  className="inline-flex min-h-11 items-center rounded-lg border border-border/70 bg-card px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                   href={`#${chapterAnchorId(firstUnread.chapter_id)}`}
                 >
                   First unread
@@ -599,14 +600,14 @@ export default function NovelDetailPage() {
               )}
               {latestTranslatedChapter && (
                 <a
-                  className="inline-flex min-h-11 items-center rounded-md border border-border px-3 py-2 text-xs"
+                  className="inline-flex min-h-11 items-center rounded-lg border border-border/70 bg-card px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                   href={`#${chapterAnchorId(latestTranslatedChapter.chapter_id)}`}
                 >
                   Latest
                 </a>
               )}
               <button
-                className="min-h-11 rounded-md border border-border px-3 py-2 text-xs"
+                className="min-h-11 rounded-lg border border-border/70 bg-card px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                 onClick={() => setGroupsExpanded((value) => !value)}
                 type="button"
               >
@@ -623,7 +624,7 @@ export default function NovelDetailPage() {
               />
               <span className="sr-only">Search chapters</span>
               <input
-                className="h-11 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm"
+                className="h-11 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
                 onChange={(event) => {
                   setChapterQuery(event.target.value);
                   setChapterLimit(100);
@@ -633,7 +634,7 @@ export default function NovelDetailPage() {
               />
             </label>
             <button
-              className="min-h-11 rounded-md border border-border px-3 text-sm"
+              className="min-h-11 rounded-lg border border-border/70 bg-card px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               onClick={() =>
                 setChapterOrder((value) => (value === "asc" ? "desc" : "asc"))
               }
@@ -668,10 +669,18 @@ export default function NovelDetailPage() {
                     key={group.key}
                     open={groupsExpanded}
                   >
-                    <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 py-3 text-sm font-medium">
-                      <span className="break-words">{group.label}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {group.chapters.length}
+                    <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 py-3 text-sm font-medium transition-colors hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs">
+                      <div className="flex items-center gap-2">
+                        <ChevronRight
+                          className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-open/volume:rotate-90 motion-reduce:transition-none"
+                          aria-hidden="true"
+                        />
+                        <span className="break-words font-literary text-base font-medium text-foreground">
+                          {group.label}
+                        </span>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-muted/60 px-2.5 py-0.5 font-metadata text-xs text-muted-foreground">
+                        {group.chapters.length} {group.chapters.length === 1 ? "chapter" : "chapters"}
                       </span>
                     </summary>
                     <div className="border-t border-border/40">
@@ -723,7 +732,7 @@ export default function NovelDetailPage() {
 
           {orderedChapters.length > chapterLimit && (
             <button
-              className="mt-5 min-h-11 rounded-md border border-border px-4 py-2 text-sm"
+              className="mt-5 min-h-11 rounded-lg border border-border/70 bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
               onClick={() => setChapterLimit((value) => value + 100)}
               type="button"
             >
@@ -732,7 +741,7 @@ export default function NovelDetailPage() {
           )}
 
           <details className="mt-8 border-t border-border/60 pt-5">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 text-sm font-medium">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 text-sm font-medium transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs">
               <span>Request translation</span>
               <span className="text-xs font-normal text-muted-foreground">
                 Missing or untranslated chapter?

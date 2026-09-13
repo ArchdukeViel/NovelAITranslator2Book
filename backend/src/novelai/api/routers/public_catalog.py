@@ -24,6 +24,7 @@ from novelai.api.routers.public_contracts import (
     PublicCatalogResponse,
     PublicGenreResponse,
     PublicNovelSummary,
+    PublicTagSearchResult,
     _optional_str,
     _parse_csv_filter,
 )
@@ -53,8 +54,14 @@ async def catalog(
     max_chapters: int | None = Query(default=None, ge=0, description="Maximum chapter count"),
     genre_include: str | None = Query(default=None, description="Comma-separated genre slugs — novel must have all"),
     genre_exclude: str | None = Query(default=None, description="Comma-separated genre slugs — novel must have none"),
+    genre_op: str | None = Query(default="and", description="Genre include operator: and or or"),
     tag_include: str | None = Query(default=None, description="Comma-separated tag names — novel must have all"),
     tag_exclude: str | None = Query(default=None, description="Comma-separated tag names — novel must have none"),
+    tag_op: str | None = Query(default="and", description="Tag include operator: and or or"),
+    search_synopsis: bool = Query(
+        default=False,
+        description="Search novel synopsis in addition to title and author",
+    ),
     include_adult: bool = Query(
         default=False,
         description="Include adult/R18 taxonomy terms in catalog metadata and filters",
@@ -72,6 +79,8 @@ async def catalog(
 
     effective_sort_by = sort_by if sort_by and sort_by in VALID_SORT_FIELDS else DEFAULT_SORT_BY
     effective_order = order if order and order in VALID_ORDER_VALUES else DEFAULT_ORDER
+    effective_genre_op = genre_op.lower() if genre_op and genre_op.lower() in ("and", "or") else "and"
+    effective_tag_op = tag_op.lower() if tag_op and tag_op.lower() in ("and", "or") else "and"
     genre_include_set = set(_parse_csv_filter(genre_include))
     genre_exclude_set = set(_parse_csv_filter(genre_exclude))
     tag_include_set = set(_parse_csv_filter(tag_include))
@@ -91,6 +100,9 @@ async def catalog(
             tag_include_set,
             tag_exclude_set,
             include_adult,
+            search_synopsis,
+            effective_genre_op != "and",
+            effective_tag_op != "and",
         )
     )
     base_cache_key = service.public_catalog_cache_key(
@@ -119,6 +131,9 @@ async def catalog(
             page=page,
             page_size=page_size,
             order=effective_order,
+            search_synopsis=search_synopsis,
+            genre_op=effective_genre_op,
+            tag_op=effective_tag_op,
         )
         public_novels: list[PublicNovelSummary] = []
         for novel in novels:
@@ -176,3 +191,13 @@ async def list_genres(
 ) -> list[PublicGenreResponse]:
     """Return active genres ordered by display_order then name."""
     return [PublicGenreResponse(**genre) for genre in service.list_public_genres(include_adult=include_adult)]
+
+
+@router.get("/tags", response_model=list[PublicTagSearchResult])
+async def list_tags(
+    include_adult: bool = Query(default=False, description="Include adult tags"),
+    limit: int = Query(default=200, ge=1, le=500, description="Max results"),
+    service: PublicCatalogService = Depends(get_public_catalog_service),
+) -> list[PublicTagSearchResult]:
+    """Return available public tags ordered alphabetically."""
+    return [PublicTagSearchResult(**tag) for tag in service.list_public_tags(include_adult=include_adult, limit=limit)]

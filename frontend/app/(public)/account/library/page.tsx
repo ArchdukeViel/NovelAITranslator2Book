@@ -126,7 +126,7 @@ export default function LibraryPage() {
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <Link
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="inline-flex min-h-11 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
         href="/browse-novels"
       >
         <BookOpen className="h-4 w-4" />
@@ -142,9 +142,9 @@ export default function LibraryPage() {
         </p>
       </header>
 
-      {/* Top Tab list (WTR-LAB style) */}
+      {/* Top Tab list (Dokushodo literary style) */}
       <div
-        className="mb-6 flex flex-wrap gap-1 border-b border-border/60 pb-2"
+        className="mb-6 flex flex-wrap gap-1.5 border-b border-border/60 pb-2"
         role="tablist"
         aria-label="Library sections"
       >
@@ -153,10 +153,10 @@ export default function LibraryPage() {
           role="tab"
           aria-selected={activeTab === "library"}
           onClick={() => setActiveTab("library")}
-          className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+          className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
             activeTab === "library"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+              : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
           }`}
         >
           <Library className="h-4 w-4" />
@@ -167,13 +167,13 @@ export default function LibraryPage() {
           role="tab"
           aria-selected={activeTab === "updates"}
           onClick={() => setActiveTab("updates")}
-          className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+          className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
             activeTab === "updates"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+              : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
           }`}
         >
-          <Flame className="h-4 w-4 text-accent" />
+          <Flame className="h-4 w-4" />
           <span>Updates</span>
         </button>
         <button
@@ -181,10 +181,10 @@ export default function LibraryPage() {
           role="tab"
           aria-selected={activeTab === "history"}
           onClick={() => setActiveTab("history")}
-          className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+          className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
             activeTab === "history"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+              : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
           }`}
         >
           <History className="h-4 w-4" />
@@ -195,10 +195,10 @@ export default function LibraryPage() {
           role="tab"
           aria-selected={activeTab === "folders"}
           onClick={() => setActiveTab("folders")}
-          className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+          className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
             activeTab === "folders"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+              : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
           }`}
         >
           <FolderHeart className="h-4 w-4" />
@@ -278,9 +278,9 @@ function WtrLabGuestBanner() {
 
 function UpdatesTabContent() {
   return (
-    <section className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-      <Flame className="mx-auto h-8 w-8 text-accent mb-2" />
-      <p className="font-medium text-foreground">No new updates right now</p>
+    <section className="rounded-xl border border-border/70 bg-card/70 p-6 text-center text-sm text-muted-foreground shadow-card">
+      <Flame className="mx-auto h-8 w-8 text-primary mb-2" />
+      <p className="font-literary text-base font-medium text-foreground">No new updates right now</p>
       <p className="mt-1 text-xs">
         When novels in your library release translated chapters, they will
         appear here.
@@ -291,15 +291,15 @@ function UpdatesTabContent() {
 
 function HistoryTabContent() {
   return (
-    <section className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+    <section className="rounded-xl border border-border/70 bg-card/70 p-6 text-center text-sm text-muted-foreground shadow-card">
       <History className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-      <p className="font-medium text-foreground">No recent reading history</p>
+      <p className="font-literary text-base font-medium text-foreground">No recent reading history</p>
       <p className="mt-1 text-xs">
         Chapters you read will automatically record your progress.
       </p>
       <Link
         href="/browse-novels"
-        className="mt-3 inline-block text-xs font-medium text-primary underline"
+        className="mt-3 inline-flex min-h-11 items-center text-xs font-medium text-primary underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
       >
         Browse novels to read
       </Link>
@@ -309,9 +309,9 @@ function HistoryTabContent() {
 
 function FoldersTabContent() {
   return (
-    <section className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+    <section className="rounded-xl border border-border/70 bg-card/70 p-6 text-center text-sm text-muted-foreground shadow-card">
       <FolderHeart className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-      <p className="font-medium text-foreground">No followed folders</p>
+      <p className="font-literary text-base font-medium text-foreground">No followed folders</p>
       <p className="mt-1 text-xs">
         Follow community novel lists to get notified when new titles are added.
       </p>
@@ -338,12 +338,12 @@ function EmptyLibraryState({
   title: string;
 }) {
   return (
-    <section className="rounded-md border border-border bg-muted/40 p-6 text-center">
+    <section className="rounded-xl border border-border/70 bg-card/70 p-8 text-center shadow-card">
       <Bookmark className="mx-auto h-8 w-8 text-muted-foreground" />
-      <p className="mt-3 text-sm font-medium">{title}</p>
+      <p className="mt-3 font-literary text-base font-medium text-foreground">{title}</p>
       <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       <Link
-        className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-accent underline hover:text-foreground"
+        className="mt-4 inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-primary underline hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
         href="/browse-novels"
       >
         Browse novels
@@ -372,7 +372,7 @@ function LibraryControls({
       <label className="flex-1">
         <span className="sr-only">Search by slug</span>
         <input
-          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder="Search by slug"
           type="search"
@@ -380,9 +380,9 @@ function LibraryControls({
         />
       </label>
       <label className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">Sort</span>
+        <span className="text-sm font-medium text-muted-foreground">Sort</span>
         <select
-          className="h-9 rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="h-11 rounded-lg border border-border bg-card px-3 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           onChange={(event) => onSortChange(event.target.value as SortKey)}
           value={sort}
         >
@@ -394,13 +394,17 @@ function LibraryControls({
       </label>
       <div
         aria-label="View"
-        className="flex rounded-md border border-border p-0.5"
+        className="flex rounded-lg border border-border bg-card p-0.5"
         role="group"
       >
         <button
           aria-label="Board view"
           aria-pressed={view === "board"}
-          className="inline-flex h-8 w-9 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className={`inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
+            view === "board"
+              ? "bg-primary text-primary-foreground font-semibold"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
           onClick={() => onViewChange("board")}
           type="button"
         >
@@ -409,7 +413,11 @@ function LibraryControls({
         <button
           aria-label="List view"
           aria-pressed={view === "list"}
-          className="inline-flex h-8 w-9 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className={`inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
+            view === "list"
+              ? "bg-primary text-primary-foreground font-semibold"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
           onClick={() => onViewChange("list")}
           type="button"
         >
@@ -458,8 +466,11 @@ function BoardCard({ item }: { item: LibraryItem }) {
   const novelHref = publicNovelHref(item.slug);
 
   return (
-    <article className="flex flex-col rounded-md border border-border bg-card p-4">
-      <Link className="truncate font-medium hover:text-accent" href={novelHref}>
+    <article className="flex flex-col rounded-xl border border-border/70 bg-card/70 p-4 shadow-card hover:shadow-raised transition-shadow">
+      <Link
+        className="truncate font-literary text-base font-medium text-foreground transition-colors hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
+        href={novelHref}
+      >
         {item.slug}
       </Link>
       <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
@@ -470,10 +481,10 @@ function BoardCard({ item }: { item: LibraryItem }) {
       </div>
       <div className="mt-3 flex gap-2">
         <Link
-          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border/70 bg-card px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           href={novelHref}
         >
-          <BookOpen className="h-3.5 w-3.5" />
+          <BookOpen className="h-4 w-4" />
           View
         </Link>
         <RemoveButton item={item} removeFromLibrary={removeFromLibrary} />
@@ -490,7 +501,7 @@ function LibraryRow({ item }: { item: LibraryItem }) {
     <div className="flex items-center justify-between gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
         <Link
-          className="truncate text-sm font-medium hover:text-accent"
+          className="truncate font-literary text-base font-medium text-foreground transition-colors hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary rounded-xs"
           href={novelHref}
         >
           {item.slug}
@@ -504,10 +515,10 @@ function LibraryRow({ item }: { item: LibraryItem }) {
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <Link
-          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+          className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-border/70 bg-card px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary"
           href={novelHref}
         >
-          <BookOpen className="h-3.5 w-3.5" />
+          <BookOpen className="h-4 w-4" />
           View
         </Link>
         <RemoveButton item={item} removeFromLibrary={removeFromLibrary} />
@@ -526,13 +537,13 @@ function RemoveButton({
   return (
     <button
       aria-label={`Remove ${item.slug} from library`}
-      className="inline-flex h-8 items-center justify-center rounded-md border border-destructive/40 px-2.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
+      className="inline-flex min-h-11 items-center justify-center rounded-lg border border-destructive/40 px-3 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-destructive"
       disabled={removeFromLibrary.isPending}
       onClick={() => removeFromLibrary.mutate()}
       type="button"
     >
       {removeFromLibrary.isPending ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <Loader2 className="h-4 w-4 animate-spin" />
       ) : (
         "Remove"
       )}
