@@ -15,114 +15,105 @@ update_triggers:
 owned_concerns:
   - design-system-and-page-briefs
 colors:
-  surface: '#fcf9f3'
-  surface-dim: '#dcdad4'
-  surface-bright: '#fcf9f3'
-  surface-container-lowest: '#ffffff'
-  surface-container-low: '#f6f3ed'
-  surface-container: '#f0eee8'
-  surface-container-high: '#ebe8e2'
-  surface-container-highest: '#e5e2dc'
-  on-surface: '#1c1c18'
-  on-surface-variant: '#59413d'
-  inverse-surface: '#31312d'
-  inverse-on-surface: '#f3f0ea'
-  outline: '#8c716c'
-  outline-variant: '#e0bfb9'
-  surface-tint: '#ad3222'
-  primary: '#9b2617'
-  on-primary: '#ffffff'
-  primary-container: '#bd3e2c'
-  on-primary-container: '#ffe6e2'
-  inverse-primary: '#ffb4a7'
-  secondary: '#5b5f63'
-  on-secondary: '#ffffff'
-  secondary-container: '#dde0e5'
-  on-secondary-container: '#5f6368'
-  tertiary: '#005975'
-  on-tertiary: '#ffffff'
-  tertiary-container: '#007396'
-  on-tertiary-container: '#d5f0ff'
-  error: '#ba1a1a'
-  on-error: '#ffffff'
-  error-container: '#ffdad6'
-  on-error-container: '#93000a'
-  primary-fixed: '#ffdad4'
-  primary-fixed-dim: '#ffb4a7'
-  on-primary-fixed: '#400200'
-  on-primary-fixed-variant: '#8b1a0c'
-  secondary-fixed: '#e0e3e8'
-  secondary-fixed-dim: '#c3c7cc'
-  on-secondary-fixed: '#181c20'
-  on-secondary-fixed-variant: '#43474c'
-  tertiary-fixed: '#bfe8ff'
-  tertiary-fixed-dim: '#7fd1f7'
-  on-tertiary-fixed: '#001f2b'
-  on-tertiary-fixed-variant: '#004d65'
-  background: '#fcf9f3'
-  on-background: '#1c1c18'
-  surface-variant: '#e5e2dc'
-  shuji-vermillion: '#BD3E2C'
-  washi-paper: '#F9F6F0'
-  sumi-ink: '#1A1A1A'
-  aged-parchment: '#F2EFE7'
-  muted-obsidian: '#212529'
-  discord-blurple: '#5865F2'
+  surface: '#F4F1EA'
+  surface-dim: '#E5E0D6'
+  surface-bright: '#F4F1EA'
+  surface-container-lowest: '#FFFFFF'
+  surface-container-low: '#F2EFE7'
+  surface-container: '#EBE7DF'
+  surface-container-high: '#E5E0D6'
+  surface-container-highest: '#DFD9CE'
+  on-surface: '#2B2826'
+  on-surface-variant: '#66625D'
+  inverse-surface: '#1F1E1D'
+  inverse-on-surface: '#DFDCD5'
+  outline: '#DFD9CE'
+  outline-variant: '#66625D'
+  surface-tint: '#B83220'
+  primary: '#B83220'
+  on-primary: '#F4F1EA'
+  primary-container: '#B83220'
+  on-primary-container: '#F4F1EA'
+  inverse-primary: '#D95D4C'
+  secondary: '#66625D'
+  on-secondary: '#F4F1EA'
+  secondary-container: '#E5E0D6'
+  on-secondary-container: '#2B2826'
+  tertiary: '#0B5066'
+  on-tertiary: '#F4F1EA'
+  tertiary-container: '#0B5066'
+  on-tertiary-container: '#F4F1EA'
+  error: '#BA1A1A'
+  on-error: '#FFFFFF'
+  error-container: '#FFDAD6'
+  on-error-container: '#93000A'
+  background: '#F4F1EA'
+  on-background: '#2B2826'
+  surface-variant: '#EBE7DF'
+  shuji-vermillion: '#B83220'
+  washi-paper: '#F4F1EA'
+  sumi-ink: '#2B2826'
+  aged-parchment: '#EBE7DF'
+  muted-obsidian: '#1F1E1D'
+  soft-charcoal: '#141413'
+  cream-foreground: '#DFDCD5'
 typography:
   display-lg:
-    fontFamily: EB Garamond
+    fontFamily: Noto Serif JP, EB Garamond
     fontSize: 48px
     fontWeight: '500'
     lineHeight: 56px
     letterSpacing: -0.02em
   headline-lg:
-    fontFamily: EB Garamond
+    fontFamily: Noto Serif JP, EB Garamond
     fontSize: 32px
     fontWeight: '500'
     lineHeight: 40px
   headline-lg-mobile:
-    fontFamily: EB Garamond
+    fontFamily: Noto Serif JP, EB Garamond
     fontSize: 28px
     fontWeight: '500'
     lineHeight: 36px
   title-md:
-    fontFamily: EB Garamond
+    fontFamily: Noto Serif JP, EB Garamond
     fontSize: 22px
     fontWeight: '500'
     lineHeight: 28px
   body-lg:
-    fontFamily: Hanken Grotesk
+    fontFamily: DM Sans, Hanken Grotesk
     fontSize: 18px
     fontWeight: '400'
     lineHeight: 32px
   body-md:
-    fontFamily: Hanken Grotesk
+    fontFamily: DM Sans, Hanken Grotesk
     fontSize: 16px
     fontWeight: '400'
     lineHeight: 26px
   label-md:
-    fontFamily: Hanken Grotesk
+    fontFamily: DM Mono, Hanken Grotesk
     fontSize: 14px
     fontWeight: '600'
     lineHeight: 20px
     letterSpacing: 0.05em
   caption:
-    fontFamily: Hanken Grotesk
+    fontFamily: DM Sans, Hanken Grotesk
     fontSize: 12px
     fontWeight: '400'
     lineHeight: 16px
 rounded:
-  sm: 0.125rem
+  sm: 0rem
   DEFAULT: 0.25rem
-  md: 0.375rem
-  lg: 0.5rem
-  xl: 0.75rem
+  md: 0.125rem
+  lg: 0.25rem
   full: 9999px
+elevation:
+  card: '0 1px 2px 0 rgb(28 28 24 / 0.06)'
+  raised: '0 12px 28px -8px rgb(28 28 24 / 0.18)'
 spacing:
   unit: 4px
   gutter: 24px
-  margin-mobile: 20px
-  margin-desktop: 64px
+  margin-mobile: 16px
+  margin-desktop: 24px
   max-width-reading: 720px
 ---
 
@@ -174,14 +165,17 @@ Design documents must not duplicate technical architecture, backend schemas, sec
 
 ## 2. Current Design Status
 
-The frontend App Router overhaul (PR #38) is merged and describes the current implementation baseline at commit `95fbcd0` and its descendants.
+The frontend App Router design rework phases P0 through P6 (PR #164, commit `f3f0b28` and descendants) is merged and defines the current implementation baseline.
 
-- Implemented: full public surface (home, browse, taxonomy, novel detail, chapter reader, account, auth, trust and system pages), full admin surface (dashboard, crawler, library, activity, scheduler, maintenance, analytics, requests, reviews, users, editor, credentials, settings, audit, takedowns, glossary), shared search overlay, light and dark site themes, reader light/dark/sepia themes, brand assets, and the Stitch-ready page brief structure.
-- Frontend verification baseline at the merge: 76 test files and 841 tests passed.
-- Novel detail is a reading-first surface: the hero puts the title, source title, author, status, truthful metadata, and one reading CTA before tabbed content. Guest readers can start the first available chapter; signed-in readers with progress can continue from it. Save remains a secondary personalized action.
-- Novel detail chapters consume the public section metadata contract and preserve source order, exact returned episode titles, grouped runs, flat lists, search, ordering, First unread, and Latest. The request form is a closed disclosure at the end of Chapters, and issue reporting is a quiet contact link in Overview.
-- Implemented current public contracts: ranking data is API-backed by distinct novel-detail views for Daily, Weekly, and Monthly periods; user contributions are API-backed through the unified encrypted provider-credential registry with explicit validation, consent, masking, lifecycle controls, quotas, and usage accounting. Profile editing, account deletion, and admin-curated featured rotation remain unavailable (the homepage spotlight is derived from catalog data, not owner curation).
-- Implemented current runtime contracts: crawl and translation submissions return durable activity identifiers and remain API-visible through pending, running, paused, completed, failed, retry, and unavailable states. Production provider execution belongs to the dedicated worker process; web shells do not imply that a request is still running, and activity records never expose idempotency keys, lease tokens, prompts, credentials, or provider secrets.
+- Implemented: full public surface (home, browse, taxonomy, novel detail, chapter reader, account, auth, trust and system pages), full admin surface (dashboard, crawler, library, activity, scheduler, maintenance, analytics, requests, reviews, users, editor, credentials, settings, audit, takedowns, glossary), shared search overlay, light and dark site themes, reader light/dark/sepia themes, brand assets, and the Stitch-ready page brief structure across all 52 production routes.
+- Frontend verification baseline: 94 test files and 955 unit tests passed, 0 TypeScript errors, 0 ESLint warnings, 52/52 production routes built cleanly.
+- P0 Foundation & Tokens: Semantic HSL tokens (`primary`, `accent`, `secondary`, `card`, `foreground`), washi paper card elevation (`shadow-card`, `shadow-raised`), and dual-font typography scale (`font-literary` Noto Serif JP, `font-sans` DM Sans, `font-metadata` DM Mono).
+- P1 Public Shell & Navigation: 56px fixed header with auto-hide/reveal scroll interaction, collapsible left navigation drawer up to 320px wide with Escape and backdrop dismissal, mobile bottom tab bar with `env(safe-area-inset-bottom)` safe insets, reader chrome suppression on chapter routes, and 44x44px minimum touch targets on coarse pointers.
+- P2 Discovery & Catalog: Home editorial spotlight hero with honest metadata, responsive novel rails with horizontal scroll and arrow navigation, catalog filter state with taxonomy badges, genre/tag/source routes, debounced search overlay, and deterministic bookplate fallback covers.
+- P3 Novel Detail & Chapter Reader: Reading-first hero with truthful metadata, semantic tabs (Overview, Chapters, Reviews), chapter grouping and search, reading typography (`font-literary leading-[1.8]` with CJK kinsoku shori), reader Aa controls drawer (theme, font size, column width, brightness), sepia/dark/light theme parity, and prefetching on 70% scroll progress.
+- P4 Account & Library: Library board and list views with reading progress chips, reading history with resume links, user reviews management with delete confirmation, novel request submission with status disclosure, provider credential management with encrypted storage validation, and account settings panels.
+- P5 Admin & Backoffice: Utilitarian high-density admin shell (32-36px table rows, sticky headers), dashboard metrics and worker/queue panel, crawler and source health panels, chapter editor, glossary terms table, maintenance controls, reviews moderation, user management, and `DialogShell` focus-trapped confirmation modals for all destructive/crawler actions.
+- P6 Cross-Surface Verification: All 52 routes verified against design contracts, linters, and type checkers.
 - Deferred intentionally: related-novel Recommendations (no bounded public related-novels contract exists), extended locale support, WebGL graphics, and GSAP sequences.
 - Still manually unverified: screen-reader acceptance across NVDA/VoiceOver/TalkBack, forced-colors mode, and 200% zoom reflow. These are tracked as manual acceptance work in `docs/STATUS.md` (DEBT-FE-01A). Do not claim hosted or manual visual validation that was not performed.
 
@@ -215,74 +209,76 @@ Interpretation:
 
 The design system is centered on the concept of *The Way of Reading*. It moves away from the aggressive, gamified patterns of modern webnovel platforms toward a meditative, literary experience inspired by Japanese *Bunko-bon* (pocket-sized paperback) aesthetics.
 
-The visual style is **Contemporary Minimalism with Tactile Editorial influences**. It prioritizes high-fidelity "Washi" textures, generous negative space, and a refined editorial hierarchy. The emotional goal is to evoke the quiet focus of a physical library, utilizing subtle transitions and a sophisticated color palette to reduce digital fatigue.
+The visual style is **Contemporary Minimalism with Tactile Editorial influences**. It prioritizes high-fidelity "Washi" paper textures, generous negative space, and a refined editorial hierarchy. The emotional goal is to evoke the quiet focus of a physical library, utilizing subtle transitions and a sophisticated color palette to reduce digital fatigue.
 
-The aesthetic blends **Minimalism** with **Tactile** elements: surfaces feel like weighted paper, and interactive elements use high-contrast accents reminiscent of traditional Japanese calligraphy stamps (Hanko).
+The aesthetic blends **Minimalism** with **Tactile** elements: surfaces feel like weighted paper (`shadow-card`, `bg-card/70`), and interactive elements use high-contrast accents reminiscent of traditional Japanese calligraphy stamps (Hanko).
 
 ## Colors
 
-The palette is anchored by **Washi Paper (#F9F6F0)**, a warm, off-white neutral that reduces eye strain compared to pure white. The primary accent is **Shuji Vermillion (#BD3E2C)**, a deep, desaturated red used sparingly for critical actions and brand markers, mimicking the ink used in traditional calligraphy.
+The palette is anchored by **Warm Washi Paper (#F4F1EA, `38 24% 93.7%`)**, a warm, off-white neutral that reduces eye strain compared to pure white. The primary accent is **Deep Warm Vermillion (#B83220, `8 70% 42%`)**, a deep, warm red used sparingly for critical actions and brand markers, mimicking the ink used in traditional calligraphy.
 
 **Text and UI Elements:**
-- Use **Sumi Ink (#1A1A1A)** for primary body text to maintain high contrast without the harshness of pure black.
-- **Muted Obsidian (#212529)** is reserved for UI borders and secondary surfaces.
+- Use **Charcoal Sumi Ink (#2B2826, `24 6% 16%`)** for primary body text to maintain optimal reading contrast (11.5:1) without the harshness of pure black.
+- **Surface Container (#EBE7DF, `40 20% 90%`)** is the resting card background (`bg-card/70`).
+- **Soft Warm Divider (#DFD9CE, `38 18% 84%`)** and **Secondary (#66625D, `24 4% 38%`)** are reserved for UI borders, dividers, and supporting text.
 
 **Dark Mode:**
-In dark mode, the "Washi" background shifts to a deep charcoal (Obsidian), and text adopts a soft grey-white. The Vermillion remains constant but is slightly desaturated to prevent "vibration" against dark backgrounds.
+In dark mode, the background shifts to **Soft Warm Charcoal (#141413, `60 3% 7.6%`)** to prevent OLED black smearing, and text adopts **Warm Off-White Cream (#DFDCD5, `40 12% 85%`)** providing 11.2:1 contrast with zero halation or glow. Card surfaces use **Muted Obsidian (#1F1E1D, `30 3% 11.8%`)**. The Vermillion accent shifts to **Desaturated Coral-Vermillion (#D95D4C, `8 64% 57%`)** to prevent visual vibration and neon glow against dark backgrounds.
 
 ## Typography
 
 This design system employs a dual-font strategy to balance literary elegance with functional clarity.
 
-- **EB Garamond (Serif):** Used for all high-level storytelling elements, including book titles, chapter headings, and long-form reading content. It evokes the prestige of classical publishing.
-- **Hanken Grotesk (Sans-Serif):** Used for navigation, metadata, buttons, and functional labels. Its sharp, contemporary geometry provides a clean counterpoint to the organic curves of the serif.
+- **Noto Serif JP (`--font-noto-serif-jp`, fallback EB Garamond):** Mapped to `font-literary` and `font-serif`. Used for all high-level storytelling elements, including book titles, chapter headings, and long-form reading content. It evokes the prestige of classical Japanese publishing.
+- **DM Sans (`--font-dm-sans`, fallback Hanken Grotesk):** Mapped to `font-sans`. Used for navigation, metadata, buttons, and functional labels. Its sharp, contemporary geometry provides a clean counterpoint to the organic curves of the serif.
+- **DM Mono (`--font-dm-mono`):** Mapped to `font-metadata` and `font-mono`. Used for chapter numbers, timestamps, word counts, identifiers, status labels, and tabular metadata.
 
 **Reading Experience:**
-Body text (reading mode) should prioritize the serif face with a line height of at least 1.7x to ensure a breathable, "book-like" flow. Headlines use slightly tighter tracking to maintain a strong editorial presence.
+Body text (reading mode) prioritizes the literary serif face (`font-literary`) with relaxed line height (`leading-[1.8]`, 1.8x) to ensure a breathable, book-like flow with CJK kinsoku shori line-breaking rules. Headlines use slightly tighter tracking to maintain a strong editorial presence.
 
 ## Layout & Spacing
 
 The layout philosophy follows a **Fixed-Column Editorial Grid**.
 
-- **Reading View:** Content is strictly centered with a maximum width of 720px to optimize line length for readability.
-- **Shelf/Discovery View:** A 12-column fluid grid on desktop, transitioning to a 2-column grid on mobile.
-- **Rhythm:** An 8px base unit is used for component spacing, while 24px and 48px increments are used for section padding to reinforce the minimalist "luxury of space."
+- **Reading View:** Content is strictly centered with configurable column widths: default 680px (`max-w-[680px]`), narrow 560px (`max-w-[560px]`), and wide 800px (`max-w-[800px]`).
+- **Shelf/Discovery View:** A 12-column fluid grid on desktop (`max-w-7xl`), transitioning to a 2-column grid on mobile.
+- **Rhythm:** A 4px base unit is used for component spacing, while 16px (mobile) and 24px (desktop) increments are used for gutters and section padding.
 
-Vertical rhythm is critical; spacing between a title and its body text is kept tight, while spacing between distinct content modules is kept very wide to avoid the cluttered feel of typical webnovel aggregators.
+Vertical rhythm is critical; spacing between a title and its body text is kept tight, while spacing between distinct content modules is kept wide to avoid the cluttered feel of typical webnovel aggregators.
 
 ## Elevation & Depth
 
-Depth is achieved through **Tonal Layering** and **Subtle Outlines** rather than heavy shadows.
+Depth is achieved through **Tonal Layering** and **Restrained Card Shadows**:
 
-- **The Base:** The washi-paper background is the lowest layer.
-- **Surface Tier:** Cards and containers use a slightly darker paper tint (Aged Parchment) or a 1px solid border in Muted Obsidian with 10% opacity.
-- **Floating Elements:** Modals and dropdowns use a "Ghost Shadow", a very soft, 15% opacity tint of Vermillion or Obsidian with a 32px blur, suggesting a physical object resting on paper.
-- **Active State:** Selection is indicated by a vertical Vermillion bar or a subtle fill change, never a heavy glow.
+- **The Base:** The washi-paper background (`--background`) is the lowest layer.
+- **Surface Tier:** Cards and containers use semi-translucent washi card styling (`bg-card/70 border-border/70 shadow-card`). The subtle resting shadow (`shadow-card`, `0 1px 2px 0 rgb(28 28 24 / 0.06)`) simulates weighted paper resting on a table without heavy drop shadows.
+- **Interactive Lift:** Interactive novel cards and clickable panels lift subtly on hover (`hover:shadow-raised`, `0 12px 28px -8px rgb(28 28 24 / 0.18)`), while administrative surfaces remain flat and border-distinguished.
+- **Overlays:** Modals, dropdowns, and drawers use standard overlay elevations (`shadow-lg`, `shadow-2xl`) with backdrop blur.
 
 ## Shapes
 
-The shape language is primarily **Soft (0.25rem)**.
+The shape language is primarily **Soft (0.25rem / 4px)**.
 
-While the system values precision, sharp corners are avoided to maintain a gentle, approachable feel. Book covers in the "Shelf" view should have a subtle 2px radius to mimic the slightly worn corners of a physical volume. Buttons are rectangular with minimal rounding, emphasizing a sophisticated, mature aesthetic over "bubbly" app patterns.
+While the system values precision, sharp corners are avoided to maintain a gentle, approachable feel. The base radius (`--radius: 0.25rem`) scales to `sm` (0px), `md` (2px), `lg` (4px / 0.25rem), and `full` (9999px pill) for badges and avatars. Book covers in the shelf view maintain subtle rounding to mimic physical volumes. Buttons are rectangular with minimal rounding, emphasizing a sophisticated, mature aesthetic over bubbly app patterns.
 
 ## Components
 
 **Buttons:**
-- Primary: Solid Sumi Ink with Washi Paper text. No gradients.
-- Secondary: Outline only (1px), using Muted Obsidian.
-- Action: Small, text-only buttons using Vermillion with a bottom-border hover effect.
+- Primary: Deep Warm Vermillion fill (`bg-primary text-primary-foreground`) with medium radius; exactly one per region.
+- Secondary: Bordered outline or card surface with visible border (`border-border/70`).
+- Destructive: Red fill or bordered red; used for removal and rejection with confirmation dialog.
 
 **The "Bunko" Card:**
-Used for book listings. It features a vertical layout, the book cover at the top, followed by the title in EB Garamond. Metadata (author, tags) is rendered in small, all-caps Hanken Grotesk.
+Used for book listings. It features a vertical layout, the book cover at the top, followed by the title in Noto Serif JP / EB Garamond (`font-literary`). Metadata (author, tags, freshness) is rendered in DM Sans / DM Mono (`font-metadata`).
 
 **Reading Controls:**
-A floating or pinned bottom bar that disappears during active scrolling. Icons are thin-stroke (1.5px) to match the weight of the typography.
+An auto-hiding header and bottom reader drawer (`Aa` panel) that disappears during active downward scrolling and reappears on upward scroll or tap. Controls adjust font size, reading line height, column width (560px, 680px, 800px), and reading palette (washi light, midnight slate dark, aged parchment sepia).
 
 **Inputs:**
-Underlined inputs only (minimalist style) rather than boxed fields, utilizing the Washi background to maintain a "writing paper" feel. The focus state changes the underline color to Shuji Vermillion.
+Bordered fields with light input background, visible focus ring (`focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2`).
 
 **Chips/Tags:**
-Small, rectangular shapes with 2px radius. Backgrounds match the secondary surface color (Aged Parchment) to remain unobtrusive.
+Small, rectangular shapes with 2px radius (`rounded-sm`). Backgrounds match the secondary surface color to remain unobtrusive.
 
 ## 4. Brand Identity
 
@@ -340,62 +336,67 @@ All tokens are HSL values on `:root` (light) and `.dark` (dark). Status must nev
 
 | Role | Light HSL | Dark HSL | Use |
 |---|---|---|---|
-| `--background` | `38 25% 96%` (Washi warm paper) | `222 25% 10%` (Midnight Slate) | Page background |
-| `--foreground` | `222 20% 14%` | `38 20% 90%` | Default body text |
-| `--card` | `0 0% 100%` | `222 20% 14%` | Card, popover, modal surfaces |
-| `--card-foreground` | `222 20% 14%` | `38 20% 90%` | Text on card surfaces |
-| `--popover` | `0 0% 100%` | `222 20% 14%` | Popover and dropdown surfaces |
-| `--popover-foreground` | `222 20% 14%` | `38 20% 90%` | Text on popover surfaces |
-| `--primary` | `14 80% 50%` (Shuji Vermillion) | `14 85% 55%` | Primary CTAs, active tabs, focal actions |
-| `--primary-foreground` | `14 20% 4%` | `14 20% 4%` | Text on primary fill |
-| `--primary-text` | `14 75% 32%` | `14 70% 75%` | Vermillion text on neutral surfaces |
-| `--secondary` | `195 25% 88%` (soft teal) | `195 25% 22%` | Structural chips, dividers, supporting fills |
-| `--secondary-foreground` | `222 20% 14%` | `38 25% 85%` | Text on secondary fill |
-| `--muted` | `38 18% 90%` | `222 16% 20%` | Quiet surfaces, skeletons, disabled areas |
-| `--muted-foreground` | `222 20% 14%` | `38 20% 90%` | Text on muted surfaces (known limitation: equals foreground; use size or weight for de-emphasis, never rely on this token for hierarchy) |
-| `--accent` | `340 55% 40%` (Sakura) | `340 62% 66%` | Favorites, ratings, save-to-library, reading progress, source titles |
-| `--accent-foreground` | `340 25% 96%` | `38 25% 7%` | Text on accent fill |
-| `--destructive` | `1 75% 55%` | `1 75% 55%` | Errors, failed states, removal, blocked content |
-| `--destructive-foreground` | `1 20% 4%` | `1 20% 4%` | Text on destructive fill |
-| `--destructive-text` | `1 20% 22%` | `1 20% 62%` | Destructive text on neutral surfaces |
-| `--border` | `222 20% 14% / 0.09` | `38 20% 87% / 0.1` | Card, input, and divider borders |
-| `--input` | `38 20% 90%` | `222 16% 16%` | Input field background |
-| `--ring` | `14 80% 45%` | `14 85% 60%` | Focus ring |
-| `--focus-ring` | `14 80% 45%` | `14 85% 60%` | Primary button outer focus ring |
+| `--background` | `38 24% 93.7%` (Warm Washi Paper #F4F1EA) | `60 3% 7.6%` (Soft Warm Charcoal #141413) | Page background |
+| `--foreground` | `24 6% 16%` (Charcoal Sumi Ink #2B2826) | `40 12% 85%` (Warm Off-White Cream #DFDCD5) | Default body text |
+| `--card` | `40 20% 90%` (Surface Container #EBE7DF) | `30 3% 11.8%` (Muted Obsidian #1F1E1D) | Card, popover, modal surfaces |
+| `--card-foreground` | `24 6% 16%` | `40 12% 85%` | Text on card surfaces |
+| `--popover` | `38 24% 95%` | `30 3% 11.8%` | Popover and dropdown surfaces |
+| `--popover-foreground` | `24 6% 16%` | `40 12% 85%` | Text on popover surfaces |
+| `--primary` | `8 70% 42%` (Deep Warm Vermillion #B83220) | `8 64% 57%` (Desaturated Coral-Vermillion #D95D4C) | Primary CTAs, active tabs, focal actions |
+| `--primary-foreground` | `38 24% 93.7%` | `60 3% 7.6%` | Text on primary fill |
+| `--primary-text` | `8 70% 32%` | `8 64% 70%` | Vermillion text on neutral surfaces |
+| `--secondary` | `24 4% 38%` (Secondary #66625D) | `35 5% 56%` (Secondary Text #959088) | Structural chips, dividers, supporting fills |
+| `--secondary-foreground` | `38 24% 93.7%` | `60 3% 7.6%` | Text on secondary fill |
+| `--muted` | `38 18% 88%` (Muted Surface #E5E0D6) | `30 3% 15%` (Muted Surface #272624) | Quiet surfaces, skeletons, disabled areas |
+| `--muted-foreground` | `24 4% 38%` | `35 5% 56%` | Text on muted surfaces |
+| `--accent` | `194 80% 23%` (Tertiary Accent #0B5066) | `198 60% 30%` | Favorites, ratings, save-to-library, reading progress, source titles |
+| `--accent-foreground` | `38 24% 93.7%` | `0 0% 100%` | Text on accent fill |
+| `--destructive` | `0 75% 42%` (Error #BA1A1A) | `0 75% 42%` | Errors, failed states, removal, blocked content |
+| `--destructive-foreground` | `0 0% 100%` | `0 0% 100%` | Text on destructive fill |
+| `--destructive-text` | `0 75% 25%` | `0 75% 70%` | Destructive text on neutral surfaces |
+| `--border` | `38 18% 84%` (Soft Warm Divider #DFD9CE) | `45 4% 16%` (Soft Warm Border #2B2A27) | Card, input, and divider borders |
+| `--input` | `38 18% 88%` | `30 3% 15%` | Input field background |
+| `--ring` | `8 70% 42%` | `8 64% 57%` | Focus ring |
+| `--focus-ring` | `8 70% 42%` | `8 64% 57%` | Primary button outer focus ring |
 | `--success` | `150 45% 32%` | `150 45% 38%` | Completed, published, healthy, active |
+| `--success-foreground` | `150 70% 88%` | `150 20% 4%` | Text on success fill |
 | `--success-text` | `150 20% 18%` | `150 20% 58%` | Success text on neutral surfaces |
 | `--warning` | `45 80% 48%` | `45 85% 55%` | Stale, partial, degraded, hiatus |
+| `--warning-foreground` | `45 20% 6%` | `45 20% 14%` | Text on warning fill |
 | `--warning-text` | `45 20% 18%` | `45 20% 58%` | Warning text on neutral surfaces |
 | `--info` | `205 70% 45%` | `205 70% 55%` | Running, scheduled, informational |
+| `--info-foreground` | `205 20% 4%` | `205 20% 4%` | Text on info fill |
 | `--info-text` | `205 20% 20%` | `205 20% 58%` | Info text on neutral surfaces |
-| `--sidebar` | `38 20% 90%` | `222 25% 8%` | Sidebar background |
-| `--sidebar-accent` | `38 18% 87%` | `222 16% 16%` | Sidebar hover and active accent |
+| `--sidebar` | `38 18% 88%` | `60 3% 7.6%` | Sidebar background |
+| `--sidebar-accent` | `38 18% 84%` | `30 3% 11.8%` | Sidebar hover and active accent |
 
 ### 5.2 Usage rules
 
 - Vermillion (`--primary`) is for primary focal actions and active selection only: "Start Reading", "Sign In", primary form submits, active tabs, active account and admin nav items. Never decorative.
-- Sakura (`--accent`) is restricted to favorites, star ratings, save-to-library actions, reading progress indicators, and original source titles. Never used for buttons, focus rings, or generic highlights.
-- Soft teal (`--secondary`) is for structural chips, dividers, and supporting emphasis.
+- Tertiary Accent (`--accent`) is restricted to favorites, star ratings, save-to-library actions, reading progress indicators, and original source titles. Never used for buttons, focus rings, or generic highlights.
+- Secondary (`--secondary`) is for structural chips, dividers, and supporting emphasis.
 - Semantic statuses: success = completed/published/healthy; info = running/scheduled; warning = stale/partial/hiatus/degraded; destructive = failed/rejected/removed/blocked; muted = inactive/dropped/unavailable.
 - Reader light, dark, and sepia themes are an independent token system scoped to the reading surface only; they must not leak into global surfaces, and global tokens must not be toggled by the reader theme switch.
 
 ### 5.3 Resolved terminology
 
-- "Lantern orange", "deep teal", "indigo accents", and "Plum" are retired. The canonical palette is Shuji Vermillion, Sakura, Soft Teal, Washi Warm Paper, and Midnight Slate.
+- "Lantern orange", "deep teal", "indigo accents", and "Plum" are retired. The canonical palette is Deep Warm Vermillion, Warm Washi Paper, Charcoal Sumi Ink, Tertiary Accent, and Soft Warm Charcoal.
 
 ## 6. Typography
 
 ### 6.1 Font families and roles
 
-| Font | Files | Role |
+| Font | Files / Variables | Role |
 |---|---|---|
-| DM Sans (variable) | `--font-dm-sans` | All UI chrome: navigation, buttons, forms, body copy on pages |
-| Noto Serif JP (variable) | `--font-noto-serif-jp` | Literary role: novel titles, chapter titles, reading content, section headings on public surfaces |
-| DM Mono (400, 500) | `--font-dm-mono` | Metadata: chapter numbers, timestamps, word counts, identifiers, status labels |
+| DM Sans (variable) | `--font-dm-sans` (`font-sans`) | All UI chrome: navigation, buttons, forms, body copy on pages |
+| Noto Serif JP (variable) | `--font-noto-serif-jp` (`font-literary`, `font-serif`) | Literary role: novel titles, chapter titles, reading content, section headings on public surfaces |
+| DM Mono (400, 500) | `--font-dm-mono` (`font-metadata`, `font-mono`) | Metadata: chapter numbers, timestamps, word counts, identifiers, status labels |
 
 Rules:
 
-- Literary serif is for titles and reading content on public surfaces. Do not mix families within one semantic element.
+- Literary serif (`font-literary`, `font-serif`: Noto Serif JP, fallback EB Garamond) is for titles and reading content on public surfaces. Do not mix families within one semantic element.
+- UI sans-serif (`font-sans`: DM Sans, fallback Hanken Grotesk) is for all navigation, buttons, form controls, and general page body copy.
+- Monospace (`font-metadata`, `font-mono`: DM Mono, fallback Hanken Grotesk / monospace) is for numbers, timestamps, IDs, status labels, and tabular metadata.
 - Admin surfaces never use the serif font; UI and table text is DM Sans, identifiers and numbers are DM Mono.
 
 ### 6.2 Hierarchy and sizes
@@ -464,8 +465,8 @@ Rules:
 
 ## 8. Shape, Border, and Elevation System
 
-- Base radius: 6px (`0.375rem`). Derived: large 6px (cards, modals), medium 4px (buttons, inputs, badges), small 2px (chips, compact elements), full pill for status badges and avatars.
-- The PR #38 overhaul returned to this base radius system; no oversized rounded containers.
+- Base radius: 4px (`0.25rem` via `--radius`). Derived: `lg` 4px (`var(--radius)` for cards, modals), `md` 2px (`calc(var(--radius) - 2px)` for buttons and inputs), `sm` 0px (`calc(var(--radius) - 4px)`), and full pill (`rounded-full`) for status badges and avatars.
+- The P0-P6 design overhaul unified this base radius system (`--radius: 0.25rem`); no oversized or bubbly rounded containers.
 - Washi card elevation: public and account cards employ the canonical washi paper standard (`bg-card/70 border-border/70 shadow-card`). The subtle resting shadow (`shadow-card`, `0 1px 2px 0 rgb(28 28 24 / 0.06)`) simulates weighted paper resting on a table without heavy drop shadows. Interactive cards lift subtly on hover (`hover:shadow-raised`, `0 12px 28px -8px rgb(28 28 24 / 0.18)`), while admin operational surfaces remain flat and border-distinguished (`border-border/70`).
 - Overlays and depth: elevation is reserved for overlays: small shadow for popovers and dropdowns, medium for elevated cards, large for complex menus, 2xl for modals and drawers.
 - Overlay backdrops may use subtle blur; static surfaces must not.
@@ -656,7 +657,7 @@ Prohibited patterns (TasteSkill-derived, enforced project-wide):
 - No default component-library appearance; every control is themed to the Dokushodo contract.
 - No glassmorphism on static surfaces.
 
-PR #38 retired patterns: multi-layer hero gradients, the radial blob, decorative vertical Japanese text on the hero, duplicate browse entry points, duplicate start-reading CTAs, and nested interactive card links.
+PR #38 and PR #164 (P0-P6) retired patterns: multi-layer hero gradients, the radial blob, decorative vertical Japanese text on the hero, duplicate browse entry points, duplicate start-reading CTAs, nested interactive card links, oversized borders/radii, and disconnected administrative sub-pages.
 
 ## 16. SEO and Metadata
 
@@ -755,6 +756,10 @@ WTR-Lab is recorded only as a domain reference for the reading experience.
 
 - `/` redirects to `/home`.
 - `/admin` redirects to `/admin/dashboard`.
+- `/admin/crawlers` redirects to `/admin/crawler`.
+- `/admin/novels` redirects to `/admin/library`.
+- `/admin/operations` redirects to `/admin/maintenance`.
+- `/admin/glossary` redirects to `/admin/library`.
 - `/random` resolves a random novel and redirects to `/novels/[slug]`, or to `/browse-novels?notice=empty` when the catalog is empty. Its brief documents the redirect surface it renders while resolving.
 
 ## 20. Verification and Maintenance
